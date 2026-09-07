@@ -40,6 +40,23 @@ attempt at culling was 400x *slower* than none because of a defect in the per-ti
 **Done when:** drop a KiCad output folder on the window and see the board, correctly, including a
 board with aperture macros and negative polarity.
 
+**Progress.** Parsers done; geometry realisation and the viewer are next.
+
+- Gerber RS-274X + X2: lexer, modal state machine, standard apertures, full aperture-macro
+  expression evaluator, region compositing, arcs kept as arcs, step and repeat, and X2 attributes
+  in **both** encodings (`%TF%` blocks and KiCad 9's `G04 #@!` comments).
+- Excellon: KiCad decimal plus the leading/trailing zero-suppressed dialects, G85 slots, routed
+  slots, plating and tool functions.
+- `MillBurn.Cli inspect` prints the parse report from the risk table below.
+- Verified against 24 external corpus files and two real KiCad 10 boards: **zero errors**.
+  The NanoV3.3 board resolves 34 apertures with SMDPad/ComponentPad/ViaPad/Conductor classified.
+- Two bugs worth remembering, both of which produced a *clean-looking* empty result:
+  the closing `*` of an extended command was left on the body, so every aperture parameter parsed
+  as `0.5*`; and files write a bare `D10` with no `*` terminator, which merges with the next line,
+  so deferring aperture selection to the end of a block let a `D03` overwrite it.
+- Not yet: block apertures (`%AB%`), aperture transforms (`%LM/LR/LS%`). Both are reported as
+  errors rather than silently ignored; neither appears in the corpus or in KiCad output.
+
 ### Phase 2 — Mill toolpaths + G-code + backplot
 
 - Clipper2 offsets; isolation passes; V-bit effective-diameter model; minimum-clearance DRC.

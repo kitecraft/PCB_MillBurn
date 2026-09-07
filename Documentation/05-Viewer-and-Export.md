@@ -183,6 +183,7 @@ of the same project produce byte-identical SVG — which makes it a golden-test 
 |---|---|---|
 | **Inkscape / general** | Inspection, editing, documentation | Named layers, CSS classes, mm units |
 | **LightBurn** | Feeding a non-G-code laser | Layers named `C00`…`C29` (LightBurn auto-maps these to cut layers), fills and outlines separated, mm units, no styling that LightBurn will discard |
+| **Silkscreen** | Laser marking a legend | Stroke centrelines only, one layer, mm units — the beam is already the right width ([04 §2.6](04-Machines-Laser-and-Mixed-Workflows.md#26-silkscreen-marking--the-easiest-win-on-the-board)). The quickest useful export we can ship. |
 | **Documentation** | Printed reference / assembly aid | Dimensioned, with fiducial callouts, a scale bar, a title block, tool/parameter table |
 | **Interactive HTML** | Sharing and review | SVG plus a small JS layer-toggle panel, hover tooltips with net/tool/feed, and G-code line cross-links |
 

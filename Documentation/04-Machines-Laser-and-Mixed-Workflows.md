@@ -57,7 +57,7 @@ generic image:
 |---|---|---|
 | Etch resist | **Non-copper** area (so acid eats it) — i.e. board outline minus copper | Copper layer, inverted, clipped to outline |
 | Solder-mask openings | **Pads only** | Gerber X2 `.AperFunction = SMDPad / ComponentPad`, optionally excluding `ViaPad` |
-| Silkscreen burn | Silk layer geometry | Silk Gerber |
+| Silkscreen | Silk layer geometry (see 2.6 - the simplest operation here) | Silk Gerber |
 | Fiducials | Fiducial marks | Generated (§4) |
 
 Being able to say "pads only, excluding vias, excluding U3" precisely — because we kept the X2
@@ -119,7 +119,52 @@ These take five minutes to write and save every user an hour of trial-and-error.
 their results straight back into the machine profile, so the numbers get *used* rather than
 written on a sticky note.
 
-### 2.6 LightBurn / external-laser escape hatch
+### 2.6 Silkscreen marking — the easiest win on the board
+
+Worth calling out separately, because it is far simpler than every other laser operation here and
+delivers something people actually want: **legible component labels on a home-made board.**
+
+Parsing a real KiCad silk layer shows why. `PogoTest1-F_Silkscreen.gbr` is **217 stroked draws,
+two apertures (0.10 mm and 0.15 mm), and zero flashes.** It is pure vector line art. Compare that
+with copper, which needs region compositing, polarity ordering, offsetting and DRC.
+
+**The key coincidence: silk stroke width ≈ laser spot size.** Silk is drawn with a 0.10–0.15 mm
+round aperture; a diode laser spot is 0.06–0.15 mm. So for the common case the correct toolpath
+is simply *trace the stroke centrelines* — the beam is already the right width. No raster fill,
+no offsetting, no kerf compensation. The Gerber's own draw segments are the toolpath.
+
+Rules the generator applies:
+
+| Condition | Toolpath |
+|---|---|
+| Stroke width within ~1.5× the spot | Trace centrelines directly at 1× |
+| Stroke wider than that | Outline, then contour-fill the interior at the line interval |
+| Bottom silk | Mirror through the setup frame, same as any bottom-side layer |
+
+Two ways to use it, and they want different power settings:
+
+- **Direct marking.** Burn the bare FR4 or the cured solder mask. The substrate darkens and the
+  legend is permanently legible with no chemistry at all. This is a standalone job — it needs no
+  masking, no etching, and no registration beyond the usual fiducials.
+- **Mask-and-etch**, exactly like the copper workflows, when the legend should be etched rather
+  than burned.
+
+Practical limits to surface in the UI rather than let people discover:
+
+- **Minimum legible character height is about 0.8 mm** on a diode laser. KiCad's default silk text
+  is 1.0 mm, so most boards are fine — but flag anything below the threshold before it burns into
+  an unreadable smudge.
+- **Marking does not work on bare copper.** Copper reflects and conducts the heat away. Silk
+  marking belongs after masking, or on the substrate side.
+- **Order it before the cutout**, while the board is still held by the stock.
+- Ship a **power/feed test grid** for marking specifically — the settings that darken FR4 nicely
+  are much lower than the settings that ablate mask.
+
+Because the output is vectors, the SVG/DXF export path below carries silk to LightBurn users with
+no G-code at all. For many people that will be the first genuinely useful thing this tool does for
+them, and it is a handful of lines of geometry work.
+
+### 2.7 LightBurn / external-laser escape hatch
 
 Many laser users have controllers that don't take G-code (Ruida, and anything driven by
 LightBurn). Rather than chase every controller, make **"export to LightBurn"** a first-class
