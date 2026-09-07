@@ -281,25 +281,119 @@ than making them wonder. Half of good workflow software is telling people what *
 The mill and the laser need different answers, because only one of them takes our
 coordinates. Both start from the same place: don't solve the problem twice.
 
-### 4.1 Primary: a physical registration fixture
+### 4.1 Primary: a physical fixture, cut on the machine that will use it
 
-The best alignment problem is one you don't have to solve twice.
+The best alignment problem is one you don't have to solve twice. Three fixtures do that, and they
+all rest on the same trick: **the app generates the G-code that cuts the fixture, so its datum is
+*defined* rather than measured.** Every error in the machine — backlash, squareness, scaling,
+spoilboard tilt — cancels, because the fixture is cut in the same coordinate frame the job will
+run in. Nothing about the fixture is ever measured with a rule.
 
-- Design a **reusable registration plate**: MDF or acrylic with two (or three) dowel pins at a
-  known spacing, plus a flat reference edge. The app **generates the G-code to make it** on the
-  mill.
-- The plate is calibrated **once per machine**: the operator locates the two pins in their sender
-  and types the coordinates in; we store the `machine ↔ plate` transform in the MachineProfile.
-  Do it once, ever — this is the payoff, and it's why the fixture is the recommended path even
-  though we can't drive the machine.
+#### 4.1.1 The corner stop — the recommended default
+
+Two stops on one edge of the stock, one on the adjacent edge, milled into a sacrificial plate that
+stays bolted to the table. Push the stock into them and it is located. No holes drilled in the
+stock, no pins, works with any stock at least as big as the board, and takes about four minutes to
+cut once, ever.
+
+**Sizing: three points, not two rails.** The instinct is a continuous L of two rails, and it
+works, but it is over-constrained: a single chip or burr anywhere along a 60 mm face tips the
+whole stock, and there is no way to see that it happened. The classic fixturing answer is
+**3-2-1 locating** —
+
+| Degrees of freedom | Constrained by | Here |
+|---|---|---|
+| Z, plus tip and tilt | 3 points on the primary plane | The spoilboard, since the stock lies flat |
+| Y and rotation | **2 stops** on the secondary datum | Two pads on the front edge, spaced as far apart as the stock allows |
+| X | **1 stop** on the tertiary datum | One pad on the left edge, near the middle |
+
+Three pads, exactly constrained. Swarf between them falls into open space instead of under a
+reference face, and a burr on one pad shows up as a visible gap on another. Defaults worth
+shipping: **pads 10–15 mm long, 6–8 mm thick, spanning ~80% of the stock edge**, with the single X
+stop centred on its edge. Offer a continuous-rail variant for people who would rather screw down a
+strip of aluminium than mill a plate, and say plainly that it is the less repeatable of the two.
+
+**Rail height must sit below the stock's top face.** The cutter runs right along the stock edge
+during the outline pass; a stop standing 3 mm proud of a 1.6 mm board is a broken cutter. Default
+to **1.0 mm for 1.6 mm stock** — enough to stop the board, with 0.6 mm of clearance — and derive
+it from the declared stock thickness rather than assuming.
+
+**Relieve every inside corner, or the stock will not seat.** This is the detail that decides
+whether the feature works at all. A 3 mm end mill cannot cut a sharp inside corner; it leaves a
+1.5 mm radius, and a stock corner pushed into a radiused corner rides up on the fillet and sits
+several tenths out of position — silently, and differently every time. Cut a **relief pocket at
+the corner, larger than the cutter radius**, so both reference faces stay flat right up to the
+relief and the stock's own corner sits in fresh air. With three separate pads this falls out for
+free, which is another reason to prefer them.
+
+**It references the stock, not the finished board.** The outline pass cuts *inside* the stock, so
+the stops only ever touch stock edge and never meet the cutter. The app therefore needs the stock
+size and the board's margin within it, and should refuse to plan a job whose outline would run
+into a stop. (A board that has already been cut out is the nest-pocket case, §4.1.3.)
+
+**Baking it into the G-code is the easy part.** The datum is a machine coordinate we already know,
+because we emitted the program that cut it, and the offset from stock corner to board origin is
+just the declared margin. Their sum is a translation applied by the `CoordinateTransform`
+processor that is already in the chain (§1.1) — so this feature is *data plus a fixture generator*,
+not new machinery in the emitter. The operator's whole job becomes: push stock into the corner,
+load the file, run.
+
+**Engrave the jig with its own numbers.** While the fixture is being cut, engrave the datum
+coordinates, the stock size it was cut for, and the date onto the plate. A fixture that says
+`DATUM X-12.500 Y-8.000 · 100x80 stock · 2026-03` on its face is self-documenting, and answers
+"which jig is this and where is its zero" without opening the project — six months later, on a
+Sunday, with the spoilboard already resurfaced.
+
+**Error budget — and the honest limit.** The fixture contributes almost nothing, because it was
+cut in the machine's own frame. The error is *the stock*:
+
+| Source | Contribution |
+|---|---|
+| Fixture position | ~0 — defined, not measured |
+| Sheared or sawn FR4 edge, out of straight | **0.1–0.25 mm**, and dominant |
+| Milled datum edges (see below) | 0.02–0.05 mm |
+| Burrs, swarf, inconsistent push force | 0.05 mm |
+
+So a corner stop against as-supplied stock lands around **±0.15–0.25 mm**: excellent for drilling
+and cutting out, repeatable session to session, and **not** the ≤ 50 µm this section is aiming at.
+Say so in the UI rather than letting someone discover it on a 0.2 mm trace.
+
+The fix follows from the same principle: **offer a "square the stock" operation** that mills the
+two datum edges on the machine as the job's first cut. The edges are then true by construction and
+the whole budget drops to ±0.05 mm. It costs one pass and a few millimetres of stock.
+
+**Double-sided work needs a second datum.** Flipping the stock swaps which physical edge meets
+which stop, so one corner cannot register both sides. Generating a **second, mirrored corner stop**
+at a computed offset costs nothing — we are already emitting the program — and it keeps both sides
+exact. A four-sided nest would also handle the flip, but only with a clearance fit, and clearance
+is slop.
+
+#### 4.1.2 Dowel-pin plate
+
+MDF or acrylic with two (or three) dowel pins at a known spacing, plus a flat reference edge.
+
+- Cut on the mill from our G-code, so the pin positions are in the machine's frame by construction.
 - The stock is drilled with matching pin holes in the **first operation of the job**, before it is
-  ever removed. From then on, dropping the board on the plate reproduces its position to the
-  fit of the pins — typically 20–50 µm with 3 mm dowels in reamed holes.
-- For a board already cut out, generate a **nest pocket** matching the outline (plus a clearance
-  fit), with an **asymmetric corner key** so it physically cannot be inserted rotated 180°.
+  ever removed. Dropping the board back on the plate then reproduces its position to the fit of
+  the pins — typically **20–50 µm with 3 mm dowels in reamed holes**, which is the tightest of the
+  three fixtures and the one to reach for when the 50 µm target is real.
+- The cost is holes in the stock and a slightly longer first operation.
 
-This converts a per-job alignment problem into a one-time calibration. It should be the
-recommended path and the app should walk the user through building the plate on first run.
+#### 4.1.3 Nest pocket
+
+For a board that has **already been cut out** — the board coming back from the etchant in Use Case
+1, or any second setup. A pocket matching the outline plus a clearance fit, with an **asymmetric
+corner key** so the board physically cannot go in rotated 180°.
+
+Fit is the whole game: too tight and the board will not drop in, too loose and the slop is the
+registration error. Default to a 0.1 mm clearance and expose it.
+
+---
+
+All three convert a per-job alignment problem into a one-time setup. The app should walk the user
+through building one on first run, default to the corner stop, and store the resulting datum in
+the MachineProfile so it is never typed twice. If the spoilboard is resurfaced or the plate moves,
+the fixture is **re-cut, not re-measured** — the new program redefines the datum.
 
 ### 4.2 Fiducials + measurement (mill)
 

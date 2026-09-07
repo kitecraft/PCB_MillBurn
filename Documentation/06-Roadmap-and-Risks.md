@@ -133,8 +133,16 @@ LightBurn layer preset, DXF, and the calibration generators.
   plain CSV).
 - Height mapping with TPS interpolation, reused across a Setup.
 - Dry-run verification file generator.
-- Registration plate generator + one-time machine calibration.
-- Nest-pocket generator with asymmetric keying.
+- **Corner-stop fixture generator** — the recommended default
+  ([04 §4.1.1](04-Machines-Laser-and-Mixed-Workflows.md#411-the-corner-stop--the-recommended-default)).
+  3-2-1 pad placement sized from the stock, relieved inside corners, stop height derived from
+  stock thickness, engraved with its own datum, and a mirrored twin for double-sided work. The
+  datum needs no calibration step at all: we emit the program that cuts it, so we know where it
+  is. Refuse to plan a job whose outline would run into a stop.
+- **"Square the stock" operation** — mills the two datum edges true as the job's first cut. This
+  is what takes the corner stop from +/-0.2 mm to +/-0.05 mm, and it is one pass.
+- Dowel-plate generator + one-time machine calibration (the tightest fixture, 20-50 um).
+- Nest-pocket generator with asymmetric keying, for boards already cut out.
 - Job Runbook with persistence and PDF export.
 
 **Done when:** Use Case 1 and Use Case 2 both run end-to-end with ≤ 50 µm registration measured
