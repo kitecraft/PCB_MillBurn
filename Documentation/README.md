@@ -36,7 +36,7 @@ engravers**, and **mixed mill+laser workflows**.
 | `..\IceLight_App\IceLight V2` | Your existing MAUI app | yours | UI reference: the semantic theme-token system, converters, feature-foldered `CoreUI/` layout. Port these ideas forward. |
 
 Both are GPL-3.0. Reading them to understand *approach* is fine; copying code makes PCB_MillBurn
-GPL-3.0 too. Everything we build should be clean-room from published specs
+GPL-3.0 too — and PCB_MillBurn is **MIT**, so that rule is load-bearing rather than decorative. Everything we build should be clean-room from published specs
 (Ucamco Gerber spec, Excellon, GRBL/LinuxCNC G-code docs) plus permissively licensed libraries
 (Clipper2 = BSL-1.0, NetTopologySuite = BSD-3, SkiaSharp = MIT). See
 [Architecture § Licensing](01-Architecture.md#9-licensing-strategy).

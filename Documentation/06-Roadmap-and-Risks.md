@@ -188,8 +188,9 @@ on a test coupon.
 
 ## 4. Open questions
 
-1. **License for PCB_MillBurn itself?** MIT/Apache-2.0 maximises adoption; GPL-3.0 keeps
-   derivatives open. Decide before the first public commit — it is much harder later.
+1. ~~**License for PCB_MillBurn itself?**~~ **Answered: MIT** — attribution only, no restrictions
+   on who ships it. Every dependency is permissive too, so there is no copyleft in the graph. See
+   [01 §9](01-Architecture.md#9-licensing-strategy) and `THIRD-PARTY-NOTICES.md`.
 2. **UI shell: Avalonia, WPF, or stay on MAUI?** Recommendation and reasoning in
    [07](07-UI-Framework-Decision.md); settled by the Phase 0 spike.
 3. ~~**Which laser controller(s) do you actually have?**~~ **Answered:** it does not matter, because

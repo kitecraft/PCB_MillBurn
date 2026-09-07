@@ -5,9 +5,12 @@ A modern, Windows-only Gerber-to-G-code converter for **CNC mills**, **laser eng
 laser output, a live toolpath viewer, and a job model that handles a board moving between machines.
 
 **PCB_MillBurn converts files. It does not drive machines.** No serial port, no jogging, no
-streaming — UGS, Candle, LightBurn and LinuxCNC already do that well.
+streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
+the laser takes SVG** — see [04 §1](Documentation/04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
 
-> **Status: Phase 0.** Scaffolding and the UI-framework spike are done. No Gerber is parsed yet.
+> **Status: Phase 1.** The Gerber X2 and Excellon parsers are done and clean on real boards; the
+> Avalonia viewport holds 98 fps on 500k segments; silkscreen exports as laser-ready SVG. Copper
+> geometry, toolpaths and G-code are not built yet.
 
 ## Documentation
 
@@ -36,6 +39,9 @@ dotnet test  PCB_MillBurn.slnx
 ## Running
 
 ```
+dotnet run --project src/MillBurn.Cli -- inspect MyGerbers2          # parse report
+dotnet run --project src/MillBurn.Cli -- svg MyGerbers2/PogoTest1-F_Silkscreen.gbr
+
 dotnet run --project src/MillBurn.App            # the app
 dotnet run --project src/MillBurn.App -- --bench # viewport benchmark (offscreen, CPU raster)
 dotnet run --project src/MillBurn.App -- --probe # render-configuration sweep
@@ -49,12 +55,12 @@ src/
   MillBurn.Core       units, transforms, project model
   MillBurn.Gerber     Gerber X2/X3 + Excellon parsing
   MillBurn.Geometry   Clipper2 + NetTopologySuite: offsets, booleans, voronoi, pocketing
-  MillBurn.Cam        isolation, drilling, outline, laser operation generators
+  MillBurn.Cam        isolation, drilling, outline, mask and silkscreen generators
   MillBurn.Optimize   travel optimizer and the motion time model
-  MillBurn.Gcode      emitter, parser, processor chain, backplot
-  MillBurn.Post       machine profiles and post-processors
+  MillBurn.Gcode      mill only: emitter, parser, processor chain, backplot
+  MillBurn.Post       mill only: machine profiles and post-processors
   MillBurn.Align      fiducial fits, transforms, height-map import
-  MillBurn.Export     SVG / DXF / PDF / PNG
+  MillBurn.Export     SVG / DXF / PDF / PNG - the whole laser output path
   MillBurn.Viewer     toolpath scene, level of detail, spatial culling, Skia renderer
   MillBurn.Pipeline   the cached, cancellable stage graph tying it together
   MillBurn.App        Avalonia shell (UI only)
@@ -76,5 +82,11 @@ references. **Both are GPL-3.0.** Read them for approach; do not copy code. See
 
 ## Licence
 
-Not yet chosen — see [06 §4](Documentation/06-Roadmap-and-Risks.md#4-open-questions). Decide
-before the first public commit.
+**[MIT](LICENSE).** Use it for anything, including commercially; keep the copyright notice.
+
+Every dependency is permissively licensed as well — MIT, BSD, BSL-1.0, Apache-2.0 — so there is no
+copyleft anywhere in the graph and a build can be shipped by anyone in any product. The full list,
+with the licence of each, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+That is only possible because the two GPL-3.0 reference checkouts above are read and never copied.
+It is a live constraint, not a formality.

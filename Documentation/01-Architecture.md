@@ -221,7 +221,22 @@ they are the ones that catch the failures that actually ruin a board.
   listed in §3. Where a UGS or pcb2gcode idea is genuinely the right design (UGS's command
   processor chain, its `LineSegment` backplot model), we re-derive the design and write our own
   code — the *idea* is not copyrightable, the expression is.
-- Decide the PCB_MillBurn license deliberately. If you want community contributions and no
-  restrictions on who ships it, **MIT or Apache-2.0**. If you want derivatives to stay open,
-  GPL-3.0 is available anyway. Making the clean-room choice now keeps both doors open; copying
-  code closes one permanently.
+### The decision: MIT
+
+**PCB_MillBurn is MIT licensed.** The goal is attribution and nothing else — anyone may use, modify
+and ship it, including in a closed commercial product, provided the copyright notice travels with
+it.
+
+MIT over Apache-2.0 because the only material difference for a project of this shape is Apache's
+explicit patent grant and retaliation clause, which matters when corporate contributors are in the
+picture and adds two hundred lines of text that nobody here will read. MIT is short enough to read
+in full, which is worth more.
+
+Every dependency is permissive too — MIT, BSD-2, BSD-3, BSL-1.0, Apache-2.0 — verified from the
+restored packages rather than assumed, and listed in `THIRD-PARTY-NOTICES.md`. There is no copyleft
+anywhere in the graph.
+
+**This is what makes the clean-room rule load-bearing rather than decorative.** A single translated
+function from pcb2gcode or UGS would make the whole application GPL-3.0 and the MIT licence a
+misstatement. The rule is now permanent, and worth restating in review: if a solution looks like it
+was remembered from that source rather than derived from the spec, it does not go in.
