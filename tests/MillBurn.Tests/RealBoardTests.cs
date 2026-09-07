@@ -1,3 +1,8 @@
+using System.Globalization;
+using System.Xml.Linq;
+using MillBurn.Cam;
+using MillBurn.Core;
+using MillBurn.Export;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Apertures;
 using MillBurn.Gerber.Excellon;
@@ -165,8 +170,8 @@ public sealed class RealBoardTests
 
     /// <summary>
     /// Silkscreen is pure stroked line art with one narrow aperture, which makes it the easiest
-    /// thing on the board to put on a laser: vector marking, no raster fill needed. See
-    /// Documentation/04, section 2.7.
+    /// thing on the board to put on a laser: trace the centrelines, because the beam is already
+    /// the right width. See Documentation/04, section 2.5.
     /// </summary>
     [Fact]
     public void SilkscreenIsStrokedLineArt()
@@ -179,6 +184,105 @@ public sealed class RealBoardTests
 
         var widths = silk.Apertures.Values.Select(a => a.NominalWidthNm).Distinct().ToList();
         Assert.All(widths, w => Assert.InRange(w, 50_000, 400_000));
+    }
+
+    // ------------------------------------------------------------------ silkscreen to SVG
+
+    /// <summary>
+    /// The whole laser path end to end on a real board: parse, build artwork, write SVG.
+    ///
+    /// The assertions are all about *scale and placement*, because that is where this fails
+    /// silently. A file with the wrong units opens perfectly in every viewer and burns a legend
+    /// 4% small; nothing about it looks wrong until it is on the board.
+    /// </summary>
+    [Fact]
+    public void RealSilkscreenExportsAsMillimetreAccurateSvg()
+    {
+        var silk = Gerber("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var artwork = SilkscreenOperation.Build(silk, new SilkscreenOptions(), "PogoTest1-F_Silkscreen.gbr");
+
+        // Every stroke on this layer is within the beam width, so nothing needs realising.
+        var marks = Assert.Single(artwork.Layers);
+        Assert.Equal("silk-mark", marks.Id);
+        Assert.Equal(217, marks.SubpathCount);
+
+        var margin = Nm.FromMillimetres(5);
+        var page = SvgPage.ForContent(artwork.ContentBounds, margin);
+        var svg = SvgWriter.Write(artwork, page, new SvgExportOptions { Timestamp = null });
+
+        var root = XDocument.Parse(svg).Root!;
+        Assert.Equal($"{page.WidthMm.ToString("0.####", CultureInfo.InvariantCulture)}mm",
+            root.Attribute("width")!.Value);
+
+        // The page is the content plus a 5 mm margin on each side, in real millimetres.
+        Assert.Equal(Nm.ToMillimetres(artwork.ContentBounds.Width) + 10, page.WidthMm, 6);
+        Assert.Equal(Nm.ToMillimetres(artwork.ContentBounds.Height) + 10, page.HeightMm, 6);
+
+        // And every drawn coordinate is inside it. A point outside the viewBox is geometry the
+        // operator will never see.
+        var (minX, minY, maxX, maxY) = Extent(root);
+        Assert.InRange(minX, 0, page.WidthMm);
+        Assert.InRange(maxX, 0, page.WidthMm);
+        Assert.InRange(minY, 0, page.HeightMm);
+        Assert.InRange(maxY, 0, page.HeightMm);
+
+        // The strokes sit exactly a margin plus half a stroke width in from the page edge.
+        Assert.Equal(Nm.ToMillimetres(margin + (marks.Shapes.Min(s => s.StrokeWidthNm) / 2)), minX, 4);
+    }
+
+    /// <summary>
+    /// Bottom silk must mirror, and the mirror must be about the shared page rather than about the
+    /// geometry's own extents — otherwise the front and back exports do not line up on the bed.
+    /// </summary>
+    [Fact]
+    public void MirroringBottomSilkReflectsAboutTheSharedPage()
+    {
+        var artwork = SilkscreenOperation.Build(
+            Gerber("MyGerbers2", "PogoTest1-B_Silkscreen.gbr"), new SilkscreenOptions());
+
+        var page = SvgPage.ForContent(artwork.ContentBounds, Nm.FromMillimetres(5));
+        var options = new SvgExportOptions { Timestamp = null };
+
+        var front = Extent(XDocument.Parse(SvgWriter.Write(artwork, page, options)).Root!);
+        var back = Extent(XDocument.Parse(SvgWriter.Write(artwork, page, options with { Mirror = true })).Root!);
+
+        Assert.Equal(page.WidthMm - front.MaxX, back.MinX, 4);
+        Assert.Equal(page.WidthMm - front.MinX, back.MaxX, 4);
+        Assert.Equal(front.MinY, back.MinY, 4);
+        Assert.Equal(front.MaxY, back.MaxY, 4);
+    }
+
+    /// <summary>Extent of every drawn coordinate in the document, in page millimetres.</summary>
+    private static (double MinX, double MinY, double MaxX, double MaxY) Extent(XElement root)
+    {
+        double minX = double.MaxValue, minY = double.MaxValue;
+        double maxX = double.MinValue, maxY = double.MinValue;
+
+        foreach (var path in root.Descendants().Where(e => e.Name.LocalName == "path"))
+        {
+            var tokens = path.Attribute("d")!.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                // Every command ends with an x/y pair, so the two numbers before the next command
+                // (or the end) are a point.
+                if (tokens[i] is not ("M" or "L" or "A"))
+                {
+                    continue;
+                }
+
+                var span = tokens[i] == "A" ? 7 : 2;
+                var x = double.Parse(tokens[i + span - 1], CultureInfo.InvariantCulture);
+                var y = double.Parse(tokens[i + span], CultureInfo.InvariantCulture);
+
+                minX = Math.Min(minX, x);
+                maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y);
+                maxY = Math.Max(maxY, y);
+                i += span;
+            }
+        }
+
+        return (minX, minY, maxX, maxY);
     }
 
     // ------------------------------------------------------------------ external corpus

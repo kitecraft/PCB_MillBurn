@@ -38,7 +38,7 @@ Then `tsp_2opt()` runs 2-opt, where a "move" reverses a contiguous run of paths.
 3. **Chebyshev distance is not the cost.**
    The comment says it approximates rapid time — it does, for the XY move on a machine that moves
    both axes at full speed. But it ignores the dominant terms: the **Z lift**, the **plunge**,
-   the **dwell for spindle/laser state changes**, and **acceleration**. On a PCB job with 400
+   the **dwell for spindle state changes**, and **acceleration**. On a PCB job with 400
    short isolation paths, the lift+plunge pairs are most of the wall-clock time, and the optimizer
    is blind to them.
 
@@ -75,7 +75,7 @@ cost(i.a → j.b) =
       t_retract(depth_i → z_safe)          # Z lift at plunge/retract feed
     + t_rapid(exit_i → entry_j)            # XY rapid, trapezoidal profile
     + t_plunge(z_safe → depth_j)           # or ramp/helix time if ramping
-    + t_state_change                       # spindle change, laser on/off dwell, air assist
+    + t_state_change                       # spindle change, tool change, dwell
 ```
 
 `t_rapid` uses a **trapezoidal motion profile** with the machine's real acceleration and max
@@ -91,8 +91,10 @@ than their summed distance suggests, and the optimizer should prefer *fewer, lon
 also means the number the UI shows as "estimated time" is actually right, which nothing in this
 space gets right.
 
-Laser machines get a different profile — no Z, but a **laser off/on settling** term and, for
-raster fills, an **overscan** cost outside the burn area.
+The cost model is **mill-only**, and that is a simplification the SVG-for-lasers decision buys
+us ([04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats)): laser
+ordering, overscan and scan strategy belong to the laser software, so the optimizer has exactly
+one machine model to be right about.
 
 ## 4. The algorithm
 
@@ -168,8 +170,8 @@ Ordering is necessary but not sufficient. Three more sources of wasted time:
 
 1. **Excessive lifts.** If two consecutive paths' endpoints are closer than a threshold and the
    straight line between them stays outside the keep-out geometry, **do not lift at all** —
-   travel at cutting depth. For laser, the equivalent is keeping the beam off but staying in the
-   G1 stream. pcb2gcode has `backtrack.cpp`/`path_finding.cpp` doing a limited version of this;
+   travel at cutting depth. pcb2gcode has `backtrack.cpp`/`path_finding.cpp` doing a limited
+   version of this;
    generalise it with an STRtree-based visibility check and a configurable "max distance to
    travel at depth".
 

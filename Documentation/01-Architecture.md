@@ -16,10 +16,10 @@
 - **The CLI is a first-class product**, not an afterthought. It is how we run regression tests,
   how CI works, and how power users batch things.
 
-### 1.1 Scope boundary — PCB_MillBurn does not drive machines
+### 1.1 Scope boundary — PCB_MillBurn writes files, it does not drive machines
 
-**This app converts Gerber to G-code. It never opens a serial port.** No jogging, no probing, no
-streaming, no DRO, no `$$` settings. UGS, Candle, LightBurn, bCNC, and LinuxCNC already do that
+**This app converts Gerber to G-code for the mill and to SVG for the laser. It never opens a
+serial port.** No jogging, no probing, no streaming, no DRO, no `$$` settings. UGS, Candle, LightBurn, bCNC, and LinuxCNC already do that
 job well; competing with them would double the surface area and add all the risk (a bug in a file
 generator wastes a board; a bug in a sender crashes a spindle into a fixture).
 
@@ -36,6 +36,14 @@ This is a real constraint, not a simplification, and it shapes two designs in pa
 Both are strictly better for us: they work with every controller and sender in existence, with
 zero firmware-compatibility surface.
 
+**The same reasoning, applied to lasers, decides the output format: SVG, not G-code.** Laser
+software already owns power, speed, passes, fill strategy, overscan and the user's calibrated
+material library — and much laser hardware does not take G-code at all. What it cannot do is read
+a Gerber, so our half is geometry: pad selection from X2 attributes, copper inversion, kerf and
+etch-bias compensation, layer assignment. See
+[04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats). This removes
+an entire subsystem — laser dialect, scanline generator, power model — from the project.
+
 ## 2. Solution layout
 
 ```
@@ -44,11 +52,11 @@ PCB_MillBurn.slnx
 │   ├── MillBurn.Core            net10.0   Units, geometry primitives, transforms, project model
 │   ├── MillBurn.Gerber          net10.0   Gerber X2/X3 + Excellon parsers → semantic model
 │   ├── MillBurn.Geometry        net10.0   Clipper2 + NTS: offset, boolean, voronoi, pocket, arcs
-│   ├── MillBurn.Cam             net10.0   Operation generators (isolation, drill, outline, laser)
+│   ├── MillBurn.Cam             net10.0   Operation generators (isolation, drill, outline, mask)
 │   ├── MillBurn.Optimize        net10.0   Travel optimizer, precedence constraints, time model
-│   ├── MillBurn.Gcode           net10.0   Emitter, parser, processor chain, backplot, simulator
-│   ├── MillBurn.Post            net10.0   Machine profiles + post-processor templates
-│   ├── MillBurn.Export          net10.0   SVG / DXF / PDF / PNG writers
+│   ├── MillBurn.Gcode           net10.0   Mill only: emitter, parser, processors, backplot
+│   ├── MillBurn.Post            net10.0   Mill only: profiles + post-processor templates
+│   ├── MillBurn.Export          net10.0   SVG / DXF / PDF / PNG - the whole laser path
 │   ├── MillBurn.Align           net10.0   Fiducial fits, transforms, height-map import
 │   ├── MillBurn.Viewer          net10.0   Toolpath scene, LOD, spatial culling, Skia renderer
 │   ├── MillBurn.Pipeline        net10.0   The cached, cancellable stage graph tying it together
@@ -124,7 +132,7 @@ sealed record MillBurnProject(
     ProjectMeta          Meta,
     ImmutableArray<InputFile>   Inputs,      // gerbers, drill files, their roles
     BoardModel           Board,              // derived: layers, outline, nets, pads
-    ImmutableArray<MachineProfile> Machines, // the mill, the laser
+    ImmutableArray<MachineProfile> Machines, // mills emit G-code, lasers emit SVG
     ImmutableArray<Fixture>        Fixtures, // pin plates, nests
     ImmutableArray<Setup>          Setups,   // a machine + a fixture + a coordinate frame
     ImmutableArray<Operation>      Operations,
@@ -181,7 +189,7 @@ Key UI principles:
 
 - UI thread: MAUI/WinUI only.
 - Pipeline: `Task.Run` on the thread pool, `Parallel.For` inside geometry stages where the work
-  is embarrassingly parallel (per-net offsets, per-scanline laser raster).
+  is embarrassingly parallel (per-net offsets, per-contour compositing).
 - All cross-boundary data is immutable, so no locks in the pipeline.
 - No machine I/O anywhere. PCB_MillBurn writes files; a sender (UGS, Candle, LightBurn,
   LinuxCNC) runs them. See §1.1.

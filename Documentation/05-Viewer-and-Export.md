@@ -1,4 +1,4 @@
-# 05 — Real-Time G-code Viewer & Export
+# 05 — Viewer & Export (SVG, DXF, PNG, PDF)
 
 ## 1. Viewer: what we can learn from UGS
 
@@ -17,7 +17,7 @@ open-source G-code viewer in the .NET-adjacent world. It cannot be used directly
 | `ugs-platform/ugs-platform-visualizer/.../renderables/` | The **renderable-layer model**: `GcodeModel`, `Grid`, `MachineBoundries`, `Tool`, `SizeDisplay`, `OrientationCube`, `Selection`, `MouseOver` — each an independently toggleable overlay. Copy this decomposition exactly; it is why UGS's viewer is extensible. |
 | `.../GcodeLineColorizer.java` | Colour-by-attribute (rapid / feed / plunge / arc / spindle speed) as a pluggable strategy. |
 | `.../RendererInputHandler.java` + `MouseProjectionUtils.java` | Screen→world unprojection for hover/click picking. |
-| `.../JogToHereAction`, `SetWorkingCoordinatesHereAction` | **Not applicable** — we don't drive machines ([01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-does-not-drive-machines)). Noted only to mark the boundary: everything in UGS that talks to a controller is out of scope for us. The offline half of its visualizer is what we want. |
+| `.../JogToHereAction`, `SetWorkingCoordinatesHereAction` | **Not applicable** — we don't drive machines ([01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines)). Noted only to mark the boundary: everything in UGS that talks to a controller is out of scope for us. The offline half of its visualizer is what we want. |
 
 **Licensing: read, do not port.** See [Architecture § 9](01-Architecture.md#9-licensing-strategy).
 
@@ -51,8 +51,8 @@ The scene model, level of detail, culling and Skia drawing live in **`MillBurn.V
 control are Avalonia-specific, which keeps the shell replaceable and lets the culling logic be
 unit-tested.
 
-Performance approach for large files (a raster laser fill can be 500k segments). **Built and
-measured in Phase 0** — `MillBurn.Viewer`:
+Performance approach for large files (a dense isolation job on a panelised board runs to
+hundreds of thousands of segments). **Built and measured in Phase 0** — `MillBurn.Viewer`:
 
 - Batch segments into a small number of `SKPath` objects **grouped by style** (rapid / cut /
   plunge / per-tool / per-power-bucket), so we issue tens of draw calls, not hundreds of
@@ -129,7 +129,12 @@ A dedicated mode that renders the **same job with the optimizer off vs. on**, si
 the travel numbers. This is both a QA tool and the most convincing demo of the product's central
 claim.
 
-## 3. SVG export
+## 3. SVG export — the laser half of the product
+
+This is not a side feature. **The laser takes SVG, not G-code**
+([04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats)), so the SVG
+writer carries every laser operation the app performs. It has to be as correct as the G-code
+emitter, and it is held to the same standard: exact units, deterministic bytes, golden tests.
 
 ### 3.1 What is wrong with pcb2gcode's SVG
 
@@ -147,49 +152,69 @@ debug dump — genuinely useful for eyeballing whether the geometry is sane, and
 anything else. It cannot be imported into a laser workflow, printed to scale, or diffed
 meaningfully.
 
+Note the specific irony: random colour is the *worst possible* choice for a laser target, because
+colour is exactly how LightBurn decides which cut layer an imported object belongs to.
+
 ### 3.2 The replacement
 
 **Real units.** `width="100mm" height="80mm" viewBox="0 0 100 80"` so it opens at exactly 1:1 in
-Inkscape, LightBurn, Illustrator, and a browser. Never DPI-dependent pixels.
+Inkscape, LightBurn, Illustrator, and a browser. Never DPI-dependent pixels. A scale error here is
+a scrapped board, so the golden tests assert the header, and the CLI prints the page size on
+export.
+
+**One page per Job.** Every SVG exported from the same Job shares an origin and a page size, taken
+from the stock outline plus a documented margin — never cropped to each layer's own extents.
+Otherwise two exports of the same board will not overlay when imported, and the second burn is
+offset by the difference. This is asserted in the golden tests, not just intended.
 
 **Structured layers**, with both `id` and `inkscape:label` so Inkscape shows sensible names:
 
 ```xml
-<g id="copper-top"      inkscape:label="Copper Top"      class="copper"/>
+<g id="copper-top"      inkscape:label="Copper Top"       class="copper"/>
 <g id="isolation-p1"    inkscape:label="Isolation pass 1" class="tool-vbit"/>
-<g id="isolation-p2"    inkscape:label="Isolation pass 2" class="tool-vbit"/>
+<g id="mask-open"       inkscape:label="Mask openings"    class="burn-fill"/>
+<g id="silkscreen"      inkscape:label="Silkscreen"       class="burn-line"/>
 <g id="drills"          inkscape:label="Drills"           class="drill"/>
 <g id="outline"         inkscape:label="Board outline"    class="outline"/>
-<g id="tabs"            inkscape:label="Holding tabs"     class="tab"/>
-<g id="fiducials"       inkscape:label="Fiducials"        class="fiducial"/>
-<g id="travel"          inkscape:label="Travel moves"     class="travel"/>
-<g id="drc"             inkscape:label="DRC violations"   class="drc"/>
+<g id="registration"    inkscape:label="Registration"     class="fiducial"/>
 ```
 
-**CSS, not inline attributes.** A single `<style>` block defines the palette by class, so the
-whole drawing is re-themeable by editing six lines, and it can carry a
-`@media (prefers-color-scheme: dark)` variant.
+**Styling: CSS for humans, explicit attributes for machines.** A `<style>` block keyed by class
+makes the drawing re-themeable in one place and is right for the Inkscape and documentation
+profiles. But **the LightBurn profile must write `stroke="#RRGGBB"` on every element**, because
+layer assignment there is by stroke colour and importers vary in how much CSS they resolve.
+Relying on a stylesheet to carry the layer identity is the kind of thing that works in the browser
+preview and silently collapses everything onto one layer in the tool that matters. The writer
+therefore takes a flag: emit style by class, or bake it per element.
 
-**Metadata.** Embed the project name, tool parameters, generation timestamp, and PCB_MillBurn
-version in `<metadata>` / `<desc>`, so a printed drawing can be traced back to the settings that
-made it.
+**Closed subpaths and `fill-rule="evenodd"`.** Anything intended to be filled must close with `Z`,
+and holes must be subpaths of the same `<path>` as their outer contour. See
+[04 §2.3](04-Machines-Laser-and-Mixed-Workflows.md#23-fill-versus-line-and-why-the-svg-must-say-which).
 
-**Deterministic and diffable.** Stable ordering, fixed decimal precision, no randomness. Two runs
-of the same project produce byte-identical SVG — which makes it a golden-test artefact.
+**Metadata.** Embed the project name, the source Gerber, the compensations applied, the generation
+timestamp, and the PCB_MillBurn version in `<metadata>` / `<desc>`, so a burn can be traced back to
+the settings that made it. The compensation figures in particular should be readable from the file
+— *"outlines shrunk 0.055 mm = 0.045 kerf + 0.010 etch bias"* — because that is the number someone
+will want six months later when a board comes out 40 µm narrow.
+
+**Deterministic and diffable.** Stable ordering, fixed decimal precision, no randomness, invariant
+formatting. Two runs of the same project produce byte-identical SVG — which is what makes it a
+golden-test artefact rather than something a human has to eyeball.
 
 ### 3.3 Export profiles
 
 | Profile | Purpose | Characteristics |
 |---|---|---|
+| **Silkscreen** | Laser marking a legend | Stroke centrelines only, mm units — the beam is already the right width ([04 §2.5](04-Machines-Laser-and-Mixed-Workflows.md#25-silkscreen-marking--the-easiest-win-on-the-board)). Needs no geometry realisation, so it ships first. |
+| **LightBurn** | The main laser output | Per-element stroke colours matching the target palette, so objects land on the intended cut layers; fill geometry and line geometry separated; closed subpaths with `evenodd` holes; mm units; no styling the importer will discard. Ships with a layer preset. |
 | **Inkscape / general** | Inspection, editing, documentation | Named layers, CSS classes, mm units |
-| **LightBurn** | Feeding a non-G-code laser | Layers named `C00`…`C29` (LightBurn auto-maps these to cut layers), fills and outlines separated, mm units, no styling that LightBurn will discard |
-| **Silkscreen** | Laser marking a legend | Stroke centrelines only, one layer, mm units — the beam is already the right width ([04 §2.6](04-Machines-Laser-and-Mixed-Workflows.md#26-silkscreen-marking--the-easiest-win-on-the-board)). The quickest useful export we can ship. |
-| **Documentation** | Printed reference / assembly aid | Dimensioned, with fiducial callouts, a scale bar, a title block, tool/parameter table |
+| **Documentation** | Printed reference / assembly aid | Dimensioned, with registration callouts, a scale bar, a title block, tool/parameter table |
 | **Interactive HTML** | Sharing and review | SVG plus a small JS layer-toggle panel, hover tooltips with net/tool/feed, and G-code line cross-links |
 
 ### 3.4 Other exports
 
-- **DXF** (R12 polyline flavour — the most universally readable) for CAM and LightBurn interop.
+- **DXF** (R12 polyline flavour — the most universally readable) as the second laser flavour, for
+  software that imports DXF more reliably than SVG.
 - **PNG** at a specified DPI, via SkiaSharp — for docs and forum posts.
 - **PDF** for the documentation profile, so the runbook prints properly.
 - **Excellon / Gerber round-trip** of the *modified* board (e.g. after panelisation), so the

@@ -3,11 +3,17 @@
 A modern, Windows-only, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **laser
 engravers**, and **mixed mill+laser workflows**.
 
-> **Scope: PCB_MillBurn converts Gerber to G-code. It does not drive machines.** No serial port,
-> no jogging, no streaming. UGS, Candle, LightBurn and LinuxCNC already do that job well. Where a
-> workflow needs a measurement from the machine (fiducial alignment, height mapping), we *generate*
-> the routine as G-code and *import* the numbers the operator's sender produced. See
-> [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-does-not-drive-machines).
+> **Scope: PCB_MillBurn writes files. It does not drive machines.** No serial port, no jogging,
+> no streaming. UGS, Candle, LightBurn and LinuxCNC already do that job well. Where a workflow
+> needs a measurement from the machine (fiducial alignment, height mapping), we *generate* the
+> routine as G-code and *import* the numbers the operator's sender produced. See
+> [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).
+>
+> **Two outputs, one per machine: G-code for the mill, SVG for the laser.** Laser software already
+> owns power, speed, passes and fill strategy against a calibrated material library, and much laser
+> hardware does not take G-code at all. What it cannot do is read a Gerber — so our half is the
+> geometry: pad selection, copper inversion, kerf and etch-bias compensation, layer assignment.
+> See [04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
 
 ## Documents
 
@@ -16,8 +22,8 @@ engravers**, and **mixed mill+laser workflows**.
 | 01 | [Architecture](01-Architecture.md) | Solution layout, project graph, MAUI/WinUI decisions, incremental pipeline, licensing |
 | 02 | [Gerber & Geometry Pipeline](02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 + Excellon parsing, Clipper2/NTS geometry, isolation, pocketing, DRC |
 | 03 | [Toolpath Optimization](03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, the GTSP model, cost model, constraints, arc fitting |
-| 04 | [Machines, Laser & Mixed Workflows](04-Machines-Laser-and-Mixed-Workflows.md) | Machine profiles, laser raster/vector, the Job/Operation/Setup model, **board re-alignment** |
-| 05 | [G-code Viewer & SVG Export](05-Viewer-and-Export.md) | Real-time backplot viewer (UGS-informed), SVG/DXF/LightBurn export |
+| 04 | [Machines, Laser & Mixed Workflows](04-Machines-Laser-and-Mixed-Workflows.md) | **Mill takes G-code, laser takes SVG**; machine profiles, kerf/etch compensation, the Job/Operation/Setup model, **board re-alignment** |
+| 05 | [Viewer & Export](05-Viewer-and-Export.md) | Real-time backplot viewer (UGS-informed), and the **SVG writer that is the entire laser output path** |
 | 06 | [Roadmap & Risks](06-Roadmap-and-Risks.md) | Phased milestones, acceptance metrics, open questions |
 | 07 | [UI Framework Decision](07-UI-Framework-Decision.md) | MAUI vs. Avalonia vs. WPF for this app, and why it's a cheap decision |
 
@@ -41,8 +47,8 @@ pcb2gcode does the hard geometry well but treats G-code as a dumb text dump: no 
 travel ordering that ignores half the available freedom, debug-grade SVG, no preview, and no
 concept of a *job* that spans two machines. PCB_MillBurn keeps the good geometry ideas, rebuilds
 them on Clipper2 + NetTopologySuite in .NET, and adds the three things that actually matter for
-the target workflows: **a real travel optimizer**, **first-class laser output with kerf/etch
-compensation**, and **a Job model that automatically plants fiducials and emits re-registered
-G-code when the board moves between the laser and the mill**. A live SkiaSharp backplot viewer
-makes all of it verifiable before a single chip is cut. It stays a converter throughout — files
-in, files out, and someone else's sender runs them.
+the target workflows: **a real travel optimizer**, **laser output as production-grade SVG with
+kerf and etch-bias compensation**, and **a Job model that automatically plants registration marks
+and re-registers the work when the board moves between the laser and the mill**. A live SkiaSharp
+backplot viewer makes all of it verifiable before a single chip is cut. It stays a converter
+throughout — files in, files out, and someone else's software runs them.

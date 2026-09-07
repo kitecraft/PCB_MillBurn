@@ -1,5 +1,7 @@
 using System.Globalization;
+using MillBurn.Cam;
 using MillBurn.Core;
+using MillBurn.Export;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
@@ -15,12 +17,21 @@ internal static class Program
             Console.WriteLine("PCB_MillBurn CLI");
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
+            Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine();
+            Console.WriteLine("  svg options:");
+            Console.WriteLine("    -o <path>          Output file (default: alongside the input)");
+            Console.WriteLine("    --flavour <name>   lightburn (default) | inkscape");
+            Console.WriteLine("    --mirror           Mirror for a bottom-side layer");
+            Console.WriteLine("    --spot <mm>        Laser spot size (default 0.10)");
+            Console.WriteLine("    --margin <mm>      Page margin around the artwork (default 5)");
             return 1;
         }
 
         return args[0].ToLowerInvariant() switch
         {
             "inspect" when args.Length >= 2 => Inspect(args[1]),
+            "svg" when args.Length >= 2 => ExportSvg(args),
             _ => Unknown(args[0]),
         };
     }
@@ -194,6 +205,130 @@ internal static class Program
         }
 
         return errors.Count == 0;
+    }
+
+    /// <summary>
+    /// Silkscreen to laser-ready SVG. The first end-to-end output the app produces, and the
+    /// cheapest: silk is stroked line art whose stroke width already matches the beam, so nothing
+    /// between the parser and the writer has to realise any geometry
+    /// (Documentation/04, section 2.5).
+    /// </summary>
+    private static int ExportSvg(string[] args)
+    {
+        var input = args[1];
+        string? output = null;
+        var profile = SvgProfile.LightBurn;
+        var mirror = false;
+        var spotMm = 0.10;
+        var marginMm = 5.0;
+
+        for (var i = 2; i < args.Length; i++)
+        {
+            switch (args[i].ToLowerInvariant())
+            {
+                case "-o" or "--out" when i + 1 < args.Length:
+                    output = args[++i];
+                    break;
+
+                case "--mirror":
+                    mirror = true;
+                    break;
+
+                case "--flavour" or "--flavor" when i + 1 < args.Length:
+                    var name = args[++i].ToLowerInvariant();
+                    if (name is not ("lightburn" or "inkscape"))
+                    {
+                        Console.Error.WriteLine($"Unknown flavour '{name}'. Use lightburn or inkscape.");
+                        return 1;
+                    }
+
+                    profile = name == "inkscape" ? SvgProfile.Inkscape : SvgProfile.LightBurn;
+                    break;
+
+                case "--spot" when i + 1 < args.Length:
+                    if (!double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out spotMm)
+                        || spotMm <= 0)
+                    {
+                        Console.Error.WriteLine("--spot needs a positive size in millimetres.");
+                        return 1;
+                    }
+
+                    break;
+
+                case "--margin" when i + 1 < args.Length:
+                    if (!double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out marginMm)
+                        || marginMm < 0)
+                    {
+                        Console.Error.WriteLine("--margin needs a size in millimetres.");
+                        return 1;
+                    }
+
+                    break;
+
+                default:
+                    Console.Error.WriteLine($"Unknown option '{args[i]}'.");
+                    return 1;
+            }
+        }
+
+        GerberImage image;
+        try
+        {
+            image = GerberParser.ParseFile(input);
+        }
+        catch (Exception ex) when (ex is IOException or GerberParseException)
+        {
+            Console.Error.WriteLine($"FAILED: {ex.Message}");
+            return 1;
+        }
+
+        foreach (var d in image.Diagnostics.Where(d => d.IsError))
+        {
+            Console.Error.WriteLine($"  {d}");
+        }
+
+        var artwork = SilkscreenOperation.Build(
+            image,
+            new SilkscreenOptions { SpotSizeNm = Nm.FromMillimetres(spotMm) },
+            Path.GetFileName(input));
+
+        if (artwork.ContentBounds.IsEmpty)
+        {
+            Console.Error.WriteLine("Nothing to export: the layer produced no drawable geometry.");
+            return 2;
+        }
+
+        var page = SvgPage.ForContent(artwork.ContentBounds, Nm.FromMillimetres(marginMm));
+        output ??= Path.ChangeExtension(input, ".svg");
+
+        SvgWriter.WriteFile(
+            output,
+            artwork,
+            page,
+            new SvgExportOptions
+            {
+                Profile = profile,
+                Mirror = mirror,
+                Title = Path.GetFileNameWithoutExtension(input),
+                Timestamp = DateTimeOffset.UtcNow,
+            });
+
+        Console.WriteLine(output);
+        Line($"  page        {page}");
+        Line($"  content     {artwork.ContentBounds}");
+        Line($"  flavour     {profile.Flavour}{(mirror ? ", mirrored" : "")}");
+
+        foreach (var layer in artwork.Layers)
+        {
+            Line($"  layer       {layer.Id,-12} {profile.LayerNameFor(layer.Role),-4} {layer.SubpathCount,5} paths in {layer.ShapeCount} elements  ({layer.Label})");
+        }
+
+        foreach (var note in artwork.Notes)
+        {
+            Line($"  note        {note}");
+        }
+
+        return 0;
     }
 
     private static void Line(FormattableString text) =>

@@ -82,18 +82,44 @@ what the machine actually does. This is the first genuinely useful build.
 **Done when:** the acceptance metrics in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria)
 are met on the corpus and enforced in CI.
 
-### Phase 4 — Laser
+### Phase 4 — Laser output (SVG)
 
-- Laser machine profile, `M4` dynamic power, GRBL laser dialect.
-- Raster scanline fill with overscan and bidirectional scan-offset compensation.
-- Vector outline passes, multi-pass power/feed.
-- Kerf and etch-bias compensation.
-- Pad selection from X2 attributes; mask-open operation.
-- Calibration generators (spot size, power/feed matrix, scan offset, focus).
-- LightBurn SVG/DXF export.
+Laser output is **SVG, not G-code** ([04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats)),
+which deletes most of what this phase used to contain: no laser dialect, no scanline fill, no
+overscan, no power model. What is left is geometry and packaging.
 
-**Done when:** a mask-removal job runs on the laser and the etched result is dimensionally within
-one etch-bias unit of nominal.
+- Structured SVG writer: real mm units, named layers, CSS classes, `evenodd` holes, deterministic
+  output. **Shared with the mill-side documentation exports**, so it is written once.
+- Silkscreen → SVG: centrelines straight from the parsed strokes. Needs no geometry realisation
+  at all, so it lands first.
+- Pad selection from X2 attributes; copper inversion against the outline; mask-open regions.
+- Kerf and etch-bias compensation as signed Clipper2 offsets, reported numerically on export.
+- LightBurn palette mapping and a shipped layer preset; DXF as a second flavour.
+- One page origin and size shared by every export in a Job, asserted in the golden tests.
+- Calibration generators: kerf comb, registration repeatability.
+
+**Done when:** an exported mask job imports into LightBurn on the right layers at 1:1 scale, and
+the etched result is dimensionally within one etch-bias unit of nominal.
+
+**Progress — pulled forward, because the SVG decision made it cheap.** The neutral artwork model
+(`MillBurn.Core.Artwork`), the SVG writer and the silkscreen operation are built and tested:
+
+- `Artwork` / `ArtLayer` / `ArtShape` / `ArtSegment` is the CAM-to-exporter hand-off, in
+  nanometres, arcs kept as arcs, with roles rather than colours so the palette lives in the
+  profile.
+- `SvgWriter` emits real millimetres, per-element palette colours for LightBurn or a stylesheet
+  for Inkscape, `evenodd` holes, closed subpaths, embedded notes, and byte-identical output across
+  runs.
+- `SvgPage` makes the shared-page rule structural rather than a convention.
+- `SilkscreenOperation` buckets strokes by whether they fit the beam, merges same-width strokes
+  into one element, and *reports* what it could not realise (macro flashes, clear polarity) rather
+  than dropping it.
+- `MillBurn.Cli svg` exports a layer and prints the page, the layers and the notes.
+- Verified on both real boards: `PogoTest1-F_Silkscreen` is 217 paths in two elements, 26.8 x 33.7
+  mm page, every coordinate inside the viewBox, and the legend reads the right way up.
+
+Still to come in this phase: copper inversion and pad selection, kerf and etch-bias offsets, the
+LightBurn layer preset, DXF, and the calibration generators.
 
 ### Phase 5 — Jobs, setups, alignment
 
@@ -101,7 +127,7 @@ one etch-bias unit of nominal.
 - Fiducial generation (drilled holes, copper crosses, engraved marks) with survivability rules
   per workflow.
 - Kabsch/affine fit from typed-in measurements, residual reporting, transform baked in as a
-  processor. **No serial code** — see [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-does-not-drive-machines).
+  processor. **No serial code** — see [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).
 - Paste-friendly alignment entry (accepts `X12.345 Y67.890`, TSV, or a pasted GRBL status line).
 - Probe-routine *generator* + probe-log *importer* (UGS surface scanner, Candle heightmap, bCNC,
   plain CSV).
@@ -120,7 +146,7 @@ on a test coupon.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
 - Panelisation.
-- Additional posts: grblHAL, FluidNC, LinuxCNC, Mach3, Marlin-laser.
+- Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - Solder-paste stencil generation.
 - Machine-profile sharing.
 
@@ -158,13 +184,13 @@ on a test coupon.
    derivatives open. Decide before the first public commit — it is much harder later.
 2. **UI shell: Avalonia, WPF, or stay on MAUI?** Recommendation and reasoning in
    [07](07-UI-Framework-Decision.md); settled by the Phase 0 spike.
-3. **Which laser controller(s) do you actually have?** GRBL diode laser is assumed throughout. If
-   there is a Ruida/LightBurn machine in the mix, the SVG/DXF export path moves from Phase 4 to
-   Phase 1 in importance.
+3. ~~**Which laser controller(s) do you actually have?**~~ **Answered:** it does not matter, because
+   laser output is SVG. Still worth knowing *which laser software* — LightBurn's palette mapping is
+   the one target-specific thing in the export, and the shipped layer preset should match it.
 4. **Is there a touch probe on the mill?** It changes the default alignment recommendation from
    microscope-crosshair to probe, and it makes the generated probe routines worth building early.
 5. **Single board or panels?** Panelisation is cheap to add early if the geometry layer knows
    about it from the start, and expensive to retrofit.
 6. **Which sender(s) do you use?** It determines which probe-log formats to import first and which
    G-code dialect quirks to prioritise. (The app itself never talks to a machine —
-   [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-does-not-drive-machines).)
+   [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
