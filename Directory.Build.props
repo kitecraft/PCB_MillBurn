@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    Settings shared by every project in the repository.
+    See Documentation/01-Architecture.md for the solution layout and the rules these enforce.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- G-code and Gerber are ASCII formats parsed with invariant rules.
+         A machine in a de-DE locale must not emit "X1,5". -->
+    <NeutralLanguage>en-US</NeutralLanguage>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591: missing XML comment. We want the doc file for analyzer support,
+         not a comment on every member. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <Authors>PCB_MillBurn contributors</Authors>
+    <Product>PCB_MillBurn</Product>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+</Project>

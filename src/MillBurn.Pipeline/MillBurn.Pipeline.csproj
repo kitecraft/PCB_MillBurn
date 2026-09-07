@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MillBurn.Core\MillBurn.Core.csproj" />
+    <ProjectReference Include="..\MillBurn.Geometry\MillBurn.Geometry.csproj" />
+    <ProjectReference Include="..\MillBurn.Gerber\MillBurn.Gerber.csproj" />
+    <ProjectReference Include="..\MillBurn.Cam\MillBurn.Cam.csproj" />
+    <ProjectReference Include="..\MillBurn.Optimize\MillBurn.Optimize.csproj" />
+    <ProjectReference Include="..\MillBurn.Gcode\MillBurn.Gcode.csproj" />
+    <ProjectReference Include="..\MillBurn.Post\MillBurn.Post.csproj" />
+    <ProjectReference Include="..\MillBurn.Align\MillBurn.Align.csproj" />
+    <ProjectReference Include="..\MillBurn.Export\MillBurn.Export.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

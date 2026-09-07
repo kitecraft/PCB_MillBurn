@@ -1,0 +1,58 @@
+# ---- Reference checkouts (third-party, GPL-3.0, not part of this product) ----
+# See Documentation/01-Architecture.md section 9 (Licensing strategy).
+/pcb2gcode/
+/Universal-G-Code-Sender/
+
+# Superseded MAUI scaffold, kept on disk pending a decision (Documentation/07-UI-Framework-Decision.md).
+/PCB_MillBurn/
+
+# ---- Build output ----
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+
+# ---- Visual Studio / Rider / VS Code ----
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# ---- NuGet ----
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+*.nuget.props
+*.nuget.targets
+
+# ---- Test / coverage ----
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.trx
+# Snapshot tests: .verified.* files ARE committed, .received.* are not.
+*.received.*
+
+# ---- OS ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ---- Local scratch ----
+scratch/
+*.local.json
+*.local.md

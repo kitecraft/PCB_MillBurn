@@ -1,0 +1,104 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MillBurn.App.ViewModels"
+        xmlns:ctl="using:MillBurn.App.Controls"
+        xmlns:edit="using:AvaloniaEdit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        x:Class="MillBurn.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Width="1280" Height="800"
+        Background="{DynamicResource PageBackground}"
+        Title="PCB_MillBurn — Phase 0 spike">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource Surface}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="14,10">
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <TextBlock Text="PCB_MillBurn"
+                           FontSize="15" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextHeadline}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="Phase 0 viewport spike"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center" />
+                <Button Content="Fit" Click="OnFitClicked" />
+                <Button Content="Toggle theme" Click="OnToggleThemeClicked" />
+            </StackPanel>
+        </Border>
+
+        <!-- Three panes. GridSplitters stand in for Dock.Avalonia until the layout is real. -->
+        <Grid Grid.Row="1" ColumnDefinitions="220,4,*,4,380">
+
+            <Border Grid.Column="0"
+                    Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="0,0,1,0"
+                    Padding="12">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="OPERATIONS"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="Setup A · Laser" Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="   Fiducials" Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="   Mask burn" Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="Setup B · Mill" Margin="0,8,0,0"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="   Isolation" Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="   Drill" Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="   Outline" Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
+
+            <ctl:ToolpathView Grid.Column="2"
+                              x:Name="Viewport"
+                              Scene="{Binding Scene}" />
+
+            <GridSplitter Grid.Column="3" Background="{DynamicResource BorderSubtle}" />
+
+            <Border Grid.Column="4"
+                    Background="{DynamicResource Surface}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="1,0,0,0">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0"
+                               Text="G-CODE  (AvaloniaEdit)"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}"
+                               Margin="12,12,12,6" />
+                    <edit:TextEditor Grid.Row="1"
+                                     x:Name="GcodeEditor"
+                                     IsReadOnly="True"
+                                     ShowLineNumbers="True"
+                                     FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
+                                     FontSize="12"
+                                     Background="{DynamicResource InputBackground}"
+                                     Foreground="{DynamicResource TextPrimary}" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Status bar: the Phase 0 acceptance numbers, live. -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource Surface}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="14,8">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <TextBlock Text="{Binding BuildSummary}"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="{Binding FrameSummary}"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource StatusSuccess}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

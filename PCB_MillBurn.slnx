@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MillBurn.Align/MillBurn.Align.csproj" />
+    <Project Path="src/MillBurn.App/MillBurn.App.csproj" />
+    <Project Path="src/MillBurn.Cam/MillBurn.Cam.csproj" />
+    <Project Path="src/MillBurn.Cli/MillBurn.Cli.csproj" />
+    <Project Path="src/MillBurn.Core/MillBurn.Core.csproj" />
+    <Project Path="src/MillBurn.Export/MillBurn.Export.csproj" />
+    <Project Path="src/MillBurn.Gcode/MillBurn.Gcode.csproj" />
+    <Project Path="src/MillBurn.Geometry/MillBurn.Geometry.csproj" />
+    <Project Path="src/MillBurn.Gerber/MillBurn.Gerber.csproj" />
+    <Project Path="src/MillBurn.Optimize/MillBurn.Optimize.csproj" />
+    <Project Path="src/MillBurn.Pipeline/MillBurn.Pipeline.csproj" />
+    <Project Path="src/MillBurn.Post/MillBurn.Post.csproj" />
+    <Project Path="src/MillBurn.Viewer/MillBurn.Viewer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MillBurn.GoldenTests/MillBurn.GoldenTests.csproj" />
+    <Project Path="tests/MillBurn.Tests/MillBurn.Tests.csproj" />
+  </Folder>
+</Solution>

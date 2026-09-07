@@ -1,0 +1,25 @@
+* text=auto
+
+*.cs        text diff=csharp
+*.axaml     text
+*.xaml      text
+*.csproj    text
+*.props     text
+*.slnx      text
+*.md        text
+*.yml       text
+*.json      text
+
+# Gerber / Excellon / G-code corpus files: keep bytes exactly as supplied, since golden tests
+# compare them and some tools are sensitive to line endings.
+*.gbr       -text
+*.ger       -text
+*.drl       -text
+*.txt       -text
+*.nc        -text
+*.ngc       -text
+
+*.ico       binary
+*.png       binary
+*.pdf       binary
+*.ttf       binary
