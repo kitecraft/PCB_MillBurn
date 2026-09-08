@@ -161,9 +161,9 @@ now, and it is honest. **Not yet built:** the before/after ghost overlay in the 
 **Done when:** a board goes Gerber → G-code → viewer, and the numbers in the stats panel match
 what the machine actually does. This is the first genuinely useful build.
 
-**Progress.** Gerber → G-code works end to end: `MillBurn.Cli mill <folder>`. Isolation, drilling
-and outline-with-tabs are in, ordered nearest-neighbour, emitted as GRBL-safe G-code. The backplot
-in the viewer is the remaining piece.
+**Done.** Gerber → G-code → viewer works end to end: `MillBurn.Cli mill <folder> --png`, or the
+**Mill** button in the app. Isolation, drilling and outline-with-tabs, ordered nearest-neighbour,
+emitted as GRBL-safe G-code, then **parsed back and drawn over the board**.
 
 - `Tool` carries the **V-bit effective-diameter model**, `width = tip + 2·depth·tan(included/2)`.
   A 30° bit with a 0.1 mm tip at 0.05 mm deep cuts **0.127 mm**, and 0.01 mm of depth error moves
@@ -193,6 +193,29 @@ Two things caught by looking at the output rather than the tests: ordering resta
 for every operation instead of chaining, which both ordered badly and reported a travel figure
 dominated by one long move in (total rapid 402 mm → 232 mm once fixed); and the peck loop was
 described in a comment but never actually emitted, so drills plunged full depth in one go.
+
+**The backplot draws the parsed file, not the toolpaths that made it.** Those two agree right up
+until the emitter has a bug, and only one of them is what the machine will run. `GcodeParser` is a
+proper modal-state interpreter — motion mode, units, distance mode, feed and every unmentioned axis
+are all inherited — and `GcodeBackplot` classifies each move into cut, plunge, retract, travel,
+long travel, and **gouge: a rapid below Z0**, which is the tool crossing the board at cutting depth
+and is never legitimate. Checking that here rather than in the emitter is the point.
+
+Round trip verified on a real board: 907.54 mm emitted, 907.57 mm read back — 0.003%, which is
+three-decimal coordinate rounding over 2,993 points and nothing else.
+
+**Time is reported as a bracket, not a number.** Feed-only is a true lower bound; stopping at every
+corner is a true upper bound. Junction handling decides where a real machine lands between them,
+and modelling it is Phase 3's job — so both ends are shown and neither is dressed up as the answer.
+Most of a PCB job is segments far too short to reach the programmed feed, which is exactly why
+distance ÷ feed is such a poor estimate.
+
+Three more found by looking rather than testing. The backplot was drawn in **blue over a blue
+ground pour** and was invisible — the palette now uses only hues the board does not (yellow cuts,
+magenta long rapids). Then it was drawn 150 mm off screen, because the job is referenced to the
+board's corner while the board is still in source coordinates; `Job.OriginShift` now records the
+translation so a viewer can undo it. And the run-joining compared an offset point against a raw
+one, so every move started its own run: 2,978 instead of 15, drawing correctly the whole time.
 
 ### Phase 3 — The optimizer
 

@@ -132,6 +132,11 @@ public partial class MainWindow : Window
                 : ThemeVariant.Light;
         }
 
+        if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.Mill();
+        }
+
         var shot = ShotPath(args);
         if (shot is not null)
         {
@@ -373,6 +378,41 @@ public partial class MainWindow : Window
 
     private void OnRefreshClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainViewModel)?.InspectRefresh();
+
+    private void OnMillClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.Mill();
+
+    private async void OnSaveGcodeClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (vm.Gcode is null)
+        {
+            vm.Mill();
+        }
+
+        if (vm.Gcode is not { } text)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save G-code",
+            SuggestedFileName = vm.Project.DisplayName,
+            DefaultExtension = "nc",
+            FileTypeChoices = [new FilePickerFileType("G-code") { Patterns = ["*.nc", "*.gcode", "*.tap"] }],
+        });
+
+        if (file?.TryGetLocalPath() is { } path)
+        {
+            await File.WriteAllTextAsync(path, text);
+            vm.StatusMessage = $"Saved {Path.GetFileName(path)}.";
+        }
+    }
 
     private void OnApplyRefreshClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainViewModel)?.ApplyRefresh();

@@ -41,6 +41,9 @@
                             Click="OnRefreshClicked"
                             IsEnabled="{Binding CanRefresh}" />
                     <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
+                    <Button Content="Mill" Click="OnMillClicked" IsEnabled="{Binding CanMill}" />
+                    <Button Content="Save G-code…" Click="OnSaveGcodeClicked" IsEnabled="{Binding CanMill}" />
+                    <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
                     <Button Content="Fit" Click="OnFitClicked" />
                     <Button Content="Theme" Click="OnToggleThemeClicked" />
                 </StackPanel>
@@ -197,17 +200,23 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"
                 Padding="14,7">
-            <Grid ColumnDefinitions="*,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                 <TextBlock Grid.Column="0"
                            Text="{Binding StatusMessage}"
+                           TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
+                           Text="{Binding GcodeSummary}"
+                           Margin="16,0"
+                           Foreground="{DynamicResource StatusInfo}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2"
                            Text="{Binding BoardSummary}"
                            Margin="16,0"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
-                <TextBlock Grid.Column="2"
+                <TextBlock Grid.Column="3"
                            Text="{Binding FrameSummary}"
                            FontFamily="Consolas,monospace"
                            Foreground="{DynamicResource TextSecondary}"

@@ -3,8 +3,20 @@ using SkiaSharp;
 
 namespace MillBurn.Viewer;
 
-/// <summary>How one layer is painted. Colours are the caller's business, not the scene's.</summary>
-public sealed record BoardLayerStyle(SKColor Fill, float Opacity = 1f, bool Outlined = false);
+/// <summary>
+/// How one layer is painted. Colours are the caller's business, not the scene's.
+///
+/// <paramref name="StrokePixels"/> is in *screen* pixels, not millimetres, and is undone against
+/// the zoom when drawn. A toolpath line is an annotation about where the tool went, not a picture
+/// of how wide the cut is — drawing it to scale would make it invisible at fit-zoom and absurd at
+/// 40x. The cut width is reported as a number instead, where it can be read.
+/// </summary>
+public sealed record BoardLayerStyle(
+    SKColor Fill,
+    float Opacity = 1f,
+    bool Outlined = false,
+    float StrokePixels = 1.5f,
+    float DashPixels = 0f);
 
 /// <summary>One layer's geometry, ready to draw.</summary>
 public sealed class BoardSceneLayer : IDisposable
@@ -70,9 +82,15 @@ public sealed class BoardScene : IDisposable
             var vertices = 0;
             var ringCount = 0;
 
+            // An outlined layer's rings are open runs, not closed areas — a toolpath is a line the
+            // tool travelled, and closing it would draw a segment from the end back to the start
+            // that the machine never makes.
+            var closeRings = !style.Outlined;
+            var minimum = closeRings ? 3 : 2;
+
             foreach (var ring in rings)
             {
-                if (ring.Count < 3)
+                if (ring.Count < minimum)
                 {
                     continue;
                 }
@@ -83,7 +101,11 @@ public sealed class BoardScene : IDisposable
                     path.LineTo(ToMm(ring[i].X), -ToMm(ring[i].Y));
                 }
 
-                path.Close();
+                if (closeRings)
+                {
+                    path.Close();
+                }
+
                 vertices += ring.Count;
                 ringCount++;
             }

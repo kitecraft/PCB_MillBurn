@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MillBurn.Core;
+using MillBurn.Gcode;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
 
@@ -46,6 +47,15 @@ public sealed partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool CanRefresh { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanMill { get; set; }
+
+    [ObservableProperty]
+    public partial string GcodeSummary { get; set; } = string.Empty;
+
+    /// <summary>The emitted program, so it can be saved without regenerating it.</summary>
+    public string? Gcode { get; private set; }
 
     [ObservableProperty]
     public partial string RefreshSummary { get; set; } = string.Empty;
@@ -233,10 +243,64 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private RefreshPlan? _plan;
 
+    private IReadOnlyList<BackplotLayer> _backplot = [];
+
+    // ------------------------------------------------------------------ milling
+
+    /// <summary>
+    /// Builds the job, emits the program, and draws it back over the board.
+    ///
+    /// The drawing comes from **parsing the emitted file**, not from the toolpaths that produced
+    /// it. Those two agree right up until the emitter has a bug, and only one of them is what the
+    /// machine will run (Documentation/05, section 2.1).
+    /// </summary>
+    public void Mill()
+    {
+        if (_project.Sources.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var board = ProjectFile.ToBoard(_project);
+            var job = JobBuilder.Build(board, new MillOptions());
+            var (text, _) = GcodeEmitter.Emit(job, new GcodeOptions());
+
+            var program = GcodeParser.Parse(text);
+            var classified = GcodeBackplot.Classify(program);
+            var measured = GcodeBackplot.Measure(classified);
+
+            Gcode = text;
+            _backplot = BackplotBuilder.Build(
+                classified, new Point2(-job.OriginShift.X, -job.OriginShift.Y));
+
+            GcodeSummary = string.Create(
+                CultureInfo.InvariantCulture,
+                $"{measured.CutMm:F0} mm cut · {measured.TravelMm:F0} mm travel · " +
+                $"{measured.PlungeCount} plunges · {measured.TimeRange()}");
+
+            Rebuild(TimeSpan.Zero);
+
+            StatusMessage = measured.GougeCount > 0
+                ? $"{measured.GougeCount} rapid move(s) at cutting depth — do not run this."
+                : $"Milled {BoardTitle}. {measured.LongTravelCount} rapids over 10 mm.";
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not generate G-code: {ex.Message}";
+        }
+    }
+
     // ------------------------------------------------------------------ presenting
 
     private void Adopt(MillBurnProject project, TimeSpan elapsed)
     {
+        // A program made from the previous board is not a program for this one.
+        _backplot = [];
+        Gcode = null;
+        GcodeSummary = string.Empty;
+
         DetachProject(_project);
         _project = project;
         AttachProject(project);
@@ -258,6 +322,10 @@ public sealed partial class MainViewModel : ViewModelBase
             Warnings.Clear();
             HasBoard = false;
             CanRefresh = false;
+            CanMill = false;
+            GcodeSummary = string.Empty;
+            Gcode = null;
+            _backplot = [];
             RefreshTitles();
             return;
         }
@@ -266,20 +334,32 @@ public sealed partial class MainViewModel : ViewModelBase
 
         var scene = BoardSceneBuilder.Build(
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
-            board.Bounds);
+            board.Bounds,
+            backplot: _backplot.Count > 0 ? _backplot : null);
 
         ApplyViewState(scene);
 
         // Look the file up rather than demanding one: the scene also carries a synthetic substrate
         // layer that belongs to no file.
         var byName = board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
+        var backplotRuns = _backplot.ToDictionary(b => b.Id, b => b.Runs.Count, StringComparer.Ordinal);
 
         Layers.Clear();
         foreach (var layer in scene.Layers)
         {
-            var detail = byName.TryGetValue(layer.Id, out var source)
-                ? DetailFor(source)
-                : "The board material, drawn under everything";
+            string detail;
+            if (byName.TryGetValue(layer.Id, out var source))
+            {
+                detail = DetailFor(source);
+            }
+            else if (backplotRuns.TryGetValue(layer.Id, out var runs))
+            {
+                detail = string.Create(CultureInfo.InvariantCulture, $"From the emitted G-code · {runs:N0} runs");
+            }
+            else
+            {
+                detail = "The board material, drawn under everything";
+            }
 
             Layers.Add(new LayerToggle(layer, detail, OnLayerToggled));
         }
@@ -287,6 +367,7 @@ public sealed partial class MainViewModel : ViewModelBase
         Scene = scene;
         HasBoard = true;
         CanRefresh = RefreshSource is not null;
+        CanMill = true;
 
         // Swapping the scene first and disposing after means the old SKPaths are never released
         // while a frame in flight is still drawing them.

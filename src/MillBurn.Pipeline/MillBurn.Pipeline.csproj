@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\MillBurn.Core\MillBurn.Core.csproj" />
@@ -10,6 +10,8 @@
     <ProjectReference Include="..\MillBurn.Post\MillBurn.Post.csproj" />
     <ProjectReference Include="..\MillBurn.Align\MillBurn.Align.csproj" />
     <ProjectReference Include="..\MillBurn.Export\MillBurn.Export.csproj" />
+    <!-- Backplot layers are presentation, and the viewer owns that vocabulary. -->
+    <ProjectReference Include="..\MillBurn.Viewer\MillBurn.Viewer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

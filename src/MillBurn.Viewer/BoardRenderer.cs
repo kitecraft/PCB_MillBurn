@@ -59,12 +59,20 @@ public static class BoardRenderer
 
             if (style.Outlined)
             {
-                // An outline layer marks where the board *ends*; filling it would paint a slab over
-                // the copper it is meant to frame.
+                // An outline layer marks where the board *ends*, and a toolpath layer marks where
+                // the tool went; filling either would paint a slab over what it is meant to
+                // annotate.
                 stroke.Color = style.Fill.WithAlpha(alpha);
 
                 // Constant on screen regardless of zoom: the canvas is scaled, so undo it.
-                stroke.StrokeWidth = 1.5f / view.Scale;
+                stroke.StrokeWidth = style.StrokePixels / view.Scale;
+
+                stroke.PathEffect?.Dispose();
+                stroke.PathEffect = style.DashPixels > 0
+                    ? SKPathEffect.CreateDash(
+                        [style.DashPixels / view.Scale, style.DashPixels / view.Scale], 0)
+                    : null;
+
                 canvas.DrawPath(layer.Path, stroke);
             }
             else
@@ -76,6 +84,9 @@ public static class BoardRenderer
             layersDrawn++;
             verticesDrawn += layer.VertexCount;
         }
+
+        stroke.PathEffect?.Dispose();
+        stroke.PathEffect = null;
 
         canvas.Restore();
         return new DrawResult(layersDrawn, verticesDrawn);

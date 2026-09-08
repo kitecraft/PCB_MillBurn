@@ -25,6 +25,7 @@ internal static class Program
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
+            Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
@@ -803,6 +804,7 @@ internal static class Program
         var tabs = 4;
         var thicknessMm = 1.6;
         var side = BoardSide.Top;
+        string? png = null;
 
         for (var i = 2; i < args.Length; i++)
         {
@@ -860,6 +862,11 @@ internal static class Program
 
                 case "--bottom":
                     side = BoardSide.Bottom;
+                    break;
+
+                case "--png" when value is not null:
+                    png = value;
+                    i++;
                     break;
 
                 default:
@@ -961,13 +968,90 @@ internal static class Program
             $"{stats.Lines:N0} lines, {stats.CutLengthMm:F1} mm cutting, {stats.RapidLengthMm:F1} mm rapid, {stats.PlungeCount} plunges, {stats.ToolChanges} tool changes");
         Line($"  gcode       {totals}");
 
+        // Read the file back and cost it. Parsing our own output rather than reporting the
+        // in-memory job is the point: the two agree right up until the emitter has a bug, and only
+        // one of them is what the machine will run.
+        var program = GcodeParser.Parse(text);
+        var backplot = GcodeBackplot.Classify(program);
+        var measured = GcodeBackplot.Measure(backplot);
+
+        Console.WriteLine();
+        Line($"  backplot    {program.Moves.Count:N0} moves parsed back from the file");
+        Line($"  distance    {measured.CutMm:F1} mm cutting, {measured.TravelMm:F1} mm travel, {measured.PlungeMm:F1} mm plunge");
+        Line($"  time        {measured.TimeRange()} (no junction model yet; the truth is nearer the low end)");
+
+        if (measured.LongTravelCount > 0)
+        {
+            Line($"  long rapids {measured.LongTravelCount} over 10 mm");
+        }
+
+        foreach (var layer in BackplotBuilder.Build(backplot, Undo(job.OriginShift)))
+        {
+            Line($"  layer       {layer.Id,-20} {layer.Runs.Count,5} runs, {layer.Runs.Sum(r => r.Count),7:N0} points");
+        }
+
+        var problems = job.Notes.Count;
+
         foreach (var note in job.Notes)
         {
             Console.Error.WriteLine($"  CHECK       {note}");
         }
 
-        return job.Notes.Count > 0 ? 2 : 0;
+        foreach (var diagnostic in program.Diagnostics.Where(d => d.IsError).Take(5))
+        {
+            Console.Error.WriteLine($"  CHECK       {diagnostic}");
+            problems++;
+        }
+
+        if (measured.GougeCount > 0)
+        {
+            // A rapid below Z0 is the tool crossing the board at cutting depth. Never legitimate,
+            // and caught here by reading the emitted file rather than by trusting the emitter.
+            Console.Error.WriteLine($"  CHECK       {measured.GougeCount} rapid move(s) at cutting depth.");
+            problems++;
+        }
+
+        if (png is not null)
+        {
+            RenderBackplotPng(board, BackplotBuilder.Build(backplot, Undo(job.OriginShift)), png, 1400);
+            Line($"  png         {png}");
+        }
+
+        return problems > 0 ? 2 : 0;
     }
+
+    /// <summary>
+    /// The board with its program drawn over it.
+    ///
+    /// Over the board, not beside it: the question a backplot answers is "does this go where I
+    /// meant", and that is only answerable with the copper underneath.
+    /// </summary>
+    private static void RenderBackplotPng(
+        Board board, IReadOnlyList<BackplotLayer> backplot, string path, int width)
+    {
+        var sources = board.Layers
+            .Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings()))
+            .ToList();
+
+        using var scene = BoardSceneBuilder.Build(sources, board.Bounds, backplot: backplot);
+
+        var aspect = scene.Bounds.Height <= 0 ? 1f : scene.Bounds.Height / scene.Bounds.Width;
+        var height = Math.Clamp((int)Math.Round(width * aspect), 64, 8192);
+
+        var viewport = new SKRect(0, 0, width, height);
+        var view = BoardSceneBuilder.FitTo(scene.Bounds, viewport);
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height));
+        BoardRenderer.Draw(surface.Canvas, viewport, scene, view, BoardPalette.Background, BoardPalette.Grid);
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        using var file = File.OpenWrite(path);
+        data.SaveTo(file);
+    }
+
+    /// <summary>Puts a corner-referenced job back into the board's own coordinates.</summary>
+    private static Point2 Undo(Point2 shift) => new(-shift.X, -shift.Y);
 
     private static bool TryMm(string text, out double value) =>
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && value > 0;

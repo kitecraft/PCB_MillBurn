@@ -23,7 +23,8 @@ public static class BoardSceneBuilder
     public static BoardScene Build(
         IEnumerable<BoardLayerSource> layers,
         Bounds? extent = null,
-        Func<LayerRole, BoardLayerStyle>? palette = null)
+        Func<LayerRole, BoardLayerStyle>? palette = null,
+        IReadOnlyList<BackplotLayer>? backplot = null)
     {
         ArgumentNullException.ThrowIfNull(layers);
         palette ??= BoardPalette.For;
@@ -43,6 +44,13 @@ public static class BoardSceneBuilder
 
         painted.AddRange(ordered.Select(l => (l.Id, l.Label, palette(l.Role), l.Rings)));
 
+        // The program goes on last, over the copper it was made from. A backplot beside the board
+        // answers a different and much less useful question.
+        if (backplot is not null)
+        {
+            painted.AddRange(backplot.Select(b => (b.Id, b.Label, b.Style, b.Runs)));
+        }
+
         var scene = BoardScene.Build(painted, extent);
 
         foreach (var source in ordered)
@@ -51,6 +59,15 @@ public static class BoardSceneBuilder
             if (layer is not null)
             {
                 layer.Visible = LayerRoleInfo.VisibleByDefault(source.Role);
+            }
+        }
+
+        foreach (var source in backplot ?? [])
+        {
+            var layer = scene.Layer(source.Id);
+            if (layer is not null)
+            {
+                layer.Visible = source.VisibleByDefault;
             }
         }
 

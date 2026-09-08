@@ -123,6 +123,17 @@ public sealed record Job
 
     public IReadOnlyList<string> Notes { get; init; } = [];
 
+    /// <summary>
+    /// How far the job was moved from the source coordinates, so a viewer can put it back.
+    ///
+    /// The job is referenced to the board's own corner — Gerber coordinates come from wherever the
+    /// board sat on the EDA canvas, and work zero has to be somewhere the operator can touch off
+    /// on. But the board is still drawn in source coordinates, so overlaying the program on it
+    /// needs this undone. Leaving the caller to remember that is how a backplot ends up drawn 150
+    /// mm off screen, looking for all the world like it was never generated.
+    /// </summary>
+    public Point2 OriginShift { get; init; }
+
     public double CutLengthMm => Toolpaths.Sum(t => t.CutLengthMm);
 
     public int DrillCount => Toolpaths.Sum(t => t.Drills.Count);

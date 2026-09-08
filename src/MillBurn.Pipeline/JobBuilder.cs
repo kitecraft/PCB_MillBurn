@@ -132,10 +132,13 @@ public static class JobBuilder
             }
         }
 
+        var originShift = Point2.Origin;
+
         if (options.OriginAtBoardCorner && !board.Bounds.IsEmpty)
         {
             var shift = new Point2(-board.Bounds.MinX, -board.Bounds.MinY);
             toolpaths = [.. toolpaths.Select(t => Translate(t, shift))];
+            originShift = shift;
 
             var wasX = Nm.ToMillimetreString(board.Bounds.MinX, 3);
             var wasY = Nm.ToMillimetreString(board.Bounds.MinY, 3);
@@ -148,6 +151,7 @@ public static class JobBuilder
             Name = board.Source,
             Toolpaths = toolpaths,
             Notes = notes,
+            OriginShift = originShift,
         };
     }
 
