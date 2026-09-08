@@ -235,23 +235,110 @@ public sealed class SvgWriterTests
     }
 
     /// <summary>
-    /// A hole has to be a subpath of the same path element with an even-odd rule. Emitted as its
-    /// own shape it becomes a second solid disc, and the pad burns closed.
+    /// A hole has to be a subpath of the same path element. Emitted as its own shape it becomes a
+    /// second solid disc, and the pad burns closed.
+    ///
+    /// The rule is non-zero, not even-odd: holes wind opposite to islands, so non-zero gets a hole
+    /// right *and* unions two overlapping islands instead of punching a void where they cross.
+    /// Even-odd only ever got the first of those right.
     /// </summary>
     [Fact]
-    public void HolesAreSubpathsOfTheSamePathWithEvenOdd()
+    public void HolesAreSubpathsOfTheSamePathUnderNonZero()
     {
         var withHole = new ArtShape
         {
-            Subpaths = [ApertureSquare(Mm(0, 0), 10), ApertureSquare(Mm(0, 0), 4)],
+            Subpaths = [ApertureSquare(Mm(0, 0), 10), Reverse(ApertureSquare(Mm(0, 0), 4))],
             Filled = true,
         };
 
         var svg = SvgWriter.Write(Single(withHole, ArtRole.Fill), Page(-20, -20, 20, 20), Plain);
         var path = XDocument.Parse(svg).Descendants().Single(e => e.Name.LocalName == "path");
 
-        Assert.Equal("evenodd", path.Attribute("fill-rule")!.Value);
+        Assert.Equal("nonzero", path.Attribute("fill-rule")!.Value);
         Assert.Equal(2, path.Attribute("d")!.Value.Split('M').Length - 1);
+    }
+
+    /// <summary>
+    /// Some laser software creates one of its own cut layers per imported object, which turns a
+    /// board into hundreds of layers — one per pad — each needing its settings entered by hand.
+    /// Single-layer mode exists for that, and what it has to guarantee is a *count*: one group, one
+    /// filled path, whatever the drawing contains.
+    /// </summary>
+    [Fact]
+    public void SingleLayerModeEmitsOneGroupAndOneFilledPath()
+    {
+        var artwork = new Artwork
+        {
+            Layers =
+            [
+                new ArtLayer
+                {
+                    Id = "a", Label = "A", Role = ArtRole.Fill,
+                    Shapes =
+                    [
+                        new ArtShape { Subpaths = [ApertureSquare(Mm(0, 0), 4)], Filled = true },
+                        new ArtShape { Subpaths = [ApertureSquare(Mm(6, 0), 4)], Filled = true },
+                    ],
+                },
+                new ArtLayer
+                {
+                    Id = "b", Label = "B", Role = ArtRole.Mark,
+                    Shapes = [new ArtShape { Subpaths = [ApertureSquare(Mm(12, 0), 4)], Filled = true }],
+                },
+            ],
+            ContentBounds = new Bounds(Nm.FromMillimetres(-2), Nm.FromMillimetres(-2), Nm.FromMillimetres(14), Nm.FromMillimetres(2)),
+        };
+
+        var doc = XDocument.Parse(SvgWriter.Write(artwork, Page(-20, -20, 20, 20), Plain with { SingleLayer = true }));
+
+        Assert.Single(doc.Descendants(), e => e.Name.LocalName == "g");
+
+        var path = Assert.Single(doc.Descendants(), e => e.Name.LocalName == "path");
+        Assert.Equal(3, path.Attribute("d")!.Value.Split('M').Length - 1);
+
+        // No layer markup: declaring a group to *be* a layer is what invites the behaviour this
+        // mode exists to avoid.
+        Assert.DoesNotContain("groupmode", doc.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SingleLayerModeKeepsStrokesSeparateFromFills()
+    {
+        var artwork = new Artwork
+        {
+            Layers =
+            [
+                new ArtLayer
+                {
+                    Id = "a", Label = "A", Role = ArtRole.Mark,
+                    Shapes =
+                    [
+                        new ArtShape { Subpaths = [ApertureSquare(Mm(0, 0), 4)], Filled = true },
+                        Stroke(ArtSegment.Line(Mm(0, 6), Mm(4, 6))),
+                    ],
+                },
+            ],
+            ContentBounds = new Bounds(Nm.FromMillimetres(-2), Nm.FromMillimetres(-2), Nm.FromMillimetres(6), Nm.FromMillimetres(8)),
+        };
+
+        var paths = XDocument.Parse(SvgWriter.Write(artwork, Page(-20, -20, 20, 20), Plain with { SingleLayer = true }))
+            .Descendants().Where(e => e.Name.LocalName == "path").ToList();
+
+        // A stroke width is an attribute of the element, so it cannot merge into the fill.
+        Assert.Equal(2, paths.Count);
+        Assert.Single(paths, p => p.Attribute("fill-rule") is not null);
+    }
+
+    private static ArtSegment[] Reverse(ArtSegment[] subpath)
+    {
+        var reversed = new ArtSegment[subpath.Length];
+        for (var i = 0; i < subpath.Length; i++)
+        {
+            var s = subpath[subpath.Length - 1 - i];
+            reversed[i] = ArtSegment.Line(s.To, s.From);
+        }
+
+        return reversed;
     }
 
     [Fact]

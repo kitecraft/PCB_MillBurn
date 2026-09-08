@@ -53,7 +53,14 @@ public static class ApertureOutline
 
         if (aperture.HoleDiameterNm > 0)
         {
-            subpaths.Add(Circle(at, aperture.HoleDiameterNm / 2));
+            // The hole winds the *other* way from the outer contour.
+            //
+            // An even-odd fill would make it a hole regardless of direction, and that is what this
+            // used to rely on. But even-odd treats *any* overlap as a hole, so two shapes that
+            // touch punch a void where they cross — and it makes it unsafe to merge separate
+            // shapes into one path, which some laser importers need (see SvgExportOptions).
+            // Opposite winding means a non-zero fill gets the hole right and the overlap right.
+            subpaths.Add(Reverse(Circle(at, aperture.HoleDiameterNm / 2)));
         }
 
         return subpaths;
@@ -124,6 +131,30 @@ public static class ApertureOutline
             ArtSegment.Line(leftTop, leftBottom),
             new ArtSegment(ArtSweep.CounterClockwise, leftBottom, rightBottom, new Point2(centre.X, centre.Y - flankY)),
         ];
+    }
+
+    /// <summary>Reverses a subpath's direction, turning an island into a hole and back.</summary>
+    public static IReadOnlyList<ArtSegment> Reverse(IReadOnlyList<ArtSegment> subpath)
+    {
+        ArgumentNullException.ThrowIfNull(subpath);
+
+        var reversed = new ArtSegment[subpath.Count];
+        for (var i = 0; i < subpath.Count; i++)
+        {
+            var s = subpath[subpath.Count - 1 - i];
+            reversed[i] = new ArtSegment(
+                s.Sweep switch
+                {
+                    ArtSweep.Clockwise => ArtSweep.CounterClockwise,
+                    ArtSweep.CounterClockwise => ArtSweep.Clockwise,
+                    _ => ArtSweep.Linear,
+                },
+                s.To,
+                s.From,
+                s.Centre);
+        }
+
+        return reversed;
     }
 
     /// <summary>A regular polygon inscribed in the given radius, first vertex at the rotation angle.</summary>

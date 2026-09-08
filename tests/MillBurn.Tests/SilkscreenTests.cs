@@ -178,8 +178,8 @@ public sealed class SilkscreenTests
     }
 
     /// <summary>
-    /// The hole is a subpath of the same shape. As its own shape it would be a second solid disc,
-    /// and an even-odd fill is the only thing that turns it into a hole.
+    /// The hole is a subpath of the same shape, wound the other way so a non-zero fill reads it as
+    /// a hole. As its own shape it would be a second solid disc.
     /// </summary>
     [Fact]
     public void AnApertureHoleBecomesASecondSubpathOfTheSameShape()

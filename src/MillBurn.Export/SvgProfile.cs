@@ -96,6 +96,20 @@ public sealed record SvgExportOptions
     public bool Mirror { get; init; }
 
     /// <summary>
+    /// Collapse the whole drawing into one group and as few path elements as possible.
+    ///
+    /// Some laser software creates one of its own cut layers per imported object, which turns a
+    /// board into hundreds of layers — one per pad — each needing its power and speed set by hand.
+    /// That makes the file unusable, and it is not a hypothetical: Creality Falcon does it.
+    ///
+    /// So this mode emits a single group with no Inkscape layer markup, one colour, one filled
+    /// path, and one stroked path. It is the opposite of what LightBurn wants — there, colour *is*
+    /// the layer assignment and separate layers are the point — so the two are alternatives, not
+    /// defaults, and the export report says how many elements were written either way.
+    /// </summary>
+    public bool SingleLayer { get; init; }
+
+    /// <summary>
     /// Written into the file's description. Null omits it, which is what the golden tests use —
     /// a timestamp is the one thing that would stop two runs producing identical bytes.
     /// </summary>

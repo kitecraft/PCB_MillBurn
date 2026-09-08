@@ -62,9 +62,16 @@ public static class SvgWriter
             WriteStyle(sb, profile);
         }
 
-        foreach (var layer in artwork.Layers)
+        if (options.SingleLayer)
         {
-            WriteLayer(sb, layer, page, options);
+            WriteFlattened(sb, artwork, page, options);
+        }
+        else
+        {
+            foreach (var layer in artwork.Layers)
+            {
+                WriteLayer(sb, layer, page, options);
+            }
         }
 
         sb.Append("</svg>\n");
@@ -122,6 +129,63 @@ public static class SvgWriter
         sb.Append("  </style>\n");
     }
 
+    /// <summary>
+    /// The whole drawing as one group: one filled path, and one stroked path per stroke width.
+    ///
+    /// Merging the fills into a single path is only safe because holes wind opposite to islands and
+    /// the fill rule is non-zero. Under even-odd — which this used to emit — two shapes that
+    /// overlapped would cancel and punch a void where they crossed.
+    ///
+    /// Stroke widths cannot merge, since the width is an attribute of the element. In practice a
+    /// silk layer has one or two, and a laser burns at its beam width regardless of what the file
+    /// says, so a couple of elements is not the problem hundreds of them were.
+    /// </summary>
+    private static void WriteFlattened(StringBuilder sb, Artwork artwork, SvgPage page, SvgExportOptions options)
+    {
+        var colour = options.Profile.ColourFor(ArtRole.Mark);
+
+        var filled = new List<IReadOnlyList<ArtSegment>>();
+        var stroked = new SortedDictionary<long, List<IReadOnlyList<ArtSegment>>>();
+
+        foreach (var shape in artwork.Layers.SelectMany(l => l.Shapes))
+        {
+            if (shape.Filled)
+            {
+                filled.AddRange(shape.Subpaths);
+                continue;
+            }
+
+            if (!stroked.TryGetValue(shape.StrokeWidthNm, out var bucket))
+            {
+                bucket = [];
+                stroked[shape.StrokeWidthNm] = bucket;
+            }
+
+            bucket.AddRange(shape.Subpaths);
+        }
+
+        // No inkscape:groupmode here. Declaring the group to be a layer is exactly what invites an
+        // importer to make one of its own layers out of it.
+        sb.Append("  <g id=\"artwork\">\n");
+
+        if (filled.Count > 0)
+        {
+            WriteShape(sb, new ArtShape { Subpaths = filled, Filled = true }, page, options, colour);
+        }
+
+        foreach (var (width, subpaths) in stroked)
+        {
+            WriteShape(
+                sb,
+                new ArtShape { Subpaths = subpaths, StrokeWidthNm = width },
+                page,
+                options,
+                colour);
+        }
+
+        sb.Append("  </g>\n");
+    }
+
     private static void WriteLayer(StringBuilder sb, ArtLayer layer, SvgPage page, SvgExportOptions options)
     {
         var profile = options.Profile;
@@ -159,7 +223,10 @@ public static class SvgWriter
 
         if (shape.Filled)
         {
-            sb.Append(" fill-rule=\"evenodd\"");
+            // Non-zero, not even-odd. Holes wind opposite to islands, so non-zero gets them right
+            // *and* unions overlapping shapes instead of cancelling them — which is what makes it
+            // safe to merge a whole board into one path element.
+            sb.Append(" fill-rule=\"nonzero\"");
             if (explicitColour)
             {
                 // Fill is what a human sees; stroke is what LightBurn reads to pick the cut

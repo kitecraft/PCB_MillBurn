@@ -1,5 +1,6 @@
 using System.Globalization;
 using MillBurn.Core;
+using MillBurn.Geometry;
 using MillBurn.Gerber.Model;
 
 namespace MillBurn.Cam;
@@ -102,11 +103,30 @@ public static class SilkscreenOperation
 
                 case RegionObject region:
                     {
-                        fills.Add(new ArtShape
+                        // Region contours arrive with whatever winding the writer used, and nest to
+                        // form holes by the even-odd rule. Resolving them through the boolean stage
+                        // is what turns that into explicit orientation, so a non-zero fill reads
+                        // them correctly and they can be merged with anything else.
+                        var contours = Polygons.Empty();
+                        foreach (var contour in region.Contours)
                         {
-                            Subpaths = [.. region.Contours.Select(c => (IReadOnlyList<ArtSegment>)[.. c.Select(ToArt)])],
-                            Filled = true,
-                        });
+                            var path = Tessellate.Flatten([.. contour.Select(ToArt)]);
+                            if (path.Count > 2 && path[0] == path[^1])
+                            {
+                                path.RemoveAt(path.Count - 1);
+                            }
+
+                            if (path.Count >= 3)
+                            {
+                                contours.Add(path);
+                            }
+                        }
+
+                        if (contours.Count > 0)
+                        {
+                            fills.Add(PolygonArtwork.ToShape(Polygons.ResolveEvenOdd(contours)));
+                        }
+
                         break;
                     }
 

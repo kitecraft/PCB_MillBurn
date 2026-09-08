@@ -33,6 +33,7 @@ internal static class Program
             Console.WriteLine("    -o <path>          Output file (default: alongside the input)");
             Console.WriteLine("    --flavour <name>   lightburn (default) | inkscape");
             Console.WriteLine("    --mirror           Mirror for a bottom-side layer");
+            Console.WriteLine("    --single-layer     One group, one path: for importers that make a layer per object");
             Console.WriteLine("    --spot <mm>        Laser spot size (default 0.10)");
             Console.WriteLine("    --margin <mm>      Page margin around the artwork (default 5)");
             return 1;
@@ -232,6 +233,7 @@ internal static class Program
         string? output = null;
         var profile = SvgProfile.LightBurn;
         var mirror = false;
+        var singleLayer = false;
         var spotMm = 0.10;
         var marginMm = 5.0;
 
@@ -245,6 +247,10 @@ internal static class Program
 
                 case "--mirror":
                     mirror = true;
+                    break;
+
+                case "--single-layer":
+                    singleLayer = true;
                     break;
 
                 case "--flavour" or "--flavor" when i + 1 < args.Length:
@@ -322,6 +328,7 @@ internal static class Program
             {
                 Profile = profile,
                 Mirror = mirror,
+                SingleLayer = singleLayer,
                 Title = Path.GetFileNameWithoutExtension(input),
                 Timestamp = DateTimeOffset.UtcNow,
             });
@@ -329,7 +336,8 @@ internal static class Program
         Console.WriteLine(output);
         Line($"  page        {page}");
         Line($"  content     {artwork.ContentBounds}");
-        Line($"  flavour     {profile.Flavour}{(mirror ? ", mirrored" : "")}");
+        Line($"  flavour     {profile.Flavour}{(mirror ? ", mirrored" : "")}{(singleLayer ? ", single layer" : "")}");
+        Line($"  elements    {CountElements(output)} drawable element(s) in {CountGroups(output)} group(s)");
 
         foreach (var layer in artwork.Layers)
         {
@@ -758,6 +766,18 @@ internal static class Program
         var index = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
         return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
+
+    /// <summary>
+    /// How many drawable elements the file holds.
+    ///
+    /// Worth printing, because it is the number that decides whether a laser program will make one
+    /// cut layer or four hundred, and there is no way to tell by looking at the picture.
+    /// </summary>
+    private static int CountElements(string path) =>
+        System.Text.RegularExpressions.Regex.Count(File.ReadAllText(path), "<path ");
+
+    private static int CountGroups(string path) =>
+        System.Text.RegularExpressions.Regex.Count(File.ReadAllText(path), "<g ");
 
     private static void Line(FormattableString text) =>
         Console.WriteLine(FormattableString.Invariant(text));

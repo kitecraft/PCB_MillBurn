@@ -187,9 +187,24 @@ Relying on a stylesheet to carry the layer identity is the kind of thing that wo
 preview and silently collapses everything onto one layer in the tool that matters. The writer
 therefore takes a flag: emit style by class, or bake it per element.
 
-**Closed subpaths and `fill-rule="evenodd"`.** Anything intended to be filled must close with `Z`,
-and holes must be subpaths of the same `<path>` as their outer contour. See
-[04 §2.3](04-Machines-Laser-and-Mixed-Workflows.md#23-fill-versus-line-and-why-the-svg-must-say-which).
+**Closed subpaths, and `fill-rule="nonzero"` with explicit winding.** Anything intended to be
+filled must close with `Z`, and holes must be subpaths of the same `<path>` as their outer contour.
+The rule is **non-zero, with holes wound opposite to islands** — not even-odd. Even-odd makes a
+hole a hole regardless of direction, which is why it is the tempting choice, but it also treats
+*any* overlap as a hole: two shapes that touch punch a void where they cross. Non-zero gets holes
+right and overlaps right, and it is what makes it safe to merge a whole board into one path.
+See [04 §2.3](04-Machines-Laser-and-Mixed-Workflows.md#23-fill-versus-line-and-why-the-svg-must-say-which).
+
+**Single-layer mode, for importers that make a layer per object.** Some laser software creates one
+of its own cut layers for every imported object. On a board that means one layer per pad — hundreds
+of them, each needing power and speed set by hand — which makes the file unusable. Creality Falcon
+does this. `SvgExportOptions.SingleLayer` therefore emits one group with **no Inkscape layer
+markup**, one colour, one filled path and one stroked path per width.
+
+It is the exact opposite of what LightBurn wants, where colour *is* the layer assignment and
+separate layers are the point, so the two are alternatives rather than defaults. The export report
+prints the element and group count either way, because that is the number which decides what the
+laser program will do and there is no way to tell by looking at the picture.
 
 **Metadata.** Embed the project name, the source Gerber, the compensations applied, the generation
 timestamp, and the PCB_MillBurn version in `<metadata>` / `<desc>`, so a burn can be traced back to
