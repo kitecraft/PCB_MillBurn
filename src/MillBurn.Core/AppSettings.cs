@@ -46,6 +46,9 @@ public sealed record AppSettings
 
     public string? LastExportFolder { get; init; }
 
+    /// <summary>Where the window was when it was last closed, or null if it never has been.</summary>
+    public WindowPlacement? Window { get; init; }
+
     /// <summary>Most recently opened projects, newest first.</summary>
     public ImmutableArray<string> RecentProjects { get; init; } = [];
 
@@ -101,6 +104,27 @@ public sealed record AppSettings
         File.WriteAllText(temporary, JsonSerializer.Serialize(this, Json));
         File.Move(temporary, path, overwrite: true);
     }
+}
+
+/// <summary>
+/// Where the window was, so it comes back there.
+///
+/// The maximised flag is kept separately from the size because they answer different questions: a
+/// maximised window's own bounds are the whole screen, so storing those and restoring them
+/// un-maximised would give a window that fills the display and cannot be told apart from a
+/// maximised one. What gets stored is the size it had when it was last a normal window.
+/// </summary>
+public sealed record WindowPlacement
+{
+    public required int X { get; init; }
+
+    public required int Y { get; init; }
+
+    public required double Width { get; init; }
+
+    public required double Height { get; init; }
+
+    public bool Maximised { get; init; }
 }
 
 /// <summary>

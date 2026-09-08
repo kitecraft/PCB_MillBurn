@@ -307,6 +307,24 @@ beyond the reflection is the transform being wrong. Comparing against a polygon 
 first and was too loose to prove anything — offset contours do not share a vertex distribution with
 the copper they came from.
 
+**The window comes back where it was left, and a screenshot run never writes one.** Two traps, both
+avoided deliberately: the saved size is the client size that gets set on restore rather than the
+frame size, because storing a frame and restoring it as a client area adds the border thickness back
+every launch — measured here as 16 x 39 px, which is how a window grows a little each time it opens.
+And a placement is only honoured while enough of its title bar still lands on a connected screen,
+because a window restored onto an unplugged monitor is invisible, undraggable, and fixable only by
+editing a settings file the user does not know exists. Maximised is stored separately from the size,
+so un-maximising gives back a normal window rather than a screen-sized one.
+
+**The app opened with unsaved changes it had invented itself.** Restoring the saved board thickness
+in the view-model constructor went through the observable property, which fired the changed handler,
+which called `Touch()` — so the first click of any session asked whether to save an empty project.
+It only appeared when the saved thickness differed from the built-in default, which is why it
+survived every screenshot. Fixed at the root, and again at the guard: `NeedsSaving` is
+`IsDirty && Sources.Length > 0`, because a project holding no sources holds nothing however dirty it
+believes itself to be. A prompt that appears when there is nothing to lose is not an extra
+safeguard — it is what teaches people to dismiss the prompt without reading it.
+
 ### Phase 3 — The optimizer
 
 - GTSP model with entry-configuration sets, closed-loop free start.

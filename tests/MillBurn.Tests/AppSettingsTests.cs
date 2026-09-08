@@ -112,6 +112,58 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void TheWindowPlacementSurvivesARoundTrip()
+    {
+        var settings = new AppSettings
+        {
+            Window = new WindowPlacement
+            {
+                X = -1200, Y = 40, Width = 1440, Height = 900, Maximised = true,
+            },
+        };
+
+        settings.Save(Path_);
+        var read = AppSettings.LoadOrDefault(Path_).Window;
+
+        Assert.NotNull(read);
+        Assert.Equal(-1200, read.X);
+        Assert.Equal(40, read.Y);
+        Assert.Equal(1440, read.Width);
+        Assert.Equal(900, read.Height);
+        Assert.True(read.Maximised);
+    }
+
+    /// <summary>
+    /// A negative origin is a second monitor to the left, not corrupt data. Rejecting it would send
+    /// everyone with that setup back to the primary screen on every launch.
+    /// </summary>
+    [Fact]
+    public void ANegativeOriginIsAValidPlacement()
+    {
+        var settings = new AppSettings
+        {
+            Window = new WindowPlacement { X = -2560, Y = -120, Width = 1280, Height = 800 },
+        };
+
+        settings.Save(Path_);
+
+        Assert.Equal(-2560, AppSettings.LoadOrDefault(Path_).Window!.X);
+    }
+
+    /// <summary>A settings file written before this field existed must still load.</summary>
+    [Fact]
+    public void SettingsWrittenBeforeWindowPlacementExistedStillLoad()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path_, "{ \"SchemaVersion\": 1, \"BoardThicknessMm\": 0.8 }");
+
+        var read = AppSettings.LoadOrDefault(Path_);
+
+        Assert.Equal(0.8, read.BoardThicknessMm);
+        Assert.Null(read.Window);
+    }
+
+    [Fact]
     public void AColourCanBePutBack()
     {
         var settings = new AppSettings()

@@ -10,6 +10,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using MillBurn.App.ViewModels;
+using MillBurn.Core;
 using MillBurn.Pipeline;
 
 namespace MillBurn.App.Views;
@@ -49,11 +50,109 @@ public partial class MainWindow : Window
         SetUpDragAndDrop();
         SetUpCloseGuard();
         SetUpShortcuts();
+        SetUpWindowPlacement();
 
         var args = Environment.GetCommandLineArgs();
         _fpsTest = args.Contains("--fpstest", StringComparer.OrdinalIgnoreCase);
 
         Opened += (_, _) => OnOpened(args);
+    }
+
+    // ------------------------------------------------------------------ window placement
+
+    /// <summary>
+    /// The placement the window had while it was a normal window, not a maximised one.
+    ///
+    /// Recorded as the same <c>Width</c>/<c>Height</c> that get set on restore, rather than as the
+    /// frame size. Storing the frame and restoring the client area adds the border thickness back
+    /// every launch, which is how a window grows a few pixels each time it is opened.
+    /// </summary>
+    private WindowPlacement? _normalBounds;
+
+    /// <summary>
+    /// True for a run that exists to produce a screenshot. Such a run must not save its placement:
+    /// its size was dictated on the command line, and writing it back would silently resize the
+    /// window the user actually works in.
+    /// </summary>
+    private bool _transientSize;
+
+    private void SetUpWindowPlacement()
+    {
+        void Remember()
+        {
+            if (WindowState == WindowState.Normal && Width > 0 && Height > 0)
+            {
+                _normalBounds = new WindowPlacement
+                {
+                    X = Position.X,
+                    Y = Position.Y,
+                    Width = Width,
+                    Height = Height,
+                };
+            }
+        }
+
+        PositionChanged += (_, _) => Remember();
+        SizeChanged += (_, _) => Remember();
+
+        // Saved on the way out rather than as it changes: dragging a window across a desk should
+        // not write to disk on every frame.
+        Closing += (_, _) => SavePlacement();
+    }
+
+    private void SavePlacement()
+    {
+        if (_transientSize || DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var bounds = _normalBounds ?? new WindowPlacement
+        {
+            X = Position.X,
+            Y = Position.Y,
+            Width = Width,
+            Height = Height,
+        };
+
+        vm.SaveWindowPlacement(bounds with
+        {
+            Width = Math.Max(bounds.Width, 640),
+            Height = Math.Max(bounds.Height, 480),
+            Maximised = WindowState is WindowState.Maximized or WindowState.FullScreen,
+        });
+    }
+
+    /// <summary>
+    /// Puts the window back where it was, if that is still somewhere it can be reached.
+    ///
+    /// The check is the point. A window restored onto a monitor that has since been unplugged is
+    /// invisible and cannot be dragged back, and the only fix is editing a settings file the user
+    /// does not know exists — so a placement is only honoured while enough of its title bar still
+    /// lands on a screen to grab.
+    /// </summary>
+    private void RestorePlacement(WindowPlacement placement)
+    {
+        var frame = new PixelRect(
+            placement.X, placement.Y, (int)placement.Width, (int)placement.Height);
+
+        var grabbable = new PixelRect(frame.X, frame.Y, frame.Width, Math.Min(frame.Height, 40));
+
+        if (!Screens.All.Any(s => s.WorkingArea.Intersects(grabbable)))
+        {
+            return;
+        }
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Width = placement.Width;
+        Height = placement.Height;
+        Position = new PixelPoint(placement.X, placement.Y);
+        _normalBounds = placement with { Maximised = false };
+
+        if (placement.Maximised)
+        {
+            WindowState = WindowState.Maximized;
+        }
     }
 
     /// <summary>
@@ -106,7 +205,7 @@ public partial class MainWindow : Window
     {
         Closing += async (_, e) =>
         {
-            if (_closeConfirmed || DataContext is not MainViewModel vm || !vm.Project.IsDirty)
+            if (_closeConfirmed || DataContext is not MainViewModel vm || !vm.Project.NeedsSaving)
             {
                 return;
             }
@@ -166,6 +265,15 @@ public partial class MainWindow : Window
             {
                 vm.LoadFolder(target);
             }
+        }
+
+        // A saved placement is only honoured for a normal run. A screenshot dictates its own size,
+        // and letting a saved one win would make the captures non-reproducible.
+        _transientSize = Argument(args, "--size") is not null || ShotPath(args) is not null;
+
+        if (!_transientSize && vm.Settings.Window is { } placement)
+        {
+            RestorePlacement(placement);
         }
 
         // A screenshot only shows what fits, so a panel that runs past the bottom of a 800px window
@@ -382,7 +490,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task<bool> ConfirmReplaceAsync()
     {
-        if (DataContext is not MainViewModel vm || !vm.Project.IsDirty)
+        if (DataContext is not MainViewModel vm || !vm.Project.NeedsSaving)
         {
             return true;
         }

@@ -108,9 +108,19 @@ public sealed partial class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
+        // Restoring a saved preference is not the user changing anything, so it must not mark the
+        // document dirty. Without this the app opens with unsaved changes it invented itself, and
+        // the very first click asks whether to save an empty project.
+        _suspendOutputChanges = true;
         BoardThicknessMm = Settings.BoardThicknessMm;
+        _suspendOutputChanges = false;
+
         AttachProject(_project);
     }
+
+    /// <summary>Remembers where the window was, so it opens where it was left.</summary>
+    public void SaveWindowPlacement(WindowPlacement placement) =>
+        SaveSettings(Settings with { Window = placement });
 
     // ------------------------------------------------------------------ loading
 

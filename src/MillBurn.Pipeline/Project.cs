@@ -199,6 +199,15 @@ public sealed class MillBurnProject
         ? OriginFolder is null ? "Untitled" : Path.GetFileName(OriginFolder.TrimEnd(Path.DirectorySeparatorChar))
         : Path.GetFileNameWithoutExtension(FilePath);
 
+    /// <summary>
+    /// Whether there is anything a prompt could save.
+    ///
+    /// A project holding no sources holds nothing, however dirty it believes itself to be. Asking
+    /// about it teaches people to dismiss the question without reading it, which costs them the one
+    /// time it matters.
+    /// </summary>
+    public bool NeedsSaving => IsDirty && Sources.Length > 0;
+
     /// <summary>Marks the document changed. View state deliberately does not call this.</summary>
     public void Touch() => IsDirty = true;
 
