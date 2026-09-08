@@ -39,8 +39,8 @@ dotnet test  PCB_MillBurn.slnx
 ## Running
 
 ```
-dotnet run --project src/MillBurn.Cli -- inspect MyGerbers2          # parse report
-dotnet run --project src/MillBurn.Cli -- svg MyGerbers2/PogoTest1-F_Silkscreen.gbr
+dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse report
+dotnet run --project src/MillBurn.Cli -- svg <silkscreen.gbr>       # laser-ready SVG
 
 dotnet run --project src/MillBurn.App            # the app
 dotnet run --project src/MillBurn.App -- --bench # viewport benchmark (offscreen, CPU raster)
@@ -74,11 +74,16 @@ tests/
 Every algorithm lives in a UI-free `net10.0` library; only `MillBurn.App` references a UI
 framework. That is deliberate — see [07 §4](Documentation/07-UI-Framework-Decision.md).
 
-## Reference checkouts
+## Working material beside the repo (all git-ignored)
 
-`pcb2gcode/` and `Universal-G-Code-Sender/` sit alongside this repo (git-ignored) as design
-references. **Both are GPL-3.0.** Read them for approach; do not copy code. See
-[01 §9](Documentation/01-Architecture.md#9-licensing-strategy).
+| Path | What it is | Note |
+|---|---|---|
+| `pcb2gcode/` | The original C++ tool | **GPL-3.0.** Read for approach; do not copy code. See [01 §9](Documentation/01-Architecture.md#9-licensing-strategy). |
+| `Universal-G-Code-Sender/` | UGS, whose visualizer informed ours | **GPL-3.0.** Same rule. |
+| `MyGerbers/`, `MyGerbers2/` | Real KiCad 10 exports | Optional test fixtures. Tests using them skip when absent; set `MILLBURN_BOARDS` to point elsewhere. |
+
+None of these is committed, linked, or shipped. Committed fixtures are hand-written from the
+Ucamco specification and run everywhere.
 
 ## Licence
 

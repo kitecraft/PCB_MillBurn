@@ -65,7 +65,7 @@ PCB_MillBurn.slnx
 └── tests/
     ├── MillBurn.Tests           xUnit unit + property tests
     ├── MillBurn.GoldenTests     Golden-file regression over a Gerber corpus
-    └── corpus/                  KiCad demo boards, tracespace test suite, real user boards
+    └── Fixtures/                hand-written Gerber cases from the Ucamco spec (committed)
 ```
 
 Dependency direction is strictly downward. `MillBurn.App` references everything; nothing

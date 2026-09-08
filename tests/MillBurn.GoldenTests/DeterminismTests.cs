@@ -4,8 +4,11 @@ using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Export;
 using MillBurn.Gerber;
+using MillBurn.Gerber.Model;
 using MillBurn.Viewer;
 using Xunit;
+
+using MillBurn.Tests;
 
 namespace MillBurn.GoldenTests;
 
@@ -65,10 +68,10 @@ public sealed class DeterminismTests
     /// pcb2gcode needs a whole <c>consistent_rand.cpp</c> to paper over this in its own SVG
     /// output. The cheaper fix is to have no randomness to make consistent.
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void SilkscreenSvgIsByteIdenticalAcrossRuns()
     {
-        var file = BoardFile("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var file = RealBoards.File("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
         var options = new SvgExportOptions { Timestamp = null };
 
         var first = Render(file, options);
@@ -82,10 +85,10 @@ public sealed class DeterminismTests
     /// A timestamp is the one input that legitimately varies, so it stays opt-in; this proves it
     /// is the only thing that would break the guarantee above.
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void OnlyTheTimestampVariesBetweenRuns()
     {
-        var file = BoardFile("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var file = RealBoards.File("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
 
         var plain = Render(file, new SvgExportOptions { Timestamp = null });
         var stamped = Render(file, new SvgExportOptions
@@ -103,32 +106,55 @@ public sealed class DeterminismTests
         Assert.Equal(plain, stripped);
     }
 
-    private static string Render(string gerberFile, SvgExportOptions options)
+    /// <summary>
+    /// The determinism guarantee has to hold without the optional board exports, or a clean clone
+    /// stops checking the thing this file exists for. Same assertion, hand-written input: arcs,
+    /// two stroke widths, a flash and a coordinate that does not land on a round number.
+    /// </summary>
+    [Fact]
+    public void SvgOutputIsDeterministicWithoutTheOptionalBoards()
     {
-        var artwork = SilkscreenOperation.Build(
-            GerberParser.ParseFile(gerberFile), new SilkscreenOptions(), Path.GetFileName(gerberFile));
+        var first = RenderSource(SyntheticSilk);
+        var second = RenderSource(SyntheticSilk);
+
+        Assert.Equal(first, second);
+        Assert.Contains(" A ", first, StringComparison.Ordinal);
+        Assert.Contains("<path", first, StringComparison.Ordinal);
+    }
+
+    private const string SyntheticSilk =
+        """
+        %FSLAX46Y46*%
+        %MOMM*%
+        %ADD10C,0.10*%
+        %ADD11C,0.15*%
+        %ADD12C,1.0*%
+        D10*
+        X1234567Y0D02*
+        X7654321Y1234567D01*
+        D11*
+        X0Y2000000D02*
+        G03*
+        X0Y2000000I1000000J0D01*
+        D12*
+        X3000000Y3000000D03*
+        M02*
+        """;
+
+    private static string RenderSource(string gerber) =>
+        Render(GerberParser.Parse(gerber), "synthetic.gbr", new SvgExportOptions { Timestamp = null });
+
+    private static string Render(string gerberFile, SvgExportOptions options) =>
+        Render(GerberParser.ParseFile(gerberFile), Path.GetFileName(gerberFile), options);
+
+    private static string Render(GerberImage image, string source, SvgExportOptions options)
+    {
+        var artwork = SilkscreenOperation.Build(image, new SilkscreenOptions(), source);
 
         return SvgWriter.Write(
             artwork,
             SvgPage.ForContent(artwork.ContentBounds, Nm.FromMillimetres(5)),
             options);
-    }
-
-    private static string BoardFile(string board, string name)
-    {
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 10 && dir is not null; i++)
-        {
-            var candidate = Path.Combine(dir, board, name);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar));
-        }
-
-        throw new FileNotFoundException($"Could not locate {board}/{name}.");
     }
 
     private static string Fingerprint(IReadOnlyList<Polyline> polylines)

@@ -56,7 +56,13 @@ written fresh. See [Documentation/01 §9](Documentation/01-Architecture.md#9-lic
 pcb2gcode's Gerber test corpus is likewise *referenced from that checkout* by the tests, never
 copied into this repository; those tests skip cleanly when the checkout is absent.
 
-## Board files in this repository
+## Board files — also not in the repository
 
-`MyGerbers/` and `MyGerbers2/` are real KiCad 10 exports used as regression fixtures. They are the
-repository owner's own designs, contributed under the same MIT licence as the rest of the project.
+`MyGerbers/` and `MyGerbers2/` are real KiCad 10 exports that live in the workspace as **working
+material, not project content**. They are the repository owner's own designs and are git-ignored
+alongside the reference checkouts.
+
+The test suite uses them when they are present and skips those tests cleanly when they are not, so
+a fresh clone stays green — see `tests/MillBurn.Tests/RealBoards.cs`, and set `MILLBURN_BOARDS` to
+point at a directory containing them. The fixtures that ship with the repository are hand-written
+from the Ucamco specification and run everywhere.

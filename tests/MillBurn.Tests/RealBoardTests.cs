@@ -12,46 +12,31 @@ using Xunit;
 namespace MillBurn.Tests;
 
 /// <summary>
-/// End-to-end checks against real KiCad 10 exports committed under <c>MyGerbers/</c> and
-/// <c>MyGerbers2/</c>.
+/// End-to-end checks against real KiCad 10 exports.
 ///
 /// Hand-written fixtures prove the parser handles the specification; these prove it handles what
 /// an actual EDA tool actually writes, which is a different question and the one that decides
 /// whether a board is cut correctly.
+///
+/// The boards are not committed (see <see cref="RealBoards"/>), so every test here skips when they
+/// are absent rather than failing a clean clone.
 /// </summary>
 public sealed class RealBoardTests
 {
-    private static string BoardDir(string name)
-    {
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 10 && dir is not null; i++)
-        {
-            var candidate = Path.Combine(dir, name);
-            if (Directory.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar));
-        }
-
-        throw new DirectoryNotFoundException($"Could not locate the '{name}' board directory.");
-    }
-
     private static GerberImage Gerber(string board, string file) =>
-        GerberParser.ParseFile(Path.Combine(BoardDir(board), file));
+        GerberParser.ParseFile(RealBoards.File(board, file));
 
     private static void AssertNoErrors(GerberImage image, string what) =>
         Assert.True(
             image.Diagnostics.All(d => !d.IsError),
             $"{what}: " + string.Join("; ", image.Diagnostics.Where(d => d.IsError).Take(5)));
 
-    [Theory]
+    [BoardTheory]
     [InlineData("MyGerbers")]
     [InlineData("MyGerbers2")]
     public void EveryLayerParsesWithoutErrors(string board)
     {
-        var dir = BoardDir(board);
+        var dir = RealBoards.Directory(board);
         var files = Directory.GetFiles(dir, "*.gbr");
         Assert.NotEmpty(files);
 
@@ -64,12 +49,12 @@ public sealed class RealBoardTests
         }
     }
 
-    [Theory]
+    [BoardTheory]
     [InlineData("MyGerbers")]
     [InlineData("MyGerbers2")]
     public void EveryDrillFileParsesWithoutErrors(string board)
     {
-        var dir = BoardDir(board);
+        var dir = RealBoards.Directory(board);
         var files = Directory.GetFiles(dir, "*.drl");
         Assert.NotEmpty(files);
 
@@ -87,7 +72,7 @@ public sealed class RealBoardTests
     /// The whole argument for keeping X2 attributes: "open the mask over the pads" becomes a
     /// query rather than a morphological guess (Documentation/02, section 1).
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void PadsAreSelectableDirectlyFromAttributes()
     {
         var copper = Gerber("MyGerbers", "GridStripConnector-F_Cu.gbr");
@@ -102,7 +87,7 @@ public sealed class RealBoardTests
         Assert.Equal(3, pads.Select(p => p.Net).Distinct(StringComparer.Ordinal).Count());
     }
 
-    [Fact]
+    [BoardFact]
     public void RoundRectMacroPadsResolveTheirParameters()
     {
         var copper = Gerber("MyGerbers", "GridStripConnector-F_Cu.gbr");
@@ -114,7 +99,7 @@ public sealed class RealBoardTests
         Assert.Equal(0.3, aperture.Parameters[0], 6);
     }
 
-    [Fact]
+    [BoardFact]
     public void OutlineArcsSurviveAsArcs()
     {
         // The board outline has rounded corners. Flattening them at parse time is what stops
@@ -127,7 +112,7 @@ public sealed class RealBoardTests
         Assert.Equal(4, segments.Count(s => s.IsArc));
     }
 
-    [Fact]
+    [BoardFact]
     public void FileFunctionIdentifiesEachLayer()
     {
         Assert.Equal("Copper,L1,Top", Gerber("MyGerbers2", "PogoTest1-F_Cu.gbr").FileFunction);
@@ -143,11 +128,11 @@ public sealed class RealBoardTests
     /// Documentation/02, section 5, and it catches unit and format errors that a single-file test
     /// cannot.
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void PlatedHoleCountMatchesThroughHolePadCount()
     {
         var drill = ExcellonParser.ParseFile(
-            Path.Combine(BoardDir("MyGerbers2"), "PogoTest1-PTH.drl"));
+            Path.Combine(RealBoards.Directory("MyGerbers2"), "PogoTest1-PTH.drl"));
         var copper = Gerber("MyGerbers2", "PogoTest1-B_Cu.gbr");
 
         var pads = copper.Objects.OfType<FlashObject>()
@@ -157,7 +142,7 @@ public sealed class RealBoardTests
         Assert.Equal(pads, drill.Hits.Count);
     }
 
-    [Fact]
+    [BoardFact]
     public void CopperPoursParseAsRegions()
     {
         var copper = Gerber("MyGerbers2", "PogoTest1-B_Cu.gbr");
@@ -173,7 +158,7 @@ public sealed class RealBoardTests
     /// thing on the board to put on a laser: trace the centrelines, because the beam is already
     /// the right width. See Documentation/04, section 2.5.
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void SilkscreenIsStrokedLineArt()
     {
         var silk = Gerber("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
@@ -195,7 +180,7 @@ public sealed class RealBoardTests
     /// silently. A file with the wrong units opens perfectly in every viewer and burns a legend
     /// 4% small; nothing about it looks wrong until it is on the board.
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void RealSilkscreenExportsAsMillimetreAccurateSvg()
     {
         var silk = Gerber("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
@@ -234,7 +219,7 @@ public sealed class RealBoardTests
     /// Bottom silk must mirror, and the mirror must be about the shared page rather than about the
     /// geometry's own extents — otherwise the front and back exports do not line up on the bed.
     /// </summary>
-    [Fact]
+    [BoardFact]
     public void MirroringBottomSilkReflectsAboutTheSharedPage()
     {
         var artwork = SilkscreenOperation.Build(

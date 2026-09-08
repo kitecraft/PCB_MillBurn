@@ -56,3 +56,10 @@ $RECYCLE.BIN/
 scratch/
 *.local.json
 *.local.md
+
+# ---- Working material, not project content ----
+# Real KiCad exports used as optional test fixtures, and the GPL-3.0 reference checkouts.
+# Tests that need any of these skip cleanly when absent (tests/MillBurn.Tests/RealBoards.cs,
+# GerberCorpus.cs). Point MILLBURN_BOARDS / MILLBURN_GERBER_CORPUS elsewhere to override.
+MyGerbers/
+MyGerbers2/
