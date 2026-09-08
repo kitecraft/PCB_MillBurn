@@ -68,10 +68,10 @@ public sealed class DeterminismTests
     /// pcb2gcode needs a whole <c>consistent_rand.cpp</c> to paper over this in its own SVG
     /// output. The cheaper fix is to have no randomness to make consistent.
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void SilkscreenSvgIsByteIdenticalAcrossRuns()
     {
-        var file = RealBoards.File("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var file = RealBoards.File(RealBoards.PogoTest1, "PogoTest1-F_Silkscreen.gbr");
         var options = new SvgExportOptions { Timestamp = null };
 
         var first = Render(file, options);
@@ -85,10 +85,10 @@ public sealed class DeterminismTests
     /// A timestamp is the one input that legitimately varies, so it stays opt-in; this proves it
     /// is the only thing that would break the guarantee above.
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void OnlyTheTimestampVariesBetweenRuns()
     {
-        var file = RealBoards.File("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var file = RealBoards.File(RealBoards.PogoTest1, "PogoTest1-F_Silkscreen.gbr");
 
         var plain = Render(file, new SvgExportOptions { Timestamp = null });
         var stamped = Render(file, new SvgExportOptions

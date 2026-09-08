@@ -64,8 +64,8 @@ PCB_MillBurn.slnx
 │   └── MillBurn.Cli             net10.0   Headless batch driver
 └── tests/
     ├── MillBurn.Tests           xUnit unit + property tests
-    ├── MillBurn.GoldenTests     Golden-file regression over a Gerber corpus
-                                 (Gerber fixtures are inline in the test files, from the spec)
+    ├── MillBurn.GoldenTests     Golden-file and determinism regression
+    └── boards/                  Two real KiCad 10 exports, committed as fixtures
 ```
 
 Dependency direction is strictly downward. `MillBurn.App` references everything; nothing

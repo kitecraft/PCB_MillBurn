@@ -18,8 +18,8 @@ namespace MillBurn.Tests;
 /// an actual EDA tool actually writes, which is a different question and the one that decides
 /// whether a board is cut correctly.
 ///
-/// The boards are not committed (see <see cref="RealBoards"/>), so every test here skips when they
-/// are absent rather than failing a clean clone.
+/// The boards are committed under <c>tests/boards/</c>, so these run everywhere rather than being
+/// an optional extra that quietly stops covering anything.
 /// </summary>
 public sealed class RealBoardTests
 {
@@ -31,9 +31,9 @@ public sealed class RealBoardTests
             image.Diagnostics.All(d => !d.IsError),
             $"{what}: " + string.Join("; ", image.Diagnostics.Where(d => d.IsError).Take(5)));
 
-    [BoardTheory]
-    [InlineData("MyGerbers")]
-    [InlineData("MyGerbers2")]
+    [Theory]
+    [InlineData(RealBoards.GridStripConnector)]
+    [InlineData(RealBoards.PogoTest1)]
     public void EveryLayerParsesWithoutErrors(string board)
     {
         var dir = RealBoards.Directory(board);
@@ -49,9 +49,9 @@ public sealed class RealBoardTests
         }
     }
 
-    [BoardTheory]
-    [InlineData("MyGerbers")]
-    [InlineData("MyGerbers2")]
+    [Theory]
+    [InlineData(RealBoards.GridStripConnector)]
+    [InlineData(RealBoards.PogoTest1)]
     public void EveryDrillFileParsesWithoutErrors(string board)
     {
         var dir = RealBoards.Directory(board);
@@ -72,10 +72,10 @@ public sealed class RealBoardTests
     /// The whole argument for keeping X2 attributes: "open the mask over the pads" becomes a
     /// query rather than a morphological guess (Documentation/02, section 1).
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void PadsAreSelectableDirectlyFromAttributes()
     {
-        var copper = Gerber("MyGerbers", "GridStripConnector-F_Cu.gbr");
+        var copper = Gerber(RealBoards.GridStripConnector, "GridStripConnector-F_Cu.gbr");
         AssertNoErrors(copper, "F_Cu");
 
         var pads = copper.Objects.OfType<FlashObject>().Where(f => f.Aperture.IsPad).ToList();
@@ -87,10 +87,10 @@ public sealed class RealBoardTests
         Assert.Equal(3, pads.Select(p => p.Net).Distinct(StringComparer.Ordinal).Count());
     }
 
-    [BoardFact]
+    [Fact]
     public void RoundRectMacroPadsResolveTheirParameters()
     {
-        var copper = Gerber("MyGerbers", "GridStripConnector-F_Cu.gbr");
+        var copper = Gerber(RealBoards.GridStripConnector, "GridStripConnector-F_Cu.gbr");
         var aperture = copper.Apertures[10];
 
         Assert.Equal(ApertureKind.Macro, aperture.Kind);
@@ -99,12 +99,12 @@ public sealed class RealBoardTests
         Assert.Equal(0.3, aperture.Parameters[0], 6);
     }
 
-    [BoardFact]
+    [Fact]
     public void OutlineArcsSurviveAsArcs()
     {
         // The board outline has rounded corners. Flattening them at parse time is what stops
         // pcb2gcode ever re-fitting G2/G3 on output.
-        var outline = Gerber("MyGerbers", "GridStripConnector-Edge_Cuts.gbr");
+        var outline = Gerber(RealBoards.GridStripConnector, "GridStripConnector-Edge_Cuts.gbr");
         AssertNoErrors(outline, "Edge_Cuts");
 
         var segments = outline.Objects.OfType<DrawObject>().SelectMany(d => d.Segments).ToList();
@@ -112,14 +112,14 @@ public sealed class RealBoardTests
         Assert.Equal(4, segments.Count(s => s.IsArc));
     }
 
-    [BoardFact]
+    [Fact]
     public void FileFunctionIdentifiesEachLayer()
     {
-        Assert.Equal("Copper,L1,Top", Gerber("MyGerbers2", "PogoTest1-F_Cu.gbr").FileFunction);
-        Assert.Equal("Copper,L2,Bot", Gerber("MyGerbers2", "PogoTest1-B_Cu.gbr").FileFunction);
-        Assert.Equal("Profile,NP", Gerber("MyGerbers2", "PogoTest1-Edge_Cuts.gbr").FileFunction);
-        Assert.Equal("Legend,Top", Gerber("MyGerbers2", "PogoTest1-F_Silkscreen.gbr").FileFunction);
-        Assert.Equal("Soldermask,Bot", Gerber("MyGerbers2", "PogoTest1-B_Mask.gbr").FileFunction);
+        Assert.Equal("Copper,L1,Top", Gerber(RealBoards.PogoTest1, "PogoTest1-F_Cu.gbr").FileFunction);
+        Assert.Equal("Copper,L2,Bot", Gerber(RealBoards.PogoTest1, "PogoTest1-B_Cu.gbr").FileFunction);
+        Assert.Equal("Profile,NP", Gerber(RealBoards.PogoTest1, "PogoTest1-Edge_Cuts.gbr").FileFunction);
+        Assert.Equal("Legend,Top", Gerber(RealBoards.PogoTest1, "PogoTest1-F_Silkscreen.gbr").FileFunction);
+        Assert.Equal("Soldermask,Bot", Gerber(RealBoards.PogoTest1, "PogoTest1-B_Mask.gbr").FileFunction);
     }
 
     /// <summary>
@@ -128,12 +128,12 @@ public sealed class RealBoardTests
     /// Documentation/02, section 5, and it catches unit and format errors that a single-file test
     /// cannot.
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void PlatedHoleCountMatchesThroughHolePadCount()
     {
         var drill = ExcellonParser.ParseFile(
-            Path.Combine(RealBoards.Directory("MyGerbers2"), "PogoTest1-PTH.drl"));
-        var copper = Gerber("MyGerbers2", "PogoTest1-B_Cu.gbr");
+            Path.Combine(RealBoards.Directory(RealBoards.PogoTest1), "PogoTest1-PTH.drl"));
+        var copper = Gerber(RealBoards.PogoTest1, "PogoTest1-B_Cu.gbr");
 
         var pads = copper.Objects.OfType<FlashObject>()
             .Count(f => f.Aperture.Function == "ComponentPad");
@@ -142,10 +142,10 @@ public sealed class RealBoardTests
         Assert.Equal(pads, drill.Hits.Count);
     }
 
-    [BoardFact]
+    [Fact]
     public void CopperPoursParseAsRegions()
     {
-        var copper = Gerber("MyGerbers2", "PogoTest1-B_Cu.gbr");
+        var copper = Gerber(RealBoards.PogoTest1, "PogoTest1-B_Cu.gbr");
         AssertNoErrors(copper, "B_Cu");
 
         var regions = copper.Objects.OfType<RegionObject>().ToList();
@@ -158,10 +158,10 @@ public sealed class RealBoardTests
     /// thing on the board to put on a laser: trace the centrelines, because the beam is already
     /// the right width. See Documentation/04, section 2.5.
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void SilkscreenIsStrokedLineArt()
     {
-        var silk = Gerber("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var silk = Gerber(RealBoards.PogoTest1, "PogoTest1-F_Silkscreen.gbr");
         AssertNoErrors(silk, "F_Silkscreen");
 
         Assert.Empty(silk.Objects.OfType<FlashObject>());
@@ -180,10 +180,10 @@ public sealed class RealBoardTests
     /// silently. A file with the wrong units opens perfectly in every viewer and burns a legend
     /// 4% small; nothing about it looks wrong until it is on the board.
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void RealSilkscreenExportsAsMillimetreAccurateSvg()
     {
-        var silk = Gerber("MyGerbers2", "PogoTest1-F_Silkscreen.gbr");
+        var silk = Gerber(RealBoards.PogoTest1, "PogoTest1-F_Silkscreen.gbr");
         var artwork = SilkscreenOperation.Build(silk, new SilkscreenOptions(), "PogoTest1-F_Silkscreen.gbr");
 
         // Every stroke on this layer is within the beam width, so nothing needs realising.
@@ -219,11 +219,11 @@ public sealed class RealBoardTests
     /// Bottom silk must mirror, and the mirror must be about the shared page rather than about the
     /// geometry's own extents — otherwise the front and back exports do not line up on the bed.
     /// </summary>
-    [BoardFact]
+    [Fact]
     public void MirroringBottomSilkReflectsAboutTheSharedPage()
     {
         var artwork = SilkscreenOperation.Build(
-            Gerber("MyGerbers2", "PogoTest1-B_Silkscreen.gbr"), new SilkscreenOptions());
+            Gerber(RealBoards.PogoTest1, "PogoTest1-B_Silkscreen.gbr"), new SilkscreenOptions());
 
         var page = SvgPage.ForContent(artwork.ContentBounds, Nm.FromMillimetres(5));
         var options = new SvgExportOptions { Timestamp = null };

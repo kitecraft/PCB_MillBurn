@@ -57,9 +57,10 @@ scratch/
 *.local.json
 *.local.md
 
-# ---- Working material, not project content ----
-# Real KiCad exports used as optional test fixtures, and the GPL-3.0 reference checkouts.
-# Tests that need any of these skip cleanly when absent (tests/MillBurn.Tests/RealBoards.cs,
-# GerberCorpus.cs). Point MILLBURN_BOARDS / MILLBURN_GERBER_CORPUS elsewhere to override.
+# ---- Scratch board exports ----
+# A drop zone for Gerbers that are NOT project content: work in progress, someone else's design,
+# anything under NDA. Boards that earn a place in the test suite are committed to tests/boards/
+# instead; MILLBURN_BOARDS repoints the fixtures at a private set without committing it.
 MyGerbers/
 MyGerbers2/
+Scratch[Gg]erbers/

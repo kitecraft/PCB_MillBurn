@@ -80,10 +80,15 @@ framework. That is deliberate — see [07 §4](Documentation/07-UI-Framework-Dec
 |---|---|---|
 | `pcb2gcode/` | The original C++ tool | **GPL-3.0.** Read for approach; do not copy code. See [01 §9](Documentation/01-Architecture.md#9-licensing-strategy). |
 | `Universal-G-Code-Sender/` | UGS, whose visualizer informed ours | **GPL-3.0.** Same rule. |
-| `MyGerbers/`, `MyGerbers2/` | Real KiCad 10 exports | Optional test fixtures. Tests using them skip when absent; set `MILLBURN_BOARDS` to point elsewhere. |
+| `MyGerbers/`, `MyGerbers2/` | Scratch Gerber exports | A drop zone for boards that are *not* project content. Boards that earn a place in the suite go in `tests/boards/`. |
 
-None of these is committed, linked, or shipped. The fixtures that ship are hand-written from the
-Ucamco specification, live inline in the test files, and run everywhere.
+None of these is committed, linked, or shipped.
+
+Test fixtures come in two kinds, both committed and both run everywhere: hand-written cases from
+the Ucamco specification, inline in the test files, and two real KiCad 10 board exports in
+[`tests/boards/`](tests/boards/README.md). The first prove the parser handles the specification;
+the second prove it handles what an EDA tool actually writes, which is where the bugs have been.
+Set `MILLBURN_BOARDS` to run the suite against a private board without committing it.
 
 ## Licence
 
