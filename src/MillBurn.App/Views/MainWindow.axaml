@@ -11,169 +11,328 @@
         Background="{DynamicResource PageBackground}"
         Title="{Binding WindowTitle}">
 
+    <Window.Styles>
+        <!-- Drawer headings: the panel is a stack of sections, and they should read as one. -->
+        <Style Selector="Expander /template/ ToggleButton#PART_toggle">
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="Expander">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+        <!--
+            The swatch carries its colour on an inner Border rather than on the Button's own
+            Background. The Fluent button paints its background from theme brushes on hover and
+            press, so a bound Background stops showing the layer's colour at exactly the moment
+            someone is trying to click it.
+        -->
+        <Style Selector="Button.swatch">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+
+        <Style Selector="TextBlock.fact">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+    </Window.Styles>
+
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- Header -->
+        <!--
+            Header: menus carry everything, and only the three things worth reaching for without
+            reading stay as buttons.
+        -->
         <Border Grid.Row="0"
                 Background="{DynamicResource Surface}"
                 BorderBrush="{DynamicResource BorderSubtle}"
-                BorderThickness="0,0,0,1"
-                Padding="14,10">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                <TextBlock Grid.Column="0"
-                           Text="PCB_MillBurn"
-                           FontSize="15" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextHeadline}"
-                           VerticalAlignment="Center" />
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="6,2">
+                <Menu Grid.Column="0">
+                    <MenuItem Header="_File">
+                        <MenuItem Header="_New project" Click="OnNewClicked" InputGesture="Ctrl+N" />
+                        <MenuItem Header="_Open project…" Click="OnOpenProjectClicked" InputGesture="Ctrl+O" />
+                        <Separator />
+                        <MenuItem Header="_Import Gerber folder…" Click="OnOpenFolderClicked" InputGesture="Ctrl+I" />
+                        <MenuItem Header="_Refresh from source"
+                                  Click="OnRefreshClicked"
+                                  IsEnabled="{Binding CanRefresh}" />
+                        <Separator />
+                        <MenuItem Header="_Save" Click="OnSaveClicked" InputGesture="Ctrl+S" />
+                        <MenuItem Header="Save _as…" Click="OnSaveAsClicked" InputGesture="Ctrl+Shift+S" />
+                        <Separator />
+                        <MenuItem Header="_Export…" Click="OnExportClicked" InputGesture="Ctrl+E"
+                                  IsEnabled="{Binding HasBoard}" />
+                        <Separator />
+                        <MenuItem Header="E_xit" Click="OnExitClicked" />
+                    </MenuItem>
+
+                    <MenuItem Header="_Edit">
+                        <MenuItem Header="_Tool library…" Click="OnEditToolsClicked" InputGesture="Ctrl+T" />
+                        <MenuItem Header="Reset layer _colours" Click="OnResetColoursClicked" />
+                    </MenuItem>
+
+                    <MenuItem Header="_View">
+                        <MenuItem Header="_Fit to board" Click="OnFitClicked" InputGesture="Ctrl+0" />
+                        <MenuItem Header="Show _all layers" Click="OnShowAllLayersClicked" />
+                        <MenuItem Header="_Hide all layers" Click="OnHideAllLayersClicked" />
+                        <Separator />
+                        <MenuItem Header="Toggle light / _dark" Click="OnToggleThemeClicked" />
+                    </MenuItem>
+
+                    <MenuItem Header="_Job">
+                        <MenuItem Header="_Preview programs" Click="OnPreviewClicked" InputGesture="F5"
+                                  IsEnabled="{Binding HasBoard}" />
+                        <MenuItem Header="_Export…" Click="OnExportClicked"
+                                  IsEnabled="{Binding HasBoard}" />
+                    </MenuItem>
+
+                    <MenuItem Header="_Help">
+                        <MenuItem Header="_About PCB_MillBurn" Click="OnAboutClicked" />
+                    </MenuItem>
+                </Menu>
+
                 <TextBlock Grid.Column="1"
                            Text="{Binding BoardTitle}"
-                           Margin="16,0,0,0"
-                           Foreground="{DynamicResource TextSecondary}"
-                           VerticalAlignment="Center" />
-                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
-                    <Button Content="New" Click="OnNewClicked" />
-                    <Button Content="Open project…" Click="OnOpenProjectClicked" />
-                    <Button Content="Save" Click="OnSaveClicked" />
-                    <Button Content="Save as…" Click="OnSaveAsClicked" />
-                    <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
-                    <Button Content="Import folder…" Click="OnOpenFolderClicked" />
-                    <Button Content="Refresh from source"
-                            Click="OnRefreshClicked"
-                            IsEnabled="{Binding CanRefresh}" />
-                    <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
-                    <Button Content="Mill" Click="OnMillClicked" IsEnabled="{Binding CanMill}" />
-                    <Button Content="Save G-code…" Click="OnSaveGcodeClicked" IsEnabled="{Binding CanMill}" />
-                    <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
-                    <Button Content="Fit" Click="OnFitClicked" />
-                    <Button Content="Theme" Click="OnToggleThemeClicked" />
+                           Margin="18,0"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="0,2">
+                    <Button Content="Save" Click="OnSaveClicked"
+                            ToolTip.Tip="Save the project (Ctrl+S)" />
+                    <Button Content="Fit" Click="OnFitClicked"
+                            ToolTip.Tip="Fit the board to the window (Ctrl+0)" />
+                    <Button Content="Tools" Click="OnEditToolsClicked"
+                            ToolTip.Tip="Edit the saved tool library (Ctrl+T)" />
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Layers | viewport -->
-        <Grid Grid.Row="1" ColumnDefinitions="300,4,*">
+        <!-- Panel | viewport -->
+        <Grid Grid.Row="1" ColumnDefinitions="330,4,*">
 
             <Border Grid.Column="0"
                     Background="{DynamicResource Surface}"
                     BorderBrush="{DynamicResource BorderSubtle}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,*,Auto,Auto">
-                    <!--
-                        Tools first, because they decide what gets cut. Traces and edge cuts want
-                        genuinely different bits, so the choice is per operation.
-                    -->
-                    <StackPanel Grid.Row="0" Margin="12,12,12,4">
-                        <TextBlock Text="TOOLS"
-                                   FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextSecondary}"
-                                   Margin="0,0,0,6" />
+                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="10,10,10,0">
 
-                        <ItemsControl ItemsSource="{Binding ToolChoices}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ToolChoice">
-                                    <StackPanel Margin="0,0,0,8">
-                                        <TextBlock Text="{Binding Label}"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource TextSecondary}" />
-                                        <ComboBox ItemsSource="{Binding Tools}"
-                                                  SelectedItem="{Binding Selected, Mode=TwoWay}"
-                                                  HorizontalAlignment="Stretch"
-                                                  Margin="0,2">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding Name}" />
-                                                </DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ComboBox>
-                                        <TextBlock Text="{Binding Effect}"
-                                                   FontSize="11" TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource StatusInfo}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                    <StackPanel Grid.Row="0">
 
-                        <!--
-                            Two separate depths, because they are two separate physical facts.
-                            Isolation is a scratch tens of microns into the copper; drilling and the
-                            outline have to go through whatever the board actually is.
-                        -->
-                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
-                            <TextBlock Grid.Column="0" Text="Isolation depth" Width="86"
-                                       FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                            <Slider Grid.Column="1" Minimum="0.01" Maximum="0.3"
-                                    Value="{Binding IsolationDepthMm, Mode=TwoWay}"
-                                    Margin="8,0" />
-                            <TextBlock Grid.Column="2"
-                                       Text="{Binding IsolationDepthMm, StringFormat='{}{0:F3} mm'}"
-                                       FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextPrimary}" />
-                        </Grid>
+                            <!-- Nothing open: the two ways in, and nothing else to read. -->
+                            <StackPanel Spacing="8" IsVisible="{Binding !HasBoard}" Margin="2,8">
+                                <TextBlock Text="No project open"
+                                           FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextHeadline}" />
+                                <TextBlock Classes="caption" TextWrapping="Wrap"
+                                           Text="Import a Gerber export folder, or open a project you saved earlier." />
+                                <Button Content="New project" Click="OnNewClicked"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTip.Tip="Start over with nothing loaded (Ctrl+N)" />
+                                <Button Content="Import Gerber folder…" Click="OnOpenFolderClicked"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTip.Tip="Read a folder of Gerber and drill files (Ctrl+I)" />
+                                <Button Content="Open project…" Click="OnOpenProjectClicked"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTip.Tip="Open a .millburn project (Ctrl+O)" />
+                            </StackPanel>
 
-                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
-                            <TextBlock Grid.Column="0" Text="Board" Width="86"
-                                       FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextSecondary}" />
-                            <Slider Grid.Column="1" Minimum="0.4" Maximum="3.2"
-                                    TickFrequency="0.1" IsSnapToTickEnabled="True"
-                                    Value="{Binding BoardThicknessMm, Mode=TwoWay}"
-                                    Margin="8,0" />
-                            <TextBlock Grid.Column="2"
-                                       Text="{Binding BoardThicknessMm, StringFormat='{}{0:F1} mm'}"
-                                       FontSize="11" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextPrimary}" />
-                        </Grid>
-
-                        <TextBlock Text="Drilling and the outline go through the board; isolation does not."
-                                   FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
-                                   Foreground="{DynamicResource TextSecondary}" />
-
-                        <Button Content="Edit tools…" Click="OnEditToolsClicked"
-                                HorizontalAlignment="Stretch" Margin="0,6,0,0" />
-
-                        <TextBlock Text="LAYERS"
-                                   FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextSecondary}"
-                                   Margin="0,14,0,0" />
                     </StackPanel>
 
-                    <ScrollViewer Grid.Row="1">
-                        <ItemsControl ItemsSource="{Binding Layers}" Margin="6,0,6,8">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LayerToggle">
-                                    <Border Padding="6,5" Margin="0,1" CornerRadius="4">
-                                        <Grid ColumnDefinitions="Auto,Auto,*">
-                                            <CheckBox Grid.Column="0"
-                                                      IsChecked="{Binding IsVisible, Mode=TwoWay}"
-                                                      VerticalAlignment="Center" />
-                                            <Border Grid.Column="1"
-                                                    Width="12" Height="12"
-                                                    CornerRadius="2"
-                                                    Margin="0,0,8,0"
-                                                    VerticalAlignment="Center"
-                                                    Background="{Binding Swatch}" />
-                                            <StackPanel Grid.Column="2">
-                                                <TextBlock Text="{Binding Label}"
-                                                           Foreground="{DynamicResource TextPrimary}" />
-                                                <TextBlock Text="{Binding Detail}"
-                                                           FontSize="11"
-                                                           TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource TextSecondary}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                            <!-- PROJECT INFO -->
+                            <Expander Grid.Row="1" Header="Project info" IsExpanded="True" IsVisible="{Binding HasBoard}">
+                                <StackPanel Spacing="6" Margin="0,4">
+                                    <ItemsControl ItemsSource="{Binding Facts}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="x:String">
+                                                <TextBlock Classes="fact" Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+                                        <TextBlock Grid.Column="0" Classes="caption" Width="80"
+                                                   VerticalAlignment="Center"
+                                                   Text="Board" />
+                                        <Slider Grid.Column="1" Minimum="0.4" Maximum="3.2"
+                                                TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                                Value="{Binding BoardThicknessMm, Mode=TwoWay}"
+                                                Margin="6,0"
+                                                ToolTip.Tip="Stock thickness. Drilling and the outline go through this; isolation does not." />
+                                        <TextBlock Grid.Column="2" Classes="fact"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding BoardThicknessMm, StringFormat='{}{0:F1} mm'}" />
+                                    </Grid>
+
+                                    <Button Content="Import folder…" Click="OnOpenFolderClicked"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Replace the board with a different Gerber folder (Ctrl+I)" />
+                                    <Button Content="Refresh from source" Click="OnRefreshClicked"
+                                            IsEnabled="{Binding CanRefresh}"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Look for changes in the folder this project was imported from. Nothing is applied until you have seen it." />
+                                </StackPanel>
+                            </Expander>
+
+                            <!-- LAYERS -->
+                            <!--
+                                Layers takes whatever height is left and scrolls inside itself, so
+                                Export stays pinned at the bottom of the panel. A nine-layer board
+                                otherwise pushes Export off-screen, and Export is the drawer people
+                                are reaching for.
+                            -->
+                            <Expander Grid.Row="2" Header="Layers" IsExpanded="True"
+                                      VerticalAlignment="Stretch"
+                                      IsVisible="{Binding HasBoard}">
+                                <ScrollViewer>
+                                <ItemsControl ItemsSource="{Binding Layers}" Margin="0,4,6,4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LayerRow">
+                                            <Border Padding="4,5" Margin="0,1" CornerRadius="4"
+                                                    BorderBrush="{DynamicResource BorderSubtle}"
+                                                    BorderThickness="0,0,0,1">
+                                                <StackPanel Spacing="3">
+
+                                                    <Grid ColumnDefinitions="Auto,Auto,*">
+                                                        <CheckBox Grid.Column="0"
+                                                                  IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                                  VerticalAlignment="Center"
+                                                                  ToolTip.Tip="Show this layer in the viewport. Has nothing to do with what gets exported." />
+                                                        <Button Grid.Column="1"
+                                                                Classes="swatch"
+                                                                Width="16" Height="16"
+                                                                Margin="0,0,8,0"
+                                                                VerticalAlignment="Center"
+                                                                IsEnabled="{Binding CanRecolour}"
+                                                                Click="OnSwatchClicked"
+                                                                ToolTip.Tip="Change this layer's colour">
+                                                            <Border Background="{Binding Swatch}"
+                                                                    CornerRadius="2" />
+                                                        </Button>
+                                                        <TextBlock Grid.Column="2"
+                                                                   Text="{Binding Label}"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource TextPrimary}" />
+                                                    </Grid>
+
+                                                    <ComboBox ItemsSource="{Binding Outputs}"
+                                                              SelectedItem="{Binding SelectedOutput, Mode=TwoWay}"
+                                                              IsVisible="{Binding CanExport}"
+                                                              HorizontalAlignment="Stretch"
+                                                              Margin="26,0,0,0"
+                                                              ToolTip.Tip="What this layer becomes. Each exported layer gets its own file." />
+
+                                                    <ComboBox ItemsSource="{Binding Tools}"
+                                                              SelectedItem="{Binding Tool, Mode=TwoWay}"
+                                                              IsVisible="{Binding IsGcode}"
+                                                              HorizontalAlignment="Stretch"
+                                                              Margin="26,0,0,0"
+                                                              ToolTip.Tip="Which tool cuts this layer">
+                                                        <ComboBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <TextBlock Text="{Binding Name}" />
+                                                            </DataTemplate>
+                                                        </ComboBox.ItemTemplate>
+                                                    </ComboBox>
+
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                          IsVisible="{Binding NeedsDepth}">
+                                                        <TextBlock Grid.Column="0" Classes="caption" Width="78"
+                                                                   VerticalAlignment="Center" Text="Depth (mm)" />
+                                                        <NumericUpDown Grid.Column="1"
+                                                                       Minimum="0.005" Maximum="1.0"
+                                                                       Increment="0.005"
+                                                                       FormatString="0.000"
+                                                                       Value="{Binding DepthMm, Mode=TwoWay}"
+                                                                       ToolTip.Tip="How deep the cut runs. For a V-bit this is the same choice as how wide it cuts." />
+                                                    </Grid>
+
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                          IsVisible="{Binding NeedsPasses}">
+                                                        <TextBlock Grid.Column="0" Classes="caption" Width="78"
+                                                                   VerticalAlignment="Center" Text="Passes" />
+                                                        <NumericUpDown Grid.Column="1"
+                                                                       Minimum="1" Maximum="8" Increment="1"
+                                                                       FormatString="0"
+                                                                       Value="{Binding Passes, Mode=TwoWay}"
+                                                                       ToolTip.Tip="How many offsets out from the copper. More passes clear more of the field." />
+                                                    </Grid>
+
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                          IsVisible="{Binding NeedsBreakThrough}">
+                                                        <TextBlock Grid.Column="0" Classes="caption" Width="78"
+                                                                   VerticalAlignment="Center" Text="Through (mm)" />
+                                                        <NumericUpDown Grid.Column="1"
+                                                                       Minimum="0.0" Maximum="2.0"
+                                                                       Increment="0.05"
+                                                                       FormatString="0.00"
+                                                                       Value="{Binding BreakThroughMm, Mode=TwoWay}"
+                                                                       ToolTip.Tip="How far past the underside to go. Stopping exactly at the nominal thickness leaves a skin that tears." />
+                                                    </Grid>
+
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                          IsVisible="{Binding NeedsTabs}">
+                                                        <TextBlock Grid.Column="0" Classes="caption" Width="78"
+                                                                   VerticalAlignment="Center" Text="Tabs" />
+                                                        <NumericUpDown Grid.Column="1"
+                                                                       Minimum="0" Maximum="12" Increment="1"
+                                                                       FormatString="0"
+                                                                       Value="{Binding TabCount, Mode=TwoWay}"
+                                                                       ToolTip.Tip="Uncut bridges holding the board in the stock. Zero cuts it fully free, and the last pass throws it." />
+                                                    </Grid>
+
+                                                    <TextBlock Classes="caption" TextWrapping="Wrap"
+                                                               Margin="26,0,0,0"
+                                                               Text="{Binding Detail}" />
+
+                                                    <TextBlock FontSize="11" Margin="26,0,0,0"
+                                                               FontFamily="Consolas,monospace"
+                                                               Foreground="{DynamicResource StatusInfo}"
+                                                               IsVisible="{Binding TargetName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                               Text="{Binding TargetName}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                </ScrollViewer>
+                            </Expander>
+
+                            <!-- EXPORT -->
+                            <Expander Grid.Row="3" Header="Export" IsExpanded="True" IsVisible="{Binding HasBoard}">
+                                <StackPanel Spacing="6" Margin="0,4">
+                                    <TextBlock Classes="caption" TextWrapping="Wrap"
+                                               Text="One file per layer. You choose the folder; the names come from the layers." />
+                                    <ComboBox ItemsSource="{Binding ExportFilters}"
+                                              SelectedItem="{Binding SelectedExportFilter, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"
+                                              ToolTip.Tip="Write everything, or only what one machine needs" />
+                                    <Button Content="Export…" Click="OnExportClicked"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Review every file before writing it (Ctrl+E)" />
+                                    <Button Content="Preview programs" Click="OnPreviewClicked"
+                                            HorizontalAlignment="Stretch"
+                                            ToolTip.Tip="Draw the emitted G-code back over the board (F5)" />
+                                </StackPanel>
+                            </Expander>
 
                     <!--
                         Refresh review. Nothing is applied until it has been seen: a CAM tool that
                         swaps geometry underneath you without saying what changed is how a board
                         gets scrapped.
                     -->
-                    <Border Grid.Row="2"
+                    <Border Grid.Row="4"
                             IsVisible="{Binding RefreshSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"
@@ -206,14 +365,15 @@
                             </ItemsControl>
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Apply" Click="OnApplyRefreshClicked"
-                                        IsVisible="{Binding RefreshItems.Count}" />
+                                        IsVisible="{Binding RefreshItems.Count}"
+                                        ToolTip.Tip="Take the ticked changes into this project" />
                                 <Button Content="Close" Click="OnCancelRefreshClicked" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
 
                     <!-- Anything worth checking before trusting what is on screen. -->
-                    <Border Grid.Row="3"
+                    <Border Grid.Row="5"
                             IsVisible="{Binding Warnings.Count}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"

@@ -224,7 +224,11 @@ public static class ExportPlanner
         var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions());
         var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(GcodeParser.Parse(text)));
 
-        summary.Add(Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
+        // Drilling has no lateral cutting distance, so reporting "0 mm cutting" for it reads as a
+        // failure rather than as the shape of the operation.
+        summary.Add(operation == OperationKind.Drilling
+            ? Invariant($"{measured.PlungeCount} plunges, {measured.TravelMm:F0} mm travel")
+            : Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
 
         if (measured.GougeCount > 0)
@@ -258,7 +262,8 @@ public static class ExportPlanner
 
         var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
         var depth = Nm.ToMillimetreString(setting.DepthNm, 3);
-        summary.Add(Invariant($"{width} mm wide at {depth} mm deep · {setting.Passes} pass(es)"));
+        var passLabel = setting.Passes == 1 ? "1 pass" : Invariant($"{setting.Passes} passes");
+        summary.Add(Invariant($"{width} mm wide at {depth} mm deep · {passLabel}"));
 
         var unreachable = IsolationOperation.UnreachableGaps(layer.Area, options);
         if (unreachable > 0)
@@ -291,8 +296,9 @@ public static class ExportPlanner
 
         var depth = Nm.ToMillimetreString(options.DepthNm, 2);
         var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
+        var sizes = layer.Drill.Tools.Count == 1 ? "1 size" : Invariant($"{layer.Drill.Tools.Count} sizes");
         summary.Add(Invariant(
-            $"{layer.Drill.Hits.Count} holes in {layer.Drill.Tools.Count} sizes · {depth} mm deep ({through} mm through the back)"));
+            $"{layer.Drill.Hits.Count} holes in {sizes} · {depth} mm deep ({through} mm through the back)"));
 
         var paths = DrillOperation.Build(layer.Drill, options, tool);
 

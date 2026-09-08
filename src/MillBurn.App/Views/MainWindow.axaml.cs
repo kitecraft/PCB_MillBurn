@@ -48,11 +48,53 @@ public partial class MainWindow : Window
 
         SetUpDragAndDrop();
         SetUpCloseGuard();
+        SetUpShortcuts();
 
         var args = Environment.GetCommandLineArgs();
         _fpsTest = args.Contains("--fpstest", StringComparer.OrdinalIgnoreCase);
 
         Opened += (_, _) => OnOpened(args);
+    }
+
+    /// <summary>
+    /// Makes the shortcuts printed beside the menu items real.
+    ///
+    /// <c>MenuItem.InputGesture</c> only draws the text: a menu can advertise Ctrl+S and do nothing
+    /// when it is pressed, which is worse than not offering it. The menu items carry Click handlers
+    /// rather than commands, so the keys are dispatched to the same handlers here.
+    ///
+    /// Bubbling, not tunnelling: a control that wants the key gets it first, so this can never
+    /// swallow a keystroke out from under a text box.
+    /// </summary>
+    private void SetUpShortcuts()
+    {
+        AddHandler(KeyDownEvent, (_, e) =>
+        {
+            var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+            Action? act = (e.Key, control, shift) switch
+            {
+                (Key.N, true, false) => () => OnNewClicked(this, new RoutedEventArgs()),
+                (Key.O, true, false) => () => OnOpenProjectClicked(this, new RoutedEventArgs()),
+                (Key.I, true, false) => () => OnOpenFolderClicked(this, new RoutedEventArgs()),
+                (Key.S, true, false) => () => OnSaveClicked(this, new RoutedEventArgs()),
+                (Key.S, true, true) => () => OnSaveAsClicked(this, new RoutedEventArgs()),
+                (Key.E, true, false) => () => OnExportClicked(this, new RoutedEventArgs()),
+                (Key.T, true, false) => () => OnEditToolsClicked(this, new RoutedEventArgs()),
+                (Key.D0, true, false) => () => OnFitClicked(this, new RoutedEventArgs()),
+                (Key.F5, false, false) => () => OnPreviewClicked(this, new RoutedEventArgs()),
+                _ => null,
+            };
+
+            if (act is null)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            act();
+        }, RoutingStrategies.Bubble);
     }
 
     /// <summary>
@@ -125,6 +167,17 @@ public partial class MainWindow : Window
             }
         }
 
+        // A screenshot only shows what fits, so a panel that runs past the bottom of a 800px window
+        // hides exactly the controls worth checking. Resizing is cheaper than scripting a scroll.
+        if (Argument(args, "--size") is { } size
+            && size.Split('x') is [var w, var h]
+            && int.TryParse(w, CultureInfo.InvariantCulture, out var width)
+            && int.TryParse(h, CultureInfo.InvariantCulture, out var height))
+        {
+            Width = width;
+            Height = height;
+        }
+
         // --theme lets a screenshot prove the dark variant actually flips, which is the only
         // way this class of bug gets caught: it produces a half-styled window, never an error.
         var theme = Argument(args, "--theme");
@@ -144,9 +197,37 @@ public partial class MainWindow : Window
             _captureInstead = editor;
         }
 
-        if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase))
+        if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase)
+            || args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
         {
-            vm.Mill();
+            vm.Preview();
+        }
+
+        // Opens the export confirmation for a screenshot, so the dialog that decides what actually
+        // gets written is checkable headlessly like everything else.
+        if (args.Contains("--export", StringComparer.OrdinalIgnoreCase) && vm.PlanExport() is { } plan)
+        {
+            var window = new ExportWindow(plan, Environment.CurrentDirectory)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            window.Show(this);
+            _captureInstead = window;
+        }
+
+        // Opens the colour picker for a screenshot: it lives in a separate package with its own
+        // theme resources, so "does it render at all" is a real question rather than a formality.
+        if (args.Contains("--colour", StringComparer.OrdinalIgnoreCase) && vm.Layers.Count > 0)
+        {
+            var row = vm.Layers.FirstOrDefault(l => l.CanRecolour) ?? vm.Layers[0];
+            var picker = new ColourWindow(row.Label, vm.ColourOf(row))
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            picker.Show(this);
+            _captureInstead = picker;
         }
 
         var shot = ShotPath(args);
@@ -406,40 +487,95 @@ public partial class MainWindow : Window
         vm.ReloadLibrary();
     }
 
-    private void OnMillClicked(object? sender, RoutedEventArgs e) =>
-        (DataContext as MainViewModel)?.Mill();
+    private void OnPreviewClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.Preview();
 
-    private async void OnSaveGcodeClicked(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// Plans the export, shows exactly what would be written, and writes only if that is confirmed.
+    ///
+    /// The confirmation is the point rather than a formality: which layer became which file, what
+    /// tool it assumes and how deep it goes are the facts that decide whether the right thing is
+    /// about to be cut, and they are invisible once the files are on disk.
+    /// </summary>
+    private async void OnExportClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)
         {
             return;
         }
 
-        if (vm.Gcode is null)
-        {
-            vm.Mill();
-        }
-
-        if (vm.Gcode is not { } text)
+        if (vm.PlanExport() is not { } plan)
         {
             return;
         }
 
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        if (plan.Count == 0)
         {
-            Title = "Save G-code",
-            SuggestedFileName = vm.Project.DisplayName,
-            DefaultExtension = "nc",
-            FileTypeChoices = [new FilePickerFileType("G-code") { Patterns = ["*.nc", "*.gcode", "*.tap"] }],
-        });
+            vm.StatusMessage = "Nothing to export: no layer is set to produce a file.";
+            return;
+        }
 
-        if (file?.TryGetLocalPath() is { } path)
+        var folder = vm.Settings.LastExportFolder is { } last && Directory.Exists(last)
+            ? last
+            : vm.Project.OriginFolder ?? Environment.CurrentDirectory;
+
+        if (await ExportWindow.AskAsync(this, plan, folder) is { } chosen)
         {
-            await File.WriteAllTextAsync(path, text);
-            vm.StatusMessage = $"Saved {Path.GetFileName(path)}.";
+            vm.WriteExport(plan, chosen);
         }
     }
+
+    /// <summary>
+    /// Changing a layer's colour. Global, and saved immediately: which colours read well is a fact
+    /// about the operator's monitor, not about this board.
+    /// </summary>
+    private async void OnSwatchClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm
+            || sender is not Control { DataContext: LayerRow row })
+        {
+            return;
+        }
+
+        var (colour, reset) = await ColourWindow.AskAsync(this, row.Label, vm.ColourOf(row));
+
+        if (reset)
+        {
+            vm.ResetColour(row);
+        }
+        else if (colour is { } picked)
+        {
+            vm.SetColour(row, picked);
+        }
+    }
+
+    private void OnResetColoursClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.ResetColours();
+
+    private void OnShowAllLayersClicked(object? sender, RoutedEventArgs e) => SetAllLayers(true);
+
+    private void OnHideAllLayersClicked(object? sender, RoutedEventArgs e) => SetAllLayers(false);
+
+    private void SetAllLayers(bool visible)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        foreach (var row in vm.Layers)
+        {
+            row.IsVisible = visible;
+        }
+    }
+
+    private void OnExitClicked(object? sender, RoutedEventArgs e) => Close();
+
+    private async void OnAboutClicked(object? sender, RoutedEventArgs e) =>
+        await ConfirmWindow.NoteAsync(
+            this,
+            "PCB_MillBurn",
+            "Gerber to G-code for the mill and SVG for the laser. MIT licensed.");
 
     private void OnApplyRefreshClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainViewModel)?.ApplyRefresh();

@@ -24,7 +24,8 @@ public static class BoardSceneBuilder
         IEnumerable<BoardLayerSource> layers,
         Bounds? extent = null,
         Func<LayerRole, BoardLayerStyle>? palette = null,
-        IReadOnlyList<BackplotLayer>? backplot = null)
+        IReadOnlyList<BackplotLayer>? backplot = null,
+        BoardLayerStyle? substrateStyle = null)
     {
         ArgumentNullException.ThrowIfNull(layers);
         palette ??= BoardPalette.For;
@@ -39,7 +40,7 @@ public static class BoardSceneBuilder
         var substrate = SubstrateFrom(ordered);
         if (substrate is not null)
         {
-            painted.Add((SubstrateId, "Substrate", BoardPalette.Substrate, substrate));
+            painted.Add((SubstrateId, "Substrate", substrateStyle ?? BoardPalette.Substrate, substrate));
         }
 
         painted.AddRange(ordered.Select(l => (l.Id, l.Label, palette(l.Role), l.Rings)));

@@ -240,6 +240,43 @@ board's corner while the board is still in source coordinates; `Job.OriginShift`
 translation so a viewer can undo it. And the run-joining compared an offset point against a raw
 one, so every move started its own run: 2,978 instead of 15, drawing correctly the whole time.
 
+**Output is per layer, one file each, and the panel is organised around that.** A job crosses tools
+and often machines, so a single program holding isolation, three drill sizes and the outline assumes
+one operator babysitting one long run. Split per layer, a broken bit costs the drilling rather than
+the board — and it is the only shape that works at all when the silkscreen goes to the laser while
+the outline goes to the mill. `LayerOutputSettings` carries what one layer becomes, `LayerOperations`
+says which pairings are meaningful (a laser cannot drill, so that choice is not offered), and
+`ExportPlanner` turns a board plus those settings into the set of files to write — **without writing
+any of them**. Planning and writing stay separate because the check is the point: which layer became
+which file, what tool it assumes, how deep it goes, and whether anything about the combination is
+wrong. Every SVG in one export shares a page, so the layers overlay when imported; cropping each to
+its own extents is the mistake that puts the second burn out by the difference between two crops.
+
+The left panel follows the same shape: **Project info**, **Layers**, **Export**, as collapsible
+drawers, with Export pinned to the bottom so a nine-layer board cannot push it off-screen. Each
+layer row carries its own output dropdown, its tool, and only the numbers its operation actually
+has — a depth for isolation, a break-through for anything that goes all the way through, tabs for
+the outline. **Visibility and export are deliberately separate**: you constantly want the soldermask
+on screen to check a pad against while cutting only the copper. The checkbox is the eye; the
+dropdown is the machine.
+
+Two settings moved out of the project and into `AppSettings`, at `%AppData%/PCB_MillBurn/settings.json`:
+**layer colours** and **board thickness**. Colours because which ones read well is a fact about the
+operator's eyes and monitor rather than about the board — "I can't see that layer" is a complete
+blocker, not a preference — so they must not travel inside a project or change when one is opened.
+Thickness because it is one physical fact about the material in the machine; what varies per layer
+is how far past the back to break, which belongs to the operation.
+
+Two things the pictures caught that no test would have. The Fluent button repaints its own
+background on hover, so a colour swatch bound to `Background` stopped showing the layer's colour at
+exactly the moment someone moved to click it — the colour now sits on an inner `Border`. And
+`Avalonia.Controls.ColorPicker` ships its theme in its own package: without the `StyleInclude` the
+control resolves no template and renders as an empty rectangle. A blank dialog, never an error.
+
+`MenuItem.InputGesture` is display-only, so the menu advertised Ctrl+S and did nothing when it was
+pressed. The keys are now dispatched for real, on the bubbling route so a control that wants a
+keystroke still gets it first.
+
 ### Phase 3 — The optimizer
 
 - GTSP model with entry-configuration sets, closed-loop free start.

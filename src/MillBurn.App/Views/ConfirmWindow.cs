@@ -25,7 +25,7 @@ public sealed class ConfirmWindow : Window
 {
     private ConfirmResult _result = ConfirmResult.Cancel;
 
-    private ConfirmWindow(string title, string message, string saveText, string discardText)
+    private ConfirmWindow(string title, string message, string saveText, string? discardText)
     {
         Title = title;
         SizeToContent = SizeToContent.WidthAndHeight;
@@ -37,10 +37,24 @@ public sealed class ConfirmWindow : Window
         var save = new Button { Content = saveText, IsDefault = true, MinWidth = 92 };
         save.Click += (_, _) => Finish(ConfirmResult.Save);
 
-        var discard = new Button { Content = discardText, MinWidth = 92 };
+        var discard = new Button
+        {
+            Content = discardText ?? string.Empty,
+            MinWidth = 92,
+
+            // A note has one answer. Leaving the other two buttons present but unlabelled would be
+            // worse than not having them.
+            IsVisible = discardText is not null,
+        };
         discard.Click += (_, _) => Finish(ConfirmResult.Discard);
 
-        var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 92 };
+        var cancel = new Button
+        {
+            Content = "Cancel",
+            IsCancel = true,
+            MinWidth = 92,
+            IsVisible = discardText is not null,
+        };
         cancel.Click += (_, _) => Finish(ConfirmResult.Cancel);
 
         Content = new StackPanel
@@ -78,7 +92,7 @@ public sealed class ConfirmWindow : Window
         string title,
         string message,
         string saveText = "Save",
-        string discardText = "Discard")
+        string? discardText = "Discard")
     {
         ArgumentNullException.ThrowIfNull(owner);
 
@@ -89,4 +103,8 @@ public sealed class ConfirmWindow : Window
         var result = await dialog.ShowDialog<ConfirmResult?>(owner);
         return result ?? dialog._result;
     }
+
+    /// <summary>Says something and waits for it to be acknowledged. One button, one answer.</summary>
+    public static Task NoteAsync(Window owner, string title, string message) =>
+        AskAsync(owner, title, message, "OK", null);
 }

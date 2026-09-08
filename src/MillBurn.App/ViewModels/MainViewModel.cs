@@ -1,18 +1,20 @@
 using System.Collections.ObjectModel;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MillBurn.Core;
-using MillBurn.Cam;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
+using SkiaSharp;
+using PipelineSummary = MillBurn.Pipeline.BoardSummary;
 
 namespace MillBurn.App.ViewModels;
 
 /// <summary>
-/// The shell's state: one open project, the board it realises to, and how the viewport is coping.
+/// The shell's state: one open project, its layers and what each of them becomes, and how the
+/// viewport is coping.
 /// </summary>
 public sealed partial class MainViewModel : ViewModelBase
 {
@@ -20,6 +22,10 @@ public sealed partial class MainViewModel : ViewModelBase
     public const int TargetSegments = 500_000;
 
     private MillBurnProject _project = MillBurnProject.Empty();
+    private Board? _board;
+    private IReadOnlyList<BackplotLayer> _backplot = [];
+    private RefreshPlan? _plan;
+    private bool _suspendOutputChanges;
 
     [ObservableProperty]
     public partial BoardScene? Scene { get; set; }
@@ -31,7 +37,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public partial string BoardSummary { get; set; } = "No board loaded";
 
     [ObservableProperty]
-    public partial string BoardTitle { get; set; } = "Drop a Gerber folder here";
+    public partial string BoardTitle { get; set; } = "No project";
 
     [ObservableProperty]
     public partial string WindowTitle { get; set; } = "PCB_MillBurn";
@@ -41,7 +47,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string StatusMessage { get; set; } =
-        "Drag an export folder onto the window, or use Open folder.";
+        "Start a project on the left, or drag a Gerber folder onto the window.";
 
     [ObservableProperty]
     public partial bool HasBoard { get; set; }
@@ -50,51 +56,51 @@ public sealed partial class MainViewModel : ViewModelBase
     public partial bool CanRefresh { get; set; }
 
     [ObservableProperty]
-    public partial bool CanMill { get; set; }
-
-    [ObservableProperty]
     public partial string GcodeSummary { get; set; } = string.Empty;
-
-    /// <summary>The emitted program, so it can be saved without regenerating it.</summary>
-    public string? Gcode { get; private set; }
 
     [ObservableProperty]
     public partial string RefreshSummary { get; set; } = string.Empty;
 
-    public ObservableCollection<LayerToggle> Layers { get; } = [];
+    /// <summary>
+    /// The stock's thickness, which is what sets the depth for drilling and for cutting out.
+    ///
+    /// Global rather than per layer because it is one physical fact about the material: every
+    /// operation that goes through goes through the same board. What varies per layer is how far
+    /// past the back to break, which is a property of the operation.
+    /// </summary>
+    [ObservableProperty]
+    public partial double BoardThicknessMm { get; set; } = 1.6;
+
+    /// <summary>What Export will write: everything, or only one kind.</summary>
+    [ObservableProperty]
+    public partial string SelectedExportFilter { get; set; } = "Both";
+
+    public IReadOnlyList<string> ExportFilters { get; } = ["Both", "SVG only", "G-code only"];
+
+    public ObservableCollection<LayerRow> Layers { get; } = [];
 
     public ObservableCollection<string> Warnings { get; } = [];
 
     public ObservableCollection<RefreshItem> RefreshItems { get; } = [];
 
-    public ObservableCollection<ToolChoice> ToolChoices { get; } = [];
+    /// <summary>A handful of facts that confirm the right board loaded.</summary>
+    public ObservableCollection<string> Facts { get; } = [];
 
     /// <summary>The saved library, reloaded when the tool editor changes it.</summary>
     public ToolLibrary Library { get; private set; } = ToolLibrary.LoadOrDefault();
 
-    /// <summary>
-    /// How deep the isolation cut runs — which, for a V-bit, is the same thing as choosing the cut
-    /// width. It has nothing to do with the board's thickness.
-    /// </summary>
-    [ObservableProperty]
-    public partial double IsolationDepthMm { get; set; } = 0.05;
-
-    /// <summary>
-    /// The stock's thickness, which is what actually sets the depth for drilling and for cutting
-    /// out.
-    ///
-    /// A separate setting from the isolation depth because they are separate physical facts:
-    /// isolation is a scratch tens of microns into the copper, while drilling and the outline have
-    /// to go all the way through whatever the board happens to be. Sharing one "depth" between them
-    /// would be a number that means two different things.
-    /// </summary>
-    [ObservableProperty]
-    public partial double BoardThicknessMm { get; set; } = 1.6;
-
-    /// <summary>Raised when a layer is toggled, so the view can repaint without a scene swap.</summary>
-    public event EventHandler? RedrawRequested;
+    /// <summary>Preferences that belong to the person, not to the board.</summary>
+    public AppSettings Settings { get; private set; } = AppSettings.LoadOrDefault();
 
     public MillBurnProject Project => _project;
+
+    public Board? Board => _board;
+
+    /// <summary>The most recent preview, so it can be saved without regenerating it.</summary>
+    public string? Gcode { get; private set; }
+
+    /// <summary>Raised when a layer is toggled, so the view repaints without a scene swap.</summary>
+    public event EventHandler? RedrawRequested;
 
     /// <summary>Where a refresh would read from, or null when there is nowhere to read.</summary>
     public string? RefreshSource =>
@@ -102,106 +108,9 @@ public sealed partial class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
+        BoardThicknessMm = Settings.BoardThicknessMm;
         AttachProject(_project);
-        BuildToolChoices();
     }
-
-    // ------------------------------------------------------------------ tools
-
-    /// <summary>
-    /// Rebuilds the per-operation tool pickers from the library.
-    ///
-    /// Per operation because traces and edge cuts want genuinely different tools, not because
-    /// someone might prefer it: a V-bit's width follows its depth, which is what makes a 0.13 mm
-    /// isolation cut possible at all, and the same bit taken to 1.9 mm for the outline would be
-    /// millimetres wide at the surface.
-    /// </summary>
-    public void BuildToolChoices()
-    {
-        var previous = ToolChoices.ToDictionary(c => c.Label, c => c.Selected.Id, StringComparer.Ordinal);
-        ToolChoices.Clear();
-
-        // What was chosen last, then the built-in default if the library still has it, then
-        // anything of the right kind. "First of the right kind" alone picks whatever happens to
-        // sort first, which is how the outline ends up defaulting to the most fragile end mill in
-        // the drawer.
-        Tool Pick(string label, ToolKind kind, Tool fallback) =>
-            (previous.TryGetValue(label, out var id) ? Library.Tools.FirstOrDefault(t => t.Id == id) : null)
-            ?? Library.Tools.FirstOrDefault(t => t.Id == fallback.Id)
-            ?? Library.OfKind(kind).FirstOrDefault()
-            ?? fallback;
-
-        var isolation = new ToolChoice(
-            "Isolation",
-            Library.OfKind(ToolKind.VBit).Concat(Library.OfKind(ToolKind.EndMill)),
-            Pick("Isolation", ToolKind.VBit, Tool.DefaultVBit),
-            t => ToolChoice.DescribeIsolation(t, Nm.FromMillimetres(IsolationDepthMm)));
-
-        var outline = new ToolChoice(
-            "Outline",
-            Library.OfKind(ToolKind.EndMill),
-            Pick("Outline", ToolKind.EndMill, Tool.DefaultOutlineMill),
-            ToolChoice.DescribeOutline);
-
-        var drill = new ToolChoice(
-            "Drilling",
-            Library.OfKind(ToolKind.Drill),
-            Pick("Drilling", ToolKind.Drill, Tool.DefaultDrill),
-            ToolChoice.DescribeDrill);
-
-        foreach (var choice in new[] { isolation, outline, drill })
-        {
-            choice.Changed += (_, _) => OnToolChanged();
-            ToolChoices.Add(choice);
-        }
-    }
-
-    public void ReloadLibrary()
-    {
-        Library = ToolLibrary.LoadOrDefault();
-        BuildToolChoices();
-    }
-
-    private void OnToolChanged()
-    {
-        // Choosing a tool is a document change: it changes what gets cut.
-        _project.Touch();
-
-        // Any program on screen was made with the old tool, so it is no longer a picture of this
-        // job. Leaving it there would be the most convincing kind of wrong.
-        if (_backplot.Count > 0)
-        {
-            _backplot = [];
-            Gcode = null;
-            GcodeSummary = string.Empty;
-            Rebuild(TimeSpan.Zero);
-            StatusMessage = "Tool changed. Mill again to see the new program.";
-        }
-    }
-
-    partial void OnIsolationDepthMmChanged(double value)
-    {
-        _ = value;
-        foreach (var choice in ToolChoices)
-        {
-            choice.Refresh();
-        }
-
-        OnToolChanged();
-    }
-
-    partial void OnBoardThicknessMmChanged(double value)
-    {
-        _ = value;
-        OnToolChanged();
-    }
-
-    private ToolSelection CurrentTools() => new()
-    {
-        Isolation = ToolChoices.FirstOrDefault(c => c.Label == "Isolation")?.Selected ?? Tool.DefaultVBit,
-        Outline = ToolChoices.FirstOrDefault(c => c.Label == "Outline")?.Selected ?? Tool.DefaultOutlineMill,
-        Drill = ToolChoices.FirstOrDefault(c => c.Label == "Drilling")?.Selected ?? Tool.DefaultDrill,
-    };
 
     // ------------------------------------------------------------------ loading
 
@@ -236,6 +145,7 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             var sw = Stopwatch.StartNew();
             Adopt(ProjectFile.Open(path), sw.Elapsed);
+            SaveSettings(Settings.WithRecent(path));
 
             // Opening is exactly when someone wants to know their board moved on without them.
             // Passive: it offers, it never applies.
@@ -257,6 +167,7 @@ public sealed partial class MainViewModel : ViewModelBase
             // rather than letting it mark the document dirty as it changes.
             _project.ViewState = CaptureViewState();
             ProjectFile.Save(_project, path);
+            SaveSettings(Settings.WithRecent(path));
             RefreshTitles();
             StatusMessage = $"Saved {Path.GetFileName(path)}.";
             return true;
@@ -271,9 +182,121 @@ public sealed partial class MainViewModel : ViewModelBase
     public void NewProject()
     {
         Adopt(MillBurnProject.Empty(), TimeSpan.Zero);
-        BoardTitle = "Drop a Gerber folder here";
+        BoardTitle = "No project";
         BoardSummary = "No board loaded";
-        StatusMessage = "New project. Drag an export folder onto the window.";
+        StatusMessage = "New project. Import a Gerber folder to begin.";
+    }
+
+    // ------------------------------------------------------------------ export
+
+    public OutputKind? CurrentFilter => SelectedExportFilter switch
+    {
+        "SVG only" => OutputKind.Svg,
+        "G-code only" => OutputKind.Gcode,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Works out every file this export would write, without writing any of them.
+    ///
+    /// Planning and writing stay separate because the check is the point: which layer became which
+    /// file, what tool it assumes, and whether anything about the combination is wrong.
+    /// </summary>
+    public ExportPlan? PlanExport(OutputKind? filter = null)
+    {
+        if (_board is null)
+        {
+            return null;
+        }
+
+        var settings = Layers
+            .Where(r => r.Layer is not null)
+            .ToDictionary(r => r.FileName, r => r.ToSettings(), StringComparer.Ordinal);
+
+        return ExportPlanner.Plan(
+            _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter);
+    }
+
+    public bool WriteExport(ExportPlan plan, string folder)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(folder);
+
+        try
+        {
+            Directory.CreateDirectory(folder);
+            foreach (var item in plan.Items)
+            {
+                File.WriteAllText(Path.Combine(folder, item.TargetName), item.Content);
+            }
+
+            SaveSettings(Settings with { LastExportFolder = folder });
+            StatusMessage = $"Wrote {plan.Count} file(s) to {folder}.";
+            return true;
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not write to '{folder}': {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Builds every G-code layer and draws the result back over the board.
+    ///
+    /// The drawing comes from **parsing the emitted programs**, not from the toolpaths that produced
+    /// them. Those two agree right up until the emitter has a bug, and only one of them is what the
+    /// machine will run (Documentation/05, section 2.1).
+    /// </summary>
+    public void Preview()
+    {
+        if (PlanExport(OutputKind.Gcode) is not { } plan || _board is null)
+        {
+            return;
+        }
+
+        if (plan.Count == 0)
+        {
+            StatusMessage = "No layer is set to produce G-code.";
+            return;
+        }
+
+        var shift = new Point2(_board.Bounds.MinX, _board.Bounds.MinY);
+        var moves = new List<BackplotMove>();
+        var cut = 0.0;
+        var travel = 0.0;
+        var plunges = 0;
+        var gouges = 0;
+
+        foreach (var item in plan.Items)
+        {
+            var classified = GcodeBackplot.Classify(GcodeParser.Parse(item.Content));
+            var measured = GcodeBackplot.Measure(classified);
+
+            moves.AddRange(classified);
+            cut += measured.CutMm;
+            travel += measured.TravelMm;
+            plunges += measured.PlungeCount;
+            gouges += measured.GougeCount;
+        }
+
+        Gcode = string.Join("\n", plan.Items.Select(i => i.Content));
+        _backplot = BackplotBuilder.Build(moves, shift);
+
+        GcodeSummary = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{plan.Count} programs · {cut:F0} mm cut · {travel:F0} mm travel · {plunges} plunges");
+
+        Rebuild(TimeSpan.Zero);
+
+        foreach (var warning in plan.Items.SelectMany(i => i.Warnings).Distinct(StringComparer.Ordinal))
+        {
+            Warnings.Add(warning);
+        }
+
+        StatusMessage = gouges > 0
+            ? $"{gouges} rapid move(s) at cutting depth — do not run this."
+            : $"Previewing {plan.Count} program(s).";
     }
 
     // ------------------------------------------------------------------ refresh
@@ -337,8 +360,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Looks for source changes without saying anything when there are none.
     ///
     /// Detection is passive on purpose. Auto-applying would swap the geometry under someone who
-    /// opened a project to look at last week's job, and announcing "no changes" every single time
-    /// is noise that teaches people to ignore the one time it matters.
+    /// opened a project to look at last week's job, and announcing "no changes" every single time is
+    /// noise that teaches people to ignore the one time it matters.
     /// </summary>
     public void CheckSourceQuietly()
     {
@@ -367,77 +390,92 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshSummary = string.Empty;
     }
 
-    private RefreshPlan? _plan;
-
-    private IReadOnlyList<BackplotLayer> _backplot = [];
-
-    // ------------------------------------------------------------------ milling
+    // ------------------------------------------------------------------ colours
 
     /// <summary>
-    /// Builds the job, emits the program, and draws it back over the board.
+    /// Overrides a layer's colour, everywhere and for good.
     ///
-    /// The drawing comes from **parsing the emitted file**, not from the toolpaths that produced
-    /// it. Those two agree right up until the emitter has a bug, and only one of them is what the
-    /// machine will run (Documentation/05, section 2.1).
+    /// A global setting rather than a per-project one: which colours read well is a fact about the
+    /// operator's eyes and monitor, not about the board, so it must not travel with a project or
+    /// change when one is opened.
     /// </summary>
-    public void Mill()
+    public void SetColour(LayerRow row, Color colour)
     {
-        if (_project.Sources.Length == 0)
+        ArgumentNullException.ThrowIfNull(row);
+
+        var hex = $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}";
+
+        SaveSettings(row.Role is { } role
+            ? Settings.WithColour(role, hex)
+            : Settings.WithSubstrateColour(hex));
+
+        Rebuild(TimeSpan.Zero);
+    }
+
+    /// <summary>Puts one layer back to the built-in palette.</summary>
+    public void ResetColour(LayerRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        SaveSettings(row.Role is { } role
+            ? Settings.WithoutColour(role)
+            : Settings with { SubstrateColour = null });
+
+        Rebuild(TimeSpan.Zero);
+    }
+
+    /// <summary>Puts every layer back to the built-in palette.</summary>
+    public void ResetColours()
+    {
+        SaveSettings(Settings with
         {
-            return;
-        }
+            LayerColours = System.Collections.Immutable.ImmutableDictionary<LayerRole, string>.Empty,
+            SubstrateColour = null,
+        });
+
+        Rebuild(TimeSpan.Zero);
+        StatusMessage = "Layer colours reset.";
+    }
+
+    public Color ColourOf(LayerRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var fill = row.Role is { } role ? Palette(role).Fill : SubstrateStyle().Fill;
+        return Color.FromArgb(0xFF, fill.Red, fill.Green, fill.Blue);
+    }
+
+    private BoardLayerStyle Palette(LayerRole role)
+    {
+        var style = BoardPalette.For(role);
+
+        return Settings.LayerColours.TryGetValue(role, out var hex) && SKColor.TryParse(hex, out var colour)
+            ? style with { Fill = colour }
+            : style;
+    }
+
+    private BoardLayerStyle SubstrateStyle() =>
+        Settings.SubstrateColour is { } hex && SKColor.TryParse(hex, out var colour)
+            ? BoardPalette.Substrate with { Fill = colour }
+            : BoardPalette.Substrate;
+
+    public void ReloadLibrary()
+    {
+        Library = ToolLibrary.LoadOrDefault();
+        Rebuild(TimeSpan.Zero);
+    }
+
+    private void SaveSettings(AppSettings settings)
+    {
+        Settings = settings;
 
         try
         {
-            var board = ProjectFile.ToBoard(_project);
-            var tools = CurrentTools();
-            var thickness = Nm.FromMillimetres(BoardThicknessMm);
-
-            var job = JobBuilder.Build(board, new MillOptions
-            {
-                Tools = tools,
-                Isolation = new IsolationOptions { DepthNm = Nm.FromMillimetres(IsolationDepthMm) },
-                Drill = new DrillOptions { BoardThicknessNm = thickness },
-                Outline = new OutlineOptions { BoardThicknessNm = thickness },
-            });
-
-            // The project keeps a copy of what it was cut with, not a pointer into the library.
-            _project.Settings = _project.Settings with
-            {
-                Tools = [.. tools.All],
-                IsolationToolId = tools.Isolation.Id,
-                OutlineToolId = tools.Outline.Id,
-                DrillToolId = tools.Drill.Id,
-            };
-            var (text, _) = GcodeEmitter.Emit(job, new GcodeOptions());
-
-            var program = GcodeParser.Parse(text);
-            var classified = GcodeBackplot.Classify(program);
-            var measured = GcodeBackplot.Measure(classified);
-
-            Gcode = text;
-            _backplot = BackplotBuilder.Build(
-                classified, new Point2(-job.OriginShift.X, -job.OriginShift.Y));
-
-            GcodeSummary = string.Create(
-                CultureInfo.InvariantCulture,
-                $"{measured.CutMm:F0} mm cut · {measured.TravelMm:F0} mm travel · " +
-                $"{measured.PlungeCount} plunges · {measured.TimeRange()}");
-
-            Rebuild(TimeSpan.Zero);
-
-            foreach (var note in job.Notes.Where(n => !n.Contains("lower-left", StringComparison.Ordinal)))
-            {
-                Warnings.Add(note);
-            }
-
-            StatusMessage = measured.GougeCount > 0
-                ? $"{measured.GougeCount} rapid move(s) at cutting depth — do not run this."
-                : $"Milled {BoardTitle}. {measured.LongTravelCount} rapids over 10 mm.";
+            settings.Save();
         }
         catch (Exception ex) when (IsExpected(ex))
         {
-            StatusMessage = $"Could not generate G-code: {ex.Message}";
+            StatusMessage = $"Could not save settings: {ex.Message}";
         }
     }
 
@@ -469,79 +507,130 @@ public sealed partial class MainViewModel : ViewModelBase
             previous?.Dispose();
             Layers.Clear();
             Warnings.Clear();
+            Facts.Clear();
+            _board = null;
+            _backplot = [];
+            Gcode = null;
+            GcodeSummary = string.Empty;
             HasBoard = false;
             CanRefresh = false;
-            CanMill = false;
-            GcodeSummary = string.Empty;
-            Gcode = null;
-            _backplot = [];
             RefreshTitles();
             return;
         }
 
+        var hidden = Layers.Where(r => !r.IsVisible).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+
         var board = ProjectFile.ToBoard(_project);
+        _board = board;
 
         var scene = BoardSceneBuilder.Build(
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
             board.Bounds,
-            backplot: _backplot.Count > 0 ? _backplot : null);
+            Palette,
+            _backplot.Count > 0 ? _backplot : null,
+            SubstrateStyle());
 
-        ApplyViewState(scene);
-
-        // Look the file up rather than demanding one: the scene also carries a synthetic substrate
-        // layer that belongs to no file.
-        var byName = board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
-        var backplotRuns = _backplot.ToDictionary(b => b.Id, b => b.Runs.Count, StringComparer.Ordinal);
-
-        Layers.Clear();
-        foreach (var layer in scene.Layers)
-        {
-            string detail;
-            if (byName.TryGetValue(layer.Id, out var source))
-            {
-                detail = DetailFor(source);
-            }
-            else if (backplotRuns.TryGetValue(layer.Id, out var runs))
-            {
-                detail = string.Create(CultureInfo.InvariantCulture, $"From the emitted G-code · {runs:N0} runs");
-            }
-            else
-            {
-                detail = "The board material, drawn under everything";
-            }
-
-            Layers.Add(new LayerToggle(layer, detail, OnLayerToggled));
-        }
+        ApplyViewState(scene, hidden);
+        BuildRows(board, scene);
 
         Scene = scene;
         HasBoard = true;
         CanRefresh = RefreshSource is not null;
-        CanMill = true;
 
         // Swapping the scene first and disposing after means the old SKPaths are never released
         // while a frame in flight is still drawing them.
         previous?.Dispose();
 
         BoardTitle = _project.DisplayName;
-        var size = $"{Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm";
         var timing = elapsed > TimeSpan.Zero
             ? string.Create(CultureInfo.InvariantCulture, $" · loaded in {elapsed.TotalMilliseconds:F0} ms")
             : string.Empty;
 
         BoardSummary = string.Create(
             CultureInfo.InvariantCulture,
-            $"{board.Layers.Count} layers · {board.TotalObjects:N0} objects · {scene.TotalVertices:N0} vertices · {size}{timing}");
+            $"{board.Layers.Count} layers · {board.TotalObjects:N0} objects · {scene.TotalVertices:N0} vertices{timing}");
 
+        RefreshFacts(board);
         RefreshWarnings(board);
         RefreshTitles();
 
-        if (Warnings.Count > 0)
+        if (elapsed > TimeSpan.Zero)
         {
-            StatusMessage = $"Loaded {BoardTitle} with {Warnings.Count} thing(s) worth checking.";
+            StatusMessage = Warnings.Count == 0
+                ? $"Loaded {BoardTitle}."
+                : $"Loaded {BoardTitle} with {Warnings.Count} thing(s) worth checking.";
         }
-        else if (StatusMessage.Length == 0 || !StatusMessage.StartsWith("Refreshed", StringComparison.Ordinal))
+    }
+
+    /// <summary>
+    /// Rebuilds the layer rows from the scene, so the panel lists exactly what is drawn — including
+    /// the substrate and any backplot, which have no file behind them.
+    /// </summary>
+    private void BuildRows(Board board, BoardScene scene)
+    {
+        var byName = board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
+        var backplotRuns = _backplot.ToDictionary(b => b.Id, b => b.Runs.Count, StringComparer.Ordinal);
+
+        var chosen = Layers
+            .Where(r => r.Layer is not null)
+            .ToDictionary(r => r.FileName, r => r.ToSettings(), StringComparer.Ordinal);
+
+        _suspendOutputChanges = true;
+        Layers.Clear();
+
+        foreach (var layer in scene.Layers)
         {
-            StatusMessage = $"Loaded {BoardTitle}.";
+            if (byName.TryGetValue(layer.Id, out var source))
+            {
+                var settings = chosen.TryGetValue(layer.Id, out var existing)
+                    ? existing
+                    : new LayerOutputSettings
+                    {
+                        FileName = layer.Id,
+                        Output = LayerOperations.DefaultFor(source.Role),
+                    };
+
+                Layers.Add(new LayerRow(
+                    source, layer, settings, Library.Tools, OnLayerVisibilityChanged, OnOutputChanged));
+            }
+            else if (backplotRuns.TryGetValue(layer.Id, out var runs))
+            {
+                var detail = string.Create(
+                    CultureInfo.InvariantCulture, $"From the emitted G-code · {runs:N0} runs");
+                Layers.Add(new LayerRow(layer, detail, OnLayerVisibilityChanged));
+            }
+            else
+            {
+                Layers.Add(new LayerRow(
+                    layer, "The board material, drawn under everything", OnLayerVisibilityChanged));
+            }
+        }
+
+        _suspendOutputChanges = false;
+    }
+
+    private void RefreshFacts(Board board)
+    {
+        var facts = PipelineSummary.Facts(board);
+
+        Facts.Clear();
+        Facts.Add(string.Create(
+            CultureInfo.InvariantCulture, $"{facts.WidthMm:F2} × {facts.HeightMm:F2} mm"));
+        Facts.Add(string.Create(
+            CultureInfo.InvariantCulture, $"{facts.Layers} layers · {board.TotalObjects:N0} objects"));
+
+        if (facts.Holes > 0)
+        {
+            Facts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{facts.Holes} holes in {facts.HoleSizes} sizes, {facts.SmallestHoleMm:F2}–{facts.LargestHoleMm:F2} mm"));
+        }
+
+        if (facts.CopperIslands > 0)
+        {
+            Facts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{facts.CopperIslands} copper islands · {facts.CopperCoverage:P0} coverage"));
         }
     }
 
@@ -550,10 +639,48 @@ public sealed partial class MainViewModel : ViewModelBase
     /// marking the document dirty. Prompting to save because someone looked under a layer teaches
     /// people to dismiss the prompt.
     /// </summary>
-    private void OnLayerToggled()
+    private void OnLayerVisibilityChanged()
     {
         _project.ViewState = CaptureViewState();
         RedrawRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Changing what a layer produces is a document change, and it invalidates any preview: a
+    /// program made with the old settings is no longer a picture of this job, and leaving it on
+    /// screen would be the most convincing kind of wrong.
+    /// </summary>
+    private void OnOutputChanged()
+    {
+        if (_suspendOutputChanges)
+        {
+            return;
+        }
+
+        _project.Touch();
+
+        if (_backplot.Count == 0)
+        {
+            return;
+        }
+
+        _backplot = [];
+        Gcode = null;
+        GcodeSummary = string.Empty;
+        Rebuild(TimeSpan.Zero);
+        StatusMessage = "Output changed. Preview again to see the new programs.";
+    }
+
+    partial void OnBoardThicknessMmChanged(double value)
+    {
+        SaveSettings(Settings with { BoardThicknessMm = value });
+        OnOutputChanged();
+    }
+
+    partial void OnSelectedExportFilterChanged(string value)
+    {
+        _ = value;
+        OnPropertyChanged(nameof(CurrentFilter));
     }
 
     private ProjectViewState CaptureViewState() => new()
@@ -561,14 +688,19 @@ public sealed partial class MainViewModel : ViewModelBase
         HiddenLayers = [.. Layers.Where(l => !l.IsVisible).Select(l => l.Id)],
     };
 
-    private void ApplyViewState(BoardScene scene)
+    private void ApplyViewState(BoardScene scene, HashSet<string> alreadyHidden)
     {
-        if (_project.ViewState.HiddenLayers.IsDefaultOrEmpty)
+        var hidden = alreadyHidden.Count > 0
+            ? alreadyHidden
+            : _project.ViewState.HiddenLayers.IsDefaultOrEmpty
+                ? null
+                : _project.ViewState.HiddenLayers.ToHashSet(StringComparer.Ordinal);
+
+        if (hidden is null)
         {
             return;
         }
 
-        var hidden = _project.ViewState.HiddenLayers.ToHashSet(StringComparer.Ordinal);
         foreach (var layer in scene.Layers)
         {
             layer.Visible = !hidden.Contains(layer.Id);
@@ -629,15 +761,6 @@ public sealed partial class MainViewModel : ViewModelBase
                 $"{group.Count()} files claim to be {LayerRoleInfo.Label(group.Key)}: " +
                 string.Join(", ", group.Select(l => l.FileName)));
         }
-    }
-
-    private static string DetailFor(BoardLayer layer)
-    {
-        var detail = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{layer.FileName} · {layer.ObjectCount:N0} objects · {layer.AreaMm2:F2} mm²");
-
-        return layer.DeclaredNegative ? detail + " · negative" : detail;
     }
 
     private static bool IsExpected(Exception ex) =>

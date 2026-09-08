@@ -19,5 +19,11 @@
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+        <!--
+            The colour picker ships in its own package and brings its own theme. Without this the
+            control resolves no template and renders as an empty rectangle — a blank dialog, never
+            an error.
+        -->
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
     </Application.Styles>
 </Application>
