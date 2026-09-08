@@ -82,8 +82,8 @@ framework. That is deliberate — see [07 §4](Documentation/07-UI-Framework-Dec
 | `Universal-G-Code-Sender/` | UGS, whose visualizer informed ours | **GPL-3.0.** Same rule. |
 | `MyGerbers/`, `MyGerbers2/` | Real KiCad 10 exports | Optional test fixtures. Tests using them skip when absent; set `MILLBURN_BOARDS` to point elsewhere. |
 
-None of these is committed, linked, or shipped. Committed fixtures are hand-written from the
-Ucamco specification and run everywhere.
+None of these is committed, linked, or shipped. The fixtures that ship are hand-written from the
+Ucamco specification, live inline in the test files, and run everywhere.
 
 ## Licence
 

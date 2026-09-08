@@ -10,8 +10,8 @@ namespace MillBurn.Tests;
 /// the corpus skip cleanly when it is absent, so CI and a fresh clone both stay green while a
 /// local checkout gets much broader coverage.
 ///
-/// Fixtures we own live in <c>tests/MillBurn.Tests/Fixtures</c> and are hand-written from the
-/// Ucamco specification.
+/// The fixtures we own are hand-written from the Ucamco specification and kept inline in the test
+/// files, so a case is readable next to the assertion that explains why it matters.
 /// </summary>
 public static class GerberCorpus
 {
