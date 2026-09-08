@@ -415,9 +415,11 @@ public sealed partial class MainViewModel : ViewModelBase
 
         var hex = $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}";
 
+        // A board layer is identified by its role, so the choice follows that role across every
+        // project. A layer the scene invented has no role, so it is identified by its own id.
         SaveSettings(row.Role is { } role
             ? Settings.WithColour(role, hex)
-            : Settings.WithSubstrateColour(hex));
+            : Settings.WithSceneColour(row.Id, hex));
 
         Rebuild(TimeSpan.Zero);
     }
@@ -429,7 +431,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         SaveSettings(row.Role is { } role
             ? Settings.WithoutColour(role)
-            : Settings with { SubstrateColour = null });
+            : Settings.WithoutSceneColour(row.Id));
 
         Rebuild(TimeSpan.Zero);
     }
@@ -440,7 +442,7 @@ public sealed partial class MainViewModel : ViewModelBase
         SaveSettings(Settings with
         {
             LayerColours = System.Collections.Immutable.ImmutableDictionary<LayerRole, string>.Empty,
-            SubstrateColour = null,
+            SceneColours = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
         });
 
         Rebuild(TimeSpan.Zero);
@@ -451,8 +453,15 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         ArgumentNullException.ThrowIfNull(row);
 
-        var fill = row.Role is { } role ? Palette(role).Fill : SubstrateStyle().Fill;
-        return Color.FromArgb(0xFF, fill.Red, fill.Green, fill.Blue);
+        if (row.Role is { } role)
+        {
+            var fill = Palette(role).Fill;
+            return Color.FromArgb(0xFF, fill.Red, fill.Green, fill.Blue);
+        }
+
+        // A scene layer's swatch already carries whatever it is currently drawn in, override
+        // included, which is exactly what the picker should open on.
+        return row.Swatch is SolidColorBrush brush ? brush.Color : Colors.Gray;
     }
 
     private BoardLayerStyle Palette(LayerRole role)
@@ -464,10 +473,23 @@ public sealed partial class MainViewModel : ViewModelBase
             : style;
     }
 
-    private BoardLayerStyle SubstrateStyle() =>
-        Settings.SubstrateColour is { } hex && SKColor.TryParse(hex, out var colour)
-            ? BoardPalette.Substrate with { Fill = colour }
-            : BoardPalette.Substrate;
+    /// <summary>A scene layer's style, with the operator's override applied if there is one.</summary>
+    private BoardLayerStyle SceneStyle(string id, BoardLayerStyle fallback) =>
+        Settings.SceneColours.TryGetValue(id, out var hex) && SKColor.TryParse(hex, out var colour)
+            ? fallback with { Fill = colour }
+            : fallback;
+
+    /// <summary>
+    /// Applies overrides to a backplot before it reaches the scene.
+    ///
+    /// These layers are the ones most likely to need it: the palette picks hues the board does not
+    /// use, but "does not use" depends on which layers are showing and on the monitor in front of
+    /// the operator.
+    /// </summary>
+    private IReadOnlyList<BackplotLayer> Recoloured(IReadOnlyList<BackplotLayer> layers) =>
+        Settings.SceneColours.IsEmpty
+            ? layers
+            : [.. layers.Select(l => l with { Style = SceneStyle(l.Id, l.Style) })];
 
     public void ReloadLibrary()
     {
@@ -537,8 +559,8 @@ public sealed partial class MainViewModel : ViewModelBase
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
             board.Bounds,
             Palette,
-            _backplot.Count > 0 ? _backplot : null,
-            SubstrateStyle());
+            _backplot.Count > 0 ? Recoloured(_backplot) : null,
+            SceneStyle(BoardSceneBuilder.SubstrateId, BoardPalette.Substrate));
 
         ApplyViewState(scene, hidden);
         BuildRows(board, scene);

@@ -445,7 +445,17 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
   Click the colour swatch next to any layer and pick something you can actually see. Colours are
   saved <strong>globally</strong>, not in the project: which colours read well is a fact about your
   eyes and your monitor, not about the board, so they follow you between projects rather than
-  travelling inside one. <em>Edit &rarr; Reset layer colours</em> puts everything back.
+  travelling inside one. <em>Edit &rarr; Reset layer colours</em> puts everything back, and
+  <em>Use default</em> in the picker resets just the one.
+</p>
+
+<p>
+  This includes the layers the app draws itself rather than reading from a file: the
+  <strong>Substrate</strong>, and — after a <strong>Preview</strong> — <strong>Cutting
+  moves</strong>, <strong>Travel moves</strong>, <strong>Long rapids</strong> and <strong>RAPID AT
+  DEPTH</strong>. Those are often the ones that most need changing. The backplot palette
+  deliberately picks hues the board does not use, so a program is never invisible against the copper
+  it was made from — but which hues those are depends on which layers you have showing.
 </p>
 
 <p>

@@ -123,10 +123,12 @@ public sealed partial class LayerRow : ObservableObject
     /// <summary>True when this layer can produce a file at all — the dropdown is hidden otherwise.</summary>
     public bool CanExport => Outputs.Count > 1;
 
-    /// <summary>The substrate is recolourable but is not a role, so it is named rather than mapped.</summary>
-    public bool IsSubstrate => Id == BoardSceneBuilder.SubstrateId;
-
-    public bool CanRecolour => Role is not null || IsSubstrate;
+    /// <summary>
+    /// Every drawn layer can be recoloured, whether or not a file produced it — so there is no
+    /// condition on the swatch. The backplot layers need it most: the palette picks hues the board
+    /// does not use, but which hues those are depends on which layers are showing and on the
+    /// monitor in front of the operator.
+    /// </summary>
 
     // ------------------------------------------------------------------ view
 

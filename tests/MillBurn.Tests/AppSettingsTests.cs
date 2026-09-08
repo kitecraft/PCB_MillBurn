@@ -31,7 +31,7 @@ public sealed class AppSettingsTests : IDisposable
     {
         var settings = new AppSettings { BoardThicknessMm = 0.8, LastExportFolder = @"C:\jobs" }
             .WithColour(LayerRole.TopSilk, "#FF00AA")
-            .WithSubstrateColour("#204020")
+            .WithSceneColour(AppSettings.SubstrateId, "#204020")
             .WithRecent(@"C:\jobs\a.millburn");
 
         settings.Save(Path_);
@@ -40,7 +40,7 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Equal(0.8, read.BoardThicknessMm);
         Assert.Equal(@"C:\jobs", read.LastExportFolder);
         Assert.Equal("#FF00AA", read.LayerColours[LayerRole.TopSilk]);
-        Assert.Equal("#204020", read.SubstrateColour);
+        Assert.Equal("#204020", read.SceneColours[AppSettings.SubstrateId]);
         Assert.Equal(@"C:\jobs\a.millburn", read.RecentProjects[0]);
     }
 
@@ -99,16 +99,57 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     /// <summary>
-    /// The substrate is not a role. Keying it to <see cref="LayerRole.Unknown"/> would recolour
-    /// every unrecognised file along with it.
+    /// A layer the scene invented is not a role. Keying one to <see cref="LayerRole.Unknown"/> would
+    /// recolour every unrecognised file along with it.
     /// </summary>
     [Fact]
-    public void TheSubstrateColourIsSeparateFromEveryRole()
+    public void SceneColoursAreSeparateFromEveryRole()
     {
-        var settings = new AppSettings().WithSubstrateColour("#123456");
+        var settings = new AppSettings()
+            .WithSceneColour(AppSettings.SubstrateId, "#123456")
+            .WithSceneColour("gcode-cut", "#00FF00");
 
         Assert.Empty(settings.LayerColours);
         Assert.False(settings.LayerColours.ContainsKey(LayerRole.Unknown));
+        Assert.Equal("#00FF00", settings.SceneColours["gcode-cut"]);
+    }
+
+    /// <summary>
+    /// The backplot layers are the ones most likely to need recolouring, and they have no role to
+    /// be keyed by — which is why they could not be recoloured at all until they were keyed by id.
+    /// </summary>
+    [Theory]
+    [InlineData("gcode-cut")]
+    [InlineData("gcode-travel")]
+    [InlineData("gcode-long-travel")]
+    [InlineData("gcode-gouge")]
+    public void EveryBackplotLayerCanCarryAColour(string id)
+    {
+        var settings = new AppSettings().WithSceneColour(id, "#123456");
+
+        settings.Save(Path_);
+
+        Assert.Equal("#123456", AppSettings.LoadOrDefault(Path_).SceneColours[id]);
+        Assert.Empty(settings.WithoutSceneColour(id).SceneColours);
+    }
+
+    /// <summary>
+    /// Losing a preference is a small thing, but it is the kind of small thing that makes someone
+    /// stop believing their settings are kept at all.
+    /// </summary>
+    [Fact]
+    public void ASubstrateColourFromAnOlderBuildIsCarriedForward()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path_, "{ \"SchemaVersion\": 1, \"SubstrateColour\": \"#204020\" }");
+
+        var read = AppSettings.LoadOrDefault(Path_);
+
+        Assert.Equal("#204020", read.SceneColours[AppSettings.SubstrateId]);
+
+        // And it is not written back, so the migration happens once rather than every load.
+        read.Save(Path_);
+        Assert.DoesNotContain("SubstrateColour", File.ReadAllText(Path_), StringComparison.Ordinal);
     }
 
     [Fact]

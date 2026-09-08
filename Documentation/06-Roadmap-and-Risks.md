@@ -307,6 +307,17 @@ beyond the reflection is the transform being wrong. Comparing against a polygon 
 first and was too loose to prove anything — offset contours do not share a vertex distribution with
 the copper they came from.
 
+**Every drawn layer can be recoloured, including the ones no file produces.** Reported as a bug:
+the cutting moves, travel moves and long rapids could not be changed on either platform. The cause
+was the colour store's shape rather than the UI — it was keyed by `LayerRole`, and a backplot layer
+has no role, so the swatch was simply disabled for it. Scene layers are now keyed by their own id,
+the same stable strings the view state already uses to remember which layers are hidden, and the
+substrate's one-off setting migrates into that map on load rather than being dropped. This matters
+more than it sounds: the backplot palette picks hues the board does not use precisely so a program
+is never invisible against the copper it was made from, and which hues those are depends on the
+layers showing and the monitor in front of the operator — which is the one thing the palette cannot
+know.
+
 **The window comes back where it was left, and a screenshot run never writes one.** Two traps, both
 avoided deliberately: the saved size is the client size that gets set on restore rather than the
 frame size, because storing a frame and restoring it as a client area adds the border thickness back

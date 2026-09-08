@@ -35,10 +35,20 @@ public sealed record AppSettings
         ImmutableDictionary<LayerRole, string>.Empty;
 
     /// <summary>
-    /// The board material drawn under everything, as <c>#RRGGBB</c>.
+    /// Colours for the layers the scene invents rather than reads from a file — the substrate, and
+    /// each role in a backplot — keyed by the scene layer's own id.
     ///
-    /// Kept out of <see cref="LayerColours"/> because it is not a role: no file produces it, and
-    /// keying it to <see cref="LayerRole.Unknown"/> would recolour every unrecognised file with it.
+    /// Keyed by id rather than by role because these have no role: no file produces them, and
+    /// mapping them onto <see cref="LayerRole.Unknown"/> would recolour every unrecognised file
+    /// along with them. The ids are the same stable strings the view state already uses to remember
+    /// which layers are hidden.
+    /// </summary>
+    public ImmutableDictionary<string, string> SceneColours { get; init; } =
+        ImmutableDictionary<string, string>.Empty;
+
+    /// <summary>
+    /// Superseded by <see cref="SceneColours"/>, and read once so an existing setting is not lost.
+    /// Never written back.
     /// </summary>
     public string? SubstrateColour { get; init; }
 
@@ -55,7 +65,11 @@ public sealed record AppSettings
     public AppSettings WithColour(LayerRole role, string hex) =>
         this with { LayerColours = LayerColours.SetItem(role, hex) };
 
-    public AppSettings WithSubstrateColour(string hex) => this with { SubstrateColour = hex };
+    public AppSettings WithSceneColour(string id, string hex) =>
+        this with { SceneColours = SceneColours.SetItem(id, hex) };
+
+    public AppSettings WithoutSceneColour(string id) =>
+        this with { SceneColours = SceneColours.Remove(id) };
 
     public AppSettings WithoutColour(LayerRole role) =>
         this with { LayerColours = LayerColours.Remove(role) };
@@ -84,7 +98,10 @@ public sealed record AppSettings
 
         try
         {
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Json)
+                ?? new AppSettings();
+
+            return Migrate(settings);
         }
         catch (Exception ex) when (ex is IOException or JsonException)
         {
@@ -93,6 +110,36 @@ public sealed record AppSettings
             return new AppSettings();
         }
     }
+
+    /// <summary>
+    /// Brings a settings file written by an older build up to date.
+    ///
+    /// One-way and idempotent. Losing a preference is a small thing, but it is the kind of small
+    /// thing that makes someone stop trusting that their settings are kept at all.
+    /// </summary>
+    private static AppSettings Migrate(AppSettings settings)
+    {
+        if (settings.SubstrateColour is not { } substrate)
+        {
+            return settings;
+        }
+
+        return settings with
+        {
+            SceneColours = settings.SceneColours.ContainsKey(SubstrateId)
+                ? settings.SceneColours
+                : settings.SceneColours.SetItem(SubstrateId, substrate),
+            SubstrateColour = null,
+        };
+    }
+
+    /// <summary>
+    /// The scene's id for the synthetic board-material layer.
+    ///
+    /// Duplicated from the viewer rather than referenced: settings sit below rendering, and one
+    /// constant is a smaller price than pointing this assembly at that one.
+    /// </summary>
+    public const string SubstrateId = "(substrate)";
 
     public void Save(string? path = null)
     {

@@ -329,7 +329,9 @@ public partial class MainWindow : Window
         // theme resources, so "does it render at all" is a real question rather than a formality.
         if (args.Contains("--colour", StringComparer.OrdinalIgnoreCase) && vm.Layers.Count > 0)
         {
-            var row = vm.Layers.FirstOrDefault(l => l.CanRecolour) ?? vm.Layers[0];
+            // The last layer, so a --preview --colour run opens on a backplot layer: those are the
+            // ones whose colour most often needs changing, and the ones that could not be changed.
+            var row = vm.Layers[^1];
             var picker = new ColourWindow(row.Label, vm.ColourOf(row))
             {
                 RequestedThemeVariant = ActualThemeVariant,

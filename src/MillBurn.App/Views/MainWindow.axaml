@@ -223,7 +223,6 @@
                                                                 Width="16" Height="16"
                                                                 Margin="0,0,8,0"
                                                                 VerticalAlignment="Center"
-                                                                IsEnabled="{Binding CanRecolour}"
                                                                 Click="OnSwatchClicked"
                                                                 ToolTip.Tip="Change this layer's colour">
                                                             <Border Background="{Binding Swatch}"
