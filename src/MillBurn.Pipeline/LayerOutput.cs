@@ -61,6 +61,23 @@ public sealed record LayerOutputSettings
 
     /// <summary>Outline only. Zero cuts the board fully free.</summary>
     public int TabCount { get; init; } = 4;
+
+    /// <summary>
+    /// Whether to reflect this layer, for work done on a flipped board. Null takes the default for
+    /// the layer's side.
+    ///
+    /// Nullable rather than a plain <c>false</c> so that a caller which knows nothing about
+    /// mirroring — the CLI, a test, an older project file — still gets the physically correct
+    /// answer instead of silently cutting the bottom side backwards.
+    ///
+    /// Overridable because the default is only right for the usual workflow. Burning a mask onto a
+    /// transparency that will be laid face-down wants the opposite of engraving the same layer
+    /// directly, and a single-sided board laid out on the bottom copper wants neither.
+    /// </summary>
+    public bool? Mirrored { get; init; }
+
+    /// <summary>What this layer's mirror setting actually resolves to.</summary>
+    public bool MirrorFor(LayerRole role) => Mirrored ?? LayerOperations.MirrorByDefault(role);
 }
 
 /// <summary>
@@ -114,6 +131,17 @@ public static class LayerOperations
         LayerRole.Outline => OutputKind.Gcode,
         _ => OutputKind.None,
     };
+
+    /// <summary>
+    /// Whether a layer is reflected unless the user says otherwise.
+    ///
+    /// Bottom-side layers are drawn as seen *through* the board, so producing them as they come
+    /// gives a mirror image. The usual workflow turns the stock over, which means the usual answer
+    /// is to mirror — but it is a workflow question, not a fact about the file, so it is a default
+    /// rather than a rule.
+    /// </summary>
+    public static bool MirrorByDefault(LayerRole role) =>
+        LayerRoleInfo.SideOf(role) == BoardSide.Bottom;
 
     /// <summary>Does this operation cut all the way through?</summary>
     public static bool GoesThrough(OperationKind operation) =>

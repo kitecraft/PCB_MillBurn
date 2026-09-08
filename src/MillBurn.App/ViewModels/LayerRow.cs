@@ -75,6 +75,7 @@ public sealed partial class LayerRow : ObservableObject
         DepthMm = Nm.ToMillimetres(settings.DepthNm);
         TabCount = settings.TabCount;
         Passes = settings.Passes;
+        Mirrored = settings.MirrorFor(layer.Role);
 
         Tool = tools.FirstOrDefault(t => t.Id == settings.ToolId) ?? DefaultTool();
         Swatch = ToBrush(scene?.Style.Fill ?? SkiaSharp.SKColors.Gray);
@@ -169,6 +170,17 @@ public sealed partial class LayerRow : ObservableObject
     [ObservableProperty]
     public partial int Passes { get; set; } = 1;
 
+    /// <summary>
+    /// Reflect this layer for work done on a flipped board.
+    ///
+    /// Ticked by default for bottom-side layers and not for top-side ones, but it is a workflow
+    /// question rather than a fact about the file — burning a mask onto a transparency that will be
+    /// laid face-down wants the opposite of engraving the same layer directly — so it is a choice
+    /// and not a rule.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool Mirrored { get; set; }
+
     public OperationKind Operation =>
         Role is null ? OperationKind.None : LayerOperations.For(Role.Value, Output);
 
@@ -183,6 +195,9 @@ public sealed partial class LayerRow : ObservableObject
     public bool NeedsTabs => IsGcode && Operation == OperationKind.Outline;
 
     public bool NeedsPasses => IsGcode && Operation == OperationKind.Isolation;
+
+    /// <summary>Anything that produces a file can be mirrored; drills included.</summary>
+    public bool NeedsMirror => Output != OutputKind.None;
 
     /// <summary>Tools that suit this operation, so the list is not a catalogue of everything.</summary>
     public IReadOnlyList<Tool> Tools
@@ -242,12 +257,19 @@ public sealed partial class LayerRow : ObservableObject
         _outputChanged?.Invoke();
     }
 
+    partial void OnMirroredChanged(bool value)
+    {
+        _ = value;
+        OnPropertyChanged(nameof(Detail));
+        _outputChanged?.Invoke();
+    }
+
     private void RaiseDerived()
     {
         foreach (var name in new[]
         {
             nameof(Output), nameof(Operation), nameof(IsGcode), nameof(IsSvg), nameof(NeedsBreakThrough),
-            nameof(NeedsDepth), nameof(NeedsTabs), nameof(NeedsPasses), nameof(Tools), nameof(Detail), nameof(TargetName),
+            nameof(NeedsDepth), nameof(NeedsTabs), nameof(NeedsPasses), nameof(NeedsMirror), nameof(Tools), nameof(Detail), nameof(TargetName),
         })
         {
             OnPropertyChanged(name);
@@ -275,6 +297,8 @@ public sealed partial class LayerRow : ObservableObject
                 return _detail;
             }
 
+            var flip = Mirrored && Output != OutputKind.None ? " · mirrored" : string.Empty;
+
             var counts = string.Create(
                 CultureInfo.InvariantCulture,
                 $"{layer.ObjectCount:N0} objects · {layer.AreaMm2:F2} mm²");
@@ -297,19 +321,19 @@ public sealed partial class LayerRow : ObservableObject
 
                 OperationKind.Isolation => string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Cuts {cutWidth} mm wide at {DepthMm:F3} mm deep · {passes}"),
+                    $"Cuts {cutWidth} mm wide at {DepthMm:F3} mm deep · {passes}{flip}"),
 
-                OperationKind.Engrave when IsGcode => $"Traces the legend {cutWidth} mm wide",
+                OperationKind.Engrave when IsGcode => $"Traces the legend {cutWidth} mm wide{flip}",
 
                 OperationKind.Drilling => string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{holes} holes, {sizes} sizes · {BreakThroughMm:F2} mm through the back"),
+                    $"{holes} holes, {sizes} sizes · {BreakThroughMm:F2} mm through the back{flip}"),
 
                 OperationKind.Outline => string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{cutter} mm cutter outside the profile · {TabCount} tabs · {BreakThroughMm:F2} mm through"),
+                    $"{cutter} mm cutter outside the profile · {TabCount} tabs · {BreakThroughMm:F2} mm through{flip}"),
 
-                _ => $"{size} · {counts}",
+                _ => $"{size} · {counts}{flip}",
             };
         }
     }
@@ -323,6 +347,7 @@ public sealed partial class LayerRow : ObservableObject
         DepthNm = Nm.FromMillimetres(DepthMm),
         TabCount = TabCount,
         Passes = Passes,
+        Mirrored = Mirrored,
     };
 
     private Tool DefaultTool()

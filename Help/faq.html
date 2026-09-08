@@ -264,16 +264,39 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
 <h3>What the app does about the flip</h3>
 
 <p>
-  Any bottom-side layer set to G-code is <strong>mirrored automatically</strong>, about the
-  board&rsquo;s own vertical centreline. The file says so in its header, the export confirmation
-  says so, and it appears in <strong>CHECK</strong> as a reminder that the stock has to be turned
-  and re-registered.
+  Every layer that produces a file has a <strong>Mirrored</strong> checkbox. It is
+  <strong>ticked by default for bottom-side layers</strong> and clear for top-side ones, which is
+  right for the usual workflow — but it is a checkbox rather than a rule, because which way round
+  you want a layer is a question about <em>your</em> process, not a fact about the file.
+</p>
+
+<p>The two cases where the default is wrong:</p>
+
+<ul>
+  <li>You are burning a mask onto a <strong>transparency that will be laid face-down</strong> on the
+    board. That wants the opposite handedness from engraving the same layer directly.</li>
+  <li>You laid out a <strong>single-sided board on the bottom copper</strong> and are cutting it from
+    the top of the stock, without flipping anything.</li>
+</ul>
+
+<p>
+  The setting applies to <strong>SVG as well as G-code</strong>, about the same axis, so a layer
+  sent to both machines comes out the same way round in both.
 </p>
 
 <p>
-  Because the mirror is about the board&rsquo;s own centreline, the program still occupies exactly
-  the same box — so work zero is still the board&rsquo;s lower-left corner in both setups. That is
-  the corner you can still see and touch off on after the board has been turned over.
+  The mirror is about the board&rsquo;s own vertical centreline, so the output still occupies
+  exactly the same box — work zero is still the board&rsquo;s lower-left corner in both setups.
+  That is the corner you can still see and touch off on after the board has been turned over. For
+  SVG, the drawing stays on the shared page, so mirrored and unmirrored layers still overlay when
+  they are imported.
+</p>
+
+<p>
+  A mirrored file says so in its header, in the export confirmation, and in <strong>CHECK</strong>
+  — a reminder that the stock has to be turned and re-registered. And if you tick or untick the box
+  <em>against</em> the default for that layer&rsquo;s side, the export confirmation says that too,
+  in both directions. Both overrides are legitimate; both are invisible once the file is written.
 </p>
 
 <div class="warn">
@@ -325,9 +348,9 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
 <p>
   <span class="notyet">not built yet</span>
   Fixture generators (corner stop, dowel plate, nest pocket), automatic fiducial placement, probe
-  routines, and fitting a measured transform back into the output are all planned. Today the
-  mirror is automatic and the registration is yours — which the pin-plate recipe above handles
-  without any of that, because it never measures anything.
+  routines, and fitting a measured transform back into the output are all planned. Today the mirror
+  is handled for you and the registration is yours — which the pin-plate recipe above covers without
+  any of that, because it never measures anything.
 </p>
 
 <div class="note">

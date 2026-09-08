@@ -289,6 +289,18 @@ handedness and a G2 that should have become a G3 takes the long way round the ci
 through the middle of the board. The flip is stated in the file header, in the export summary and
 in CHECK, because it is the one step that cannot be recovered from once cutting has started.
 
+**The mirror is a per-layer checkbox, not a rule, and it applies to SVG too.** Deciding it purely
+from the role turned out to be a guess wearing a fact's clothes: burning a mask onto a transparency
+that will be laid face-down wants the opposite handedness from engraving the same layer directly,
+and a single-sided board laid out on the bottom copper wants neither. `LayerOutputSettings.Mirrored`
+is therefore `bool?` — null takes the side's default — so a caller that knows nothing about
+mirroring (the CLI, a test, an older project) still gets the physically correct answer instead of
+silently cutting the bottom side backwards. Asking the question also exposed that only G-code was
+being mirrored at all; a bottom silkscreen exported as SVG came out reversed, and getting one output
+right while the other was wrong would have been worse than getting both wrong. Departing from the
+default warns in *both* directions, because both overrides are legitimate and neither is visible in
+the file that results.
+
 This is checked against the same geometry planned as a top-side layer. That is the only comparison
 that isolates the flip: everything else about the two programs is identical, so any difference
 beyond the reflection is the transform being wrong. Comparing against a polygon centroid was tried

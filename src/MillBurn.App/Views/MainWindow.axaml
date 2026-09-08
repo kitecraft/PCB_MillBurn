@@ -301,6 +301,13 @@
                                                                        ToolTip.Tip="Uncut bridges holding the board in the stock. Zero cuts it fully free, and the last pass throws it." />
                                                     </Grid>
 
+                                                    <CheckBox Content="Mirrored"
+                                                              Margin="26,0,0,0"
+                                                              MinHeight="0"
+                                                              IsVisible="{Binding NeedsMirror}"
+                                                              IsChecked="{Binding Mirrored, Mode=TwoWay}"
+                                                              ToolTip.Tip="Reflect this layer left-to-right, for work done after the stock is flipped. On by default for bottom-side layers." />
+
                                                     <TextBlock Classes="caption" TextWrapping="Wrap"
                                                                Margin="26,0,0,0"
                                                                Text="{Binding Detail}" />

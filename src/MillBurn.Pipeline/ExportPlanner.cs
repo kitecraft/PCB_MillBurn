@@ -134,10 +134,18 @@ public static class ExportPlanner
             return null;
         }
 
+        // The same axis the G-code uses, so a layer sent to both machines lands the same way round
+        // in both. Reflecting about the board's own centreline also keeps the drawing on the shared
+        // page, which is the whole reason the page exists.
+        var mirrored = setting.MirrorFor(layer.Role);
+        var area = mirrored
+            ? MirrorX(layer.Area, board.Bounds.MinX + board.Bounds.MaxX)
+            : layer.Area;
+
         var artwork = PolygonArtwork.ToArtwork(
             new RealisedLayer
             {
-                Area = layer.Area,
+                Area = area,
                 Bounds = layer.Bounds,
                 ObjectCount = layer.ObjectCount,
                 PolarityRuns = 1,
@@ -159,11 +167,18 @@ public static class ExportPlanner
             Invariant($"{layer.RingCount} shapes, {layer.AreaMm2:F2} mm²"),
         };
 
+        if (mirrored)
+        {
+            summary.Add("Mirrored · for work done on the flipped board");
+        }
+
         var warnings = new List<string>();
         if (layer.DeclaredNegative)
         {
             warnings.Add("This layer is negative: the shapes are the openings, not the material.");
         }
+
+        warnings.AddRange(MirrorWarnings(layer.Role, setting));
 
         return new ExportItem
         {
@@ -217,18 +232,19 @@ public static class ExportPlanner
         // mirror image. The flip is baked in here rather than left to the operator, and the file
         // says which way the stock must be turned — a program that is silently the wrong hand
         // looks completely correct on screen and scraps the board.
-        var flipped = LayerRoleInfo.SideOf(layer.Role) == BoardSide.Bottom;
         var notes = new List<string> { OriginNote(board) };
 
-        if (flipped)
+        if (setting.MirrorFor(layer.Role))
         {
             toolpath = MirrorX(toolpath, board.Bounds.MinX + board.Bounds.MaxX);
             notes.Add(FlipNote());
-            summary.Add("Mirrored for the bottom side · flip the stock left-to-right");
+            summary.Add("Mirrored · flip the stock left-to-right");
             warnings.Add(
-                "Bottom side: the stock must be flipped left-to-right about its vertical centreline, "
+                "Mirrored: the stock must be flipped left-to-right about its vertical centreline, "
                 + "and re-registered. Flipping it the other way cuts a mirror image.");
         }
+
+        warnings.AddRange(MirrorWarnings(layer.Role, setting));
 
         var job = new Job
         {
@@ -422,6 +438,49 @@ public static class ExportPlanner
         Passes = Optimize.NearestNeighbour.Order(toolpath.Passes, Point2.Origin),
         Drills = Optimize.NearestNeighbour.Order(toolpath.Drills, Point2.Origin),
     };
+
+    /// <summary>
+    /// Says something only when the mirror setting is not the one the layer's side implies.
+    ///
+    /// Both overrides are legitimate and both are dangerous, and neither is visible in the
+    /// resulting file — so the warning appears exactly when someone has departed from the default,
+    /// and stays silent the rest of the time.
+    /// </summary>
+    private static IEnumerable<string> MirrorWarnings(LayerRole role, LayerOutputSettings setting)
+    {
+        var chosen = setting.MirrorFor(role);
+        if (chosen == LayerOperations.MirrorByDefault(role))
+        {
+            yield break;
+        }
+
+        yield return chosen
+            ? $"{LayerRoleInfo.Label(role)} is a top-side layer but is set to mirror. It will only "
+                + "fit if the stock is flipped."
+            : $"{LayerRoleInfo.Label(role)} is a bottom-side layer but is set not to mirror. It "
+                + "will come out reversed unless you are working from the other face.";
+    }
+
+    /// <summary>Reflects realised geometry in the same vertical line the toolpaths use.</summary>
+    private static Paths64 MirrorX(Paths64 area, long sumX)
+    {
+        var mirrored = new Paths64(area.Count);
+
+        foreach (var ring in area)
+        {
+            var flipped = new Path64(ring.Count);
+            foreach (var point in ring)
+            {
+                flipped.Add(new Clipper2Lib.Point64(sumX - point.X, point.Y));
+            }
+
+            // Point order is left alone. A reflection reverses every ring's winding, so outers and
+            // holes keep their relative orientation and the non-zero fill still resolves.
+            mirrored.Add(flipped);
+        }
+
+        return mirrored;
+    }
 
     /// <summary>
     /// Reflects a toolpath in the vertical line <c>x = sumX / 2</c>.

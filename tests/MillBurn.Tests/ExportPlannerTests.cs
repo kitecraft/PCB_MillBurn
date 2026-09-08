@@ -345,7 +345,7 @@ public sealed class ExportPlannerTests
         Assert.Contains("BOTTOM SIDE", item.Content, StringComparison.Ordinal);
         Assert.Contains("left-to-right", item.Content, StringComparison.Ordinal);
         Assert.Contains(item.Warnings, w => w.Contains("flipped left-to-right", StringComparison.Ordinal));
-        Assert.Contains(item.Summary, s => s.Contains("Mirrored for the bottom side", StringComparison.Ordinal));
+        Assert.Contains(item.Summary, s => s.Contains("Mirrored", StringComparison.Ordinal));
     }
 
     /// <summary>Top-side files are untouched: there is nothing to flip.</summary>
@@ -358,6 +358,138 @@ public sealed class ExportPlannerTests
         Assert.DoesNotContain("BOTTOM SIDE", top.Content, StringComparison.Ordinal);
         Assert.DoesNotContain(top.Warnings, w => w.Contains("flipped", StringComparison.Ordinal));
     }
+
+    // ------------------------------------------------------------------ overriding the flip
+
+    private static ExportItem Item(Board board, string file, Func<LayerOutputSettings, LayerOutputSettings> change)
+    {
+        var settings = Defaults(board);
+        settings[file] = change(settings[file]);
+        return Plan(board, settings).Items.Single(i => i.LayerFileName == file);
+    }
+
+    /// <summary>
+    /// The default is right for the usual workflow and wrong for several real ones — burning a mask
+    /// onto a transparency that will be laid face-down wants the opposite of engraving the same
+    /// layer directly — so it is a default rather than a rule.
+    /// </summary>
+    [Fact]
+    public void TheFlipCanBeTurnedOffOnABottomLayer()
+    {
+        var board = Board();
+        var item = Item(board, "PogoTest1-B_Cu.gbr", s => s with
+        {
+            Output = OutputKind.Gcode,
+            Mirrored = false,
+        });
+
+        Assert.DoesNotContain("BOTTOM SIDE", item.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain(item.Summary, s => s.Contains("Mirrored", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheFlipCanBeTurnedOnForATopLayer()
+    {
+        var board = Board();
+        var plain = Item(board, "PogoTest1-F_Cu.gbr", s => s);
+        var flipped = Item(board, "PogoTest1-F_Cu.gbr", s => s with { Mirrored = true });
+
+        var widthMm = Nm.ToMillimetres(board.Bounds.Width);
+        var expected = CutXValues(plain.Content).Select(x => widthMm - x).Order().ToList();
+        var actual = CutXValues(flipped.Content).Order().ToList();
+
+        Assert.Equal(expected.Count, actual.Count);
+        for (var i = 0; i < expected.Count; i++)
+        {
+            Assert.Equal(expected[i], actual[i], 3);
+        }
+    }
+
+    /// <summary>
+    /// Both overrides are legitimate and both are dangerous, and neither is visible in the file
+    /// that results — so the warning appears exactly when someone has left the default.
+    /// </summary>
+    [Fact]
+    public void DepartingFromTheDefaultIsCalledOutInBothDirections()
+    {
+        var board = Board();
+
+        Assert.Contains(
+            Item(board, "PogoTest1-B_Cu.gbr", s => s with { Output = OutputKind.Gcode, Mirrored = false }).Warnings,
+            w => w.Contains("come out reversed", StringComparison.Ordinal));
+
+        Assert.Contains(
+            Item(board, "PogoTest1-F_Cu.gbr", s => s with { Mirrored = true }).Warnings,
+            w => w.Contains("only fit if the stock is flipped", StringComparison.Ordinal));
+
+        // And says nothing at all when the setting is the one the layer's side implies.
+        Assert.DoesNotContain(
+            Item(board, "PogoTest1-F_Cu.gbr", s => s).Warnings,
+            w => w.Contains("mirror", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// SVG needs the flip as much as G-code does: a bottom silkscreen burned onto a board that has
+    /// been turned over is reversed for exactly the same reason, and getting one output right while
+    /// the other is wrong would be worse than getting both wrong.
+    ///
+    /// Checked against the page rather than against the implementation. The page is the board plus
+    /// a uniform margin, so it is centred on the mirror axis — which means a true reflection sends
+    /// the drawing's left edge exactly as far from one side of the page as its right edge was from
+    /// the other. Nothing here knows how the transform is written.
+    /// </summary>
+    [Fact]
+    public void AMirroredSvgIsReflectedAboutTheCentreOfTheSharedPage()
+    {
+        var board = Board();
+
+        var plain = Item(board, "PogoTest1-B_Silkscreen.gbr", s => s with
+        {
+            Output = OutputKind.Svg,
+            Mirrored = false,
+        });
+
+        var flipped = Item(board, "PogoTest1-B_Silkscreen.gbr", s => s with { Output = OutputKind.Svg });
+
+        Assert.Contains(flipped.Summary, s => s.Contains("Mirrored", StringComparison.Ordinal));
+
+        var box = XDocument.Parse(plain.Content).Root!.Attribute("viewBox")!.Value;
+        Assert.Equal(box, XDocument.Parse(flipped.Content).Root!.Attribute("viewBox")!.Value, StringComparer.Ordinal);
+
+        var pageWidth = double.Parse(
+            box.Split(' ')[2], System.Globalization.CultureInfo.InvariantCulture);
+
+        var before = PathXValues(plain.Content);
+        var after = PathXValues(flipped.Content);
+
+        Assert.NotEmpty(before);
+        Assert.Equal(before.Count, after.Count);
+
+        // The silkscreen does not span the board, so a reflection has to move it.
+        Assert.NotEqual(before.Min(), after.Min(), 2);
+
+        Assert.Equal(pageWidth, after.Min() + before.Max(), 2);
+        Assert.Equal(pageWidth, after.Max() + before.Min(), 2);
+    }
+
+    /// <summary>
+    /// X values from the unambiguous path commands only.
+    ///
+    /// <c>M</c> and <c>L</c> take plain x,y pairs; an <c>A</c> puts five other numbers in front of
+    /// its endpoint, so taking every other number across a whole path would silently read radii as
+    /// coordinates.
+    /// </summary>
+    private static List<double> PathXValues(string svg) =>
+    [
+        .. XDocument.Parse(svg)
+            .Descendants()
+            .Select(e => e.Attribute("d")?.Value)
+            .Where(d => d is not null)
+            .SelectMany(d => System.Text.RegularExpressions.Regex.Matches(
+                d!, @"[ML]\s*(-?\d+(?:\.\d+)?)"))
+            .Select(m => double.Parse(
+                m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)),
+    ];
 
     private static List<double> CutXValues(string program) =>
     [
