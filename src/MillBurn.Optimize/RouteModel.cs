@@ -12,6 +12,14 @@ public enum RouteKind
     Open,
 
     /// <summary>
+    /// A run of work that has to be done exactly as given: one way in, one way out, no reversal.
+    ///
+    /// What a tabbed profile's depth stack is. Its passes must stay in order and in direction, so
+    /// the only decision left about it is where it sits in the route.
+    /// </summary>
+    Fixed,
+
+    /// <summary>
     /// A closed contour. Enter at any vertex, and leave from the same one.
     ///
     /// That entry and exit coincide is the fact that makes closed loops cheap to optimise: the
@@ -69,6 +77,15 @@ public sealed class RouteNode
         _ => 1,
     };
 
+    public static RouteNode ForFixed(int reference, Point2 start, Point2 end, int group = 0) => new()
+    {
+        Kind = RouteKind.Fixed,
+        Reference = reference,
+        Start = start,
+        End = end,
+        Group = group,
+    };
+
     public Point2 EntryFor(int option) => Kind switch
     {
         RouteKind.Open => option == 0 ? Start : End,
@@ -81,6 +98,7 @@ public sealed class RouteNode
     {
         RouteKind.Open => option == 0 ? End : Start,
         RouteKind.Closed => EntryFor(option),
+        RouteKind.Fixed => End,
         _ => Start,
     };
 

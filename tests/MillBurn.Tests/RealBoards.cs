@@ -19,13 +19,22 @@ public static class RealBoards
     public const string PogoTest1 = "PogoTest1";
 
     /// <summary>
-    /// A panelised board, present only when the corpus has been repointed at one that has it.
+    /// Fifty boards and a frame, exported from KiCad as one panel.
     ///
-    /// Panels are the case the optimizer is most worth measuring on — dozens of separate cutouts is
-    /// exactly the "edge cuts all over the place" complaint — but a panel is also a large file and
-    /// somebody's actual design, so the suite asks for one rather than carrying one.
+    /// The case the optimizer is most worth measuring on, and the one that found the outline bug:
+    /// taking only the largest ring cut the frame and left all fifty boards attached to it. Nothing
+    /// smaller reproduces that, because on a single board the largest ring is the right answer.
     /// </summary>
-    public const string Panel = "Panel";
+    public const string Panel = "GridStripConnector_Panelized";
+
+    /// <summary>
+    /// The same design as <see cref="PogoTest1"/>, exported with every layer KiCad offers.
+    ///
+    /// Kept alongside rather than replacing it, because the two cover different things: this one is
+    /// the only board in the corpus with **paste** layers or a **user** layer, and the shorter
+    /// export is the one that proves a board with neither still works.
+    /// </summary>
+    public const string PogoTest1AllLayers = "PogoTest1-AllLayers";
 
     private static readonly Lazy<string> RootValue = new(Locate);
 

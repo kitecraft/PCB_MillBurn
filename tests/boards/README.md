@@ -24,8 +24,10 @@ files catch and synthetic ones do not.
 |---|---|
 | `GridStripConnector/` | A small panelised board with tabs. `RoundRect` aperture macro with `$1+$1` expressions, four outline arcs kept as arcs, six SMD pads across three named nets, X2 attributes throughout. |
 | `PogoTest1/` | Two copper layers with pours (regions), PTH (16 holes, 2 tools) and NPTH (2 holes) with plating and tool functions, front and back silk, soldermask. The PTH count and the `ComponentPad` flash count on `B_Cu` cross-check each other. |
+| `PogoTest1-AllLayers/` | The same design at a **later revision**, exported with every layer KiCad offers: 18 plated holes against 16, and two more copper objects. The only board here with **paste** layers (empty, which is its own case — an empty layer must produce no file rather than an empty one) or a **user** layer, which has to come through as an unrecognised role rather than being guessed at. Kept alongside the shorter export rather than replacing it: together they are a real before-and-after of one design, which is what the refresh and fingerprint machinery exists to tell apart. |
+| `GridStripConnector_Panelized/` | Fifty boards and a frame in one 165 × 107 mm panel: 11,414 objects, 198 copper islands, **51 separate outline profiles**. The board that found the outline bug — taking only the largest ring cut the frame and left all fifty boards attached to it, which nothing smaller reproduces, because on a single board the largest ring is the right answer. It is also the optimizer's main benchmark. |
 
-Both are KiCad 10 exports carrying `%TF%` attribute blocks. The optional pcb2gcode corpus
+All are KiCad 10 exports carrying `%TF%` attribute blocks. The optional pcb2gcode corpus
 (see `MillBurn.Tests/GerberCorpus.cs`) is KiCad 9 and older, and uses the `G04 #@!` comment
 encoding instead — between them the parser is exercised on both forms.
 

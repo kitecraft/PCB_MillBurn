@@ -27,18 +27,22 @@ public static class ToolpathRouter
     {
         ArgumentNullException.ThrowIfNull(toolpath);
 
-        var nodes = new List<RouteNode>(toolpath.Passes.Count + toolpath.Drills.Count);
+        // Passes that share a stack are one thing to route: a contour's depth passes stay together
+        // and in order, because the tool is already standing over the place it is about to cut
+        // deeper. Splitting them apart is what makes a panel take five traversals instead of one.
+        var stacks = Stacks(toolpath.Passes);
+        var nodes = new List<RouteNode>(stacks.Count + toolpath.Drills.Count);
 
-        // References are indices into a single combined list, so one solve covers both and the
-        // answer says which is which by where the index falls.
-        for (var i = 0; i < toolpath.Passes.Count; i++)
+        // References index a single combined list, so one solve covers passes and holes together
+        // and the answer says which is which by where the index falls.
+        for (var i = 0; i < stacks.Count; i++)
         {
-            nodes.Add(NodeFor(i, toolpath.Passes[i]));
+            nodes.Add(NodeFor(i, toolpath.Passes, stacks[i]));
         }
 
         for (var i = 0; i < toolpath.Drills.Count; i++)
         {
-            nodes.Add(RouteNode.ForPoint(toolpath.Passes.Count + i, toolpath.Drills[i].At));
+            nodes.Add(RouteNode.ForPoint(stacks.Count + i, toolpath.Drills[i].At));
         }
 
         var plan = RouteOptimizer.Solve(nodes, from, machine, effort, returnTo);
@@ -48,29 +52,97 @@ public static class ToolpathRouter
 
         foreach (var step in plan.Steps)
         {
-            if (step.Reference < toolpath.Passes.Count)
+            if (step.Reference < stacks.Count)
             {
-                passes.Add(Materialise(toolpath.Passes[step.Reference], step));
+                foreach (var index in stacks[step.Reference])
+                {
+                    passes.Add(Materialise(toolpath.Passes[index], step));
+                }
             }
             else
             {
-                drills.Add(toolpath.Drills[step.Reference - toolpath.Passes.Count]);
+                drills.Add(toolpath.Drills[step.Reference - stacks.Count]);
             }
         }
 
         return (toolpath with { Passes = passes, Drills = drills }, plan);
     }
 
-    private static RouteNode NodeFor(int reference, ToolpathPass pass)
+    /// <summary>
+    /// Groups passes into the units that must be cut together, keeping their given order.
+    ///
+    /// A negative stack id means the pass stands alone, which is every isolation contour and every
+    /// untabbed single-depth profile.
+    /// </summary>
+    private static List<List<int>> Stacks(IReadOnlyList<ToolpathPass> passes)
+    {
+        var stacks = new List<List<int>>();
+        var byId = new Dictionary<int, int>();
+
+        for (var i = 0; i < passes.Count; i++)
+        {
+            var id = passes[i].Stack;
+
+            if (id < 0)
+            {
+                stacks.Add([i]);
+                continue;
+            }
+
+            if (!byId.TryGetValue(id, out var at))
+            {
+                at = stacks.Count;
+                byId[id] = at;
+                stacks.Add([]);
+            }
+
+            stacks[at].Add(i);
+        }
+
+        return stacks;
+    }
+
+    /// <summary>
+    /// The node for one stack.
+    ///
+    /// A stack of one closed contour keeps every entry vertex as a choice. A stack of several — a
+    /// tabbed profile, cut in runs and at several depths — is fixed: its passes have to run in the
+    /// order and direction they were built in, so the only question left is where it goes.
+    /// </summary>
+    private static RouteNode NodeFor(int reference, IReadOnlyList<ToolpathPass> passes, List<int> stack)
+    {
+        var first = passes[stack[0]];
+        var last = passes[stack[^1]];
+        var group = first.Group;
+
+        if (stack.Count == 1)
+        {
+            return NodeFor(reference, first, group);
+        }
+
+        // Every pass in a closed stack is the same contour at a different depth, so rotating them
+        // all to the same vertex is still valid and keeps the nearest-entry saving.
+        if (passes.All(p => p.Closed) && stack.All(i => SameContour(first, passes[i])))
+        {
+            return RouteNode.ForClosed(reference, [.. first.Path.Select(s => s.From)], group);
+        }
+
+        return RouteNode.ForFixed(reference, first.Start, last.End, group);
+    }
+
+    private static bool SameContour(ToolpathPass a, ToolpathPass b) =>
+        a.Path.Count == b.Path.Count && a.Start == b.Start && a.End == b.End;
+
+    private static RouteNode NodeFor(int reference, ToolpathPass pass, int group)
     {
         if (pass.Path.Count == 0)
         {
-            return RouteNode.ForPoint(reference, Point2.Origin);
+            return RouteNode.ForPoint(reference, Point2.Origin, group);
         }
 
         return pass.Closed
-            ? RouteNode.ForClosed(reference, [.. pass.Path.Select(s => s.From)], pass.Group)
-            : RouteNode.ForOpen(reference, pass.Start, pass.End, pass.Group);
+            ? RouteNode.ForClosed(reference, [.. pass.Path.Select(s => s.From)], group)
+            : RouteNode.ForOpen(reference, pass.Start, pass.End, group);
     }
 
     /// <summary>Applies the chosen configuration to the geometry.</summary>
@@ -83,6 +155,7 @@ public static class ToolpathRouter
 
         if (!pass.Closed)
         {
+            // A fixed stack has one option and must not be reversed.
             return step.Option == 0 ? pass : pass with { Path = Reverse(pass.Path) };
         }
 

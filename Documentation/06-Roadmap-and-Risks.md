@@ -392,6 +392,20 @@ frame's own rectangle covers every board inside it and they vanish. Cutting went
 19,586 mm on that panel, and single boards are untouched. The worst shape a bug can have — the file
 runs, the frame comes free, and the boards are still in it.
 
+**Precedence is a chain per contour, not a global ordering — and the difference is most of the
+rapid.** Reading Documentation/03 §5 as "all contours finish one depth before any starts the next"
+made the panel outline three times worse, because it crosses the whole panel once per depth step.
+The constraint it actually states is *on the same contour*. So a `Stack` marks the passes that must
+run consecutively and in order, and the optimizer orders stacks freely within a containment tier.
+
+Two further orderings inside a stack were wrong before they were right, and both were found by
+measuring the exported file rather than by reasoning: taking one *open* run to full depth before
+moving on costs its whole length in travel each time, because an open run ends at the far end of
+itself — so the tabbed passes go depth by depth around the profile, where the only cost is the tab
+gap, and the last run's end is already beside the first run's start. Single-board cutout travel came
+back to 46 mm, byte-identical to what shipped; the panel's is 1,922 mm and safe, against 793 mm for
+an ordering free to cut a place to full depth before it had been cut shallow.
+
 Still to come in this phase: Eulerian path merging, travel-at-depth when it is safe, and
 Douglas–Peucker plus arc fitting — which Documentation/03 §7 rates as the bigger real-world win,
 because a 76,000-line isolation file decelerates at every one of those lines.

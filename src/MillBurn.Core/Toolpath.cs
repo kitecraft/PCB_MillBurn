@@ -32,11 +32,22 @@ public sealed record ToolpathPass
     /// <summary>
     /// A precedence tier. Every pass in a lower group is cut before any pass in a higher one.
     ///
-    /// Physics, not preference (Documentation/03, section 5): a shallower pass comes before a
-    /// deeper one on the same contour, and the pieces inside a panel are cut out before the frame
-    /// around them — cut the frame first and everything still attached to it is now loose.
+    /// Physics, not preference (Documentation/03, section 5): the pieces inside a panel are cut out
+    /// before the frame around them, because cutting the frame first leaves everything still
+    /// attached to it loose while the cutter is still working.
     /// </summary>
     public int Group { get; init; }
+
+    /// <summary>
+    /// Passes that must run consecutively, in the order given. Negative means independent.
+    ///
+    /// This is how "deeper after shallower **on the same contour**" is expressed. It is a chain per
+    /// contour rather than a global ordering, and the difference is worth five times the rapid on a
+    /// panel: forcing every contour to finish one depth before any starts the next means traversing
+    /// the whole panel once per depth step, when the tool is already standing over the contour it
+    /// is about to cut deeper.
+    /// </summary>
+    public int Stack { get; init; } = -1;
 
     public Point2 Start => Path.Count == 0 ? Point2.Origin : Path[0].From;
 

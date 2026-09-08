@@ -47,6 +47,15 @@ public sealed class OptimizerBenchmarkTests(ITestOutputHelper output)
         return total + (at.DistanceTo(from) / Nm.PerMillimetre);
     }
 
+    /// <summary>
+    /// The nearest-neighbour ordering that shipped, exactly as it shipped.
+    ///
+    /// Used only where it is a fair comparison — isolation and drilling, where every item is
+    /// independent and both orderers are solving the same problem. It has no concept of precedence
+    /// or of a depth stack, so on an outline it would happily cut a panel's frame before the boards
+    /// inside it; comparing travel against a route that is not safe to run would be measuring a
+    /// different problem and calling the difference a win.
+    /// </summary>
     private static Toolpath Baseline(Toolpath toolpath, Point2 from) => toolpath with
     {
         Passes = NearestNeighbour.Order(toolpath.Passes, from),
@@ -251,24 +260,75 @@ public sealed class OptimizerBenchmarkTests(ITestOutputHelper output)
         }
 
         var (isolation, start) = IsolationFor(RealBoards.Panel);
-        var outline = OutlineFor(RealBoards.Panel);
 
-        foreach (var (what, toolpath) in new[] { ("isolation", isolation), ("outline", outline) })
+        var baseline = TravelMm(Baseline(isolation, start), start);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var optimised = ToolpathRouter.Order(
+            isolation, start, Machine, RouteEffort.Balanced, start).Ordered;
+        watch.Stop();
+
+        Report($"panel isolation ({isolation.Passes.Count} contours, {watch.ElapsedMilliseconds} ms)",
+            baseline, TravelMm(optimised, start));
+
+        Assert.True(
+            TravelMm(optimised, start) < baseline * 0.8,
+            $"expected at least 20% off the panel, got {baseline:F1} -> {TravelMm(optimised, start):F1} mm");
+
+        Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(800), $"took {watch.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>
+    /// The panel's outline is where precedence bites, so what matters is that the route is safe to
+    /// run — not that it is shorter than one that is not.
+    ///
+    /// Travel is reported rather than gated. Most of it is the hops across tab gaps, which the
+    /// ordering cannot remove and should not be credited or blamed for.
+    /// </summary>
+    [Fact]
+    public void APanelOutlineStaysSafeToRun()
+    {
+        if (!RealBoards.Has(RealBoards.Panel))
         {
-            var baseline = TravelMm(Baseline(toolpath, start), start);
+            output.WriteLine("no Panel board in the corpus; nothing measured");
+            return;
+        }
 
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            var optimised = TravelMm(
-                ToolpathRouter.Order(toolpath, start, Machine, RouteEffort.Balanced, start).Ordered, start);
-            watch.Stop();
+        var loaded = Load(RealBoards.Panel);
+        var start = new Point2(loaded.Bounds.MinX, loaded.Bounds.MinY);
+        var ordered = ToolpathRouter.Order(
+            OutlineFor(RealBoards.Panel), start, Machine, RouteEffort.Balanced, start).Ordered;
 
-            Report($"panel {what} ({toolpath.Passes.Count} contours, {watch.ElapsedMilliseconds} ms)",
-                baseline, optimised);
+        Report($"panel outline ({ordered.Passes.Count} passes)", 0, TravelMm(ordered, start));
 
+        // Groups never interleave: everything inside the frame is cut before the frame.
+        var groups = ordered.Passes.Select(p => p.Group).ToList();
+        for (var i = 1; i < groups.Count; i++)
+        {
             Assert.True(
-                optimised <= baseline,
-                $"the optimizer lost to the baseline on the panel {what}: "
-                + $"{baseline:F1} -> {optimised:F1} mm");
+                groups[i] >= groups[i - 1],
+                $"group {groups[i]} was cut after group {groups[i - 1]}");
+        }
+
+        // A contour's depth passes stay together and get deeper, never shallower.
+        foreach (var stack in ordered.Passes.Where(p => p.Stack >= 0).GroupBy(p => p.Stack))
+        {
+            var depths = stack.Select(p => p.DepthNm).ToList();
+            for (var i = 1; i < depths.Count; i++)
+            {
+                Assert.True(depths[i] >= depths[i - 1], "a deeper pass came before a shallower one");
+            }
+        }
+
+        var positions = ordered.Passes
+            .Select((p, i) => (p.Stack, i))
+            .Where(x => x.Stack >= 0)
+            .GroupBy(x => x.Stack);
+
+        foreach (var stack in positions)
+        {
+            var indices = stack.Select(x => x.i).ToList();
+            Assert.Equal(indices[^1] - indices[0] + 1, indices.Count);
         }
     }
 

@@ -75,50 +75,64 @@ public sealed class PanelOutlineTests
 
     /// <summary>
     /// Cut the frame first and everything still attached to it is loose while the cutter is still
-    /// working. So within each depth the contained pieces come first, and the frame comes last.
+    /// working. So the contained pieces are in an earlier group than the frame around them.
     /// </summary>
     [Fact]
     public void InnerPiecesAreCutBeforeTheFrameAroundThem()
     {
         var toolpath = OutlineOperation.Build(Panel(), Options);
 
-        foreach (var atDepth in toolpath.Passes.GroupBy(p => p.DepthNm))
-        {
-            // One profile is the frame; it is the longest, and it must be in the last group.
-            var frame = atDepth.OrderByDescending(p => p.LengthNm).First();
-            var frameGroup = frame.Group;
+        // The frame is the longest profile.
+        var frame = toolpath.Passes.OrderByDescending(p => p.LengthNm).First();
 
-            Assert.All(
-                atDepth.Where(p => p != frame),
-                p => Assert.True(
-                    p.Group < frameGroup,
-                    $"a contained profile is in group {p.Group}, the frame in {frameGroup}"));
-        }
+        Assert.All(
+            toolpath.Passes.Where(p => p.Stack != frame.Stack),
+            p => Assert.True(
+                p.Group < frame.Group,
+                $"a contained profile is in group {p.Group}, the frame in {frame.Group}"));
     }
 
     /// <summary>
-    /// Depth is the outer key: no profile is taken deeper than another while shallow passes are
-    /// still outstanding, which is what keeps the chip load even and the stock held.
+    /// Deeper after shallower <em>on the same contour</em> — which is what the design doc actually
+    /// requires, and is a chain per contour rather than one global ordering.
+    ///
+    /// The distinction is worth five times the rapid on a panel. Forcing every contour to finish
+    /// one depth before any starts the next means crossing the whole panel once per depth step,
+    /// when the tool is already standing over the contour it is about to cut deeper.
     /// </summary>
     [Fact]
-    public void ShallowerPassesComeBeforeDeeperOnes()
+    public void EachContourGetsDeeperAndItsPassesStayTogether()
     {
         var toolpath = OutlineOperation.Build(Panel(), Options);
 
-        var byGroup = toolpath.Passes
-            .GroupBy(p => p.Group)
-            .OrderBy(g => g.Key)
-            .Select(g => g.Max(p => p.DepthNm))
-            .ToList();
-
-        // Deepest-per-group never decreases as the group index rises.
-        for (var i = 1; i < byGroup.Count; i++)
+        foreach (var stack in toolpath.Passes.GroupBy(p => p.Stack))
         {
-            Assert.True(byGroup[i] >= byGroup[i - 1], "a deeper pass was scheduled before a shallower one");
+            Assert.True(stack.Key >= 0, "a profile's depth passes must be stacked");
+
+            var depths = stack.Select(p => p.DepthNm).ToList();
+            for (var i = 1; i < depths.Count; i++)
+            {
+                Assert.True(depths[i] >= depths[i - 1], "a deeper pass came before a shallower one");
+            }
+        }
+
+        // And each stack is contiguous in the emitted order.
+        var seen = new HashSet<int>();
+        var current = int.MinValue;
+
+        foreach (var pass in toolpath.Passes)
+        {
+            if (pass.Stack == current)
+            {
+                continue;
+            }
+
+            Assert.True(seen.Add(pass.Stack), $"stack {pass.Stack} was left and returned to");
+            current = pass.Stack;
         }
     }
 
-    /// <summary>A single board must be unaffected: one profile, one group, exactly as before.</summary>
+    /// <summary>A single board must be unaffected: one profile, one stack, one group.</summary>
     [Fact]
     public void OneBoardIsStillOneProfile()
     {
@@ -127,7 +141,8 @@ public sealed class PanelOutlineTests
         var steps = toolpath.Passes.Select(p => p.DepthNm).Distinct().Count();
 
         Assert.Equal(steps, toolpath.Passes.Count);
-        Assert.Equal(steps, toolpath.Passes.Select(p => p.Group).Distinct().Count());
+        Assert.Single(toolpath.Passes.Select(p => p.Group).Distinct());
+        Assert.Single(toolpath.Passes.Select(p => p.Stack).Distinct());
     }
 
     [Fact]

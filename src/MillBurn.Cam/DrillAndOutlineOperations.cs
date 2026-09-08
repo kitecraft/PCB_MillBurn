@@ -143,7 +143,7 @@ public static class OutlineOperation
         }
 
         var notes = new List<string>();
-        var passes = new List<ToolpathPass>();
+        List<ToolpathPass> passes = [];
 
         if (contours.Count == 0)
         {
@@ -165,39 +165,56 @@ public static class OutlineOperation
         var nesting = NestingOf(contours);
         var deepest = nesting.Count == 0 ? 0 : nesting.Values.Max();
 
+        var shallowDepths = new List<long>();
+        var tabbedDepths = new List<long>();
+
         for (var step = 1; step <= steps; step++)
         {
             var depth = Math.Min(options.TotalDepthNm, step * options.DepthPerPassNm);
+            var tabbed = options.TabCount > 0
+                && depth > options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
 
-            // Tabs only bite on the passes that would otherwise cut through them.
-            var tabbed = options.TabCount > 0 && depth > options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
+            (tabbed ? tabbedDepths : shallowDepths).Add(depth);
+        }
 
-            for (var c = 0; c < contours.Count; c++)
+        for (var c = 0; c < contours.Count; c++)
+        {
+            var contour = contours[c];
+            if (contour.Count < 3)
             {
-                var contour = contours[c];
-                if (contour.Count < 3)
+                continue;
+            }
+
+            // One stack per profile: everything at this place, cut deeper each time, kept together
+            // so the tool finishes here before it moves.
+            var group = deepest - nesting.GetValueOrDefault(c);
+
+            foreach (var depth in shallowDepths)
+            {
+                passes.Add(new ToolpathPass
                 {
-                    continue;
-                }
+                    Path = IsolationOperation.ToSegments(contour),
+                    DepthNm = depth,
+                    Closed = true,
+                    Group = group,
+                    Stack = c,
+                });
+            }
 
-                // Depth is the outer key, so nothing is taken deeper while shallow passes are still
-                // outstanding; containment is the inner key, so within a depth the contained pieces
-                // are cut before whatever surrounds them.
-                var group = ((step - 1) * (deepest + 1)) + (deepest - nesting.GetValueOrDefault(c));
+            // The tabbed passes go depth by depth, all runs at one depth before the next.
+            //
+            // The opposite — one run taken to full depth before moving on — sounds tidier and is
+            // much worse: an open run ends at the far end of itself, so repeating it at the next
+            // depth means travelling its whole length back first. Going round the profile instead
+            // costs only the tab gap between one run and the next, and the last run's end is
+            // already next to the first run's start.
+            var runs = tabbedDepths.Count == 0
+                ? []
+                : SplitForTabs(contour, options).ToList();
 
-                if (!tabbed)
-                {
-                    passes.Add(new ToolpathPass
-                    {
-                        Path = IsolationOperation.ToSegments(contour),
-                        DepthNm = depth,
-                        Closed = true,
-                        Group = group,
-                    });
-                    continue;
-                }
-
-                foreach (var run in SplitForTabs(contour, options))
+            foreach (var depth in tabbedDepths)
+            {
+                foreach (var run in runs)
                 {
                     passes.Add(new ToolpathPass
                     {
@@ -205,6 +222,7 @@ public static class OutlineOperation
                         DepthNm = depth,
                         Closed = false,
                         Group = group,
+                        Stack = c,
                     });
                 }
             }
