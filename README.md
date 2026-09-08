@@ -49,8 +49,19 @@ dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/
 dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
 ```
 
+**Publishing from Windows leaves the two launchers non-executable.** NTFS has no execute bit, so
+the ELF binaries come out `rw-r--r--` and will not start. Either `chmod +x MillBurn.App
+MillBurn.Cli` after copying them across, or package them from a filesystem that can hold the
+permission:
+
+```
+tar --owner=0 --group=0 -czf out/millburn-linux-x64.tar.gz -C out/linux .
+```
+
+Publishing on Linux sets the bit itself and needs neither step.
+
 On a fresh Debian or Ubuntu the app may need `sudo apt install -y libfontconfig1`; everything else
-it needs ships in the publish output.
+it needs ships in the publish output, including `libSkiaSharp.so` and the `Help/` pages.
 
 ## Running
 

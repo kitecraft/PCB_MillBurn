@@ -773,11 +773,24 @@ internal static class Program
         return 0;
     }
 
+    /// <summary>
+    /// The value following an option, or null if it was not given.
+    ///
+    /// A blank value counts as not given. In a shell that is almost always an unexpanded variable —
+    /// <c>-o "$OUT"</c> with <c>OUT</c> unset — and the alternative is an empty path reaching an IO
+    /// call and coming back as a stack trace.
+    /// </summary>
     private static string? Argument(string[] args, string name)
     {
         var index = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+        var value = index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
+
+    /// <summary>Whether an option was written at all, whatever value it was given.</summary>
+    private static bool HasOption(string[] args, params string[] names) =>
+        args.Any(a => names.Contains(a, StringComparer.OrdinalIgnoreCase));
 
     /// <summary>
     /// How many drawable elements the file holds.
@@ -1243,6 +1256,16 @@ internal static class Program
     {
         var input = args[1];
         var outDir = Argument(args, "-o") ?? Argument(args, "--out");
+
+        // Named an output folder and gave nothing: almost always an unexpanded shell variable.
+        // Reported before any work is done, and never resolved to the folder the Gerbers came from
+        // — which is the one place the output is hardest to tell apart from the design.
+        if (outDir is null && HasOption(args, "-o", "--out"))
+        {
+            Console.Error.WriteLine("-o was given without a folder.");
+            return 1;
+        }
+
         var thicknessMm = 1.6;
         var write = args.Contains("--write", StringComparer.OrdinalIgnoreCase);
         OutputKind? only = null;
