@@ -289,7 +289,8 @@ public partial class MainWindow : Window
 
         // --theme lets a screenshot prove the dark variant actually flips, which is the only
         // way this class of bug gets caught: it produces a half-styled window, never an error.
-        var theme = Argument(args, "--theme");
+        // Given explicitly it wins over the saved one, so a capture is reproducible.
+        var theme = Argument(args, "--theme") ?? vm.Settings.Theme;
         if (theme is not null)
         {
             RequestedThemeVariant = theme.Equals("dark", StringComparison.OrdinalIgnoreCase)
@@ -771,9 +772,15 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnToggleThemeClicked(object? sender, RoutedEventArgs e)
     {
-        RequestedThemeVariant = ActualThemeVariant == ThemeVariant.Dark
-            ? ThemeVariant.Light
-            : ThemeVariant.Dark;
+        var dark = ActualThemeVariant != ThemeVariant.Dark;
+        RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light;
+
+        // Saved on the toggle rather than on close: someone who tries dark and closes the app
+        // expects it back, and a crash should not lose the one thing they changed.
+        if (!_transientSize && DataContext is MainViewModel vm)
+        {
+            vm.SaveTheme(dark ? "Dark" : "Light");
+        }
 
         Viewport.InvalidateVisual();
         ToolpathViewport.InvalidateVisual();

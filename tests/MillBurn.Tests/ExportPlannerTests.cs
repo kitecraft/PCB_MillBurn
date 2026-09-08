@@ -53,8 +53,22 @@ public sealed class ExportPlannerTests
     public void MeaninglessPairingsAreNotOffered()
     {
         Assert.DoesNotContain(OutputKind.Svg, LayerOperations.Available(LayerRole.PlatedDrill));
-        Assert.DoesNotContain(OutputKind.Gcode, LayerOperations.Available(LayerRole.TopMask));
         Assert.Equal([OutputKind.None], LayerOperations.Available(LayerRole.Unknown));
+    }
+
+    /// <summary>
+    /// Soldermask goes either way: burned as a stencil, or milled as relief. Its openings are by
+    /// definition everywhere the mask is not meant to be, which is a superset of the paste
+    /// apertures — vias and test points have mask openings and no paste.
+    /// </summary>
+    [Fact]
+    public void SoldermaskCanBeBurnedOrMilled()
+    {
+        Assert.Contains(OutputKind.Svg, LayerOperations.Available(LayerRole.TopMask));
+        Assert.Contains(OutputKind.Gcode, LayerOperations.Available(LayerRole.TopMask));
+
+        Assert.Equal(OperationKind.MaskOpen, LayerOperations.For(LayerRole.TopMask, OutputKind.Svg));
+        Assert.Equal(OperationKind.Pocket, LayerOperations.For(LayerRole.BottomMask, OutputKind.Gcode));
     }
 
     [Fact]
@@ -78,26 +92,34 @@ public sealed class ExportPlannerTests
         Assert.Equal(4, plan.Count);
         Assert.Equal(plan.Count, plan.Items.Select(i => i.TargetName).Distinct(StringComparer.Ordinal).Count());
 
-        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-F_Cu.iso.nc");
-        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-PTH.drill.nc");
-        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-NPTH.drill.nc");
-        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-Edge_Cuts.cutout.nc");
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-F_Cu.nc");
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-PTH.nc");
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-NPTH.nc");
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-Edge_Cuts.nc");
     }
 
     /// <summary>
-    /// The output keeps the layer's own stem so it sorts next to the file it came from, and gains a
-    /// tag so it is obvious which files a machine should be fed.
+    /// The output keeps the layer's own stem, so it sorts next to the file it came from, and the
+    /// extension says which machine wants it.
+    ///
+    /// No operation tag in the middle: a layer produces one output, so there is nothing for a tag
+    /// to disambiguate, and it only made the names harder to read.
     /// </summary>
     [Fact]
-    public void FilenamesKeepTheLayerStemAndSayWhatTheyAre()
+    public void FilenamesKeepTheLayerStemAndTheExtensionSaysTheRest()
     {
         Assert.Equal(
-            "PogoTest1-F_Cu.iso.nc",
+            "PogoTest1-F_Cu.nc",
             ExportPlanner.TargetNameFor("PogoTest1-F_Cu.gbr", OperationKind.Isolation, OutputKind.Gcode));
 
         Assert.Equal(
-            "PogoTest1-F_Silkscreen.engrave.svg",
+            "PogoTest1-F_Silkscreen.svg",
             ExportPlanner.TargetNameFor("PogoTest1-F_Silkscreen.gbr", OperationKind.Engrave, OutputKind.Svg));
+
+        // The same layer sent to both machines still gives two distinct names.
+        Assert.NotEqual(
+            ExportPlanner.TargetNameFor("B-F_Cu.gbr", OperationKind.Isolation, OutputKind.Gcode),
+            ExportPlanner.TargetNameFor("B-F_Cu.gbr", OperationKind.MaskOpen, OutputKind.Svg));
     }
 
     [Fact]
@@ -498,6 +520,60 @@ public sealed class ExportPlannerTests
             .Select(l => double.Parse(
                 l.Split(' ')[1][1..], System.Globalization.CultureInfo.InvariantCulture)),
     ];
+
+    // ------------------------------------------------------------------ the negative
+
+    /// <summary>
+    /// Two opposite jobs use the same shapes. Burning a soldermask stencil wants the openings;
+    /// etching a painted board wants everything the acid should reach, which is the complement of
+    /// the copper. Which one is the target is a fact about the process, not about the file.
+    /// </summary>
+    [Fact]
+    public void AnInvertedLayerIsTheComplementInsideTheBoardEdge()
+    {
+        var board = Board();
+
+        static double Area(string svg) => System.Xml.Linq.XDocument.Parse(svg)
+            .Descendants().Count(e => e.Attribute("d") is not null);
+
+        var settings = Defaults(board);
+        settings["PogoTest1-F_Cu.gbr"] = settings["PogoTest1-F_Cu.gbr"] with { Output = OutputKind.Svg };
+
+        var plain = Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
+
+        settings["PogoTest1-F_Cu.gbr"] = settings["PogoTest1-F_Cu.gbr"] with { Invert = true };
+        var inverted = Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
+
+        Assert.NotEqual(plain.Content, inverted.Content, StringComparer.Ordinal);
+        Assert.Contains(inverted.Summary, s => s.Contains("Inverted", StringComparison.Ordinal));
+        Assert.DoesNotContain(plain.Summary, s => s.Contains("Inverted", StringComparison.Ordinal));
+
+        // Both are drawings of the same board, so they share the page.
+        Assert.Equal(
+            System.Xml.Linq.XDocument.Parse(plain.Content).Root!.Attribute("viewBox")!.Value,
+            System.Xml.Linq.XDocument.Parse(inverted.Content).Root!.Attribute("viewBox")!.Value,
+            StringComparer.Ordinal);
+
+        Assert.True(Area(inverted.Content) > 0);
+    }
+
+    /// <summary>
+    /// Inverting is a drawing operation. A toolpath has nothing to be the complement of, so the
+    /// setting is ignored rather than quietly producing a program that cuts the whole board away.
+    /// </summary>
+    [Fact]
+    public void InvertingHasNoEffectOnGcode()
+    {
+        var board = Board();
+        var settings = Defaults(board);
+
+        var plain = Plan(board, settings).Items.Single(i => i.Operation == OperationKind.Isolation);
+
+        settings["PogoTest1-F_Cu.gbr"] = settings["PogoTest1-F_Cu.gbr"] with { Invert = true };
+        var inverted = Plan(board, settings).Items.Single(i => i.Operation == OperationKind.Isolation);
+
+        Assert.Equal(plain.Content, inverted.Content, StringComparer.Ordinal);
+    }
 
     [Fact]
     public void NothingIsExportedWhenEveryLayerIsOff()

@@ -24,6 +24,7 @@ internal static class Program
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
             Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode, --write, -o <dir>");
+            Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none  (svg- inverts)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("  tools [list|add|remove|path]   Manage the saved tool library");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
@@ -1332,7 +1333,10 @@ internal static class Program
                 return 1;
             }
 
-            var kind = parts[1].ToLowerInvariant() switch
+            // "svg-" is the inverted form: everything inside the board edge except this layer,
+            // which is what etching a painted board wants.
+            var inverted = parts[1].EndsWith('-');
+            var kind = parts[1].TrimEnd('-').ToLowerInvariant() switch
             {
                 "svg" => OutputKind.Svg,
                 "gcode" or "nc" => OutputKind.Gcode,
@@ -1342,14 +1346,14 @@ internal static class Program
 
             if (kind is null)
             {
-                Console.Error.WriteLine($"--set wants svg, gcode or none, got '{parts[1]}'.");
+                Console.Error.WriteLine($"--set wants svg, svg-, gcode or none, got '{parts[1]}'.");
                 return 1;
             }
 
             var matched = 0;
             foreach (var key in settings.Keys.Where(k => k.Contains(parts[0], StringComparison.OrdinalIgnoreCase)).ToList())
             {
-                settings[key] = settings[key] with { Output = kind.Value };
+                settings[key] = settings[key] with { Output = kind.Value, Invert = inverted };
                 matched++;
             }
 

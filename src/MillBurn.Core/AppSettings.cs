@@ -54,6 +54,14 @@ public sealed record AppSettings
 
     public double BoardThicknessMm { get; init; } = 1.6;
 
+    /// <summary>
+    /// "Dark", "Light", or null to follow the system.
+    ///
+    /// A string rather than the framework's enum: settings sit below the UI, and a preference file
+    /// should not stop loading because a rendering library renamed a value.
+    /// </summary>
+    public string? Theme { get; init; }
+
     public string? LastExportFolder { get; init; }
 
     /// <summary>Where the window was when it was last closed, or null if it never has been.</summary>

@@ -26,9 +26,40 @@ public static class LayerRoles
         ArgumentNullException.ThrowIfNull(image);
 
         var declared = FromFileFunction(image.FileFunction);
-        return declared != LayerRole.Unknown
-            ? (declared, false)
+        if (declared != LayerRole.Unknown)
+        {
+            return (declared, false);
+        }
+
+        // A file that says what it is and says it is not part of the board is *known*, not
+        // unknown. Falling through to the filename here is how "PogoTest1-PTH-drl_map.gbr" became
+        // 688 plated holes: the name says PTH, the file says drill map, and the name won.
+        return DeclaresNonBoardFunction(image.FileFunction)
+            ? (LayerRole.Unknown, false)
             : (FromFileName(fileName), true);
+    }
+
+    /// <summary>
+    /// Functions that describe documentation rather than a layer to be made.
+    ///
+    /// Listed rather than inferred, because the cost of getting this wrong is asymmetric: treating
+    /// a real layer as documentation loses it visibly, while treating documentation as a real layer
+    /// cuts it.
+    /// </summary>
+    public static bool DeclaresNonBoardFunction(string? fileFunction)
+    {
+        if (string.IsNullOrWhiteSpace(fileFunction))
+        {
+            return false;
+        }
+
+        var kind = fileFunction.Split(',', StringSplitOptions.TrimEntries)[0];
+
+        return kind.Equals("Drillmap", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("FabricationDrawing", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("AssemblyDrawing", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("ArrayDrawing", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("OtherDrawing", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -53,6 +84,24 @@ public static class LayerRoles
         if (kind.Equals("Profile", StringComparison.OrdinalIgnoreCase))
         {
             return LayerRole.Outline;
+        }
+
+        // A drill map is a chart of the holes, not the holes: symbols and text showing an operator
+        // where they go. Reading it as a drill layer would put several hundred holes through the
+        // legend, so it is named explicitly rather than left to fall through to a filename guess.
+        if (kind.Equals("Drillmap", StringComparison.OrdinalIgnoreCase))
+        {
+            return LayerRole.Unknown;
+        }
+
+        // KiCad can write drill files as Gerber X2 instead of Excellon: same holes, same
+        // attributes, different container. The file function is the only reliable way to tell,
+        // because the extension is .gbr like everything else.
+        if (fields.Contains("Drill", StringComparer.OrdinalIgnoreCase))
+        {
+            return kind.Equals("NonPlated", StringComparison.OrdinalIgnoreCase)
+                ? LayerRole.NonPlatedDrill
+                : LayerRole.PlatedDrill;
         }
 
         var side = SideField(fields);

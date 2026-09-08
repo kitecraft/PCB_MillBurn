@@ -130,6 +130,15 @@ public static class BoardLoader
     {
         var layer = GerberRealiser.Realise(image, options);
 
+        // A drill file written as Gerber X2 still has to yield holes, not just discs to look at.
+        // Without this it realises as a perfectly good picture of the holes and drills none of
+        // them, which is a board that comes off the machine solid and says nothing about it.
+        var drill = LayerRoleInfo.IsDrill(role)
+            ? GerberDrills.From(
+                image,
+                role == LayerRole.NonPlatedDrill ? HolePlating.NonPlated : HolePlating.Plated)
+            : null;
+
         return new BoardLayer
         {
             FileName = fileName,
@@ -141,6 +150,7 @@ public static class BoardLoader
             DeclaredNegative = layer.DeclaredNegative,
             Notes = layer.Notes,
             Diagnostics = image.Diagnostics,
+            Drill = drill,
         };
     }
 

@@ -420,6 +420,40 @@ a depth the operator typed is never replaced. The export warns, with the chosen 
 the whole cut is shallower than an ordinary board's flatness — which is exactly the trouble that was
 reported with it, and the strongest argument yet for Phase 5's height mapping.
 
+**Tabs go on the outermost profile only.** Reported from a fifty-up panel: every one of the fifty
+boards was getting four tabs of our own, on top of the tabs the designer had already drawn between
+them, leaving a panel that had to be cut apart by hand. A tab holds a piece to the material around
+it, so the only boundary that needs one is between the job and the stock — which is exactly the
+`nesting == 0` test the containment tree already computes. Panel cutout travel fell from 1,922 mm to
+772 mm as a side effect, because the fifty inner boards became closed contours again instead of
+four tabbed runs each.
+
+**Drill files written as Gerber X2 now drill.** KiCad's *Generate Drill Files* offers X2 instead of
+Excellon; picking it produced a Gerber full of circles that realised beautifully and drilled nothing,
+and the board would have come off the machine solid with no warning. `GerberDrills` reads the holes
+from the `D03` flashes, taking each diameter from the aperture's own parameter rather than measuring
+it back off the polygon it was drawn as.
+
+That export also writes a **drill map**, and it was being read as 688 plated holes: the file declares
+`Drillmap`, the filename says `PTH`, and the filename was winning because an unrecognised function
+fell through to the guess. A file that says what it is and says it is not part of the board is
+*known*, not unknown — so declared documentation functions now stop the fallback instead of
+triggering it.
+
+**Soldermask joins paste as a millable layer**, since its openings are by definition everywhere the
+mask is not meant to be — a superset of the paste apertures, because vias and test points have mask
+openings and no paste.
+
+**SVG gained an inverted form**, asked for from the etching workflow: paint the board, burn away the
+resist everywhere the acid should reach, which is the complement of the copper. That needs the board
+edge in the drawing, because the complement of a shape is unbounded until something bounds it — the
+`Edge_Cuts` outline when there is one, the extents when there is not. Inverting is ignored for
+G-code rather than producing a program that mills the whole board away.
+
+**The operation tag came out of exported filenames.** `PogoTest1-F_Cu.iso.nc` is now
+`PogoTest1-F_Cu.nc`: a layer produces one output, so there was nothing for the tag to disambiguate,
+and the extension already says which machine wants the file.
+
 Still to come in this phase: Eulerian path merging, travel-at-depth when it is safe, and
 Douglas–Peucker plus arc fitting — which Documentation/03 §7 rates as the bigger real-world win,
 because a 76,000-line isolation file decelerates at every one of those lines.

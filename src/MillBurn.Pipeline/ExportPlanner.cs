@@ -116,16 +116,20 @@ public static class ExportPlanner
     }
 
     /// <summary>
-    /// The exported name: the layer's own stem, the operation, and the extension.
+    /// The exported name: the layer's own stem, and the extension for what it is.
     ///
-    /// Output routinely lands in the same folder as the Gerbers, so it has to be obvious at a
-    /// glance which files a machine should be fed. Keeping the layer's stem means they sort next to
-    /// the file they came from.
+    /// Keeping the stem means the output sorts next to the file it came from, and <c>.nc</c> or
+    /// <c>.svg</c> already says which machine wants it. An operation tag in the middle was tried
+    /// and is not worth the noise: a layer produces one output, so there is nothing for the tag to
+    /// disambiguate.
     /// </summary>
-    public static string TargetNameFor(string layerFileName, OperationKind operation, OutputKind output) =>
-        Path.GetFileNameWithoutExtension(layerFileName)
-        + "." + LayerOperations.FileTag(operation)
-        + (output == OutputKind.Svg ? ".svg" : ".nc");
+    public static string TargetNameFor(string layerFileName, OperationKind operation, OutputKind output)
+    {
+        _ = operation;
+
+        return Path.GetFileNameWithoutExtension(layerFileName)
+            + (output == OutputKind.Svg ? ".svg" : ".nc");
+    }
 
     // ------------------------------------------------------------------ SVG
 
@@ -144,6 +148,16 @@ public static class ExportPlanner
         var area = mirrored
             ? MirrorX(layer.Area, board.Bounds.MinX + board.Bounds.MaxX)
             : layer.Area;
+
+        // Inverted: everything inside the board except this layer.
+        //
+        // The board outline has to be in the drawing for this to mean anything — the complement of
+        // a shape is unbounded until something bounds it, and what bounds it here is the edge of
+        // the material. Without that the laser would be asked to clear an infinite plane.
+        if (setting.Invert)
+        {
+            area = Polygons.Difference(BoardRegion(board, mirrored), area);
+        }
 
         var artwork = PolygonArtwork.ToArtwork(
             new RealisedLayer
@@ -173,6 +187,11 @@ public static class ExportPlanner
         if (mirrored)
         {
             summary.Add("Mirrored · for work done on the flipped board");
+        }
+
+        if (setting.Invert)
+        {
+            summary.Add("Inverted · everything inside the board edge except this layer");
         }
 
         var warnings = new List<string>();
@@ -545,6 +564,29 @@ public static class ExportPlanner
                 + "fit if the stock is flipped."
             : $"{LayerRoleInfo.Label(role)} is a bottom-side layer but is set not to mirror. It "
                 + "will come out reversed unless you are working from the other face.";
+    }
+
+    /// <summary>
+    /// The board itself, as a filled region, for bounding an inverted layer.
+    ///
+    /// The outline layer when there is one, because a board is rarely a rectangle and burning the
+    /// bounding box would clear resist off the stock outside the board. Falls back to the extents
+    /// when there is no outline, which is the same fallback the viewer makes and is stated as a
+    /// warning rather than assumed.
+    /// </summary>
+    private static Paths64 BoardRegion(Board board, bool mirrored)
+    {
+        var outline = board.Layers.FirstOrDefault(l => l.Role == LayerRole.Outline);
+
+        var region = outline is null || outline.Area.Count == 0
+            ? new Paths64 { Polygons.Rectangle(board.Bounds) }
+            : new Paths64(outline.Area.Where(r => Clipper.Area(r) > 0));
+
+        // Filling the outline's own strokes closes the annulus, so the region is the whole board
+        // rather than a ring around its edge.
+        region = Polygons.UnionSelf(region);
+
+        return mirrored ? MirrorX(region, board.Bounds.MinX + board.Bounds.MaxX) : region;
     }
 
     /// <summary>Reflects realised geometry in the same vertical line the toolpaths use.</summary>

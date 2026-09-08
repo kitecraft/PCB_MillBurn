@@ -145,6 +145,39 @@ public sealed class PanelOutlineTests
         Assert.Single(toolpath.Passes.Select(p => p.Stack).Distinct());
     }
 
+    /// <summary>
+    /// Tabs hold a piece to the material around it, so only the boundary between the job and the
+    /// stock needs them.
+    ///
+    /// On a panel the boards are already joined to each other by the tabs the designer drew.
+    /// Adding four more to every one of them leaves a panel that has to be cut apart by hand, which
+    /// is the opposite of what tabs are for.
+    /// </summary>
+    [Fact]
+    public void OnlyTheOutermostProfileGetsTabs()
+    {
+        var tabbed = Options with { TabCount = 4 };
+        var toolpath = OutlineOperation.Build(Panel(), tabbed);
+
+        // A tabbed profile is broken into open runs; an untabbed one stays a closed contour.
+        var open = toolpath.Passes.Where(p => !p.Closed).Select(p => p.Stack).Distinct().ToList();
+
+        Assert.Single(open);
+
+        // And it is the frame, which is the longest thing here.
+        var frame = toolpath.Passes.OrderByDescending(p => p.LengthNm).First();
+        Assert.Equal(frame.Stack, open[0]);
+    }
+
+    /// <summary>A lone board is its own outermost profile, so it still gets tabs.</summary>
+    [Fact]
+    public void ASingleBoardStillGetsTabs()
+    {
+        var toolpath = OutlineOperation.Build([Rect(0, 0, 30, 20)], Options with { TabCount = 4 });
+
+        Assert.Contains(toolpath.Passes, p => !p.Closed);
+    }
+
     [Fact]
     public void NoProfileAtAllIsNotACrash()
     {

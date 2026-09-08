@@ -167,6 +167,7 @@ public static class OutlineOperation
 
         var shallowDepths = new List<long>();
         var tabbedDepths = new List<long>();
+        var allDepths = new List<long>();
 
         for (var step = 1; step <= steps; step++)
         {
@@ -175,6 +176,7 @@ public static class OutlineOperation
                 && depth > options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
 
             (tabbed ? tabbedDepths : shallowDepths).Add(depth);
+            allDepths.Add(depth);
         }
 
         for (var c = 0; c < contours.Count; c++)
@@ -189,7 +191,16 @@ public static class OutlineOperation
             // so the tool finishes here before it moves.
             var group = deepest - nesting.GetValueOrDefault(c);
 
-            foreach (var depth in shallowDepths)
+            // Tabs go on the outermost profiles only.
+            //
+            // A tab holds a piece to the stock around it, so only the boundary between the job and
+            // the material it sits in needs one. Everything nested inside that boundary is already
+            // held — on a panel the individual boards are joined to each other by the tabs the
+            // designer drew, and adding more on all four sides of all fifty of them leaves a panel
+            // that has to be cut apart by hand.
+            var outermost = nesting.GetValueOrDefault(c) == 0;
+
+            foreach (var depth in outermost ? shallowDepths : allDepths)
             {
                 passes.Add(new ToolpathPass
                 {
@@ -208,7 +219,7 @@ public static class OutlineOperation
             // depth means travelling its whole length back first. Going round the profile instead
             // costs only the tab gap between one run and the next, and the last run's end is
             // already next to the first run's start.
-            var runs = tabbedDepths.Count == 0
+            var runs = !outermost || tabbedDepths.Count == 0
                 ? []
                 : SplitForTabs(contour, options).ToList();
 
@@ -236,8 +247,18 @@ public static class OutlineOperation
         {
             var tabWidth = Nm.ToMillimetreString(options.TabWidthNm, 1);
             var tabHeight = Nm.ToMillimetreString(options.TabHeightNm, 2);
+            var outerCount = nesting.Values.Count(v => v == 0);
+
             notes.Add(Invariant(
                 $"{options.TabCount} tabs, {tabWidth} mm wide, {tabHeight} mm of material left under each."));
+
+            if (nesting.Count > outerCount)
+            {
+                var inner = nesting.Count - outerCount;
+                notes.Add(
+                    Invariant($"Tabs on the {outerCount} outer profile(s) only; the {inner} inside ")
+                    + "are held by whatever joins them in the design.");
+            }
         }
         else
         {

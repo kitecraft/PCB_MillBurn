@@ -122,6 +122,9 @@ public sealed partial class MainViewModel : ViewModelBase
     public void SaveWindowPlacement(WindowPlacement placement) =>
         SaveSettings(Settings with { Window = placement });
 
+    /// <summary>Remembers light or dark, so the app opens the way it was closed.</summary>
+    public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
+
     // ------------------------------------------------------------------ loading
 
     public void LoadFolder(string folder)

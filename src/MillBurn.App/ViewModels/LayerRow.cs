@@ -86,6 +86,7 @@ public sealed partial class LayerRow : ObservableObject
         TabCount = settings.TabCount;
         Passes = settings.Passes;
         Mirrored = settings.MirrorFor(layer.Role);
+        Invert = settings.Invert;
 
         Tool = tools.FirstOrDefault(t => t.Id == settings.ToolId) ?? DefaultTool();
         Swatch = ToBrush(scene?.Style.Fill ?? SkiaSharp.SKColors.Gray);
@@ -193,6 +194,17 @@ public sealed partial class LayerRow : ObservableObject
     [ObservableProperty]
     public partial bool Mirrored { get; set; }
 
+    /// <summary>
+    /// SVG only: burn everything except this layer, out to the board edge.
+    ///
+    /// Two opposite jobs use the same shapes. Etching a painted board wants the resist cleared off
+    /// everywhere the acid should reach — the complement of the copper. Clearing soldermask off
+    /// pads wants the openings themselves. Which one is the target is a fact about the process, not
+    /// about the file.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool Invert { get; set; }
+
     public OperationKind Operation =>
         Role is null ? OperationKind.None : LayerOperations.For(Role.Value, Output);
 
@@ -209,8 +221,16 @@ public sealed partial class LayerRow : ObservableObject
 
     public bool NeedsPasses => IsGcode && Operation == OperationKind.Isolation;
 
-    /// <summary>Anything that produces a file can be mirrored; drills included.</summary>
-    public bool NeedsMirror => Output != OutputKind.None;
+    /// <summary>
+    /// Anything that can produce a file can be mirrored — drills and stencils included.
+    ///
+    /// Offered on every exportable layer rather than only on one already set to export, so the
+    /// choice is visible while deciding rather than appearing after.
+    /// </summary>
+    public bool NeedsMirror => CanExport;
+
+    /// <summary>Only a drawing can be inverted; a toolpath has nothing to be the complement of.</summary>
+    public bool NeedsInvert => IsSvg;
 
     /// <summary>Tools that suit this operation, so the list is not a catalogue of everything.</summary>
     public IReadOnlyList<Tool> Tools
@@ -289,12 +309,20 @@ public sealed partial class LayerRow : ObservableObject
         _outputChanged?.Invoke();
     }
 
+    partial void OnInvertChanged(bool value)
+    {
+        _ = value;
+        OnPropertyChanged(nameof(Detail));
+        _outputChanged?.Invoke();
+    }
+
     private void RaiseDerived()
     {
         foreach (var name in new[]
         {
             nameof(Output), nameof(Operation), nameof(IsGcode), nameof(IsSvg), nameof(NeedsBreakThrough),
-            nameof(NeedsDepth), nameof(NeedsTabs), nameof(NeedsPasses), nameof(NeedsMirror), nameof(Tools), nameof(Detail), nameof(TargetName),
+            nameof(NeedsDepth), nameof(NeedsTabs), nameof(NeedsPasses), nameof(NeedsMirror),
+            nameof(NeedsInvert), nameof(Tools), nameof(Detail), nameof(TargetName),
         })
         {
             OnPropertyChanged(name);
@@ -323,6 +351,7 @@ public sealed partial class LayerRow : ObservableObject
             }
 
             var flip = Mirrored && Output != OutputKind.None ? " · mirrored" : string.Empty;
+            var negative = Invert && IsSvg ? " · inverted" : string.Empty;
 
             var counts = string.Create(
                 CultureInfo.InvariantCulture,
@@ -362,7 +391,7 @@ public sealed partial class LayerRow : ObservableObject
                     CultureInfo.InvariantCulture,
                     $"{cutter} mm cutter outside the profile · {TabCount} tabs · {BreakThroughMm:F2} mm through{flip}"),
 
-                _ => $"{size} · {counts}{flip}",
+                _ => $"{size} · {counts}{flip}{negative}",
             };
         }
     }
@@ -377,6 +406,7 @@ public sealed partial class LayerRow : ObservableObject
         TabCount = TabCount,
         Passes = Passes,
         Mirrored = Mirrored,
+        Invert = Invert,
     };
 
     private Tool DefaultTool()

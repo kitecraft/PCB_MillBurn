@@ -31,6 +31,38 @@ All are KiCad 10 exports carrying `%TF%` attribute blocks. The optional pcb2gcod
 (see `MillBurn.Tests/GerberCorpus.cs`) is KiCad 9 and older, and uses the `G04 #@!` comment
 encoding instead — between them the parser is exercised on both forms.
 
+## Can the pcb2gcode test data live here?
+
+Short answer: it could, and it should not.
+
+pcb2gcode is GPL-3.0, and its test data is part of that work as distributed. Copying those files in
+would mean this repository distributes GPL-3.0 material. That does not relicense anything of ours —
+data files are not linked against and nothing here is derived from them — but it does make the
+repository mixed-licence, and the whole reason [01 §9](../../Documentation/01-Architecture.md#9-licensing-strategy)
+picked MIT with a clean-room rule was to keep the licensing answer a single sentence. "MIT, except
+these directories, which are GPL-3.0 and carry their own notice" is a worse answer, and it is the
+kind of thing that gets simplified back to "MIT" by whoever copies a file out of here next.
+
+(Whether a Gerber file attracts much copyright at all is a real question — it is close to purely
+functional data — but that is a judgement for a lawyer, and "probably fine" is a poor foundation
+for a licence claim.)
+
+**What we do instead**, in the order the coverage actually matters:
+
+1. **Hand-written fixtures** for the specification: every aperture template, macro primitive,
+   polarity sequence and coordinate format, written as inline strings in the tests. These prove the
+   parser implements the standard.
+2. **Real exports, committed here**, contributed by whoever owns the design. These prove it handles
+   what EDA tools actually write, which is a different question and where both parser bugs so far
+   have come from.
+3. **`MILLBURN_GERBER_CORPUS`** points the optional corpus tests at a pcb2gcode checkout if the
+   developer happens to have one. Nothing is copied, the tests skip cleanly without it, and it
+   costs the repository nothing.
+
+The gap that leaves is breadth across *other* tools — Altium, Eagle, older KiCad. That is filled by
+adding boards to this directory, not by importing someone else's suite: a board here is one whose
+provenance we know and whose licence is ours to state.
+
 ## Adding a board
 
 Copy it in as its own directory and reference it by name through `RealBoards`. Two things to check

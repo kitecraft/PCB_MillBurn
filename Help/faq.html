@@ -32,6 +32,8 @@
     <li><a href="#twosided"><strong>Lining up the two sides of a double-sided board</strong></a></li>
     <li><a href="#panels">Can I panelise?</a></li>
     <li><a href="#relief">Milling the soldermask off the pads</a></li>
+    <li><a href="#negative">Etching: burning the negative</a></li>
+    <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
     <li><a href="#colours">I cannot see a layer</a></li>
   </ul>
@@ -44,16 +46,16 @@
   something like:
 </p>
 
-<pre><code>MyBoard-F_Cu.iso.nc          top copper, isolation routing
-MyBoard-PTH.drill.nc         plated holes
-MyBoard-NPTH.drill.nc        non-plated holes
-MyBoard-Edge_Cuts.cutout.nc  board outline, with tabs
-MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
+<pre><code>MyBoard-F_Cu.nc            top copper, isolation routing
+MyBoard-PTH.nc             plated holes
+MyBoard-NPTH.nc            non-plated holes
+MyBoard-Edge_Cuts.nc       board outline, with tabs
+MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 
 <p>
-  The name keeps the layer&rsquo;s own stem so it sorts next to the file it came from, and the tag
-  in the middle (<code>.iso</code>, <code>.drill</code>, <code>.cutout</code>,
-  <code>.engrave</code>, <code>.mask</code>, <code>.vector</code>) says what it does.
+  The name keeps the layer&rsquo;s own stem, so the output sorts next to the file it came from, and
+  the extension says which machine wants it: <code>.nc</code> for the mill, <code>.svg</code> for
+  the laser.
 </p>
 
 <p>
@@ -155,6 +157,19 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
 <p>
   Break the tabs with a knife afterwards and file the nubs flush.
 </p>
+
+<div class="note">
+  <p>
+    <strong>Tabs go on the outermost profile only.</strong> A tab holds a piece to the material
+    around it, so the only boundary that needs one is between the job and the stock it sits in.
+  </p>
+  <p>
+    On a panel that means the frame gets tabs and the boards inside it do not &mdash; they are
+    already joined to each other by whatever the designer drew. Adding four more to every one of
+    fifty boards leaves a panel that has to be cut apart by hand, which is the opposite of what
+    tabs are for.
+  </p>
+</div>
 
 <h2 id="gaps">A trace did not get isolated</h2>
 
@@ -416,10 +431,16 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
 <h2 id="relief">Milling the soldermask off the pads</h2>
 
 <p>
-  Set a <strong>paste</strong> layer to <strong>G-code</strong> and you get <em>mask relief</em>:
-  the cured soldermask cleared off each pad so it can be soldered. The paste apertures are exactly
-  the right geometry for it — they are where solder is meant to go, which is where the mask must
-  not be.
+  Set a <strong>paste</strong> or <strong>soldermask</strong> layer to <strong>G-code</strong> and
+  you get <em>mask relief</em>:
+  the cured soldermask cleared off each pad so it can be soldered.
+</p>
+
+<p>
+  Either layer works, and which you want depends on what you are soldering. The <strong>paste</strong>
+  apertures are where solder paste goes: the pads of surface-mount parts. The
+  <strong>soldermask</strong> openings are everywhere the mask is not meant to be at all, which is a
+  superset — through-hole pads, vias and test points have mask openings and no paste.
 </p>
 
 <p>
@@ -447,6 +468,71 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
   The depth defaults to 0.035 mm here rather than the 0.05 mm that isolation uses, because 0.05 mm
   goes clean through the mask into the copper. If you type a depth of your own it is kept, whatever
   you switch the layer to afterwards.
+</p>
+
+<h2 id="negative">Etching: burning the negative</h2>
+
+<p>
+  Two opposite jobs use the same shapes, so each exported SVG has an <strong>Inverted</strong>
+  option.
+</p>
+
+<table>
+  <tr><th>Job</th><th>Inverted</th><th>What the laser burns</th></tr>
+  <tr>
+    <td>Clear soldermask off the pads</td>
+    <td>off</td>
+    <td>The shapes themselves &mdash; the openings.</td>
+  </tr>
+  <tr>
+    <td>Etch a painted board in acid</td>
+    <td><strong>on</strong></td>
+    <td>Everything inside the board edge <em>except</em> the copper, so the resist is cleared
+      wherever the acid should reach.</td>
+  </tr>
+</table>
+
+<p>
+  Inverting needs the board edge, and puts it in for you: the complement of a shape is unbounded
+  until something bounds it, and what bounds it here is the material. The <code>Edge_Cuts</code>
+  outline is used when there is one, so a board that is not a rectangle comes out the right shape;
+  without an outline it falls back to the extents, and says so.
+</p>
+
+<p>
+  It applies to drawings only. A toolpath has nothing to be the complement of, so the setting is
+  ignored for G-code rather than producing a program that mills the whole board away.
+</p>
+
+<h2 id="drills">Holes of different sizes, and drill files that are Gerbers</h2>
+
+<h3>Different sizes in one file</h3>
+
+<p>
+  A drill layer becomes one program containing every hole, <strong>grouped by size, largest
+  first</strong>. Each group is a tool change, marked in the file, so you run it, stop at the
+  change, swap the bit and carry on. Sizes are not split into separate files: they share one work
+  zero and one setup, and splitting them would mean re-registering between bits for nothing.
+</p>
+
+<p>
+  Largest first because a big bit wanders less when it starts on undisturbed material than when it
+  meets a smaller hole already there.
+</p>
+
+<h3>&ldquo;My drill files came out as .gbr&rdquo;</h3>
+
+<p>
+  That is KiCad&rsquo;s <em>Generate Drill Files</em> with the <strong>Gerber X2</strong> option
+  rather than Excellon. It works here: the holes are read straight out of the file, with the exact
+  aperture diameters rather than measurements taken back off the drawing.
+</p>
+
+<p>
+  One thing to know about that export: it also writes a <strong>drill map</strong>
+  (<code>*_map.gbr</code>) &mdash; a chart of symbols and text showing an operator where the holes
+  go. That is documentation, not holes, and is recognised as such from the file&rsquo;s own
+  declaration rather than from its name. You can leave it in the folder; it will not be cut.
 </p>
 
 <h2 id="svg">The SVGs: masks, openings, and alignment</h2>

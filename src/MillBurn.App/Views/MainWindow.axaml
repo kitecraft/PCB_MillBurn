@@ -38,6 +38,16 @@
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
 
+        <!-- A layer row expander is a disclosure, not a panel: no border, minimal padding. -->
+        <Style Selector="Expander.layer">
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="Expander.layer /template/ ToggleButton">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="4,2" />
+        </Style>
+
         <Style Selector="TextBlock.fact">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Margin" Value="0,1" />
@@ -208,44 +218,50 @@
                                 <ItemsControl ItemsSource="{Binding Layers}" Margin="0,4,6,4">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LayerRow">
-                                            <Border Padding="4,5" Margin="0,1" CornerRadius="4"
+                                            <Border Padding="4,3" Margin="0,1" CornerRadius="4"
                                                     BorderBrush="{DynamicResource BorderSubtle}"
                                                     BorderThickness="0,0,0,1">
-                                                <StackPanel Spacing="3">
+                                                <!--
+                                                    The eye and the colour sit outside the expander,
+                                                    so they stay reachable while it is shut and a
+                                                    click on either cannot also toggle it.
+                                                -->
+                                                <Grid ColumnDefinitions="Auto,Auto,*">
+                                                    <CheckBox Grid.Column="0"
+                                                              IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                              VerticalAlignment="Top"
+                                                              Margin="0,6,0,0"
+                                                              ToolTip.Tip="Show this layer in the viewport. Has nothing to do with what gets exported." />
+                                                    <Button Grid.Column="1"
+                                                            Classes="swatch"
+                                                            Width="16" Height="16"
+                                                            Margin="0,8,8,0"
+                                                            VerticalAlignment="Top"
+                                                            Click="OnSwatchClicked"
+                                                            ToolTip.Tip="Change this layer colour">
+                                                        <Border Background="{Binding Swatch}"
+                                                                CornerRadius="2" />
+                                                    </Button>
 
-                                                    <Grid ColumnDefinitions="Auto,Auto,*">
-                                                        <CheckBox Grid.Column="0"
-                                                                  IsChecked="{Binding IsVisible, Mode=TwoWay}"
-                                                                  VerticalAlignment="Center"
-                                                                  ToolTip.Tip="Show this layer in the viewport. Has nothing to do with what gets exported." />
-                                                        <Button Grid.Column="1"
-                                                                Classes="swatch"
-                                                                Width="16" Height="16"
-                                                                Margin="0,0,8,0"
-                                                                VerticalAlignment="Center"
-                                                                Click="OnSwatchClicked"
-                                                                ToolTip.Tip="Change this layer's colour">
-                                                            <Border Background="{Binding Swatch}"
-                                                                    CornerRadius="2" />
-                                                        </Button>
-                                                        <TextBlock Grid.Column="2"
-                                                                   Text="{Binding Label}"
-                                                                   VerticalAlignment="Center"
-                                                                   Foreground="{DynamicResource TextPrimary}" />
-                                                    </Grid>
+                                                    <Expander Grid.Column="2"
+                                                              Classes="layer"
+                                                              Header="{Binding Label}"
+                                                              HorizontalAlignment="Stretch"
+                                                              Margin="0">
+                                                        <StackPanel Spacing="3" Margin="0,2,0,4">
 
                                                     <ComboBox ItemsSource="{Binding Outputs}"
                                                               SelectedItem="{Binding SelectedOutput, Mode=TwoWay}"
                                                               IsVisible="{Binding CanExport}"
                                                               HorizontalAlignment="Stretch"
-                                                              Margin="26,0,0,0"
+                                                              Margin="0"
                                                               ToolTip.Tip="What this layer becomes. Each exported layer gets its own file." />
 
                                                     <ComboBox ItemsSource="{Binding Tools}"
                                                               SelectedItem="{Binding Tool, Mode=TwoWay}"
                                                               IsVisible="{Binding IsGcode}"
                                                               HorizontalAlignment="Stretch"
-                                                              Margin="26,0,0,0"
+                                                              Margin="0"
                                                               ToolTip.Tip="Which tool cuts this layer">
                                                         <ComboBox.ItemTemplate>
                                                             <DataTemplate>
@@ -254,7 +270,7 @@
                                                         </ComboBox.ItemTemplate>
                                                     </ComboBox>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
                                                           IsVisible="{Binding NeedsDepth}">
                                                         <TextBlock Grid.Column="0" Classes="caption" Width="78"
                                                                    VerticalAlignment="Center" Text="Depth (mm)" />
@@ -266,7 +282,7 @@
                                                                        ToolTip.Tip="How deep the cut runs. For a V-bit this is the same choice as how wide it cuts." />
                                                     </Grid>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
                                                           IsVisible="{Binding NeedsPasses}">
                                                         <TextBlock Grid.Column="0" Classes="caption" Width="78"
                                                                    VerticalAlignment="Center" Text="Passes" />
@@ -277,7 +293,7 @@
                                                                        ToolTip.Tip="How many offsets out from the copper. More passes clear more of the field." />
                                                     </Grid>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
                                                           IsVisible="{Binding NeedsBreakThrough}">
                                                         <TextBlock Grid.Column="0" Classes="caption" Width="78"
                                                                    VerticalAlignment="Center" Text="Through (mm)" />
@@ -289,7 +305,7 @@
                                                                        ToolTip.Tip="How far past the underside to go. Stopping exactly at the nominal thickness leaves a skin that tears." />
                                                     </Grid>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="26,0,0,0"
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
                                                           IsVisible="{Binding NeedsTabs}">
                                                         <TextBlock Grid.Column="0" Classes="caption" Width="78"
                                                                    VerticalAlignment="Center" Text="Tabs" />
@@ -301,22 +317,31 @@
                                                     </Grid>
 
                                                     <CheckBox Content="Mirrored"
-                                                              Margin="26,0,0,0"
+                                                              Margin="0"
                                                               MinHeight="0"
                                                               IsVisible="{Binding NeedsMirror}"
                                                               IsChecked="{Binding Mirrored, Mode=TwoWay}"
                                                               ToolTip.Tip="Reflect this layer left-to-right, for work done after the stock is flipped. On by default for bottom-side layers." />
 
+                                                    <CheckBox Content="Inverted"
+                                                              Margin="0"
+                                                              MinHeight="0"
+                                                              IsVisible="{Binding NeedsInvert}"
+                                                              IsChecked="{Binding Invert, Mode=TwoWay}"
+                                                              ToolTip.Tip="Burn everything inside the board edge EXCEPT this layer, for clearing resist off a painted board so acid can reach it. Off means burn the shapes themselves." />
+
                                                     <TextBlock Classes="caption" TextWrapping="Wrap"
-                                                               Margin="26,0,0,0"
+                                                               Margin="0"
                                                                Text="{Binding Detail}" />
 
-                                                    <TextBlock FontSize="11" Margin="26,0,0,0"
-                                                               FontFamily="Consolas,monospace"
-                                                               Foreground="{DynamicResource StatusInfo}"
-                                                               IsVisible="{Binding TargetName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                               Text="{Binding TargetName}" />
-                                                </StackPanel>
+                                                            <TextBlock FontSize="11"
+                                                                       FontFamily="Consolas,monospace"
+                                                                       Foreground="{DynamicResource StatusInfo}"
+                                                                       IsVisible="{Binding TargetName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                       Text="{Binding TargetName}" />
+                                                        </StackPanel>
+                                                    </Expander>
+                                                </Grid>
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>

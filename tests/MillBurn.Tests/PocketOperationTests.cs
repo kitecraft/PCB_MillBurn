@@ -149,17 +149,17 @@ public sealed class PocketOperationTests
     }
 
     [Fact]
-    public void ItIsNamedAndTaggedAsItsOwnThing()
+    public void ItIsNamedAsItsOwnThing()
     {
         Assert.Equal("Mask relief", LayerOperations.Label(OperationKind.Pocket));
 
+        // The name is the layer's; the extension says which machine wants it.
         Assert.Equal(
-            "MyBoard-F_Paste.relief.nc",
+            "MyBoard-F_Paste.nc",
             ExportPlanner.TargetNameFor("MyBoard-F_Paste.gbr", OperationKind.Pocket, OutputKind.Gcode));
 
-        // Distinct from the stencil that the same layer produces as SVG.
         Assert.Equal(
-            "MyBoard-F_Paste.mask.svg",
+            "MyBoard-F_Paste.svg",
             ExportPlanner.TargetNameFor("MyBoard-F_Paste.gbr", OperationKind.MaskOpen, OutputKind.Svg));
     }
 

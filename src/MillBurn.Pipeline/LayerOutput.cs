@@ -95,6 +95,17 @@ public sealed record LayerOutputSettings
     /// </summary>
     public bool? Mirrored { get; init; }
 
+    /// <summary>
+    /// SVG only: burn everything <em>except</em> this layer, out to the board edge.
+    ///
+    /// Two opposite jobs use the same geometry. Etching a painted board wants the laser to clear
+    /// the resist off everywhere the acid should reach, which is the complement of the copper
+    /// inside the board outline. Removing soldermask from pads wants the openings themselves. The
+    /// shapes in the file are the same; which of them is the target is a fact about the process,
+    /// so it has to be a choice.
+    /// </summary>
+    public bool Invert { get; init; }
+
     /// <summary>What this layer's mirror setting actually resolves to.</summary>
     public bool MirrorFor(LayerRole role) => Mirrored ?? LayerOperations.MirrorByDefault(role);
 }
@@ -127,6 +138,11 @@ public static class LayerOperations
         (LayerRole.TopSilk or LayerRole.BottomSilk, OutputKind.Svg) => OperationKind.Engrave,
 
         (LayerRole.TopMask or LayerRole.BottomMask, OutputKind.Svg) => OperationKind.MaskOpen,
+
+        // The soldermask layer's openings are, by definition, everywhere the mask is not meant to
+        // be — so milling them is the same operation as milling the paste apertures, over a
+        // superset of the geometry: vias and test points have mask openings and no paste.
+        (LayerRole.TopMask or LayerRole.BottomMask, OutputKind.Gcode) => OperationKind.Pocket,
         (LayerRole.TopPaste or LayerRole.BottomPaste, OutputKind.Svg) => OperationKind.MaskOpen,
 
         // Milling the applied soldermask off the pads. A real workflow, and the one operation here
@@ -141,7 +157,8 @@ public static class LayerOperations
     public static IReadOnlyList<OutputKind> Available(LayerRole role) => role switch
     {
         LayerRole.PlatedDrill or LayerRole.NonPlatedDrill => [OutputKind.None, OutputKind.Gcode],
-        LayerRole.TopMask or LayerRole.BottomMask => [OutputKind.None, OutputKind.Svg],
+        LayerRole.TopMask or LayerRole.BottomMask
+            => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
 
         // Paste can be burned as a stencil or milled as mask relief.
         LayerRole.TopPaste or LayerRole.BottomPaste
@@ -211,21 +228,16 @@ public static class LayerOperations
         _ => "Not exported",
     };
 
-    /// <summary>
-    /// The short tag that goes in an exported filename.
-    ///
-    /// Output lands in the same folder as the Gerbers often enough that it has to be obvious at a
-    /// glance which files a machine should be fed and which came from the EDA tool.
-    /// </summary>
-    public static string FileTag(OperationKind operation) => operation switch
+    /// <summary>What a layer becomes, for a caller that wants to say it in a word.</summary>
+    public static string ShortName(OperationKind operation) => operation switch
     {
-        OperationKind.Isolation => "iso",
-        OperationKind.Drilling => "drill",
-        OperationKind.Outline => "cutout",
-        OperationKind.Engrave => "engrave",
-        OperationKind.MaskOpen => "mask",
-        OperationKind.Pocket => "relief",
-        OperationKind.Vector => "vector",
-        _ => "out",
+        OperationKind.Isolation => "isolation",
+        OperationKind.Drilling => "drilling",
+        OperationKind.Outline => "cut out",
+        OperationKind.Engrave => "engraving",
+        OperationKind.MaskOpen => "openings",
+        OperationKind.Vector => "outline",
+        OperationKind.Pocket => "mask relief",
+        _ => "nothing",
     };
 }
