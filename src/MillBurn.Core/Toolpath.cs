@@ -29,6 +29,15 @@ public sealed record ToolpathPass
 
     public bool Closed { get; init; }
 
+    /// <summary>
+    /// A precedence tier. Every pass in a lower group is cut before any pass in a higher one.
+    ///
+    /// Physics, not preference (Documentation/03, section 5): a shallower pass comes before a
+    /// deeper one on the same contour, and the pieces inside a panel are cut out before the frame
+    /// around them — cut the frame first and everything still attached to it is now loose.
+    /// </summary>
+    public int Group { get; init; }
+
     public Point2 Start => Path.Count == 0 ? Point2.Origin : Path[0].From;
 
     public Point2 End => Path.Count == 0 ? Point2.Origin : Path[^1].To;

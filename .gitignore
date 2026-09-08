@@ -61,7 +61,8 @@ scratch/
 # A drop zone for Gerbers that are NOT project content: work in progress, someone else's design,
 # anything under NDA. Boards that earn a place in the test suite are committed to tests/boards/
 # instead; MILLBURN_BOARDS repoints the fixtures at a private set without committing it.
-MyGerbers/
-MyGerbers2/
+# The scratch drop-zone: boards to try the app against, not project content. Wildcarded so the
+# next one added does not quietly become a commit candidate.
+MyGerbers*/
 Scratch[Gg]erbers/
 out/

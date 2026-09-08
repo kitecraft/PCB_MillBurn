@@ -18,12 +18,26 @@ public static class RealBoards
     public const string GridStripConnector = "GridStripConnector";
     public const string PogoTest1 = "PogoTest1";
 
+    /// <summary>
+    /// A panelised board, present only when the corpus has been repointed at one that has it.
+    ///
+    /// Panels are the case the optimizer is most worth measuring on — dozens of separate cutouts is
+    /// exactly the "edge cuts all over the place" complaint — but a panel is also a large file and
+    /// somebody's actual design, so the suite asks for one rather than carrying one.
+    /// </summary>
+    public const string Panel = "Panel";
+
     private static readonly Lazy<string> RootValue = new(Locate);
 
     /// <summary>Directory holding the board folders.</summary>
     public static string Root => RootValue.Value;
 
     public static string Directory(string board) => Path.Combine(Root, board);
+
+    /// <summary>Whether a board is in the corpus at all. Optional boards are skipped, not failed.</summary>
+    public static bool Has(string board) =>
+        System.IO.Directory.Exists(Directory(board))
+        && System.IO.Directory.EnumerateFiles(Directory(board), "*.gbr").Any();
 
     public static string File(string board, string name) => Path.Combine(Directory(board), name);
 

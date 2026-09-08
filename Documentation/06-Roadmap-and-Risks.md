@@ -336,7 +336,7 @@ survived every screenshot. Fixed at the root, and again at the guard: `NeedsSavi
 believes itself to be. A prompt that appears when there is nothing to lose is not an extra
 safeguard — it is what teaches people to dismiss the prompt without reading it.
 
-### Phase 3 — The optimizer
+### Phase 3 — The optimizer — **in progress**
 
 - GTSP model with entry-configuration sets, closed-loop free start.
 - Trapezoidal time cost model.
@@ -344,6 +344,57 @@ safeguard — it is what teaches people to dismiss the prompt without reading it
 - Precedence DAG.
 - Eulerian path merging; travel-at-depth when safe.
 - Douglas–Peucker simplification + G2/G3 arc fitting.
+
+**The cost model came first, because everything else is only as good as what it minimises.**
+`MotionPlanner` is GRBL's own algorithm: a junction speed per corner from the machine's deviation
+setting, then a backward and a forward pass to make every junction reachable, then a trapezoid per
+segment. That matters because time is not distance — below `v²/a` a move never reaches full speed
+and costs `2·sqrt(d/a)`, so quartering a rapid's length only halves its time, and an optimizer
+scored on distance makes choices a time-scored one would not. Checked against closed forms rather
+than against itself: a 100 mm rapid at 40 mm/s and 200 mm/s² is 2.7 s, the two formulae agree at
+the 8 mm crossover, and splitting a straight move into four changes nothing.
+
+**The ordering is a GTSP over entry configurations.** Both ends of every open run are candidates
+from the start; a closed contour is entered at whichever vertex is nearest, which is a closed-form
+answer rather than a search because a loop's entry and exit coincide; and local search is Or-opt as
+well as 2-opt, because relocating one stranded contour is the move that fixes the reported symptom
+and reversing a run cannot do it. Groups are a hard partition, so precedence cannot be traded away
+for a shorter route.
+
+Measured against the nearest-neighbour baseline that shipped — which already considers both ends,
+so it is not a straw man:
+
+| Board | Operation | Before | After | |
+|---|---|---|---|---|
+| GridStripConnector | isolation | 50.7 mm | 14.0 mm | −72% |
+| PogoTest1 | isolation | 95.4 mm | 78.7 mm | −18% |
+| PogoTest1 | drilling | 114.0 mm | 100.3 mm | −12% |
+| 50-up panel | isolation | 1274.8 mm | 952.4 mm | −25% |
+| 50-up panel | outline | 1168.6 mm | 962.3 mm | −18% |
+
+The panel's 198 contours order in 63 ms and its 1,152 outline passes in 250 ms, inside the 500 ms
+Balanced budget.
+
+Three things found by measuring rather than by testing. The route started at the coordinate origin
+rather than at the board, so PogoTest1 carried a 175 mm lead-in from wherever it sat on the EDA
+canvas — which both skewed the first choice and swamped the reported saving. The emitter parks back
+at work zero, and that last hop was 35 mm of a 79 mm total: nearly half the rapid in the file, and
+invisible to an optimizer that stops at the last cut, so the tour is closed now. And the model's
+travel disagreed with the file's until both were fixed — they now agree exactly, 952.4 mm against
+952.4 mm on the panel, which is the check that says the number in the UI is the number the machine
+will do.
+
+**A fifty-up panel was cutting the frame and leaving all fifty boards attached.** `BuildOutline`
+took only the largest ring, which is right for one board and silently wrong for everything else —
+it would drop an interior slot the same way. Every positive ring is now a profile, and each is
+offset on its own: offsetting them as one polygon set makes Clipper fill the whole thing, so the
+frame's own rectangle covers every board inside it and they vanish. Cutting went from 2,862 mm to
+19,586 mm on that panel, and single boards are untouched. The worst shape a bug can have — the file
+runs, the frame comes free, and the boards are still in it.
+
+Still to come in this phase: Eulerian path merging, travel-at-depth when it is safe, and
+Douglas–Peucker plus arc fitting — which Documentation/03 §7 rates as the bigger real-world win,
+because a 76,000-line isolation file decelerates at every one of those lines.
 - Benchmark harness vs. pcb2gcode; before/after comparison view.
 
 **Done when:** the acceptance metrics in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria)

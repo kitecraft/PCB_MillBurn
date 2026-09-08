@@ -5,6 +5,7 @@ using MillBurn.Core;
 using MillBurn.Export;
 using MillBurn.Gcode;
 using MillBurn.Geometry;
+using MillBurn.Optimize;
 
 namespace MillBurn.Pipeline;
 
@@ -61,7 +62,9 @@ public static class ExportPlanner
         IReadOnlyDictionary<string, LayerOutputSettings> settings,
         ToolLibrary library,
         long boardThicknessNm,
-        OutputKind? only = null)
+        OutputKind? only = null,
+        MachineProfile? machine = null,
+        RouteEffort effort = RouteEffort.Balanced)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(settings);
@@ -98,7 +101,7 @@ public static class ExportPlanner
 
             var item = setting.Output == OutputKind.Svg
                 ? PlanSvg(board, layer, setting, operation, page)
-                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm);
+                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort);
 
             if (item is null)
             {
@@ -202,7 +205,9 @@ public static class ExportPlanner
         LayerOutputSettings setting,
         OperationKind operation,
         ToolLibrary library,
-        long boardThicknessNm)
+        long boardThicknessNm,
+        MachineProfile? machine,
+        RouteEffort effort)
     {
         var tool = ResolveTool(setting, operation, library);
         var warnings = new List<string>();
@@ -234,6 +239,8 @@ public static class ExportPlanner
         // looks completely correct on screen and scraps the board.
         var notes = new List<string> { OriginNote(board) };
 
+        // The flip comes first, so the route is optimised for the geometry that will actually be
+        // cut rather than for its mirror image.
         if (setting.MirrorFor(layer.Role))
         {
             toolpath = MirrorX(toolpath, board.Bounds.MinX + board.Bounds.MaxX);
@@ -246,10 +253,26 @@ public static class ExportPlanner
 
         warnings.AddRange(MirrorWarnings(layer.Role, setting));
 
+        // Ordering runs in board coordinates, before the shift to the corner: a translation cannot
+        // change which order is shortest.
+        //
+        // It starts from the board's own lower-left corner, because that is where the tool is when
+        // the program begins. Starting from the coordinate origin instead adds a lead-in from
+        // wherever the board happened to sit on the EDA canvas — 175 mm of it for PogoTest1 — which
+        // both skews the first choice and swamps the reported saving with a move that is not real.
+        var start = board.Bounds.IsEmpty
+            ? Point2.Origin
+            : new Point2(board.Bounds.MinX, board.Bounds.MinY);
+
+        // The emitter parks back at work zero when it finishes, so the route is a closed tour.
+        // On PogoTest1 that last hop was 35 mm of a 79 mm total — nearly half the rapid in the
+        // file, and entirely invisible to an optimizer that stops at the last cut.
+        var (ordered, route) = ToolpathRouter.Order(toolpath, start, machine, effort, start);
+
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(layer.FileName) + " — " + LayerOperations.Label(operation),
-            Toolpaths = [Translate(Order(toolpath), shift)],
+            Toolpaths = [Translate(ordered, shift)],
             OriginShift = shift,
             Notes = notes,
         };
@@ -263,6 +286,14 @@ public static class ExportPlanner
             ? Invariant($"{measured.PlungeCount} plunges, {measured.TravelMm:F0} mm travel")
             : Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
+
+        // Shown because a claim that the optimizer helps is worth nothing unless the size of the
+        // help is visible on the job it helped (Documentation/03, section 6).
+        if (route.InitialTravelMm > 0 && route.TravelSavedFraction > 0.005)
+        {
+            summary.Add(Invariant(
+                $"Ordering: {route.InitialTravelMm:F0} mm rapid → {route.TravelMm:F0} mm ({route.TravelSavedFraction:P0} less)"));
+        }
 
         if (measured.GougeCount > 0)
         {
@@ -378,7 +409,29 @@ public static class ExportPlanner
             warnings.Add("A V-bit at full depth is enormously wide at the surface. Use a flat end mill.");
         }
 
-        return OutlineOperation.Build(Polygons.From(LargestRing(layer.Area)), options, layer.Label);
+        // Every profile, not just the biggest one.
+        //
+        // A stroked Edge_Cuts realises as an annulus per outline: a positive ring around the
+        // outside of the pen and a negative one inside it. Taking only the largest positive ring is
+        // right for a single board and silently wrong for everything else — on a fifty-up panel it
+        // cut the frame and left all fifty boards attached, and it would drop an interior slot the
+        // same way. The negative rings are the inside of the pen stroke rather than real cutouts,
+        // so they are not profiles and are left alone.
+        var profiles = new Paths64(layer.Area.Where(r => Clipper.Area(r) > 0));
+
+        if (profiles.Count == 0)
+        {
+            warnings.Add("The outline layer has no closed profile to cut.");
+            return OutlineOperation.Build(profiles, options, layer.Label);
+        }
+
+        if (profiles.Count > 1)
+        {
+            summary.Add(Invariant(
+                $"{profiles.Count} profiles · inner pieces cut before the frame around them"));
+        }
+
+        return OutlineOperation.Build(profiles, options, layer.Label);
     }
 
     /// <summary>
@@ -433,11 +486,6 @@ public static class ExportPlanner
         };
     }
 
-    private static Toolpath Order(Toolpath toolpath) => toolpath with
-    {
-        Passes = Optimize.NearestNeighbour.Order(toolpath.Passes, Point2.Origin),
-        Drills = Optimize.NearestNeighbour.Order(toolpath.Drills, Point2.Origin),
-    };
 
     /// <summary>
     /// Says something only when the mirror setting is not the one the layer's side implies.

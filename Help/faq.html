@@ -366,8 +366,17 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
 <h2 id="panels">Can I panelise?</h2>
 
 <p>
+  <strong>A panel you made in your EDA tool is cut correctly.</strong> Every closed profile in
+  <code>Edge_Cuts</code> is milled — a fifty-up panel gives fifty boards plus the frame — and the
+  pieces inside are cut before the frame around them, because taking the frame out first leaves
+  everything still attached to it loose while the cutter is still working.
+</p>
+
+<p>
   <span class="notyet">not built yet</span>
-  Not currently. It is planned, and the shape of the answer is already decided.
+  What is not built is panelising <em>here</em>: laying an array of copies out in CAM, and adding
+  mouse-bites or V-scoring between them. That is planned, and the shape of the answer is already
+  decided.
 </p>
 
 <p>
@@ -385,11 +394,10 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
 
 <div class="note">
   <p>
-    <strong>Panelise in CAM, not in your EDA tool.</strong> Duplicating the board six times in
-    KiCad and re-exporting gives you a Gerber set that is no longer <em>your board</em>: the layer
-    roles still work, but <em>Refresh from source</em> can no longer tell you what changed in the
-    design, because everything changed. Keeping the panel as a CAM-side array means one board stays
-    one board.
+    <strong>Panelising in your EDA tool works, with one cost.</strong> The Gerber set you get is no
+    longer <em>your board</em>: the layer roles are still read correctly and the cutting is right,
+    but <em>Refresh from source</em> can no longer tell you what changed in the design, because
+    everything changed. That is the reason a CAM-side array is planned — one board stays one board.
   </p>
 </div>
 

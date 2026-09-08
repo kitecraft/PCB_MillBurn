@@ -125,8 +125,22 @@ public static class OutlineOperation
         var radius = options.Tool.DiameterNm / 2;
         var offset = options.CutOutside ? radius : -radius;
 
-        var contours = Clipper.InflatePaths(
-            outline, offset, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
+        // Each profile is offset on its own, not as one polygon set.
+        //
+        // Offsetting them together makes Clipper fill the whole set: a panel frame's own rectangle
+        // then covers every board inside it and they disappear, which is a program that cuts the
+        // frame out and leaves fifty boards attached to it. Independently, each profile keeps its
+        // own boundary.
+        var contours = new Paths64();
+        foreach (var profile in outline)
+        {
+            contours.AddRange(Clipper.InflatePaths(
+                new Paths64 { profile },
+                offset,
+                JoinType.Round,
+                EndType.Polygon,
+                arcTolerance: options.SagittaNm));
+        }
 
         var notes = new List<string>();
         var passes = new List<ToolpathPass>();
@@ -145,6 +159,12 @@ public static class OutlineOperation
 
         var steps = Math.Max(1, (int)Math.Ceiling(options.TotalDepthNm / (double)options.DepthPerPassNm));
 
+        // How deeply each profile sits inside the others. On a panel the boards are one level
+        // inside the frame, and they have to be cut first: take the frame out first and everything
+        // still attached to it is loose while the cutter is still working.
+        var nesting = NestingOf(contours);
+        var deepest = nesting.Count == 0 ? 0 : nesting.Values.Max();
+
         for (var step = 1; step <= steps; step++)
         {
             var depth = Math.Min(options.TotalDepthNm, step * options.DepthPerPassNm);
@@ -152,12 +172,18 @@ public static class OutlineOperation
             // Tabs only bite on the passes that would otherwise cut through them.
             var tabbed = options.TabCount > 0 && depth > options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
 
-            foreach (var contour in contours)
+            for (var c = 0; c < contours.Count; c++)
             {
+                var contour = contours[c];
                 if (contour.Count < 3)
                 {
                     continue;
                 }
+
+                // Depth is the outer key, so nothing is taken deeper while shallow passes are still
+                // outstanding; containment is the inner key, so within a depth the contained pieces
+                // are cut before whatever surrounds them.
+                var group = ((step - 1) * (deepest + 1)) + (deepest - nesting.GetValueOrDefault(c));
 
                 if (!tabbed)
                 {
@@ -166,13 +192,20 @@ public static class OutlineOperation
                         Path = IsolationOperation.ToSegments(contour),
                         DepthNm = depth,
                         Closed = true,
+                        Group = group,
                     });
                     continue;
                 }
 
                 foreach (var run in SplitForTabs(contour, options))
                 {
-                    passes.Add(new ToolpathPass { Path = run, DepthNm = depth, Closed = false });
+                    passes.Add(new ToolpathPass
+                    {
+                        Path = run,
+                        DepthNm = depth,
+                        Closed = false,
+                        Group = group,
+                    });
                 }
             }
         }
@@ -210,6 +243,44 @@ public static class OutlineOperation
     /// the corners: spacing tabs by index would put most of them on one corner and leave a long
     /// edge unsupported.
     /// </summary>
+    /// <summary>
+    /// How many of the other profiles each profile sits inside.
+    ///
+    /// A bounds test first, because on a fifty-up panel that rejects almost every pair immediately;
+    /// only the survivors pay for a point-in-polygon test.
+    /// </summary>
+    private static Dictionary<int, int> NestingOf(Paths64 contours)
+    {
+        var nesting = new Dictionary<int, int>();
+        var bounds = contours.Select(c => Clipper.GetBounds(new Paths64 { c })).ToList();
+
+        for (var i = 0; i < contours.Count; i++)
+        {
+            if (contours[i].Count == 0)
+            {
+                continue;
+            }
+
+            var depth = 0;
+            for (var j = 0; j < contours.Count; j++)
+            {
+                if (i == j || contours[j].Count < 3 || !bounds[j].Contains(bounds[i]))
+                {
+                    continue;
+                }
+
+                if (Clipper.PointInPolygon(contours[i][0], contours[j]) == PointInPolygonResult.IsInside)
+                {
+                    depth++;
+                }
+            }
+
+            nesting[i] = depth;
+        }
+
+        return nesting;
+    }
+
     private static IEnumerable<IReadOnlyList<ArtSegment>> SplitForTabs(Path64 contour, OutlineOptions options)
     {
         var segments = IsolationOperation.ToSegments(contour);
