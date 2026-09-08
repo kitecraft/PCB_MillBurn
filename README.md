@@ -42,23 +42,46 @@ dotnet build PCB_MillBurn.slnx
 dotnet test  PCB_MillBurn.slnx
 ```
 
-For Linux, self-contained so nothing has to be installed on the target:
+### Publishing
+
+Self-contained, so nothing has to be installed on the target — not even .NET. Both the app and the
+CLI go to the same directory and share their runtime.
+
+**Windows:**
+
+```
+dotnet publish src/MillBurn.App -c Release -r win-x64 --self-contained -o out/windows
+dotnet publish src/MillBurn.Cli -c Release -r win-x64 --self-contained -o out/windows
+Compress-Archive -Path out\windows\* -DestinationPath out\millburn-win-x64.zip
+```
+
+**Linux:**
 
 ```
 dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/linux
 dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
 ```
 
-**Publishing from Windows leaves the two launchers non-executable.** NTFS has no execute bit, so
-the ELF binaries come out `rw-r--r--` and will not start. Either `chmod +x MillBurn.App
-MillBurn.Cli` after copying them across, or package them from a filesystem that can hold the
-permission:
+Either target can be published from either host; only the runtime identifier changes.
+
+**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves the two
+launchers non-executable: NTFS has no execute bit, so the ELF files come out `rw-r--r--` and simply
+will not start. Either `chmod +x MillBurn.App MillBurn.Cli` after copying them across, or package
+them from a filesystem that can hold the permission:
 
 ```
 tar --owner=0 --group=0 -czf out/millburn-linux-x64.tar.gz -C out/linux .
 ```
 
-Publishing on Linux sets the bit itself and needs neither step.
+Publishing on Linux sets the bit itself and needs neither step. Windows has no matching problem —
+a `.exe` is executable by virtue of being one.
+
+The `Help/` pages ship beside the executable on both, so the Help menu and F1 work offline.
+
+| Target | Publish output | Archive |
+|---|---|---|
+| `win-x64` | `out/windows/`, 296 files, 214 MB | `out/millburn-win-x64.zip`, 75 MB |
+| `linux-x64` | `out/linux/`, 293 files, 111 MB | `out/millburn-linux-x64.tar.gz`, 46 MB |
 
 On a fresh Debian or Ubuntu the app may need `sudo apt install -y libfontconfig1`; everything else
 it needs ships in the publish output, including `libSkiaSharp.so` and the `Help/` pages.
