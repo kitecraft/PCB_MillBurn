@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\MillBurn.Core\MillBurn.Core.csproj" />
@@ -7,6 +7,8 @@
   <ItemGroup>
     <PackageReference Include="Clipper2" />
     <PackageReference Include="NetTopologySuite" />
+    <!-- XxHash128, for the geometry fingerprint: "did the board actually change?" -->
+    <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 
   <PropertyGroup>

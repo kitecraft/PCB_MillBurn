@@ -21,6 +21,9 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
+            Console.WriteLine("  project info <project>         Report what a project contains");
+            Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
             Console.WriteLine("  board <directory>              Load a whole export folder: detect layers, realise, report");
             Console.WriteLine("                                 --png <path> renders the board through the real viewer");
             Console.WriteLine("  render <file-or-directory>     Realise Gerber geometry and report the filled area");
@@ -41,6 +44,7 @@ internal static class Program
             "svg" when args.Length >= 2 => ExportSvg(args),
             "render" when args.Length >= 2 => Render(args),
             "board" when args.Length >= 2 => LoadBoard(args),
+            "project" when args.Length >= 2 => ProjectCommand(args),
             _ => Unknown(args[0]),
         };
     }
@@ -588,6 +592,171 @@ internal static class Program
         using var data = image.Encode(SKEncodedImageFormat.Png, 90);
         using var file = File.OpenWrite(path);
         data.SaveTo(file);
+    }
+
+    /// <summary>
+    /// Project commands: build one from a folder, inspect it, and refresh it after a re-export.
+    ///
+    /// The refresh in particular belongs in the CLI as well as the window. It is the operation
+    /// people will want in a script — "re-export from KiCad, pull it into the project, regenerate"
+    /// — and having it here means the whole feature is checkable from a terminal.
+    /// </summary>
+    private static int ProjectCommand(string[] args)
+    {
+        var verb = args[1].ToLowerInvariant();
+
+        return verb switch
+        {
+            "save" when args.Length >= 3 => ProjectSave(args),
+            "info" when args.Length >= 3 => ProjectInfo(args[2]),
+            "refresh" when args.Length >= 3 => ProjectRefreshCommand(args),
+            _ => UnknownProjectVerb(verb),
+        };
+    }
+
+    private static int UnknownProjectVerb(string verb)
+    {
+        Console.Error.WriteLine($"Unknown project command '{verb}'. Use save, info or refresh.");
+        return 1;
+    }
+
+    private static int ProjectSave(string[] args)
+    {
+        var folder = args[2];
+        var output = Argument(args, "-o") ?? Argument(args, "--out")
+            ?? Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(folder))!,
+                Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar)) + ProjectFile.Extension);
+
+        MillBurnProject project;
+        try
+        {
+            project = MillBurnProject.FromSources(ProjectFile.ImportFolder(folder), Path.GetFullPath(folder));
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+
+        if (project.Sources.Length == 0)
+        {
+            Console.Error.WriteLine($"No Gerber or drill files in '{folder}'.");
+            return 1;
+        }
+
+        ProjectFile.Save(project, output);
+        Console.WriteLine(output);
+        Line($"  sources     {project.Sources.Length} files embedded");
+        Line($"  origin      {project.OriginFolder}");
+        return 0;
+    }
+
+    private static int ProjectInfo(string path)
+    {
+        MillBurnProject project;
+        try
+        {
+            project = ProjectFile.Open(path);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Could not open '{path}': {ex.Message}");
+            return 1;
+        }
+
+        var board = ProjectFile.ToBoard(project);
+
+        Console.WriteLine(path);
+        Line($"  format      {project.SchemaVersion}");
+        Line($"  origin      {project.OriginFolder ?? "(none recorded)"}");
+        Line($"  sources     {project.Sources.Length} files, {board.TotalObjects} objects, {board.TotalRings} rings");
+        Line($"  extents     {board.Bounds}");
+        Console.WriteLine();
+
+        foreach (var source in project.Sources.OrderBy(s => LayerRoleInfo.DrawOrder(s.Role)).ThenBy(s => s.FileName, StringComparer.Ordinal))
+        {
+            var overridden = source.RoleOverridden ? " (role set by hand)" : "";
+            Line($"  {LayerRoleInfo.Label(source.Role),-18} {source.FileName}{overridden}");
+            Line($"  {"",-18} content {source.ContentHash[..12]}  geometry {source.GeometryHash[..12]}");
+        }
+
+        return 0;
+    }
+
+    private static int ProjectRefreshCommand(string[] args)
+    {
+        var path = args[2];
+        var apply = args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+
+        MillBurnProject project;
+        try
+        {
+            project = ProjectFile.Open(path);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Could not open '{path}': {ex.Message}");
+            return 1;
+        }
+
+        var folder = Argument(args, "--from") ?? project.OriginFolder;
+        if (folder is null || !Directory.Exists(folder))
+        {
+            Console.Error.WriteLine(
+                folder is null
+                    ? "This project records no source folder; pass --from <folder>."
+                    : $"The source folder '{folder}' is not there any more; pass --from <folder>.");
+            return 1;
+        }
+
+        var plan = ProjectRefresh.Inspect(project, folder);
+
+        Console.WriteLine(path);
+        Line($"  source      {folder}");
+        Line($"  result      {plan.Summary()}");
+
+        if (plan.HasChanges)
+        {
+            Console.WriteLine();
+            foreach (var change in plan.Actionable)
+            {
+                Line($"  {change.Kind,-12} {change.FileName}");
+                foreach (var detail in change.Details)
+                {
+                    Line($"  {"",-12} {detail}");
+                }
+            }
+        }
+
+        if (!apply)
+        {
+            if (plan.HasChanges)
+            {
+                Console.WriteLine();
+                Console.WriteLine("  Nothing applied. Re-run with --apply to take these.");
+            }
+
+            return 0;
+        }
+
+        if (!plan.HasChanges)
+        {
+            return 0;
+        }
+
+        ProjectRefresh.Apply(project, plan, plan.Actionable.Select(c => c.FileName));
+        ProjectFile.Save(project, path);
+
+        Console.WriteLine();
+        Line($"  applied     {plan.Actionable.Count()} file(s) and saved.");
+        return 0;
+    }
+
+    private static string? Argument(string[] args, string name)
+    {
+        var index = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
     private static void Line(FormattableString text) =>

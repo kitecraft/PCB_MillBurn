@@ -1,3 +1,4 @@
+using System.IO.Hashing;
 using Clipper2Lib;
 using MillBurn.Core;
 
@@ -131,6 +132,39 @@ public static class Polygons
         }
 
         return bounds;
+    }
+
+    /// <summary>
+    /// A stable fingerprint of an area's geometry.
+    ///
+    /// This answers "did the board actually change?", which is a different question from "did the
+    /// file change" and the only one worth asking. A Gerber carries a creation timestamp, so an
+    /// EDA tool rewrites every byte of every layer on every export; hashing file contents reports
+    /// that all nine layers changed when nothing did, and a warning that is always wrong is a
+    /// warning nobody reads.
+    ///
+    /// Taken over the canonical form, so ring order and start vertex — which Clipper picks by its
+    /// own sweep — cannot make identical geometry hash differently.
+    /// </summary>
+    public static string Fingerprint(Paths64 paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        var hash = new XxHash128();
+        var buffer = new byte[sizeof(long)];
+
+        foreach (var path in Canonicalise(paths))
+        {
+            foreach (var p in path)
+            {
+                BitConverter.TryWriteBytes(buffer, p.X);
+                hash.Append(buffer);
+                BitConverter.TryWriteBytes(buffer, p.Y);
+                hash.Append(buffer);
+            }
+        }
+
+        return Convert.ToHexString(hash.GetCurrentHash());
     }
 
     public static int VertexCount(Paths64 paths)

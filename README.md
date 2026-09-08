@@ -41,6 +41,9 @@ dotnet test  PCB_MillBurn.slnx
 
 ```
 dotnet run --project src/MillBurn.App  -- <gerber-folder>            # open a board in the window
+dotnet run --project src/MillBurn.App  -- <project.millburn>         # open a saved project
+dotnet run --project src/MillBurn.Cli -- project save <folder> -o p.millburn
+dotnet run --project src/MillBurn.Cli -- project refresh p.millburn  # what changed since the export
 dotnet run --project src/MillBurn.Cli -- board <gerber-folder>      # detect layers, realise, report
 dotnet run --project src/MillBurn.Cli -- board <folder> --png b.png  # render the board headlessly
 dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse report

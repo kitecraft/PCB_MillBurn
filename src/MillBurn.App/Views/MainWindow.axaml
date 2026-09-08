@@ -9,7 +9,7 @@
         x:DataType="vm:MainViewModel"
         Width="1280" Height="800"
         Background="{DynamicResource PageBackground}"
-        Title="PCB_MillBurn">
+        Title="{Binding WindowTitle}">
 
     <Grid RowDefinitions="Auto,*,Auto">
 
@@ -19,7 +19,7 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
                 Padding="14,10">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="PCB_MillBurn"
                            FontSize="15" FontWeight="SemiBold"
@@ -30,9 +30,20 @@
                            Margin="16,0,0,0"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
-                <Button Grid.Column="3" Content="Open folder…" Click="OnOpenFolderClicked" Margin="0,0,8,0" />
-                <Button Grid.Column="4" Content="Fit" Click="OnFitClicked" Margin="0,0,8,0" />
-                <Button Grid.Column="5" Content="Theme" Click="OnToggleThemeClicked" />
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                    <Button Content="New" Click="OnNewClicked" />
+                    <Button Content="Open project…" Click="OnOpenProjectClicked" />
+                    <Button Content="Save" Click="OnSaveClicked" />
+                    <Button Content="Save as…" Click="OnSaveAsClicked" />
+                    <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
+                    <Button Content="Import folder…" Click="OnOpenFolderClicked" />
+                    <Button Content="Refresh from source"
+                            Click="OnRefreshClicked"
+                            IsEnabled="{Binding CanRefresh}" />
+                    <Border Width="1" Margin="4,4" Background="{DynamicResource BorderSubtle}" />
+                    <Button Content="Fit" Click="OnFitClicked" />
+                    <Button Content="Theme" Click="OnToggleThemeClicked" />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -43,7 +54,7 @@
                     Background="{DynamicResource Surface}"
                     BorderBrush="{DynamicResource BorderSubtle}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,*,Auto">
+                <Grid RowDefinitions="Auto,*,Auto,Auto">
                     <TextBlock Grid.Row="0"
                                Text="LAYERS"
                                FontSize="11" FontWeight="SemiBold"
@@ -80,8 +91,52 @@
                         </ItemsControl>
                     </ScrollViewer>
 
-                    <!-- Anything worth checking before trusting what is on screen. -->
+                    <!--
+                        Refresh review. Nothing is applied until it has been seen: a CAM tool that
+                        swaps geometry underneath you without saying what changed is how a board
+                        gets scrapped.
+                    -->
                     <Border Grid.Row="2"
+                            IsVisible="{Binding RefreshSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            BorderBrush="{DynamicResource BorderSubtle}"
+                            BorderThickness="0,1,0,0"
+                            Padding="12,10">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="REFRESH FROM SOURCE"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <TextBlock Text="{Binding RefreshSummary}"
+                                       FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <ItemsControl ItemsSource="{Binding RefreshItems}" MaxHeight="220">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RefreshItem">
+                                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                            <CheckBox Grid.Column="0"
+                                                      IsChecked="{Binding Selected, Mode=TwoWay}"
+                                                      VerticalAlignment="Top" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Label}"
+                                                           FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimary}" />
+                                                <TextBlock Text="{Binding Detail}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextSecondary}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Apply" Click="OnApplyRefreshClicked"
+                                        IsVisible="{Binding RefreshItems.Count}" />
+                                <Button Content="Close" Click="OnCancelRefreshClicked" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Anything worth checking before trusting what is on screen. -->
+                    <Border Grid.Row="3"
                             IsVisible="{Binding Warnings.Count}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"

@@ -47,12 +47,47 @@ public partial class MainWindow : Window
         };
 
         SetUpDragAndDrop();
+        SetUpCloseGuard();
 
         var args = Environment.GetCommandLineArgs();
         _fpsTest = args.Contains("--fpstest", StringComparer.OrdinalIgnoreCase);
 
         Opened += (_, _) => OnOpened(args);
     }
+
+    /// <summary>
+    /// Closing with unsaved work asks first. The close is cancelled, the question asked, and the
+    /// window closed again only once it is answered — the dialog cannot block a close synchronously.
+    /// </summary>
+    private void SetUpCloseGuard()
+    {
+        Closing += async (_, e) =>
+        {
+            if (_closeConfirmed || DataContext is not MainViewModel vm || !vm.Project.IsDirty)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+
+            var answer = await ConfirmWindow.AskAsync(
+                this,
+                "Unsaved changes",
+                $"{vm.Project.DisplayName} has unsaved changes. Save before closing?",
+                "Save",
+                "Discard");
+
+            if (answer == ConfirmResult.Cancel || (answer == ConfirmResult.Save && !await SaveAsync()))
+            {
+                return;
+            }
+
+            _closeConfirmed = true;
+            Close();
+        };
+    }
+
+    private bool _closeConfirmed;
 
     private void OnOpened(string[] args)
     {
@@ -70,12 +105,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        // A folder on the command line loads straight away, which is what makes the app usable
-        // from a shell and scriptable in a smoke test.
-        var folder = args.Skip(1).FirstOrDefault(a => !a.StartsWith('-') && Directory.Exists(a));
-        if (folder is not null)
+        // A project or a folder on the command line opens straight away, which is what makes the
+        // app usable from a shell and scriptable in a smoke test.
+        var target = args.Skip(1).FirstOrDefault(a =>
+            !a.StartsWith('-') && (Directory.Exists(a) || File.Exists(a)));
+
+        if (target is not null)
         {
-            vm.LoadFolder(folder);
+            if (target.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                vm.OpenProject(target);
+            }
+            else if (Directory.Exists(target))
+            {
+                vm.LoadFolder(target);
+            }
         }
 
         // --theme lets a screenshot prove the dark variant actually flips, which is the only
@@ -160,7 +204,7 @@ public partial class MainWindow : Window
             e.Handled = true;
         });
 
-        AddHandler(DragDrop.DropEvent, (_, e) =>
+        AddHandler(DragDrop.DropEvent, async (_, e) =>
         {
             e.Handled = true;
 
@@ -169,18 +213,37 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var folder = FolderFrom(e.DataTransfer);
-            if (folder is null)
+            var dropped = PathFrom(e.DataTransfer);
+            if (dropped is null)
             {
-                vm.StatusMessage = "Drop a folder of Gerber files, or a file from inside one.";
+                vm.StatusMessage = "Drop a folder of Gerber files, a file from inside one, or a .millburn project.";
                 return;
             }
 
-            vm.LoadFolder(folder);
+            // Dropping a project opens it; dropping a folder imports it. Both replace what is
+            // open, so both go through the same guard — and that guard stays silent when there is
+            // nothing to lose, because the frictionless path is the point of drag and drop.
+            if (!await ConfirmReplaceAsync())
+            {
+                return;
+            }
+
+            if (dropped.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                vm.OpenProject(dropped);
+                return;
+            }
+
+            vm.LoadFolder(dropped);
         });
     }
 
-    private static string? FolderFrom(IDataTransfer data)
+    /// <summary>
+    /// What was dropped: a project file, a folder, or the folder containing a dropped board file.
+    /// Someone selecting all their Gerbers and dragging them across should not be told to try again
+    /// with the folder.
+    /// </summary>
+    private static string? PathFrom(IDataTransfer data)
     {
         foreach (var item in data.TryGetFiles() ?? [])
         {
@@ -188,6 +251,11 @@ public partial class MainWindow : Window
             if (path is null)
             {
                 continue;
+            }
+
+            if (File.Exists(path) && path.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                return path;
             }
 
             if (Directory.Exists(path))
@@ -204,9 +272,117 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private async void OnOpenFolderClicked(object? sender, RoutedEventArgs e)
+    // ------------------------------------------------------------------ unsaved-work guard
+
+    /// <summary>
+    /// Asks before throwing work away, and — just as importantly — stays out of the way when there
+    /// is none. A fresh board with nothing configured costs nothing to replace, so prompting there
+    /// would only teach people to dismiss the prompt without reading it.
+    /// </summary>
+    private async Task<bool> ConfirmReplaceAsync()
+    {
+        if (DataContext is not MainViewModel vm || !vm.Project.IsDirty)
+        {
+            return true;
+        }
+
+        var answer = await ConfirmWindow.AskAsync(
+            this,
+            "Unsaved changes",
+            $"{vm.Project.DisplayName} has unsaved changes. Save before replacing it?",
+            "Save",
+            "Discard");
+
+        return answer switch
+        {
+            ConfirmResult.Save => await SaveAsync(),
+            ConfirmResult.Discard => true,
+            _ => false,
+        };
+    }
+
+    /// <summary>Saves, asking for a path the first time. False means the user backed out.</summary>
+    private async Task<bool> SaveAsync()
     {
         if (DataContext is not MainViewModel vm)
+        {
+            return false;
+        }
+
+        return vm.Project.FilePath is { } path ? vm.SaveProject(path) : await SaveAsAsync();
+    }
+
+    private async Task<bool> SaveAsAsync()
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return false;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save project",
+            SuggestedFileName = vm.Project.DisplayName,
+            DefaultExtension = ProjectFile.Extension.TrimStart('.'),
+            FileTypeChoices = [ProjectFileType],
+        });
+
+        var path = file?.TryGetLocalPath();
+        return path is not null && vm.SaveProject(path);
+    }
+
+    private static FilePickerFileType ProjectFileType { get; } = new("PCB_MillBurn project")
+    {
+        Patterns = ["*" + ProjectFile.Extension],
+    };
+
+    // ------------------------------------------------------------------ commands
+
+    private async void OnNewClicked(object? sender, RoutedEventArgs e)
+    {
+        if (await ConfirmReplaceAsync() && DataContext is MainViewModel vm)
+        {
+            vm.NewProject();
+        }
+    }
+
+    private async void OnOpenProjectClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !await ConfirmReplaceAsync())
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open project",
+            AllowMultiple = false,
+            FileTypeFilter = [ProjectFileType],
+        });
+
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        if (path is not null)
+        {
+            vm.OpenProject(path);
+        }
+    }
+
+    private async void OnSaveClicked(object? sender, RoutedEventArgs e) => await SaveAsync();
+
+    private async void OnSaveAsClicked(object? sender, RoutedEventArgs e) => await SaveAsAsync();
+
+    private void OnRefreshClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.InspectRefresh();
+
+    private void OnApplyRefreshClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.ApplyRefresh();
+
+    private void OnCancelRefreshClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.CancelRefresh();
+
+    private async void OnOpenFolderClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !await ConfirmReplaceAsync())
         {
             return;
         }

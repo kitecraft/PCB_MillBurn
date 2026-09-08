@@ -111,6 +111,44 @@ three copper islands, matching the three named nets the parser found.
 - Not yet: block apertures (`%AB%`), aperture transforms (`%LM/LR/LS%`). Both are reported as
   errors rather than silently ignored; neither appears in the corpus or in KiCad output.
 
+### Phase 1.5 — Projects — **done**
+
+Not on the original plan; it arrived from using the app. The container had to exist before Phase 2
+added the first settings worth saving, because dirty-tracking and the replace guards touch every
+mutation and are far cheaper to add to a small app than a large one.
+
+- `.millburn` zip container: `project.json` plus embedded copies of every source file.
+- Dirty tracking, New / Open / Save / Save As, and guards on close, on drop, and on import.
+- **Refresh from source**: re-import after a KiCad edit and keep the settings.
+- `MillBurn.Cli project save | info | refresh [--apply]`, so the whole thing is scriptable.
+
+Four decisions worth remembering:
+
+- **A project embeds its sources, and hashes them twice.** Referencing a folder by path means a
+  re-export silently changes the geometry under the saved toolpaths — no error, just a wrong
+  board. Embedding also makes the migration to "self-contained" unnecessary later, which would
+  otherwise have meant supporting both forever.
+- **The two hashes answer different questions, and only one is worth showing.** An EDA tool stamps
+  a creation date into every file, so re-exporting an unedited board changes *every byte of every
+  layer*. A content hash therefore reports nine changed layers on every export, and a warning that
+  is always wrong is a warning nobody reads. The content hash detects that a file was touched; the
+  **geometry fingerprint** — `Polygons.Fingerprint`, promoted out of the determinism tests where it
+  was already doing exactly this job — says whether the board actually changed.
+- **Selections are stored by identity, never by position or index** (`SelectionRef`). "The 47th
+  flash" changes if anything is added earlier in the file; coordinates detach when a component
+  moves 0.1 mm. Net names and component references are the designer's own identifiers and X2 puts
+  them in the Gerber, so a selection made against them still resolves after an edit. That is the
+  third distinct payoff from keeping the X2 attributes.
+- **View state is persisted but never dirties the document.** If peeking under a layer prompts a
+  save, people learn to dismiss the prompt without reading it, which is worse than never prompting.
+  For the same reason the drop guard stays silent when nothing has been configured: the
+  frictionless path is the feature.
+
+Refresh is reviewed before it is applied — per file, with what changed in numbers — because a CAM
+tool that swaps geometry underneath you without saying so is how a board gets scrapped. Applying
+marks the project dirty, so closing without saving reverts it; that is the whole undo story for
+now, and it is honest. **Not yet built:** the before/after ghost overlay in the viewport.
+
 ### Phase 2 — Mill toolpaths + G-code + backplot
 
 - Clipper2 offsets; isolation passes; V-bit effective-diameter model; minimum-clearance DRC.

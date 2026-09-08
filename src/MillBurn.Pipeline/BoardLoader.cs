@@ -2,7 +2,9 @@ using System.Globalization;
 using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
+using System.Text;
 using MillBurn.Gerber;
+using MillBurn.Gerber.Model;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Geometry;
 
@@ -70,6 +72,42 @@ public static class BoardLoader
         };
     }
 
+    /// <summary>
+    /// Realises sources already held in memory, with roles the caller has already decided.
+    ///
+    /// This is the path a saved project takes: its files live inside the project container, not in
+    /// a folder, and its roles may have been corrected by hand — so re-detecting them here would
+    /// quietly undo the correction every time the project was opened.
+    /// </summary>
+    public static Board LoadSources(
+        string source,
+        IEnumerable<(string FileName, byte[] Content, LayerRole Role)> sources,
+        RealisationOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        options ??= new RealisationOptions();
+
+        var layers = new List<BoardLayer>();
+        var failures = new List<string>();
+
+        foreach (var (fileName, content, role) in sources)
+        {
+            try
+            {
+                var text = System.Text.Encoding.UTF8.GetString(content);
+                layers.Add(LayerRoleInfo.IsDrill(role)
+                    ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
+                    : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options));
+            }
+            catch (Exception ex) when (ex is GerberParseException or DecoderFallbackException)
+            {
+                failures.Add($"{fileName}: {ex.Message}");
+            }
+        }
+
+        return new Board { Source = source, Layers = layers, Failures = failures };
+    }
+
     public static bool IsBoardFile(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -84,13 +122,19 @@ public static class BoardLoader
     {
         var image = GerberParser.ParseFile(file);
         var (role, guessed) = LayerRoles.Detect(image, Path.GetFileName(file));
+        return RealiseGerber(Path.GetFileName(file), image, role, guessed, options);
+    }
+
+    private static BoardLayer RealiseGerber(
+        string fileName, GerberImage image, LayerRole role, bool roleGuessed, RealisationOptions options)
+    {
         var layer = GerberRealiser.Realise(image, options);
 
         return new BoardLayer
         {
-            FileName = Path.GetFileName(file),
+            FileName = fileName,
             Role = role,
-            RoleGuessed = guessed,
+            RoleGuessed = roleGuessed,
             Area = layer.Area,
             Bounds = layer.Bounds,
             ObjectCount = layer.ObjectCount,
@@ -107,6 +151,21 @@ public static class BoardLoader
     private static BoardLayer LoadDrill(string file, RealisationOptions options)
     {
         var drill = ExcellonParser.ParseFile(file);
+
+        var role = drill.Plating switch
+        {
+            HolePlating.NonPlated => LayerRole.NonPlatedDrill,
+            HolePlating.Plated => LayerRole.PlatedDrill,
+            _ => LayerRoles.FromFileName(Path.GetFileName(file)),
+        };
+
+        return RealiseDrill(
+            Path.GetFileName(file), drill, role, drill.Plating == HolePlating.Unknown, options);
+    }
+
+    private static BoardLayer RealiseDrill(
+        string fileName, ExcellonFile drill, LayerRole role, bool roleGuessed, RealisationOptions options)
+    {
         var notes = new List<string>();
         var holes = Polygons.Empty();
 
@@ -149,18 +208,11 @@ public static class BoardLoader
                 $"{drill.Hits.Count} holes in {drill.Tools.Count} tools, {drill.Slots.Count} slots."));
         }
 
-        var role = drill.Plating switch
-        {
-            HolePlating.NonPlated => LayerRole.NonPlatedDrill,
-            HolePlating.Plated => LayerRole.PlatedDrill,
-            _ => LayerRoles.FromFileName(Path.GetFileName(file)),
-        };
-
         return new BoardLayer
         {
-            FileName = Path.GetFileName(file),
+            FileName = fileName,
             Role = role,
-            RoleGuessed = drill.Plating == HolePlating.Unknown,
+            RoleGuessed = roleGuessed,
             Area = area,
             Bounds = Polygons.BoundsOf(area),
             ObjectCount = drill.Hits.Count + drill.Slots.Count,
