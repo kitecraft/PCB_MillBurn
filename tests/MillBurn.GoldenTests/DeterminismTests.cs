@@ -1,8 +1,10 @@
 using System.IO.Hashing;
 using System.Text;
+using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Export;
+using MillBurn.Geometry;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Model;
 using MillBurn.Viewer;
@@ -155,6 +157,70 @@ public sealed class DeterminismTests
             artwork,
             SvgPage.ForContent(artwork.ContentBounds, Nm.FromMillimetres(5)),
             options);
+    }
+
+    /// <summary>
+    /// Geometry realisation is the stage every later stage is measured against, so its output has
+    /// to be reproducible before a golden toolpath means anything.
+    ///
+    /// The fingerprint is taken over the **canonical** form. Clipper2 is deterministic for
+    /// identical input, but the order it emits rings in follows its internal sweep, so an unrelated
+    /// upstream change can permute the output while the geometry is untouched. Hashing the raw
+    /// order would fire on non-changes and train everyone to ignore the alarm.
+    /// </summary>
+    [Fact]
+    public void RealisedGeometryIsByteIdenticalAcrossRuns()
+    {
+        var image = GerberParser.ParseFile(
+            RealBoards.File(RealBoards.PogoTest1, "PogoTest1-B_Cu.gbr"));
+        var options = new RealisationOptions { Canonicalise = true };
+
+        var first = Fingerprint(GerberRealiser.Realise(image, options).Area);
+        var second = Fingerprint(GerberRealiser.Realise(image, options).Area);
+
+        Assert.Equal(first, second);
+    }
+
+    /// <summary>
+    /// And the canonical form is exactly that — a form, not a filter. Reordering the rings must not
+    /// change the fingerprint; moving a vertex must.
+    /// </summary>
+    [Fact]
+    public void CanonicalFormAbsorbsRingOrderButNotGeometry()
+    {
+        var image = GerberParser.ParseFile(
+            RealBoards.File(RealBoards.PogoTest1, "PogoTest1-F_Cu.gbr"));
+
+        var area = GerberRealiser.Realise(image, new RealisationOptions { Canonicalise = true }).Area;
+
+        var shuffled = new Paths64(area);
+        shuffled.Reverse();
+
+        Assert.Equal(Fingerprint(area), Fingerprint(Polygons.Canonicalise(shuffled)));
+
+        var moved = new Paths64(area.Select(r => new Path64(r)));
+        moved[0][0] = new Point64(moved[0][0].X + 1000, moved[0][0].Y);
+
+        Assert.NotEqual(Fingerprint(area), Fingerprint(Polygons.Canonicalise(moved)));
+    }
+
+    private static string Fingerprint(Paths64 paths)
+    {
+        var hash = new XxHash128();
+        var buffer = new byte[sizeof(long)];
+
+        foreach (var path in paths)
+        {
+            foreach (var p in path)
+            {
+                BitConverter.TryWriteBytes(buffer, p.X);
+                hash.Append(buffer);
+                BitConverter.TryWriteBytes(buffer, p.Y);
+                hash.Append(buffer);
+            }
+        }
+
+        return Convert.ToHexString(hash.GetCurrentHash());
     }
 
     private static string Fingerprint(IReadOnlyList<Polyline> polylines)

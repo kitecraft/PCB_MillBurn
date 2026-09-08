@@ -18,6 +18,8 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine("  render <file-or-directory>     Realise Gerber geometry and report the filled area");
+            Console.WriteLine("                                 --svg <path> also writes the result as SVG");
             Console.WriteLine();
             Console.WriteLine("  svg options:");
             Console.WriteLine("    -o <path>          Output file (default: alongside the input)");
@@ -32,6 +34,7 @@ internal static class Program
         {
             "inspect" when args.Length >= 2 => Inspect(args[1]),
             "svg" when args.Length >= 2 => ExportSvg(args),
+            "render" when args.Length >= 2 => Render(args),
             _ => Unknown(args[0]),
         };
     }
@@ -329,6 +332,132 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Realise a Gerber into filled area and report what came out. The point is the numbers: an
+    /// area, a ring count and a bounding box are enough to tell at a glance whether the geometry is
+    /// plausible, and they are the first thing to look at when it is not.
+    /// </summary>
+    private static int Render(string[] args)
+    {
+        var input = args[1];
+        var sagittaMm = 0.001;
+        var canonical = false;
+        string? svgOut = null;
+
+        for (var i = 2; i < args.Length; i++)
+        {
+            switch (args[i].ToLowerInvariant())
+            {
+                case "--tolerance" when i + 1 < args.Length:
+                    if (!double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out sagittaMm)
+                        || sagittaMm <= 0)
+                    {
+                        Console.Error.WriteLine("--tolerance needs a positive size in millimetres.");
+                        return 1;
+                    }
+
+                    break;
+
+                case "--canonical":
+                    canonical = true;
+                    break;
+
+                case "--svg" when i + 1 < args.Length:
+                    svgOut = args[++i];
+                    break;
+
+                default:
+                    Console.Error.WriteLine($"Unknown option '{args[i]}'.");
+                    return 1;
+            }
+        }
+
+        var files = Directory.Exists(input)
+            ? Directory.EnumerateFiles(input, "*.gbr").Order(StringComparer.Ordinal).ToList()
+            : [input];
+
+        if (files.Count == 0)
+        {
+            Console.Error.WriteLine($"No Gerber files found in '{input}'.");
+            return 1;
+        }
+
+        var options = new RealisationOptions
+        {
+            SagittaNm = Nm.FromMillimetres(sagittaMm),
+            Canonicalise = canonical,
+        };
+
+        var anyErrors = false;
+
+        foreach (var file in files)
+        {
+            GerberImage image;
+            try
+            {
+                image = GerberParser.ParseFile(file);
+            }
+            catch (Exception ex) when (ex is IOException or GerberParseException)
+            {
+                Console.Error.WriteLine($"{Path.GetFileName(file)}  FAILED: {ex.Message}");
+                anyErrors = true;
+                continue;
+            }
+
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var layer = GerberRealiser.Realise(image, options);
+            var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+
+            Console.WriteLine();
+            Console.WriteLine(Path.GetFileName(file));
+            Line($"  function    {image.FileFunction ?? "(not declared)"}");
+            Line($"  input       {image.Objects.Count} objects, {image.Apertures.Count} apertures");
+            var negative = layer.DeclaredNegative ? "  [negative]" : "";
+            Line($"  realised    {layer.ObjectCount} objects in {layer.PolarityRuns} polarity run(s){negative}");
+            Line($"  area        {layer.AreaMm2:F4} mm^2 in {layer.RingCount} rings, {layer.VertexCount:N0} vertices");
+            Line($"  extents     {layer.Bounds}");
+            Line($"  time        {elapsed.TotalMilliseconds:F1} ms");
+
+            foreach (var note in layer.Notes)
+            {
+                Line($"  note        {note}");
+            }
+
+            if (svgOut is not null)
+            {
+                // Looking at the geometry is the only way to catch a whole class of error that
+                // every count and area agrees with: a hole filled solid, a thermal missing a
+                // quadrant, a macro primitive rotated about the wrong centre.
+                var artwork = PolygonArtwork.ToArtwork(
+                    layer, "copper", image.FileFunction ?? "Layer", ArtRole.Fill, Path.GetFileName(file));
+
+                if (artwork.Layers.Count > 0)
+                {
+                    var target = files.Count == 1
+                        ? svgOut
+                        : Path.Combine(svgOut, Path.ChangeExtension(Path.GetFileName(file), ".svg"));
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
+                    SvgWriter.WriteFile(
+                        target,
+                        artwork,
+                        SvgPage.ForContent(artwork.ContentBounds, Nm.FromMillimetres(2)),
+                        new SvgExportOptions { Title = Path.GetFileNameWithoutExtension(file) });
+
+                    Line($"  svg         {target}");
+                }
+            }
+
+            if (layer.Area.Count == 0 && image.Objects.Count > 0)
+            {
+                Console.Error.WriteLine("  WARNING: parsed objects produced no area.");
+                anyErrors = true;
+            }
+        }
+
+        return anyErrors ? 2 : 0;
     }
 
     private static void Line(FormattableString text) =>

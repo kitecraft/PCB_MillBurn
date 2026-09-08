@@ -8,9 +8,10 @@ laser output, a live toolpath viewer, and a job model that handles a board movin
 streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
 the laser takes SVG** — see [04 §1](Documentation/04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
 
-> **Status: Phase 1.** The Gerber X2 and Excellon parsers are done and clean on real boards; the
-> Avalonia viewport holds 98 fps on 500k segments; silkscreen exports as laser-ready SVG. Copper
-> geometry, toolpaths and G-code are not built yet.
+> **Status: Phase 1.** Gerber X2 and Excellon parsers, and geometry realisation — apertures,
+> aperture macros, strokes, regions and polarity compositing into Clipper2 polygons — are done and
+> clean on real boards and the full external corpus. The Avalonia viewport holds 98 fps on 500k
+> segments, and silkscreen exports as laser-ready SVG. Toolpaths and G-code are not built yet.
 
 ## Documentation
 
@@ -40,6 +41,8 @@ dotnet test  PCB_MillBurn.slnx
 
 ```
 dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse report
+dotnet run --project src/MillBurn.Cli -- render <gerber-folder>      # realise geometry, report area
+dotnet run --project src/MillBurn.Cli -- render <layer.gbr> --svg out.svg
 dotnet run --project src/MillBurn.Cli -- svg <silkscreen.gbr>       # laser-ready SVG
 
 dotnet run --project src/MillBurn.App            # the app
@@ -54,7 +57,7 @@ dotnet run --project src/MillBurn.App -- --fpstest  # measures the real GPU rend
 src/
   MillBurn.Core       units, transforms, project model
   MillBurn.Gerber     Gerber X2/X3 + Excellon parsing
-  MillBurn.Geometry   Clipper2 + NetTopologySuite: offsets, booleans, voronoi, pocketing
+  MillBurn.Geometry   Clipper2 + NetTopologySuite: tessellation, booleans, offsets, pocketing
   MillBurn.Cam        isolation, drilling, outline, mask and silkscreen generators
   MillBurn.Optimize   travel optimizer and the motion time model
   MillBurn.Gcode      mill only: emitter, parser, processor chain, backplot

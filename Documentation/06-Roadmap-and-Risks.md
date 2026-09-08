@@ -40,7 +40,33 @@ attempt at culling was 400x *slower* than none because of a defect in the per-ti
 **Done when:** drop a KiCad output folder on the window and see the board, correctly, including a
 board with aperture macros and negative polarity.
 
-**Progress.** Parsers done; geometry realisation and the viewer are next.
+**Progress.** Parsers done; geometry realisation done; the viewer is next.
+
+- `MillBurn.Geometry`: `Tessellate` (tolerance-driven arc and circle flattening, never a fixed
+  segment count) and `Polygons` (booleans, area, bounds, inversion, and a canonical form so a
+  golden hash means the geometry changed rather than that Clipper swept the edges differently).
+- `MillBurn.Cam`: `ApertureShapes` realises every standard template and **every specified macro
+  primitive** — circle, vector line, centre line, lower-left line, outline, polygon, thermal,
+  moire — with per-primitive exposure compositing and rotation about the macro origin.
+  `GerberRealiser` does flashes, strokes, regions and polarity; `PolygonArtwork` bridges the
+  result to the SVG writer.
+- `MillBurn.Cli render` reports area, ring count, vertex count and timing, and `--svg` writes the
+  realised geometry out to look at.
+
+Two decisions worth remembering:
+
+- **Circles built as apertures contain the true circle; arcs flattened from a file are inscribed
+  in it.** The first is the safe direction for copper — isolation offsets outward, so copper
+  modelled slightly large keeps the cutter clear of real copper. The second has no choice: a
+  flattened arc must pass through the endpoints the file stored, or a region fails to close.
+- **A negative file is reported, never inverted.** Inverting needs the board outline, which lives
+  in a different file, and the drawn area is what CAM wants from a mask layer anyway — the
+  openings are exactly what gets lasered. `Polygons.Invert` does the job when a real frame exists.
+
+Verified on both boards and all 24 corpus files, with nothing skipped. The strongest checks are
+the ones with an independent answer: `PogoTest1-Edge_Cuts` realises to 5.7664 mm2 against a
+perimeter-times-pen-width prediction of 5.767, and `GridStripConnector-F_Cu` resolves to exactly
+three copper islands, matching the three named nets the parser found.
 
 - Gerber RS-274X + X2: lexer, modal state machine, standard apertures, full aperture-macro
   expression evaluator, region compositing, arcs kept as arcs, step and repeat, and X2 attributes

@@ -270,6 +270,149 @@ public sealed class RealBoardTests
         return (minX, minY, maxX, maxY);
     }
 
+    // ------------------------------------------------------------------ geometry realisation
+
+    /// <summary>
+    /// Every layer of both boards must realise into actual area. A layer that parses cleanly and
+    /// then produces nothing is the exact shape of the two parser bugs found so far, and it is
+    /// invisible unless something asserts that copper exists.
+    /// </summary>
+    [Theory]
+    [InlineData(RealBoards.GridStripConnector)]
+    [InlineData(RealBoards.PogoTest1)]
+    public void EveryLayerRealisesIntoArea(string board)
+    {
+        foreach (var file in RealBoards.Gerbers(board))
+        {
+            var image = GerberParser.ParseFile(file);
+            var layer = GerberRealiser.Realise(image);
+            var name = Path.GetFileName(file);
+
+            Assert.True(layer.AreaMm2 > 0, $"{name}: realised to no area from {image.Objects.Count} objects");
+            Assert.Equal(image.Objects.Count, layer.ObjectCount);
+            Assert.DoesNotContain(layer.Notes, n => n.Contains("could not be realised", StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>
+    /// A board outline is a stroked rectangle, so its realised area is its perimeter times the pen
+    /// width. That makes it the one layer whose area can be predicted from first principles, and
+    /// therefore the check that the whole stroke path is dimensionally right rather than merely
+    /// plausible.
+    /// </summary>
+    [Fact]
+    public void TheOutlineAreaIsItsPerimeterTimesThePenWidth()
+    {
+        var image = Gerber(RealBoards.PogoTest1, "PogoTest1-Edge_Cuts.gbr");
+        var layer = GerberRealiser.Realise(image);
+
+        var pen = Nm.ToMillimetres(image.Apertures.Values.Single().NominalWidthNm);
+        var centreline = layer.Bounds.Inflate(-Nm.FromMillimetres(pen / 2));
+        var perimeter = 2 * (Nm.ToMillimetres(centreline.Width) + Nm.ToMillimetres(centreline.Height));
+
+        // Rounded corners shave a little off a true rectangle's perimeter, so allow 2%.
+        var expected = perimeter * pen;
+        Assert.InRange(layer.AreaMm2, expected * 0.95, expected * 1.02);
+
+        // Outer ring and inner ring: a closed stroke, not a filled slab.
+        Assert.Equal(2, layer.RingCount);
+    }
+
+    /// <summary>
+    /// The copper on this board carries three named nets, and the pads on each are connected. So
+    /// the realised copper must come out as exactly three islands — a count derived from the
+    /// electrical model agreeing with one derived from the geometry, which is the shape of the
+    /// verification described in Documentation/02, section 5.
+    /// </summary>
+    [Fact]
+    public void CopperIslandsMatchTheNetCount()
+    {
+        var image = Gerber(RealBoards.GridStripConnector, "GridStripConnector-F_Cu.gbr");
+        var layer = GerberRealiser.Realise(image);
+
+        var nets = image.Objects
+            .Select(o => o.Net)
+            .Where(n => n is not null)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        Assert.Equal(3, nets);
+        Assert.Equal(nets, layer.RingCount);
+    }
+
+    /// <summary>
+    /// A soldermask layer is declared negative, and the realiser reports that rather than acting on
+    /// it: the drawn area is the openings, which is what a mask-open laser pass needs. One ring per
+    /// flash also proves no two openings were merged.
+    /// </summary>
+    [Fact]
+    public void SoldermaskRealisesAsItsOpenings()
+    {
+        var image = Gerber(RealBoards.PogoTest1, "PogoTest1-F_Mask.gbr");
+        var layer = GerberRealiser.Realise(image);
+
+        Assert.True(layer.DeclaredNegative);
+        Assert.Equal(image.Objects.Count, layer.RingCount);
+        Assert.InRange(layer.AreaMm2, 50, 200);
+    }
+
+    /// <summary>
+    /// The ground pour keeps its clearances: a plane realised as one solid slab would short every
+    /// pad on the board, and the area alone would not show it.
+    /// </summary>
+    [Fact]
+    public void ThePourKeepsItsClearances()
+    {
+        var layer = GerberRealiser.Realise(Gerber(RealBoards.PogoTest1, "PogoTest1-B_Cu.gbr"));
+
+        Assert.True(layer.RingCount > 10, $"expected many rings for a pour with clearances; got {layer.RingCount}");
+
+        // Comfortably filled, and comfortably not the whole board.
+        var boardArea = Nm.ToMillimetres(layer.Bounds.Width) * Nm.ToMillimetres(layer.Bounds.Height);
+        Assert.InRange(layer.AreaMm2 / boardArea, 0.4, 0.95);
+    }
+
+    [Fact]
+    public void RealisationIsDeterministicOnARealBoard()
+    {
+        var image = Gerber(RealBoards.PogoTest1, "PogoTest1-F_Cu.gbr");
+        var options = new RealisationOptions { Canonicalise = true };
+
+        Assert.Equal(
+            GerberRealiser.Realise(image, options).Area,
+            GerberRealiser.Realise(image, options).Area);
+    }
+
+    /// <summary>
+    /// The corpus is where the exotic macro primitives live — thermal, moire, outline, polygon, and
+    /// the deprecated line codes — plus polarity levels and step-and-repeat. Nothing there may be
+    /// silently skipped.
+    /// </summary>
+    [CorpusFact]
+    public void ExternalCorpusRealisesWithoutSkippingAnything()
+    {
+        var failures = new List<string>();
+
+        foreach (var file in GerberCorpus.AllGerbers())
+        {
+            var image = GerberParser.ParseFile(file);
+            var layer = GerberRealiser.Realise(image);
+            var name = Path.GetFileName(file);
+
+            if (image.Objects.Count > 0 && layer.AreaMm2 <= 0)
+            {
+                failures.Add($"{name}: {image.Objects.Count} objects realised to no area");
+            }
+
+            foreach (var note in layer.Notes.Where(n => n.Contains("could not be realised", StringComparison.Ordinal)))
+            {
+                failures.Add($"{name}: {note}");
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join("\n", failures));
+    }
+
     // ------------------------------------------------------------------ external corpus
 
     /// <summary>
