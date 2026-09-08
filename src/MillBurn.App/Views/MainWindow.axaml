@@ -97,6 +97,9 @@
                     </MenuItem>
 
                     <MenuItem Header="_Help">
+                        <MenuItem Header="_Help contents" Click="OnHelpClicked" InputGesture="F1" />
+                        <MenuItem Header="_Questions and answers" Click="OnFaqClicked" />
+                        <Separator />
                         <MenuItem Header="_About PCB_MillBurn" Click="OnAboutClicked" />
                     </MenuItem>
                 </Menu>
@@ -162,9 +165,9 @@
                                     </ItemsControl>
 
                                     <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
-                                        <TextBlock Grid.Column="0" Classes="caption" Width="80"
+                                        <TextBlock Grid.Column="0" Classes="caption" Width="92"
                                                    VerticalAlignment="Center"
-                                                   Text="Board" />
+                                                   Text="Board thickness" />
                                         <Slider Grid.Column="1" Minimum="0.4" Maximum="3.2"
                                                 TickFrequency="0.1" IsSnapToTickEnabled="True"
                                                 Value="{Binding BoardThicknessMm, Mode=TwoWay}"
@@ -175,13 +178,19 @@
                                                    Text="{Binding BoardThicknessMm, StringFormat='{}{0:F1} mm'}" />
                                     </Grid>
 
-                                    <Button Content="Import folder…" Click="OnOpenFolderClicked"
-                                            HorizontalAlignment="Stretch"
-                                            ToolTip.Tip="Replace the board with a different Gerber folder (Ctrl+I)" />
-                                    <Button Content="Refresh from source" Click="OnRefreshClicked"
-                                            IsEnabled="{Binding CanRefresh}"
-                                            HorizontalAlignment="Stretch"
-                                            ToolTip.Tip="Look for changes in the folder this project was imported from. Nothing is applied until you have seen it." />
+                                    <Grid ColumnDefinitions="*,6,*">
+                                        <Button Grid.Column="0" Content="Import folder…"
+                                                Click="OnOpenFolderClicked"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                ToolTip.Tip="Replace the board with a different Gerber folder (Ctrl+I)" />
+                                        <Button Grid.Column="2" Content="Refresh source"
+                                                Click="OnRefreshClicked"
+                                                IsEnabled="{Binding CanRefresh}"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                ToolTip.Tip="Look for changes in the folder this project was imported from. Nothing is applied until you have seen it." />
+                                    </Grid>
                                 </StackPanel>
                             </Expander>
 
@@ -195,7 +204,7 @@
                             <Expander Grid.Row="2" Header="Layers" IsExpanded="True"
                                       VerticalAlignment="Stretch"
                                       IsVisible="{Binding HasBoard}">
-                                <ScrollViewer>
+                                <ScrollViewer MinHeight="220">
                                 <ItemsControl ItemsSource="{Binding Layers}" Margin="0,4,6,4">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LayerRow">
@@ -312,18 +321,20 @@
                             <!-- EXPORT -->
                             <Expander Grid.Row="3" Header="Export" IsExpanded="True" IsVisible="{Binding HasBoard}">
                                 <StackPanel Spacing="6" Margin="0,4">
-                                    <TextBlock Classes="caption" TextWrapping="Wrap"
-                                               Text="One file per layer. You choose the folder; the names come from the layers." />
                                     <ComboBox ItemsSource="{Binding ExportFilters}"
                                               SelectedItem="{Binding SelectedExportFilter, Mode=TwoWay}"
                                               HorizontalAlignment="Stretch"
-                                              ToolTip.Tip="Write everything, or only what one machine needs" />
-                                    <Button Content="Export…" Click="OnExportClicked"
-                                            HorizontalAlignment="Stretch"
-                                            ToolTip.Tip="Review every file before writing it (Ctrl+E)" />
-                                    <Button Content="Preview programs" Click="OnPreviewClicked"
-                                            HorizontalAlignment="Stretch"
-                                            ToolTip.Tip="Draw the emitted G-code back over the board (F5)" />
+                                              ToolTip.Tip="Write everything, or only what one machine needs. One file per layer either way." />
+                                    <Grid ColumnDefinitions="*,6,*">
+                                        <Button Grid.Column="0" Content="Preview" Click="OnPreviewClicked"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                ToolTip.Tip="Draw the emitted G-code back over the board (F5)" />
+                                        <Button Grid.Column="2" Content="Export…" Click="OnExportClicked"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                ToolTip.Tip="Review every file, then choose where they go (Ctrl+E)" />
+                                    </Grid>
                                 </StackPanel>
                             </Expander>
 

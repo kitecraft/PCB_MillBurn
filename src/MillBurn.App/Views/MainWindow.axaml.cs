@@ -84,6 +84,7 @@ public partial class MainWindow : Window
                 (Key.T, true, false) => () => OnEditToolsClicked(this, new RoutedEventArgs()),
                 (Key.D0, true, false) => () => OnFitClicked(this, new RoutedEventArgs()),
                 (Key.F5, false, false) => () => OnPreviewClicked(this, new RoutedEventArgs()),
+                (Key.F1, false, false) => () => OnHelpClicked(this, new RoutedEventArgs()),
                 _ => null,
             };
 
@@ -570,6 +571,46 @@ public partial class MainWindow : Window
     }
 
     private void OnExitClicked(object? sender, RoutedEventArgs e) => Close();
+
+    private void OnHelpClicked(object? sender, RoutedEventArgs e) => OpenHelp("index.html");
+
+    private void OnFaqClicked(object? sender, RoutedEventArgs e) => OpenHelp("faq.html");
+
+    /// <summary>
+    /// Opens a shipped help page in the user's own browser.
+    ///
+    /// Plain files next to the executable, opened by the OS: help has to work on a workshop machine
+    /// with no network, and an in-app browser would be a second rendering engine to maintain for
+    /// no gain. If the page is missing the app says which file it wanted rather than doing nothing,
+    /// because a Help menu that silently does nothing is worse than no Help menu.
+    /// </summary>
+    private void OpenHelp(string page)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Help", page);
+
+        if (!File.Exists(path))
+        {
+            if (DataContext is MainViewModel missing)
+            {
+                missing.StatusMessage = $"Help is not installed: {path} is missing.";
+            }
+
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException
+            or IOException or System.PlatformNotSupportedException)
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                vm.StatusMessage = $"Could not open help: {ex.Message}. It is at {path}.";
+            }
+        }
+    }
 
     private async void OnAboutClicked(object? sender, RoutedEventArgs e) =>
         await ConfirmWindow.NoteAsync(

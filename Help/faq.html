@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Questions and answers — PCB_MillBurn</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="title">Questions and answers</div>
+  <div class="sub"><a href="index.html">PCB_MillBurn help</a></div>
+</header>
+
+<p class="lead">
+  The questions that come up once you have cut something. Anything marked
+  <span class="notyet">not built yet</span> is a plan, not a feature — this page says so rather
+  than describing software that does not exist.
+</p>
+
+<div class="contents">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#files">The exported files</a></li>
+    <li><a href="#zero">Where is work zero?</a></li>
+    <li><a href="#vbit">Why does the isolation depth change the cut width?</a></li>
+    <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
+    <li><a href="#tabs">Tabs, and what happens if you use none</a></li>
+    <li><a href="#gaps">A trace did not get isolated</a></li>
+    <li><a href="#twosided"><strong>Lining up the two sides of a double-sided board</strong></a></li>
+    <li><a href="#panels">Can I panelise?</a></li>
+    <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
+    <li><a href="#colours">I cannot see a layer</a></li>
+  </ul>
+</div>
+
+<h2 id="files">The exported files</h2>
+
+<p>
+  Every layer you enable becomes <strong>its own file</strong>. A board typically exports as
+  something like:
+</p>
+
+<pre><code>MyBoard-F_Cu.iso.nc          top copper, isolation routing
+MyBoard-PTH.drill.nc         plated holes
+MyBoard-NPTH.drill.nc        non-plated holes
+MyBoard-Edge_Cuts.cutout.nc  board outline, with tabs
+MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
+
+<p>
+  The name keeps the layer&rsquo;s own stem so it sorts next to the file it came from, and the tag
+  in the middle (<code>.iso</code>, <code>.drill</code>, <code>.cutout</code>,
+  <code>.engrave</code>, <code>.mask</code>, <code>.vector</code>) says what it does.
+</p>
+
+<p>
+  One file per layer is deliberate. A single program containing isolation, three drill sizes and
+  the outline assumes one person watching one long run. Split up, a broken bit costs you the
+  drilling rather than the board — and it is the only arrangement that works at all when the
+  silkscreen goes to a laser while the outline goes to the mill.
+</p>
+
+<p>
+  Run them in this order: <strong>isolate, drill, cut out</strong>. The outline goes last because
+  once the board is free of the stock it is no longer held.
+</p>
+
+<h2 id="zero">Where is work zero?</h2>
+
+<p>
+  The <strong>lower-left corner of the board</strong> — not of your stock, and not wherever the
+  board happened to sit on the EDA canvas. Every file in one export shares it, and every file says
+  so in its header.
+</p>
+
+<p>
+  Gerber coordinates come from wherever your board was placed in the schematic tool. PogoTest1, for
+  example, lands at X150 Y&minus;90. Emitting that raw would need you to set work zero at a point
+  you cannot see or measure, so the coordinates are shifted to the board&rsquo;s own corner
+  instead.
+</p>
+
+<p>
+  So: jog to the lower-left corner of where the board will be, zero X and Y there, and load any of
+  the files. They all agree.
+</p>
+
+<h2 id="vbit">Why does the isolation depth change the cut width?</h2>
+
+<p>
+  Because a V-bit is a cone. The deeper it goes, the wider it cuts:
+</p>
+
+<pre><code>width = tip + 2 · depth · tan(included angle / 2)</code></pre>
+
+<p>
+  A 30&deg; bit with a 0.1 mm tip at 0.05 mm deep cuts <strong>0.127 mm</strong> wide. That is why
+  the app shows you the width rather than letting you type it: the width is a
+  <em>consequence</em> of the depth, not a separate setting.
+</p>
+
+<p>
+  It also means depth accuracy matters more than it looks. With that bit, 0.01 mm of depth error
+  moves the cut width by about 5 &micro;m — and on a board that is not perfectly flat, the depth
+  varies across the surface whether you asked it to or not.
+</p>
+
+<div class="note">
+  <p>
+    <strong>The included angle is the full angle.</strong> Both conventions are in circulation, and
+    reading a 30&deg; bit as a half angle doubles the answer. If your cut comes out roughly twice
+    as wide as predicted, check that first.
+  </p>
+</div>
+
+<h2 id="through">What is &ldquo;through the back&rdquo;?</h2>
+
+<p>
+  How far past the underside of the board the tool goes. It appears only for operations that have
+  to cut all the way through — drilling and the outline — and defaults to 0.3&nbsp;mm.
+</p>
+
+<p>
+  Stopping exactly at the nominal board thickness leaves a skin that tears rather than cuts. The
+  board thickness itself is one setting in <strong>Project info</strong>, because it is one
+  physical fact about the material in the machine; the break-through belongs to each operation.
+</p>
+
+<p>
+  Isolation has no break-through, because it is not going through anything — it is a scratch a few
+  tens of microns into the copper.
+</p>
+
+<h2 id="tabs">Tabs, and what happens if you use none</h2>
+
+<p>
+  Tabs are short uncut bridges that keep the board attached to the surrounding stock while the
+  outline is cut. The default is four, spaced by <em>arc length</em> around the profile rather than
+  by vertex — offset contours bunch their vertices at corners, so spacing by index would put every
+  tab on one corner.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Zero tabs cuts the board completely free.</strong> The last few millimetres of the pass
+    then have a loose board next to a spinning cutter, which throws it. The app warns about this in
+    the export confirmation; it does not stop you, because there are fixtures where it is the right
+    answer.
+  </p>
+</div>
+
+<p>
+  Break the tabs with a knife afterwards and file the nubs flush.
+</p>
+
+<h2 id="gaps">A trace did not get isolated</h2>
+
+<p>
+  If two traces are closer together than the tool is wide, there is no path that fits between them,
+  so none is produced. The app counts these and lists them under <strong>CHECK</strong>.
+</p>
+
+<p>
+  This is worth understanding because of how it fails: a gap the tool cannot enter leaves the
+  copper <em>connected</em> and <em>draws nothing</em>. The picture looks perfect and the board is
+  shorted. That is exactly why it is reported rather than left for you to spot.
+</p>
+
+<p>The fixes, in order of how much they cost you:</p>
+
+<ul>
+  <li>Cut shallower — a V-bit gets narrower as it comes up. 0.05 mm &rarr; 0.03 mm takes a 30&deg;
+    0.1 mm bit from 0.127 mm to 0.116 mm.</li>
+  <li>Use a sharper bit (a smaller included angle, or a smaller tip).</li>
+  <li>Widen the clearances in your design.</li>
+</ul>
+
+<h2 id="twosided">Lining up the two sides of a double-sided board</h2>
+
+<p>
+  This is the hard problem in home PCB milling, and it has a good answer. The principle is worth
+  stating first, because everything else follows from it:
+</p>
+
+<div class="note">
+  <p>
+    <strong>Drill everything in the first setup, before the board ever moves.</strong> All holes,
+    all the way through, while the stock is still located. After that the holes themselves
+    <em>are</em> the registration — you are no longer trying to align two sides, only to put the
+    board back where it was.
+  </p>
+</div>
+
+<h3>What to add to your design</h3>
+
+<p>
+  Two <strong>NPTH (non-plated) holes</strong>, 3.0&nbsp;mm, placed in the waste area outside
+  <code>Edge_Cuts</code>. In KiCad these are just mounting holes with no pad. They come through in
+  your normal drill file, so nothing special is needed on either side — no custom layer, no
+  export tricks.
+</p>
+
+<p>Where to put them matters, and there are exactly two rules:</p>
+
+<table>
+  <tr><th>Rule</th><th>Why</th></tr>
+  <tr>
+    <td>Mirror-symmetric about the board&rsquo;s <strong>vertical centreline</strong> — same
+      distance left and right, same Y.</td>
+    <td>That is the axis the app mirrors the bottom side about, so the board only drops back onto
+      the same two pins if the holes straddle it symmetrically.</td>
+  </tr>
+  <tr>
+    <td>Both <strong>off</strong> the horizontal centreline — put them near one edge, not halfway
+      up.</td>
+    <td>Otherwise the board also fits rotated 180&deg;, which looks identical and is not. Off-centre
+      holes give you exactly two valid placements: top-side and flipped.</td>
+  </tr>
+</table>
+
+<p>
+  As far apart as the stock allows. A long baseline turns any given positional error into a smaller
+  angular one.
+</p>
+
+<h3>The pin-plate method — recommended</h3>
+
+<p>The tightest of the practical fixtures, and the cheapest to make.</p>
+
+<ol>
+  <li>Fix a piece of scrap MDF or acrylic to the spoilboard. This becomes the plate, and it stays
+    put for the whole job.</li>
+  <li>Tape or clamp your copper stock on top of it. Set work zero at the board&rsquo;s lower-left
+    corner.</li>
+  <li>Run <code>*.drill.nc</code> and let it go <strong>through the stock and into the
+    plate</strong> in one operation. The stock holes and the plate holes are now at the same
+    coordinates by construction — nothing was measured, so nothing can be measured wrong.</li>
+  <li>Press two dowel pins into the plate holes. 3&nbsp;mm ground dowels are a few pence each.</li>
+  <li>Drop the stock back on the pins and run the top-side work:
+    <code>*.iso.nc</code> for <code>F_Cu</code>.</li>
+  <li><strong>Lift the board, flip it left-to-right about its vertical centreline, drop it back on
+    the same pins.</strong> Not top-to-bottom, and not diagonally.</li>
+  <li>Re-zero on the lower-left corner — which is now the corner that used to be on the right — and
+    run <code>*.iso.nc</code> for <code>B_Cu</code>. That file is already mirrored for you.</li>
+  <li>Cut the outline last, while the board is still pinned.</li>
+</ol>
+
+<p>
+  With 3&nbsp;mm dowels in holes drilled by the same program, expect
+  <strong>20&ndash;50&nbsp;&micro;m</strong>. That is good enough for 0.2&nbsp;mm traces.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Deburr before you flip.</strong> Drilling through leaves a burr on the underside, and
+    that face becomes the mating face after the flip. A burr lifts one corner of the board by more
+    than your whole registration budget. A light pass with a deburring blade or fine abrasive is
+    enough.
+  </p>
+</div>
+
+<h3>What the app does about the flip</h3>
+
+<p>
+  Any bottom-side layer set to G-code is <strong>mirrored automatically</strong>, about the
+  board&rsquo;s own vertical centreline. The file says so in its header, the export confirmation
+  says so, and it appears in <strong>CHECK</strong> as a reminder that the stock has to be turned
+  and re-registered.
+</p>
+
+<p>
+  Because the mirror is about the board&rsquo;s own centreline, the program still occupies exactly
+  the same box — so work zero is still the board&rsquo;s lower-left corner in both setups. That is
+  the corner you can still see and touch off on after the board has been turned over.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Flip left-to-right, about the vertical centreline.</strong> Flipping the other way
+    produces a board that is wrong in a way which is completely invisible until you try to fit a
+    part to it. If you are unsure, mark one corner of the stock with a pen before the first cut.
+  </p>
+</div>
+
+<h3>Other methods, and what they cost</h3>
+
+<table>
+  <tr><th>Method</th><th>Typical accuracy</th><th>Notes</th></tr>
+  <tr>
+    <td>Pin plate, holes drilled in the first setup</td>
+    <td>20&ndash;50&nbsp;&micro;m</td>
+    <td>Recommended. Needs two holes in the waste area and two dowel pins.</td>
+  </tr>
+  <tr>
+    <td>Corner stop, as-supplied stock</td>
+    <td>&plusmn;0.15&ndash;0.25&nbsp;mm</td>
+    <td>Fine for drilling and cutting out; <em>not</em> enough for double-sided isolation. Sheared
+      copper-clad is not square and its edges are not straight.</td>
+  </tr>
+  <tr>
+    <td>Corner stop, after milling the two datum edges true</td>
+    <td>&plusmn;0.05&nbsp;mm</td>
+    <td>One extra pass and a few millimetres of stock. Needs a second, mirrored stop for the
+      flipped side, since flipping swaps which physical edge meets which stop.</td>
+  </tr>
+  <tr>
+    <td>Fiducials, measured by eye</td>
+    <td>50&ndash;100&nbsp;&micro;m</td>
+    <td>Free. Adequate for 0.4&nbsp;mm-plus traces.</td>
+  </tr>
+  <tr>
+    <td>Fiducials, USB microscope with a crosshair</td>
+    <td>20&ndash;30&nbsp;&micro;m</td>
+    <td>Best accuracy per pound spent by a wide margin. A cheap scope taped to the spindle.</td>
+  </tr>
+  <tr>
+    <td>Fiducials, touch probe into the registration holes</td>
+    <td>10&ndash;25&nbsp;&micro;m</td>
+    <td>Four touches around each bore, then a circle fit. Fully numeric, nothing eyeballed.</td>
+  </tr>
+</table>
+
+<p>
+  <span class="notyet">not built yet</span>
+  Fixture generators (corner stop, dowel plate, nest pocket), automatic fiducial placement, probe
+  routines, and fitting a measured transform back into the output are all planned. Today the
+  mirror is automatic and the registration is yours — which the pin-plate recipe above handles
+  without any of that, because it never measures anything.
+</p>
+
+<div class="note">
+  <p>
+    <strong>Why the app will never do this over a cable.</strong> PCB_MillBurn writes files; it does
+    not drive machines. When measurement does arrive it will be <em>numbers in, G-code out</em>:
+    you jog to a mark in whatever sender you already use, read the DRO, and type the numbers in.
+    That works with every controller and every sender that has ever existed, and there is no
+    firmware compatibility to go stale.
+  </p>
+</div>
+
+<h2 id="panels">Can I panelise?</h2>
+
+<p>
+  <span class="notyet">not built yet</span>
+  Not currently. It is planned, and the shape of the answer is already decided.
+</p>
+
+<p>
+  Two different things get called panelisation, and only one of them is hard:
+</p>
+
+<ul>
+  <li><strong>An array of copies</strong> — the same board six times in one piece of stock. This is
+    a transform applied to geometry that has already been realised, so most of the work is the
+    interface, not the maths.</li>
+  <li><strong>Separation features</strong> — mouse-bites (a perforation of small drilled holes along
+    the split line) or V-scoring. Mouse-bites are close to what the outline already does: the tab
+    machinery exists, and a row of holes is a drill operation.</li>
+</ul>
+
+<div class="note">
+  <p>
+    <strong>Panelise in CAM, not in your EDA tool.</strong> Duplicating the board six times in
+    KiCad and re-exporting gives you a Gerber set that is no longer <em>your board</em>: the layer
+    roles still work, but <em>Refresh from source</em> can no longer tell you what changed in the
+    design, because everything changed. Keeping the panel as a CAM-side array means one board stays
+    one board.
+  </p>
+</div>
+
+<p>Two things worth knowing before you want this:</p>
+
+<ul>
+  <li>Isolation milling a panel takes <strong>N times as long</strong>, and isolation is where bits
+    break. One snapped V-bit part way through costs you six boards instead of one. For most home
+    work, running the same job six times is genuinely the lower-risk option.</li>
+  <li>Panels amplify flatness problems. Across 30&nbsp;mm you can usually ignore how flat the stock
+    is; across 200&nbsp;mm you cannot, and you will need height mapping — which is also planned,
+    and also not built.</li>
+</ul>
+
+<h2 id="svg">The SVGs: masks, openings, and alignment</h2>
+
+<h3>Why does the soldermask SVG show holes rather than mask?</h3>
+
+<p>
+  Because that is what the file contains. A soldermask layer is usually <em>negative</em>: the
+  shapes drawn in it are the places where there is <strong>no</strong> mask — the pad openings.
+</p>
+
+<p>
+  The app reports this rather than silently inverting it, because inverting requires inventing an
+  outer boundary, and any boundary it invented would be a guess. What CAM actually wants is the
+  openings, which is what you get. The export confirmation says
+  <em>&ldquo;the shapes are the openings, not the material&rdquo;</em> for exactly this reason.
+</p>
+
+<h3>Do the SVGs line up with each other?</h3>
+
+<p>
+  Yes. <strong>Every SVG in one export shares one page</strong>, sized to the whole board rather
+  than to each layer&rsquo;s own extents. Import them into your laser software and they overlay
+  correctly with no adjustment.
+</p>
+
+<p>
+  This is worth being deliberate about: cropping each layer to its own bounding box is the mistake
+  that puts a second burn out of register by the difference between two crops — a small, plausible
+  error that only shows up on the finished board.
+</p>
+
+<p>
+  Each file is also written as a <em>single</em> layer. Some laser software creates one of its own
+  cut layers per imported object, which turns a board into several hundred of them.
+</p>
+
+<h2 id="colours">I cannot see a layer</h2>
+
+<p>
+  Click the colour swatch next to any layer and pick something you can actually see. Colours are
+  saved <strong>globally</strong>, not in the project: which colours read well is a fact about your
+  eyes and your monitor, not about the board, so they follow you between projects rather than
+  travelling inside one. <em>Edit &rarr; Reset layer colours</em> puts everything back.
+</p>
+
+<p>
+  The checkbox beside each layer controls only whether it is <em>drawn</em>. It has nothing to do
+  with whether it is exported — that is the dropdown. Keeping them separate is deliberate: you
+  routinely want the soldermask on screen to check a pad against while cutting only the copper.
+</p>
+
+<footer>
+  PCB_MillBurn — MIT licensed. Gerber to G-code for the mill, SVG for the laser.
+</footer>
+
+</div>
+</body>
+</html>

@@ -262,6 +262,111 @@ public sealed class ExportPlannerTests
         Assert.Contains(mask.Warnings, w => w.Contains("openings, not the material", StringComparison.Ordinal));
     }
 
+    // ------------------------------------------------------------------ the flip
+
+    private static ExportItem BottomCopper(Board board)
+    {
+        var settings = Defaults(board);
+        settings["PogoTest1-B_Cu.gbr"] = settings["PogoTest1-B_Cu.gbr"] with
+        {
+            Output = OutputKind.Gcode,
+        };
+
+        return Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-B_Cu.gbr");
+    }
+
+    /// <summary>
+    /// A bottom layer is drawn as seen *through* the board, so cutting its coordinates as they come
+    /// produces a mirror image — a program that looks completely correct on screen and scraps the
+    /// board. The mirror is baked into the file rather than left to the operator.
+    ///
+    /// Checked against the same geometry planned as a top-side layer, which is the only comparison
+    /// that isolates the flip: everything else about the two programs is identical, so any
+    /// difference beyond the reflection is the transform being wrong.
+    /// </summary>
+    [Fact]
+    public void ABottomSideProgramIsExactlyTheMirrorOfTheSameGeometryCutFromTheTop()
+    {
+        var board = Board();
+        var widthMm = Nm.ToMillimetres(board.Bounds.Width);
+
+        var asTop = board with
+        {
+            Layers = [.. board.Layers.Select(l =>
+                l.FileName == "PogoTest1-B_Cu.gbr" ? l with { Role = LayerRole.TopCopper } : l)],
+        };
+
+        var settings = Defaults(asTop);
+        settings["PogoTest1-B_Cu.gbr"] = settings["PogoTest1-B_Cu.gbr"] with { Output = OutputKind.Gcode };
+
+        var unflipped = CutXValues(
+            Plan(asTop, settings).Items.Single(i => i.LayerFileName == "PogoTest1-B_Cu.gbr").Content);
+        var flipped = CutXValues(BottomCopper(board).Content);
+
+        Assert.NotEmpty(unflipped);
+        Assert.Equal(unflipped.Count, flipped.Count);
+
+        // Sorted, because ordering starts from the origin and the reflection moves which pass is
+        // nearest to it. The set of coordinates is what the flip is about.
+        var expected = unflipped.Select(x => widthMm - x).Order().ToList();
+        var actual = flipped.Order().ToList();
+
+        for (var i = 0; i < expected.Count; i++)
+        {
+            Assert.Equal(expected[i], actual[i], 3);
+        }
+    }
+
+    /// <summary>
+    /// Same box, so work zero is still the board's lower-left corner — which is the corner the
+    /// operator can see and touch off on after the stock has been turned over.
+    /// </summary>
+    [Fact]
+    public void TheFlipKeepsWorkZeroAtTheSameCorner()
+    {
+        var board = Board();
+        var widthMm = Nm.ToMillimetres(board.Bounds.Width);
+
+        foreach (var x in CutXValues(BottomCopper(board).Content))
+        {
+            Assert.InRange(x, -1.0, widthMm + 1.0);
+        }
+    }
+
+    /// <summary>
+    /// The flip is the one step that cannot be recovered from once the cut has started, and these
+    /// files are handed to the machine one at a time.
+    /// </summary>
+    [Fact]
+    public void ABottomSideProgramSaysWhichWayToFlipTheStock()
+    {
+        var item = BottomCopper(Board());
+
+        Assert.Contains("BOTTOM SIDE", item.Content, StringComparison.Ordinal);
+        Assert.Contains("left-to-right", item.Content, StringComparison.Ordinal);
+        Assert.Contains(item.Warnings, w => w.Contains("flipped left-to-right", StringComparison.Ordinal));
+        Assert.Contains(item.Summary, s => s.Contains("Mirrored for the bottom side", StringComparison.Ordinal));
+    }
+
+    /// <summary>Top-side files are untouched: there is nothing to flip.</summary>
+    [Fact]
+    public void ATopSideProgramIsNotMirroredAndSaysNothingAboutFlipping()
+    {
+        var board = Board();
+        var top = Plan(board, Defaults(board)).Items.Single(i => i.Operation == OperationKind.Isolation);
+
+        Assert.DoesNotContain("BOTTOM SIDE", top.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain(top.Warnings, w => w.Contains("flipped", StringComparison.Ordinal));
+    }
+
+    private static List<double> CutXValues(string program) =>
+    [
+        .. program.Split('\n')
+            .Where(l => l.StartsWith("G1 X", StringComparison.Ordinal))
+            .Select(l => double.Parse(
+                l.Split(' ')[1][1..], System.Globalization.CultureInfo.InvariantCulture)),
+    ];
+
     [Fact]
     public void NothingIsExportedWhenEveryLayerIsOff()
     {

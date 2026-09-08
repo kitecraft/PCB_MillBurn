@@ -1,0 +1,156 @@
+/*
+ * One stylesheet, no network, no build step.
+ *
+ * This is read next to a machine, on whatever browser is on the shop computer, often with no
+ * connection at all. So: system fonts, no webfonts, no CDN, and a layout that survives being
+ * printed and taped to a wall.
+ */
+
+:root {
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --text: #1c1f24;
+  --muted: #5b6470;
+  --rule: #dcdfe4;
+  --accent: #0b5fa5;
+  --warn-bg: #fff4e5;
+  --warn-rule: #d98324;
+  --code-bg: #f1f2f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --surface: #1a1e24;
+    --text: #e6e8ec;
+    --muted: #99a3b0;
+    --rule: #2b313a;
+    --accent: #6db3f2;
+    --warn-bg: #2a2115;
+    --warn-rule: #d98324;
+    --code-bg: #22272f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+}
+
+header.masthead {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+header.masthead .title { font-size: 1.35rem; font-weight: 600; }
+header.masthead .sub { color: var(--muted); font-size: 0.95rem; }
+
+a { color: var(--accent); }
+
+h2 {
+  font-size: 1.15rem;
+  margin: 2.75rem 0 0.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+
+h3 { font-size: 1rem; margin: 1.75rem 0 0.25rem; }
+
+h2:first-of-type { border-top: none; padding-top: 0; }
+
+p, li { color: var(--text); }
+
+.lead { color: var(--muted); }
+
+code, kbd {
+  background: var(--code-bg);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-family: ui-monospace, Consolas, "SF Mono", Menlo, monospace;
+  font-size: 0.88em;
+}
+
+pre {
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, Consolas, "SF Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+pre code { background: none; padding: 0; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+th { color: var(--muted); font-weight: 600; }
+
+.note, .warn {
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 0.8rem 1rem;
+  margin: 1.25rem 0;
+  font-size: 0.95rem;
+}
+
+.warn { background: var(--warn-bg); border-left-color: var(--warn-rule); }
+
+.note p:first-child, .warn p:first-child { margin-top: 0; }
+.note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+.contents { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.25rem; }
+.contents ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+.contents li { margin: 0.25rem 0; }
+
+.notyet {
+  display: inline-block;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+
+footer {
+  margin-top: 4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+@media print {
+  :root { --bg: #fff; --surface: #fff; --text: #000; --muted: #444; --rule: #bbb; }
+  .page { max-width: none; padding: 0; }
+  h2 { page-break-after: avoid; }
+  pre, table, .note, .warn { page-break-inside: avoid; }
+}

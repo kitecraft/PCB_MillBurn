@@ -20,6 +20,15 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <!--
+    User help ships beside the executable as plain files, not as embedded resources: it has to be
+    openable in a browser from a machine with no network, and a resource we would have to unpack to
+    a temp file first is strictly worse at that.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\Help\**\*" LinkBase="Help" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.AvaloniaEdit" />

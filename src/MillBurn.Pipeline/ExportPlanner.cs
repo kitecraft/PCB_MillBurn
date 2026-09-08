@@ -213,12 +213,29 @@ public static class ExportPlanner
             ? Point2.Origin
             : new Point2(-board.Bounds.MinX, -board.Bounds.MinY);
 
+        // A bottom-side layer is drawn as seen through the board, so cutting it as-is produces a
+        // mirror image. The flip is baked in here rather than left to the operator, and the file
+        // says which way the stock must be turned — a program that is silently the wrong hand
+        // looks completely correct on screen and scraps the board.
+        var flipped = LayerRoleInfo.SideOf(layer.Role) == BoardSide.Bottom;
+        var notes = new List<string> { OriginNote(board) };
+
+        if (flipped)
+        {
+            toolpath = MirrorX(toolpath, board.Bounds.MinX + board.Bounds.MaxX);
+            notes.Add(FlipNote());
+            summary.Add("Mirrored for the bottom side · flip the stock left-to-right");
+            warnings.Add(
+                "Bottom side: the stock must be flipped left-to-right about its vertical centreline, "
+                + "and re-registered. Flipping it the other way cuts a mirror image.");
+        }
+
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(layer.FileName) + " — " + LayerOperations.Label(operation),
             Toolpaths = [Translate(Order(toolpath), shift)],
             OriginShift = shift,
-            Notes = [OriginNote(board)],
+            Notes = notes,
         };
 
         var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions());
@@ -406,6 +423,39 @@ public static class ExportPlanner
         Drills = Optimize.NearestNeighbour.Order(toolpath.Drills, Point2.Origin),
     };
 
+    /// <summary>
+    /// Reflects a toolpath in the vertical line <c>x = sumX / 2</c>.
+    ///
+    /// Taking the sum of the board's own extents as the axis keeps the result in exactly the same
+    /// bounding box, so work zero stays the board's lower-left corner in both setups — which is the
+    /// corner the operator can still see and touch off on after the stock is turned over.
+    ///
+    /// Arc sweeps have to be flipped with the points. A reflection reverses handedness, so a
+    /// clockwise arc becomes counter-clockwise; leaving the sweep alone would emit a G2 that takes
+    /// the long way round the circle, which is a real cut through the middle of the board.
+    /// </summary>
+    private static Toolpath MirrorX(Toolpath toolpath, long sumX)
+    {
+        Point2 Flip(Point2 p) => new(sumX - p.X, p.Y);
+
+        ArtSweep Reverse(ArtSweep sweep) => sweep switch
+        {
+            ArtSweep.Clockwise => ArtSweep.CounterClockwise,
+            ArtSweep.CounterClockwise => ArtSweep.Clockwise,
+            _ => ArtSweep.Linear,
+        };
+
+        return toolpath with
+        {
+            Passes = [.. toolpath.Passes.Select(p => p with
+            {
+                Path = [.. p.Path.Select(s =>
+                    new ArtSegment(Reverse(s.Sweep), Flip(s.From), Flip(s.To), Flip(s.Centre)))],
+            })],
+            Drills = [.. toolpath.Drills.Select(d => d with { At = Flip(d.At) })],
+        };
+    }
+
     private static Toolpath Translate(Toolpath toolpath, Point2 by) => toolpath with
     {
         Passes = [.. toolpath.Passes.Select(p => p with
@@ -432,6 +482,16 @@ public static class ExportPlanner
 
         return largest ?? [];
     }
+
+    /// <summary>
+    /// What the operator has to do to the stock before running a bottom-side file.
+    ///
+    /// In the file, because these are handed to the machine one at a time and the flip is the one
+    /// step that cannot be recovered from once the cut has started.
+    /// </summary>
+    private static string FlipNote() =>
+        "BOTTOM SIDE. Flip the stock left-to-right about its vertical centreline, then re-register. "
+        + "Coordinates below are already mirrored for that flip.";
 
     /// <summary>
     /// Where work zero is, in every file this export writes.

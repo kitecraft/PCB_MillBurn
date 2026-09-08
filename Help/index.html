@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCB_MillBurn help</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="title">PCB_MillBurn help</div>
+  <div class="sub">Gerber to G-code for the mill, SVG for the laser.</div>
+</header>
+
+<p class="lead">
+  Shipped with the app and opened from the Help menu. No network needed — this works next to a
+  machine on a computer that has never been online.
+</p>
+
+<h2>Start here</h2>
+
+<ul>
+  <li><a href="faq.html"><strong>Questions and answers</strong></a> — the exported files, work
+    zero, V-bit depth and cut width, tabs, double-sided registration, panels, and the SVGs.</li>
+</ul>
+
+<h2>The short version</h2>
+
+<ol>
+  <li><strong>Import a Gerber folder</strong> — everything your EDA tool exported, drill files
+    included. Roles are read from the files themselves; anything guessed is labelled.</li>
+  <li><strong>Set each layer&rsquo;s output</strong> in the Layers drawer. G-code for the mill, SVG
+    for the laser, or nothing. Each one becomes its own file.</li>
+  <li><strong>Preview</strong> (F5) draws the emitted programs back over the board — parsed from
+    the G-code itself, not from the toolpaths that made it.</li>
+  <li><strong>Export</strong> (Ctrl+E) shows every file, what it will do, and anything worth
+    checking, before a single byte is written. You choose the folder; the names come from the
+    layers.</li>
+</ol>
+
+<p>
+  Run order on the machine: <strong>isolate, drill, cut out</strong>. Work zero is the
+  board&rsquo;s lower-left corner, shared by every file in an export.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Nothing here has been verified by cutting air first.</strong> A dry-run generator — the
+    same program with the Z moves lifted clear — is planned but not built. Until it exists, the
+    first time a program runs, it runs into copper. Check the preview, and consider running the
+    first job on scrap.
+  </p>
+</div>
+
+<h2>What this app does not do</h2>
+
+<p>
+  It writes files. It never opens a serial port, never drives a machine, and never needs to know
+  what controller you have. You load its output into whatever sender you already use — gSender,
+  UGS, Candle, LightBurn, LinuxCNC — exactly like any other program.
+</p>
+
+<p>
+  That boundary is the reason it works with every controller that has ever existed, and it is not
+  going to move.
+</p>
+
+<footer>
+  PCB_MillBurn — MIT licensed.
+</footer>
+
+</div>
+</body>
+</html>

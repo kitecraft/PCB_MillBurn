@@ -277,6 +277,24 @@ control resolves no template and renders as an empty rectangle. A blank dialog, 
 pressed. The keys are now dispatched for real, on the bubbling route so a control that wants a
 keystroke still gets it first.
 
+**Bottom-side programs are mirrored, and say which way to flip the stock.** Found by asking what a
+user would actually get if they set `B_Cu` to G-code: nothing anywhere mirrored it, so the answer
+was a program that cuts the bottom side backwards. That is the worst shape a bug can have here — it
+looks completely correct in the viewer and in the backplot, and it is only discoverable by trying
+to fit a part to the finished board. `ExportPlanner` now reflects bottom-side toolpaths about the
+board's own vertical centreline, which keeps the geometry in the same bounding box and so leaves
+work zero at the board's lower-left corner in *both* setups — the corner the operator can still see
+after the stock is turned over. Arc sweeps flip with the points, because a reflection reverses
+handedness and a G2 that should have become a G3 takes the long way round the circle, straight
+through the middle of the board. The flip is stated in the file header, in the export summary and
+in CHECK, because it is the one step that cannot be recovered from once cutting has started.
+
+This is checked against the same geometry planned as a top-side layer. That is the only comparison
+that isolates the flip: everything else about the two programs is identical, so any difference
+beyond the reflection is the transform being wrong. Comparing against a polygon centroid was tried
+first and was too loose to prove anything — offset contours do not share a vertex distribution with
+the copper they came from.
+
 ### Phase 3 — The optimizer
 
 - GTSP model with entry-configuration sets, closed-loop free start.
@@ -366,10 +384,31 @@ on a test coupon.
 - Solder-paste stencil generation.
 - Machine-profile sharing.
 
-### Phase 7 — User documentation
+### Phase 7 — User documentation — **started**
 
 Plain HTML in `Help/`, shipped with the app, opened in the user's browser from a Help menu. No
 static-site generator and no CDN: it has to work with no network, next to a machine, in a workshop.
+
+**Started early, because the research was already done.** `Help/index.html` and `Help/faq.html`
+ship beside the executable (plain files, not embedded resources — a resource we would have to
+unpack to a temp file first is strictly worse at being opened in a browser) and are reachable from
+Help ▸ Contents, Help ▸ Questions and answers, and F1. The FAQ covers what the exported files are,
+where work zero is, why a V-bit's depth *is* its width, break-through, tabs, unreachable gaps, the
+SVG page-sharing rule, and — at length — double-sided registration.
+
+The double-sided section is the one worth having written down, because the answer is a *recipe*
+rather than a feature: drill every hole in the first setup while the stock is still located, into a
+scrap plate underneath, then pin through both. Nothing is ever measured, so nothing can be measured
+wrong, and it reaches 20–50 µm with two dowel pins. It also produces a rule the user has to follow
+in their own design, which is exactly the kind of thing that has to be documented rather than
+inferred: the two registration holes must be **mirror-symmetric about the board's vertical
+centreline** — that is the axis the app mirrors about, so the board only drops back onto the same
+pins if they straddle it — and both **off** the horizontal centreline, so the board cannot also go
+back rotated 180°, which looks identical and is not.
+
+Anything not built is labelled as such on the page rather than described as if it worked. The
+missing dry-run generator is called out on the landing page, because until it exists the first run
+of any program is into copper.
 
 **`Help/` is not `Documentation/`.** This directory is design documentation — why the code is
 shaped the way it is, written for whoever maintains it. User help is a different audience, a
@@ -440,8 +479,13 @@ a different reader, not new research.
    the one target-specific thing in the export, and the shipped layer preset should match it.
 4. **Is there a touch probe on the mill?** It changes the default alignment recommendation from
    microscope-crosshair to probe, and it makes the generated probe routines worth building early.
-5. **Single board or panels?** Panelisation is cheap to add early if the geometry layer knows
-   about it from the start, and expensive to retrofit.
+5. ~~**Single board or panels?**~~ **Asked about, not yet needed.** Panelisation stays in Phase 6.
+   The geometry layer already makes the array half cheap — copies are a transform over geometry
+   that is already realised — and mouse-bites are close to the outline tabs that exist. What is
+   genuinely not free is per-instance identity in the UI, height mapping (across 200 mm the stock's
+   flatness stops being ignorable), and the fact that isolation milling a panel multiplies both the
+   run time and the cost of one broken bit by N. Recorded for the user in `Help/faq.html` so the
+   trade is visible before someone asks for it.
 6. **Which sender(s) do you use?** It determines which probe-log formats to import first and which
    G-code dialect quirks to prioritise. (The app itself never talks to a machine —
    [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
