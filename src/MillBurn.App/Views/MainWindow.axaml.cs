@@ -78,6 +78,16 @@ public partial class MainWindow : Window
             vm.LoadFolder(folder);
         }
 
+        // --theme lets a screenshot prove the dark variant actually flips, which is the only
+        // way this class of bug gets caught: it produces a half-styled window, never an error.
+        var theme = Argument(args, "--theme");
+        if (theme is not null)
+        {
+            RequestedThemeVariant = theme.Equals("dark", StringComparison.OrdinalIgnoreCase)
+                ? ThemeVariant.Dark
+                : ThemeVariant.Light;
+        }
+
         var shot = ShotPath(args);
         if (shot is not null)
         {
@@ -85,9 +95,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string? ShotPath(string[] args)
+    private static string? ShotPath(string[] args) => Argument(args, "--shot");
+
+    private static string? Argument(string[] args, string name)
     {
-        var index = Array.FindIndex(args, a => a.Equals("--shot", StringComparison.OrdinalIgnoreCase));
+        var index = Array.FindIndex(args, a => a.Equals(name, StringComparison.OrdinalIgnoreCase));
         return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 

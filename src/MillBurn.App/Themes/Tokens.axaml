@@ -4,134 +4,122 @@
     <!--
         Semantic colour tokens.
 
-        Ported from IceLight V2's Theme_Quick_Reference.md, with one structural improvement:
-        Avalonia resolves the theme variant for us via ThemeDictionaries, so use sites say
+        Ported from IceLight V2's Theme_Quick_Reference.md. Use sites say
 
             Foreground="{DynamicResource TextPrimary}"
 
-        instead of MAUI's per-use AppThemeBinding with a Light= and Dark= pair. Define a colour
-        once per variant here; never name Light/Dark anywhere else.
+        instead of MAUI's per-use AppThemeBinding with a Light= and Dark= pair: Avalonia resolves
+        the variant for us.
 
-        The Path* / Drc* tokens are CAM-specific and are the single source of truth for the
-        viewport, the legend, and the SVG export, so all three agree. See
-        Documentation/01-Architecture.md section 6.
+        **Every token is a brush, and every brush is declared inside a variant dictionary.** That
+        is not a style preference, it is the whole mechanism, and getting it wrong is subtle:
+
+        A brush declared *outside* ThemeDictionaries — with its Color bound by DynamicResource to a
+        per-variant Color — is one shared object living in Application.Resources. It resolves its
+        colour once, in the Application's variant scope, and cannot then differ between scopes or
+        update when a Window's RequestedThemeVariant changes. The window keeps its light surfaces
+        while the built-in Fluent brushes, which *are* per-variant, correctly switch to dark. The
+        result is white button text on a white header: invisible controls and a half-flipped UI,
+        with nothing logged anywhere.
+
+        So: one brush per token per variant, literal colour, no indirection.
+
+        Render code reads these too — MillBurn.Viewer needs SKColor, not IBrush — via a resolver
+        that unwraps a SolidColorBrush. That keeps one definition per token rather than a Color and
+        a Brush that can drift apart. See Documentation/01-Architecture.md section 6.
     -->
 
     <ResourceDictionary.ThemeDictionaries>
 
         <ResourceDictionary x:Key="Light">
             <!-- Text -->
-            <Color x:Key="TextPrimaryColor">#1A1C1E</Color>
-            <Color x:Key="TextSecondaryColor">#5A6067</Color>
-            <Color x:Key="TextHeadlineColor">#0B0D0F</Color>
-            <Color x:Key="TextDisabledColor">#9AA1A9</Color>
+            <SolidColorBrush x:Key="TextPrimary" Color="#1A1C1E" />
+            <SolidColorBrush x:Key="TextSecondary" Color="#5A6067" />
+            <SolidColorBrush x:Key="TextHeadline" Color="#0B0D0F" />
+            <SolidColorBrush x:Key="TextDisabled" Color="#9AA1A9" />
 
             <!-- Surfaces -->
-            <Color x:Key="PageBackgroundColor">#F5F6F8</Color>
-            <Color x:Key="SurfaceColor">#FFFFFF</Color>
-            <Color x:Key="SurfaceVariantColor">#E9ECEF</Color>
-            <Color x:Key="ViewportBackgroundColor">#FAFAFB</Color>
-            <Color x:Key="ViewportGridColor">#E2E5E9</Color>
+            <SolidColorBrush x:Key="PageBackground" Color="#F5F6F8" />
+            <SolidColorBrush x:Key="Surface" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SurfaceVariant" Color="#E9ECEF" />
+            <SolidColorBrush x:Key="ViewportBackground" Color="#FAFAFB" />
+            <SolidColorBrush x:Key="ViewportGrid" Color="#E2E5E9" />
 
             <!-- Borders / inputs -->
-            <Color x:Key="BorderColor">#C6CBD1</Color>
-            <Color x:Key="BorderSubtleColor">#E1E4E8</Color>
-            <Color x:Key="InputBackgroundColor">#FFFFFF</Color>
+            <SolidColorBrush x:Key="Border" Color="#C6CBD1" />
+            <SolidColorBrush x:Key="BorderSubtle" Color="#E1E4E8" />
+            <SolidColorBrush x:Key="InputBackground" Color="#FFFFFF" />
 
             <!-- Status -->
-            <Color x:Key="StatusSuccessColor">#1B7F4B</Color>
-            <Color x:Key="StatusErrorColor">#B3261E</Color>
-            <Color x:Key="StatusWarningColor">#8A5A00</Color>
-            <Color x:Key="StatusInfoColor">#0B5FA5</Color>
+            <SolidColorBrush x:Key="StatusSuccess" Color="#1B7F4B" />
+            <SolidColorBrush x:Key="StatusError" Color="#B3261E" />
+            <SolidColorBrush x:Key="StatusWarning" Color="#8A5A00" />
+            <SolidColorBrush x:Key="StatusInfo" Color="#0B5FA5" />
 
             <!-- Interactive -->
-            <Color x:Key="InteractivePrimaryColor">#2D5BD7</Color>
-            <Color x:Key="InteractiveSecondaryColor">#6B4FC4</Color>
-            <Color x:Key="InteractiveOnColor">#FFFFFF</Color>
+            <SolidColorBrush x:Key="InteractivePrimary" Color="#2D5BD7" />
+            <SolidColorBrush x:Key="InteractiveSecondary" Color="#6B4FC4" />
+            <SolidColorBrush x:Key="InteractiveOn" Color="#FFFFFF" />
 
             <!-- CAM: toolpath roles. Chosen to stay distinguishable from each other and from
                  the copper underlay in both variants. -->
-            <Color x:Key="PathIsolationColor">#1B6FD4</Color>
-            <Color x:Key="PathPocketColor">#0E8C86</Color>
-            <Color x:Key="PathDrillColor">#B3261E</Color>
-            <Color x:Key="PathOutlineColor">#7A3DBF</Color>
-            <Color x:Key="PathLaserColor">#C2410C</Color>
-            <Color x:Key="PathFiducialColor">#0B5FA5</Color>
-            <Color x:Key="PathTravelColor">#9AA1A9</Color>
-            <Color x:Key="PathRapidLongColor">#E06C00</Color>
-            <Color x:Key="PathPendingColor">#CDD2D8</Color>
-            <Color x:Key="DrcViolationColor">#D32F2F</Color>
-            <Color x:Key="CopperUnderlayColor">#B87333</Color>
+            <SolidColorBrush x:Key="PathIsolation" Color="#1B6FD4" />
+            <SolidColorBrush x:Key="PathPocket" Color="#0E8C86" />
+            <SolidColorBrush x:Key="PathDrill" Color="#B3261E" />
+            <SolidColorBrush x:Key="PathOutline" Color="#7A3DBF" />
+            <SolidColorBrush x:Key="PathLaser" Color="#C2410C" />
+            <SolidColorBrush x:Key="PathFiducial" Color="#0B5FA5" />
+            <SolidColorBrush x:Key="PathTravel" Color="#9AA1A9" />
+            <SolidColorBrush x:Key="PathRapidLong" Color="#E06C00" />
+            <SolidColorBrush x:Key="PathPending" Color="#CDD2D8" />
+            <SolidColorBrush x:Key="DrcViolation" Color="#D32F2F" />
+            <SolidColorBrush x:Key="CopperUnderlay" Color="#B87333" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
             <!-- Text -->
-            <Color x:Key="TextPrimaryColor">#E6E9EC</Color>
-            <Color x:Key="TextSecondaryColor">#A3ABB4</Color>
-            <Color x:Key="TextHeadlineColor">#F7F9FA</Color>
-            <Color x:Key="TextDisabledColor">#6B737C</Color>
+            <SolidColorBrush x:Key="TextPrimary" Color="#E6E9EC" />
+            <SolidColorBrush x:Key="TextSecondary" Color="#A3ABB4" />
+            <SolidColorBrush x:Key="TextHeadline" Color="#F7F9FA" />
+            <SolidColorBrush x:Key="TextDisabled" Color="#6B737C" />
 
             <!-- Surfaces -->
-            <Color x:Key="PageBackgroundColor">#14171A</Color>
-            <Color x:Key="SurfaceColor">#1D2125</Color>
-            <Color x:Key="SurfaceVariantColor">#272C31</Color>
-            <Color x:Key="ViewportBackgroundColor">#0F1214</Color>
-            <Color x:Key="ViewportGridColor">#262B30</Color>
+            <SolidColorBrush x:Key="PageBackground" Color="#14171A" />
+            <SolidColorBrush x:Key="Surface" Color="#1D2125" />
+            <SolidColorBrush x:Key="SurfaceVariant" Color="#272C31" />
+            <SolidColorBrush x:Key="ViewportBackground" Color="#0F1214" />
+            <SolidColorBrush x:Key="ViewportGrid" Color="#262B30" />
 
             <!-- Borders / inputs -->
-            <Color x:Key="BorderColor">#3A4046</Color>
-            <Color x:Key="BorderSubtleColor">#2A2F34</Color>
-            <Color x:Key="InputBackgroundColor">#15181B</Color>
+            <SolidColorBrush x:Key="Border" Color="#3A4046" />
+            <SolidColorBrush x:Key="BorderSubtle" Color="#2A2F34" />
+            <SolidColorBrush x:Key="InputBackground" Color="#15181B" />
 
             <!-- Status -->
-            <Color x:Key="StatusSuccessColor">#4CC38A</Color>
-            <Color x:Key="StatusErrorColor">#FF6B6B</Color>
-            <Color x:Key="StatusWarningColor">#E3B341</Color>
-            <Color x:Key="StatusInfoColor">#5AA9F5</Color>
+            <SolidColorBrush x:Key="StatusSuccess" Color="#4CC38A" />
+            <SolidColorBrush x:Key="StatusError" Color="#FF6B6B" />
+            <SolidColorBrush x:Key="StatusWarning" Color="#E3B341" />
+            <SolidColorBrush x:Key="StatusInfo" Color="#5AA9F5" />
 
             <!-- Interactive -->
-            <Color x:Key="InteractivePrimaryColor">#6E9BFF</Color>
-            <Color x:Key="InteractiveSecondaryColor">#A98BFF</Color>
-            <Color x:Key="InteractiveOnColor">#0F1214</Color>
+            <SolidColorBrush x:Key="InteractivePrimary" Color="#6E9BFF" />
+            <SolidColorBrush x:Key="InteractiveSecondary" Color="#A98BFF" />
+            <SolidColorBrush x:Key="InteractiveOn" Color="#0F1214" />
 
             <!-- CAM: toolpath roles -->
-            <Color x:Key="PathIsolationColor">#5AA9F5</Color>
-            <Color x:Key="PathPocketColor">#3BC9C0</Color>
-            <Color x:Key="PathDrillColor">#FF6B6B</Color>
-            <Color x:Key="PathOutlineColor">#B48BFF</Color>
-            <Color x:Key="PathLaserColor">#FF8A4C</Color>
-            <Color x:Key="PathFiducialColor">#7FD4FF</Color>
-            <Color x:Key="PathTravelColor">#5B646D</Color>
-            <Color x:Key="PathRapidLongColor">#FFA53D</Color>
-            <Color x:Key="PathPendingColor">#2E343A</Color>
-            <Color x:Key="DrcViolationColor">#FF5252</Color>
-            <Color x:Key="CopperUnderlayColor">#8A5A2B</Color>
+            <SolidColorBrush x:Key="PathIsolation" Color="#5AA9F5" />
+            <SolidColorBrush x:Key="PathPocket" Color="#3BC9C0" />
+            <SolidColorBrush x:Key="PathDrill" Color="#FF6B6B" />
+            <SolidColorBrush x:Key="PathOutline" Color="#B48BFF" />
+            <SolidColorBrush x:Key="PathLaser" Color="#FF8A4C" />
+            <SolidColorBrush x:Key="PathFiducial" Color="#7FD4FF" />
+            <SolidColorBrush x:Key="PathTravel" Color="#5B646D" />
+            <SolidColorBrush x:Key="PathRapidLong" Color="#FFA53D" />
+            <SolidColorBrush x:Key="PathPending" Color="#2E343A" />
+            <SolidColorBrush x:Key="DrcViolation" Color="#FF5252" />
+            <SolidColorBrush x:Key="CopperUnderlay" Color="#8A5A2B" />
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>
-
-    <!-- Brushes. Declared once, outside the variant dictionaries, bound to the variant-resolved
-         colours above. Use these from XAML; use the *Color keys from render code. -->
-    <SolidColorBrush x:Key="TextPrimary" Color="{DynamicResource TextPrimaryColor}" />
-    <SolidColorBrush x:Key="TextSecondary" Color="{DynamicResource TextSecondaryColor}" />
-    <SolidColorBrush x:Key="TextHeadline" Color="{DynamicResource TextHeadlineColor}" />
-    <SolidColorBrush x:Key="TextDisabled" Color="{DynamicResource TextDisabledColor}" />
-
-    <SolidColorBrush x:Key="PageBackground" Color="{DynamicResource PageBackgroundColor}" />
-    <SolidColorBrush x:Key="Surface" Color="{DynamicResource SurfaceColor}" />
-    <SolidColorBrush x:Key="SurfaceVariant" Color="{DynamicResource SurfaceVariantColor}" />
-    <SolidColorBrush x:Key="ViewportBackground" Color="{DynamicResource ViewportBackgroundColor}" />
-
-    <SolidColorBrush x:Key="Border" Color="{DynamicResource BorderColor}" />
-    <SolidColorBrush x:Key="BorderSubtle" Color="{DynamicResource BorderSubtleColor}" />
-    <SolidColorBrush x:Key="InputBackground" Color="{DynamicResource InputBackgroundColor}" />
-
-    <SolidColorBrush x:Key="StatusSuccess" Color="{DynamicResource StatusSuccessColor}" />
-    <SolidColorBrush x:Key="StatusError" Color="{DynamicResource StatusErrorColor}" />
-    <SolidColorBrush x:Key="StatusWarning" Color="{DynamicResource StatusWarningColor}" />
-    <SolidColorBrush x:Key="StatusInfo" Color="{DynamicResource StatusInfoColor}" />
-
-    <SolidColorBrush x:Key="InteractivePrimary" Color="{DynamicResource InteractivePrimaryColor}" />
-    <SolidColorBrush x:Key="InteractiveSecondary" Color="{DynamicResource InteractiveSecondaryColor}" />
 
 </ResourceDictionary>

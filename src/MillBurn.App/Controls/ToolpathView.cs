@@ -193,8 +193,8 @@ public sealed class ToolpathView : Control
             scene,
             new ViewTransform(_scale, _offsetX, _offsetY),
             ResolvePalette(),
-            ResolveColor("ViewportBackgroundColor", new SKColor(0x0F, 0x12, 0x14)),
-            ResolveColor("ViewportGridColor", new SKColor(0x26, 0x2B, 0x30)),
+            ThemeTokens.Resolve(this, "ViewportBackground", new SKColor(0x0F, 0x12, 0x14)),
+            ThemeTokens.Resolve(this, "ViewportGrid", new SKColor(0x26, 0x2B, 0x30)),
             OnFrameRendered));
     }
 
@@ -211,29 +211,19 @@ public sealed class ToolpathView : Control
             DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// Pulls the palette from the theme tokens, so the viewport and the rest of the UI share one
+    /// palette and switching light/dark restyles the toolpaths too.
+    /// </summary>
     private Dictionary<SegmentStyle, SKColor> ResolvePalette() => new()
     {
-        [SegmentStyle.Isolation] = ResolveColor("PathIsolationColor", SKColors.DodgerBlue),
-        [SegmentStyle.Pocket] = ResolveColor("PathPocketColor", SKColors.Teal),
-        [SegmentStyle.Drill] = ResolveColor("PathDrillColor", SKColors.IndianRed),
-        [SegmentStyle.Outline] = ResolveColor("PathOutlineColor", SKColors.MediumPurple),
-        [SegmentStyle.Laser] = ResolveColor("PathLaserColor", SKColors.OrangeRed),
-        [SegmentStyle.Fiducial] = ResolveColor("PathFiducialColor", SKColors.SkyBlue),
-        [SegmentStyle.Travel] = ResolveColor("PathTravelColor", SKColors.Gray),
-        [SegmentStyle.RapidLong] = ResolveColor("PathRapidLongColor", SKColors.Orange),
+        [SegmentStyle.Isolation] = ThemeTokens.Resolve(this, "PathIsolation", SKColors.DodgerBlue),
+        [SegmentStyle.Pocket] = ThemeTokens.Resolve(this, "PathPocket", SKColors.Teal),
+        [SegmentStyle.Drill] = ThemeTokens.Resolve(this, "PathDrill", SKColors.IndianRed),
+        [SegmentStyle.Outline] = ThemeTokens.Resolve(this, "PathOutline", SKColors.MediumPurple),
+        [SegmentStyle.Laser] = ThemeTokens.Resolve(this, "PathLaser", SKColors.OrangeRed),
+        [SegmentStyle.Fiducial] = ThemeTokens.Resolve(this, "PathFiducial", SKColors.SkyBlue),
+        [SegmentStyle.Travel] = ThemeTokens.Resolve(this, "PathTravel", SKColors.Gray),
+        [SegmentStyle.RapidLong] = ThemeTokens.Resolve(this, "PathRapidLong", SKColors.Orange),
     };
-
-    /// <summary>
-    /// Pulls a colour from the theme tokens so the viewport and the rest of the UI share one
-    /// palette, and so switching light/dark restyles the toolpaths too.
-    /// </summary>
-    private SKColor ResolveColor(string token, SKColor fallback)
-    {
-        if (this.TryFindResource(token, ActualThemeVariant, out var value) && value is Color c)
-        {
-            return new SKColor(c.R, c.G, c.B, c.A);
-        }
-
-        return fallback;
-    }
 }

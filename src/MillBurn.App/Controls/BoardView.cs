@@ -163,8 +163,8 @@ public sealed class BoardView : Control
             new Rect(0, 0, Bounds.Width, Bounds.Height),
             scene,
             new ViewTransform(_scale, _offsetX, _offsetY),
-            ResolveColor("ViewportBackgroundColor", BoardPalette.Background),
-            ResolveColor("ViewportGridColor", BoardPalette.Grid),
+            ThemeTokens.Resolve(this, "ViewportBackground", BoardPalette.Background),
+            ThemeTokens.Resolve(this, "ViewportGrid", BoardPalette.Grid),
             OnFrameRendered));
     }
 
@@ -180,13 +180,4 @@ public sealed class BoardView : Control
             DispatcherPriority.Background);
     }
 
-    private SKColor ResolveColor(string token, SKColor fallback)
-    {
-        if (this.TryFindResource(token, ActualThemeVariant, out var value) && value is Color c)
-        {
-            return new SKColor(c.R, c.G, c.B, c.A);
-        }
-
-        return fallback;
-    }
 }
