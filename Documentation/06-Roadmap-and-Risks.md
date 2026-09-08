@@ -250,6 +250,40 @@ on a test coupon.
 - Solder-paste stencil generation.
 - Machine-profile sharing.
 
+### Phase 7 — User documentation
+
+Plain HTML in `Help/`, shipped with the app, opened in the user's browser from a Help menu. No
+static-site generator and no CDN: it has to work with no network, next to a machine, in a workshop.
+
+**`Help/` is not `Documentation/`.** This directory is design documentation — why the code is
+shaped the way it is, written for whoever maintains it. User help is a different audience, a
+different lifecycle, and mixing the two makes both worse.
+
+**Generate every reference section; hand-write only the prose.** A stale number in a CAM manual is
+worse than no manual: someone reads "default depth 0.05 mm" long after the default moved, and cuts
+a board to it. So the settings reference comes from the settings types, the CLI reference from the
+CLI's own help, and the shortcut list from the key bindings — none of them retyped. Workflows,
+troubleshooting and the conceptual pages are prose and stay stable.
+
+A test walks the HTML and fails on a broken internal link or a missing image. Cheap, and it is the
+only thing that reliably catches documentation rot.
+
+Contents, in the order someone needs them: getting started; the two mixed workflows; milling with a
+V-bit and why the depth-to-width relationship matters; laser export and which SVG flavour suits
+which program (including single-layer mode, and why Creality Falcon needs it); alignment and the
+corner-stop jig; projects and refresh-from-source; troubleshooting ("my board is 25.4x too big",
+"my layers were not detected", "my laser software made 200 layers"); then the generated reference.
+
+Help also carries **About**, with the version, the MIT licence and the third-party notices.
+Clipper2, SkiaSharp, NetTopologySuite and Scriban all require their notices to be preserved in a
+binary distribution, so this is the thing that actually satisfies that rather than a file in the
+repository nobody ships.
+
+Writing it late is safe **because the knowledge is being captured as it is learned** — the
+timestamp trap, the Falcon layer explosion, the V-bit effective-diameter model and the fixture
+error budget are all already written down here. The user manual is a rewrite of these documents for
+a different reader, not new research.
+
 ## 2. Cross-cutting acceptance criteria
 
 | Metric | Target |
