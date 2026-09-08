@@ -23,6 +23,8 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode, --write, -o <dir>");
+            Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("  tools [list|add|remove|path]   Manage the saved tool library");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
             Console.WriteLine("                                 --isolation-tool <name> --outline-tool <name> pick from the library");
@@ -54,6 +56,7 @@ internal static class Program
             "board" when args.Length >= 2 => LoadBoard(args),
             "project" when args.Length >= 2 => ProjectCommand(args),
             "mill" when args.Length >= 2 => Mill(args),
+            "export" when args.Length >= 2 => Export(args),
             "tools" => ToolsCommand(args),
             _ => Unknown(args[0]),
         };
@@ -1225,6 +1228,162 @@ internal static class Program
     {
         Console.Error.WriteLine($"{flag} needs a positive number.");
         return 1;
+    }
+
+    /// <summary>
+    /// One file per layer: isolation, drilling, cut-out and marking each go to their own program or
+    /// drawing.
+    ///
+    /// A single file containing every operation assumes one operator watching one long run. Split
+    /// per layer, a broken bit costs the drilling rather than the board, and the silkscreen can go
+    /// to a laser while the outline goes to the mill — which is the whole point of the mixed
+    /// workflows this exists for.
+    /// </summary>
+    private static int Export(string[] args)
+    {
+        var input = args[1];
+        var outDir = Argument(args, "-o") ?? Argument(args, "--out");
+        var thicknessMm = 1.6;
+        var write = args.Contains("--write", StringComparer.OrdinalIgnoreCase);
+        OutputKind? only = null;
+
+        if (Argument(args, "--only") is { } filter)
+        {
+            only = filter.ToLowerInvariant() switch
+            {
+                "svg" => OutputKind.Svg,
+                "gcode" or "nc" => OutputKind.Gcode,
+                _ => null,
+            };
+
+            if (only is null)
+            {
+                Console.Error.WriteLine("--only takes svg or gcode.");
+                return 1;
+            }
+        }
+
+        if (Argument(args, "--thickness") is { } thickness
+            && double.TryParse(thickness, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+        {
+            thicknessMm = parsed;
+        }
+
+        Board board;
+        try
+        {
+            board = input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
+                ? ProjectFile.ToBoard(ProjectFile.Open(input))
+                : BoardLoader.LoadFolder(input);
+        }
+        catch (Exception ex) when (ex is IOException or DirectoryNotFoundException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Could not read '{input}': {ex.Message}");
+            return 1;
+        }
+
+        // Defaults per role, which is what most boards want: cut the top copper, drill the holes,
+        // cut the outline, and leave everything else alone.
+        var settings = board.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings
+            {
+                FileName = l.FileName,
+                Output = LayerOperations.DefaultFor(l.Role),
+            },
+            StringComparer.Ordinal);
+
+        // Per-layer overrides, repeatable: --set F_Cu=svg --set Edge_Cuts=none. Matching on a
+        // fragment because nobody wants to type "PogoTest1-F_Silkscreen.gbr" twice.
+        for (var i = 2; i < args.Length - 1; i++)
+        {
+            if (!args[i].Equals("--set", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parts = args[i + 1].Split('=', 2);
+            if (parts.Length != 2)
+            {
+                Console.Error.WriteLine($"--set wants <layer>=<svg|gcode|none>, got '{args[i + 1]}'.");
+                return 1;
+            }
+
+            var kind = parts[1].ToLowerInvariant() switch
+            {
+                "svg" => OutputKind.Svg,
+                "gcode" or "nc" => OutputKind.Gcode,
+                "none" or "off" => OutputKind.None,
+                _ => (OutputKind?)null,
+            };
+
+            if (kind is null)
+            {
+                Console.Error.WriteLine($"--set wants svg, gcode or none, got '{parts[1]}'.");
+                return 1;
+            }
+
+            var matched = 0;
+            foreach (var key in settings.Keys.Where(k => k.Contains(parts[0], StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                settings[key] = settings[key] with { Output = kind.Value };
+                matched++;
+            }
+
+            if (matched == 0)
+            {
+                Console.Error.WriteLine($"No layer matching '{parts[0]}'.");
+                return 1;
+            }
+        }
+
+        var plan = ExportPlanner.Plan(
+            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only);
+
+        Console.WriteLine(board.Source);
+        Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
+        Line($"  files       {plan.Count}");
+        Console.WriteLine();
+
+        foreach (var item in plan.Items)
+        {
+            Line($"  {item.TargetName}");
+            Line($"  {"",-4}{item.LayerLabel} · {LayerOperations.Label(item.Operation)} · {item.Bytes:N0} bytes");
+
+            foreach (var line in item.Summary)
+            {
+                Line($"  {"",-4}{line}");
+            }
+
+            foreach (var warning in item.Warnings)
+            {
+                Console.Error.WriteLine($"  {"",-4}CHECK {warning}");
+            }
+
+            Console.WriteLine();
+        }
+
+        foreach (var skip in plan.Skipped)
+        {
+            Console.Error.WriteLine($"  skipped     {skip}");
+        }
+
+        if (!write)
+        {
+            Console.WriteLine("  Nothing written. Re-run with --write to produce these files.");
+            return 0;
+        }
+
+        outDir ??= Directory.Exists(input) ? input : Path.GetDirectoryName(Path.GetFullPath(input))!;
+        Directory.CreateDirectory(outDir);
+
+        foreach (var item in plan.Items)
+        {
+            File.WriteAllText(Path.Combine(outDir, item.TargetName), item.Content);
+        }
+
+        Line($"  wrote       {plan.Count} file(s) to {outDir}");
+        return plan.HasWarnings ? 2 : 0;
     }
 
     private static void Line(FormattableString text) =>

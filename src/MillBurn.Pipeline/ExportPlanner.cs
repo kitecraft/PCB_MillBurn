@@ -1,0 +1,444 @@
+using System.Globalization;
+using Clipper2Lib;
+using MillBurn.Cam;
+using MillBurn.Core;
+using MillBurn.Export;
+using MillBurn.Gcode;
+using MillBurn.Geometry;
+
+namespace MillBurn.Pipeline;
+
+/// <summary>One file that will be written.</summary>
+public sealed record ExportItem
+{
+    public required string LayerFileName { get; init; }
+
+    public required string LayerLabel { get; init; }
+
+    public required LayerRole Role { get; init; }
+
+    public required OperationKind Operation { get; init; }
+
+    public required OutputKind Output { get; init; }
+
+    /// <summary>Name only, no directory: the user picks the folder.</summary>
+    public required string TargetName { get; init; }
+
+    public required string Content { get; init; }
+
+    /// <summary>Facts worth seeing before writing it — sizes, counts, distances.</summary>
+    public IReadOnlyList<string> Summary { get; init; } = [];
+
+    /// <summary>Things that would spoil the result. Never a reason to refuse, always to show.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    public int Bytes => System.Text.Encoding.UTF8.GetByteCount(Content);
+}
+
+/// <summary>Everything a single Export would write.</summary>
+public sealed record ExportPlan
+{
+    public required IReadOnlyList<ExportItem> Items { get; init; }
+
+    public IReadOnlyList<string> Skipped { get; init; } = [];
+
+    public int Count => Items.Count;
+
+    public bool HasWarnings => Items.Any(i => i.Warnings.Count > 0);
+}
+
+/// <summary>
+/// Turns a board plus per-layer settings into the set of files to write.
+///
+/// Planning and writing are separate on purpose. A CAM tool that writes first and reports after
+/// gives the operator nothing to check, and the check is the point: which layer became which file,
+/// what tool it assumes, how deep it goes, and whether anything about the combination is wrong.
+/// </summary>
+public static class ExportPlanner
+{
+    public static ExportPlan Plan(
+        Board board,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        ToolLibrary library,
+        long boardThicknessNm,
+        OutputKind? only = null)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(library);
+
+        var items = new List<ExportItem>();
+        var skipped = new List<string>();
+
+        // Every export in one run shares a page, so the layers overlay when imported. Cropping each
+        // to its own extents is the mistake that puts the second burn out by the difference.
+        var page = board.Bounds.IsEmpty
+            ? null
+            : SvgPage.ForContent(board.Bounds, Nm.FromMillimetres(2));
+
+        foreach (var layer in board.InDrawOrder())
+        {
+            if (!settings.TryGetValue(layer.FileName, out var setting) || setting.Output == OutputKind.None)
+            {
+                continue;
+            }
+
+            if (only is { } wanted && setting.Output != wanted)
+            {
+                continue;
+            }
+
+            var operation = LayerOperations.For(layer.Role, setting.Output);
+            if (operation == OperationKind.None)
+            {
+                skipped.Add(Invariant(
+                    $"{layer.FileName}: {LayerRoleInfo.Label(layer.Role)} cannot be exported as {setting.Output}."));
+                continue;
+            }
+
+            var item = setting.Output == OutputKind.Svg
+                ? PlanSvg(board, layer, setting, operation, page)
+                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm);
+
+            if (item is null)
+            {
+                skipped.Add(Invariant($"{layer.FileName}: nothing to cut."));
+                continue;
+            }
+
+            items.Add(item);
+        }
+
+        return new ExportPlan { Items = items, Skipped = skipped };
+    }
+
+    /// <summary>
+    /// The exported name: the layer's own stem, the operation, and the extension.
+    ///
+    /// Output routinely lands in the same folder as the Gerbers, so it has to be obvious at a
+    /// glance which files a machine should be fed. Keeping the layer's stem means they sort next to
+    /// the file they came from.
+    /// </summary>
+    public static string TargetNameFor(string layerFileName, OperationKind operation, OutputKind output) =>
+        Path.GetFileNameWithoutExtension(layerFileName)
+        + "." + LayerOperations.FileTag(operation)
+        + (output == OutputKind.Svg ? ".svg" : ".nc");
+
+    // ------------------------------------------------------------------ SVG
+
+    private static ExportItem? PlanSvg(
+        Board board, BoardLayer layer, LayerOutputSettings setting, OperationKind operation, SvgPage? page)
+    {
+        if (page is null || layer.Area.Count == 0)
+        {
+            return null;
+        }
+
+        var artwork = PolygonArtwork.ToArtwork(
+            new RealisedLayer
+            {
+                Area = layer.Area,
+                Bounds = layer.Bounds,
+                ObjectCount = layer.ObjectCount,
+                PolarityRuns = 1,
+                DeclaredNegative = layer.DeclaredNegative,
+                Notes = layer.Notes,
+            },
+            layer.FileName,
+            layer.Label,
+            ArtRole.Fill,
+            layer.FileName);
+
+        // Single layer by default: some laser software makes one of its own cut layers per imported
+        // object, which turns a board into hundreds of them.
+        var svg = SvgWriter.Write(artwork, page, new SvgExportOptions { SingleLayer = true });
+
+        var summary = new List<string>
+        {
+            Invariant($"{page.WidthMm:F2} × {page.HeightMm:F2} mm page, shared by every layer in this export"),
+            Invariant($"{layer.RingCount} shapes, {layer.AreaMm2:F2} mm²"),
+        };
+
+        var warnings = new List<string>();
+        if (layer.DeclaredNegative)
+        {
+            warnings.Add("This layer is negative: the shapes are the openings, not the material.");
+        }
+
+        return new ExportItem
+        {
+            LayerFileName = layer.FileName,
+            LayerLabel = layer.Label,
+            Role = layer.Role,
+            Operation = operation,
+            Output = OutputKind.Svg,
+            TargetName = TargetNameFor(layer.FileName, operation, OutputKind.Svg),
+            Content = svg,
+            Summary = summary,
+            Warnings = warnings,
+        };
+    }
+
+    // ------------------------------------------------------------------ G-code
+
+    private static ExportItem? PlanGcode(
+        Board board,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        OperationKind operation,
+        ToolLibrary library,
+        long boardThicknessNm)
+    {
+        var tool = ResolveTool(setting, operation, library);
+        var warnings = new List<string>();
+        var summary = new List<string>();
+
+        Toolpath? toolpath = operation switch
+        {
+            OperationKind.Isolation => BuildIsolation(layer, setting, tool, summary, warnings),
+            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary),
+            OperationKind.Outline => BuildOutline(layer, setting, tool, boardThicknessNm, summary, warnings),
+            OperationKind.Engrave => BuildEngrave(layer, setting, tool, summary),
+            _ => null,
+        };
+
+        if (toolpath is null || (toolpath.Passes.Count == 0 && toolpath.Drills.Count == 0))
+        {
+            return null;
+        }
+
+        // Each file is referenced to the board's own corner, so every one of them shares a work
+        // zero the operator can actually touch off on.
+        var shift = board.Bounds.IsEmpty
+            ? Point2.Origin
+            : new Point2(-board.Bounds.MinX, -board.Bounds.MinY);
+
+        var job = new Job
+        {
+            Name = Path.GetFileNameWithoutExtension(layer.FileName) + " — " + LayerOperations.Label(operation),
+            Toolpaths = [Translate(Order(toolpath), shift)],
+            OriginShift = shift,
+            Notes = [OriginNote(board)],
+        };
+
+        var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions());
+        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(GcodeParser.Parse(text)));
+
+        summary.Add(Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
+        summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
+
+        if (measured.GougeCount > 0)
+        {
+            warnings.Add(Invariant($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this."));
+        }
+
+        return new ExportItem
+        {
+            LayerFileName = layer.FileName,
+            LayerLabel = layer.Label,
+            Role = layer.Role,
+            Operation = operation,
+            Output = OutputKind.Gcode,
+            TargetName = TargetNameFor(layer.FileName, operation, OutputKind.Gcode),
+            Content = text,
+            Summary = summary,
+            Warnings = warnings,
+        };
+    }
+
+    private static Toolpath BuildIsolation(
+        BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary, List<string> warnings)
+    {
+        var options = new IsolationOptions
+        {
+            Tool = tool,
+            DepthNm = setting.DepthNm,
+            Passes = setting.Passes,
+        };
+
+        var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
+        var depth = Nm.ToMillimetreString(setting.DepthNm, 3);
+        summary.Add(Invariant($"{width} mm wide at {depth} mm deep · {setting.Passes} pass(es)"));
+
+        var unreachable = IsolationOperation.UnreachableGaps(layer.Area, options);
+        if (unreachable > 0)
+        {
+            warnings.Add(Invariant(
+                $"{unreachable} gap(s) are narrower than the cut: those copper regions stay connected."));
+        }
+
+        if (tool.Kind == ToolKind.EndMill)
+        {
+            warnings.Add("An end mill cuts one width everywhere and cannot separate anything closer than itself.");
+        }
+
+        return IsolationOperation.Build(layer.Area, options, layer.Label);
+    }
+
+    private static Toolpath? BuildDrilling(
+        BoardLayer layer, LayerOutputSettings setting, Tool tool, long thicknessNm, List<string> summary)
+    {
+        if (layer.Drill is null)
+        {
+            return null;
+        }
+
+        var options = new DrillOptions
+        {
+            BoardThicknessNm = thicknessNm,
+            BreakThroughNm = setting.BreakThroughNm,
+        };
+
+        var depth = Nm.ToMillimetreString(options.DepthNm, 2);
+        var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
+        summary.Add(Invariant(
+            $"{layer.Drill.Hits.Count} holes in {layer.Drill.Tools.Count} sizes · {depth} mm deep ({through} mm through the back)"));
+
+        var paths = DrillOperation.Build(layer.Drill, options, tool);
+
+        // One file per layer, so the sizes inside it become tool changes rather than more files.
+        return paths.Count == 0
+            ? null
+            : paths.Aggregate((a, b) => a with
+            {
+                Label = layer.Label,
+                Drills = [.. a.Drills, .. b.Drills],
+            });
+    }
+
+    private static Toolpath BuildOutline(
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        Tool tool,
+        long thicknessNm,
+        List<string> summary,
+        List<string> warnings)
+    {
+        var options = new OutlineOptions
+        {
+            Tool = tool,
+            BoardThicknessNm = thicknessNm,
+            BreakThroughNm = setting.BreakThroughNm,
+            TabCount = setting.TabCount,
+            DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
+        };
+
+        var cutter = Nm.ToMillimetreString(tool.DiameterNm, 2);
+        var total = Nm.ToMillimetreString(options.TotalDepthNm, 2);
+        var perPass = Nm.ToMillimetreString(options.DepthPerPassNm, 2);
+        summary.Add(Invariant(
+            $"{cutter} mm cutter outside the profile · {total} mm deep in {perPass} mm passes"));
+
+        if (setting.TabCount == 0)
+        {
+            warnings.Add("No tabs: the board comes free on the last pass and will be thrown by the cutter.");
+        }
+
+        if (tool.Kind == ToolKind.VBit)
+        {
+            warnings.Add("A V-bit at full depth is enormously wide at the surface. Use a flat end mill.");
+        }
+
+        return OutlineOperation.Build(Polygons.From(LargestRing(layer.Area)), options, layer.Label);
+    }
+
+    /// <summary>
+    /// Engraving silk on the mill: trace the stroke centrelines, exactly as the laser path does.
+    ///
+    /// The same observation makes both work — silk is drawn at about the width the tool cuts — so
+    /// the geometry is the Gerber's own segments either way.
+    /// </summary>
+    private static Toolpath BuildEngrave(
+        BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary)
+    {
+        var contours = Clipper.InflatePaths(
+            layer.Area, -tool.WidthAtDepth(setting.DepthNm) / 2, JoinType.Round, EndType.Polygon);
+
+        var passes = new List<ToolpathPass>();
+        foreach (var contour in contours.Where(c => c.Count >= 3))
+        {
+            passes.Add(new ToolpathPass
+            {
+                Path = IsolationOperation.ToSegments(contour),
+                DepthNm = setting.DepthNm,
+                Closed = true,
+            });
+        }
+
+        var engraveDepth = Nm.ToMillimetreString(setting.DepthNm, 3);
+        summary.Add(Invariant($"{passes.Count} strokes at {engraveDepth} mm deep"));
+
+        return new Toolpath
+        {
+            Kind = ToolpathKind.Mark,
+            Label = layer.Label,
+            Tool = tool,
+            Passes = passes,
+        };
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private static Tool ResolveTool(LayerOutputSettings setting, OperationKind operation, ToolLibrary library)
+    {
+        if (setting.ToolId is { } id && library.Tools.FirstOrDefault(t => t.Id == id) is { } chosen)
+        {
+            return chosen;
+        }
+
+        return operation switch
+        {
+            OperationKind.Outline => Tool.DefaultOutlineMill,
+            OperationKind.Drilling => Tool.DefaultDrill,
+            _ => Tool.DefaultVBit,
+        };
+    }
+
+    private static Toolpath Order(Toolpath toolpath) => toolpath with
+    {
+        Passes = Optimize.NearestNeighbour.Order(toolpath.Passes, Point2.Origin),
+        Drills = Optimize.NearestNeighbour.Order(toolpath.Drills, Point2.Origin),
+    };
+
+    private static Toolpath Translate(Toolpath toolpath, Point2 by) => toolpath with
+    {
+        Passes = [.. toolpath.Passes.Select(p => p with
+        {
+            Path = [.. p.Path.Select(s => new ArtSegment(s.Sweep, s.From + by, s.To + by, s.Centre + by))],
+        })],
+        Drills = [.. toolpath.Drills.Select(d => d with { At = d.At + by })],
+    };
+
+    private static Path64 LargestRing(Paths64 area)
+    {
+        Path64? largest = null;
+        var largestArea = 0.0;
+
+        foreach (var ring in area)
+        {
+            var size = Math.Abs(Clipper.Area(ring));
+            if (size > largestArea)
+            {
+                largestArea = size;
+                largest = ring;
+            }
+        }
+
+        return largest ?? [];
+    }
+
+    /// <summary>
+    /// Where work zero is, in every file this export writes.
+    ///
+    /// Repeated into each one because they are handed to the machine separately, and a file that
+    /// does not say what its origin means is a file someone will run against the wrong zero.
+    /// </summary>
+    private static string OriginNote(Board board)
+    {
+        var x = Nm.ToMillimetreString(board.Bounds.MinX, 3);
+        var y = Nm.ToMillimetreString(board.Bounds.MinY, 3);
+        return Invariant($"Work zero is the board's lower-left corner; the Gerber origin was at {x}, {y} mm.");
+    }
+
+    private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+}

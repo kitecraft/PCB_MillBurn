@@ -157,7 +157,7 @@ public static class IsolationOperation
         return outer;
     }
 
-    internal static IReadOnlyList<ArtSegment> ToSegments(Path64 contour)
+    public static IReadOnlyList<ArtSegment> ToSegments(Path64 contour)
     {
         var segments = new ArtSegment[contour.Count];
         for (var i = 0; i < contour.Count; i++)
