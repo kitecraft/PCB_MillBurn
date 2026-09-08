@@ -161,6 +161,39 @@ now, and it is honest. **Not yet built:** the before/after ghost overlay in the 
 **Done when:** a board goes Gerber → G-code → viewer, and the numbers in the stats panel match
 what the machine actually does. This is the first genuinely useful build.
 
+**Progress.** Gerber → G-code works end to end: `MillBurn.Cli mill <folder>`. Isolation, drilling
+and outline-with-tabs are in, ordered nearest-neighbour, emitted as GRBL-safe G-code. The backplot
+in the viewer is the remaining piece.
+
+- `Tool` carries the **V-bit effective-diameter model**, `width = tip + 2·depth·tan(included/2)`.
+  A 30° bit with a 0.1 mm tip at 0.05 mm deep cuts **0.127 mm**, and 0.01 mm of depth error moves
+  that by 5.4 µm. The width is reported, never typed in — it is a consequence of the depth, not a
+  setting. The included angle is the *full* angle; both conventions are in circulation and reading
+  it as a half angle doubles the answer.
+- `IsolationOperation` offsets the copper union by half a cut width per pass. Offsetting the union
+  rather than each island is what makes the hard case right for free: where two traces are closer
+  than the tool is wide, the offsets merge and no path is produced — which is the truth.
+  `UnreachableGaps` counts exactly those, because a gap the tool cannot enter leaves the copper
+  connected *and draws nothing*, so the picture looks perfect while the board is shorted.
+- `OutlineOperation` cuts **outside** the profile, steps down in depth, and leaves tabs spaced by
+  arc length rather than by vertex — offset contours bunch their vertices at corners, so spacing by
+  index would put every tab on one corner.
+- `DrillOperation` groups by size, largest first, and pecks. **No canned cycles by default**: GRBL
+  does not implement G81/G83 and ignores what it cannot parse, so a canned drill file travels the
+  pattern without ever going down — a board with no holes and no error.
+- `NearestNeighbour` is deliberately the naive baseline for Phase 3 to beat. It does consider both
+  ends of a candidate, which pcb2gcode's greedy pass does not; reproducing that bug to flatter the
+  successor would be dishonest.
+- `JobBuilder` fixes the order — isolate, drill, cut out — and references the job to the board's
+  own lower-left corner. Gerber coordinates come from wherever the board sat on the EDA canvas
+  (PogoTest1 lands at X150 Y−90), so emitting them raw would need work zero set at a point the
+  operator cannot see or measure.
+
+Two things caught by looking at the output rather than the tests: ordering restarted at the origin
+for every operation instead of chaining, which both ordered badly and reported a travel figure
+dominated by one long move in (total rapid 402 mm → 232 mm once fixed); and the peck loop was
+described in a comment but never actually emitted, so drills plunged full depth in one go.
+
 ### Phase 3 — The optimizer
 
 - GTSP model with entry-configuration sets, closed-loop free start.

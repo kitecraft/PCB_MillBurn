@@ -6,6 +6,8 @@ using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
 using MillBurn.Pipeline;
+using MillBurn.Gcode;
+using MillBurn.Optimize;
 using MillBurn.Viewer;
 using SkiaSharp;
 
@@ -21,6 +23,8 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
+            Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
@@ -46,6 +50,7 @@ internal static class Program
             "render" when args.Length >= 2 => Render(args),
             "board" when args.Length >= 2 => LoadBoard(args),
             "project" when args.Length >= 2 => ProjectCommand(args),
+            "mill" when args.Length >= 2 => Mill(args),
             _ => Unknown(args[0]),
         };
     }
@@ -778,6 +783,200 @@ internal static class Program
 
     private static int CountGroups(string path) =>
         System.Text.RegularExpressions.Regex.Count(File.ReadAllText(path), "<g ");
+
+    /// <summary>
+    /// Gerber folder to G-code: isolate, drill, cut out.
+    ///
+    /// The report is the point as much as the file. Effective cut width, travel distance and the
+    /// unreachable-gap count are the three numbers that decide whether a job is worth running, and
+    /// none of them can be read off the G-code by eye.
+    /// </summary>
+    private static int Mill(string[] args)
+    {
+        var input = args[1];
+        var output = Argument(args, "-o") ?? Argument(args, "--out");
+        var depthMm = 0.05;
+        var passes = 1;
+        var angle = 30.0;
+        var tipMm = 0.1;
+        var toolMm = 1.0;
+        var tabs = 4;
+        var thicknessMm = 1.6;
+        var side = BoardSide.Top;
+
+        for (var i = 2; i < args.Length; i++)
+        {
+            var flag = args[i].ToLowerInvariant();
+            var value = i + 1 < args.Length ? args[i + 1] : null;
+
+            switch (flag)
+            {
+                case "-o" or "--out":
+                    i++;
+                    break;
+
+                case "--depth" when value is not null:
+                    if (!TryMm(value, out depthMm)) { return Bad(flag); }
+                    i++;
+                    break;
+
+                case "--passes" when value is not null:
+                    if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out passes) || passes < 1)
+                    {
+                        return Bad(flag);
+                    }
+
+                    i++;
+                    break;
+
+                case "--angle" when value is not null:
+                    if (!TryMm(value, out angle)) { return Bad(flag); }
+                    i++;
+                    break;
+
+                case "--tip" when value is not null:
+                    if (!TryMm(value, out tipMm)) { return Bad(flag); }
+                    i++;
+                    break;
+
+                case "--tool" when value is not null:
+                    if (!TryMm(value, out toolMm)) { return Bad(flag); }
+                    i++;
+                    break;
+
+                case "--tabs" when value is not null:
+                    if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out tabs) || tabs < 0)
+                    {
+                        return Bad(flag);
+                    }
+
+                    i++;
+                    break;
+
+                case "--thickness" when value is not null:
+                    if (!TryMm(value, out thicknessMm)) { return Bad(flag); }
+                    i++;
+                    break;
+
+                case "--bottom":
+                    side = BoardSide.Bottom;
+                    break;
+
+                default:
+                    Console.Error.WriteLine($"Unknown option '{args[i]}'.");
+                    return 1;
+            }
+        }
+
+        Board board;
+        try
+        {
+            board = input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
+                ? ProjectFile.ToBoard(ProjectFile.Open(input))
+                : BoardLoader.LoadFolder(input);
+        }
+        catch (Exception ex) when (ex is IOException or DirectoryNotFoundException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Could not read '{input}': {ex.Message}");
+            return 1;
+        }
+
+        if (board.Layers.Count == 0)
+        {
+            Console.Error.WriteLine($"No board files in '{input}'.");
+            return 1;
+        }
+
+        var tool = Tool.DefaultVBit with
+        {
+            TipNm = Nm.FromMillimetres(tipMm),
+            IncludedAngleDegrees = angle,
+            Name = FormattableString.Invariant($"{angle:F0}° V-bit, {tipMm:F2} mm tip"),
+        };
+
+        var options = new MillOptions
+        {
+            Side = side,
+            Isolation = new IsolationOptions
+            {
+                Tool = tool,
+                DepthNm = Nm.FromMillimetres(depthMm),
+                Passes = passes,
+            },
+            Drill = new DrillOptions { BoardThicknessNm = Nm.FromMillimetres(thicknessMm) },
+            Outline = new OutlineOptions
+            {
+                Tool = Tool.DefaultOutlineMill with { DiameterNm = Nm.FromMillimetres(toolMm) },
+                BoardThicknessNm = Nm.FromMillimetres(thicknessMm),
+                TabCount = tabs,
+            },
+        };
+
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var job = JobBuilder.Build(board, options);
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+
+        var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions());
+
+        output ??= Path.Combine(
+            Directory.Exists(input) ? input : Path.GetDirectoryName(Path.GetFullPath(input))!,
+            (Directory.Exists(input)
+                ? Path.GetFileName(input.TrimEnd(Path.DirectorySeparatorChar))
+                : Path.GetFileNameWithoutExtension(input)) + ".nc");
+
+        File.WriteAllText(output, text);
+
+        Console.WriteLine(output);
+        Line($"  tool        {tool}");
+        Line($"  effective   {Nm.ToMillimetreString(options.Isolation.EffectiveWidthNm, 3)} mm wide at {depthMm:F3} mm deep");
+        Line($"  built in    {elapsed.TotalMilliseconds:F0} ms");
+        Console.WriteLine();
+
+        var at = Point2.Origin;
+
+        foreach (var toolpath in job.Toolpaths)
+        {
+            // Chained from the last operation's end, the same way the ordering was decided.
+            var travel = toolpath.Drills.Count > 0
+                ? NearestNeighbour.TravelMm(toolpath.Drills, at)
+                : NearestNeighbour.TravelMm(toolpath.Passes, at);
+
+            at = toolpath.Drills.Count > 0
+                ? toolpath.Drills[^1].At
+                : toolpath.Passes.Count > 0 ? toolpath.Passes[^1].End : at;
+
+            Line($"  {toolpath.Label}");
+            var summary = FormattableString.Invariant(
+                $"{toolpath.PassCount} passes, {toolpath.Drills.Count} holes, {toolpath.CutLengthMm:F1} mm cut, {travel:F1} mm travel");
+            Line($"  {"",-4}{summary}");
+
+            foreach (var note in toolpath.Notes)
+            {
+                Line($"  {"",-4}{note}");
+            }
+        }
+
+        Console.WriteLine();
+        var totals = FormattableString.Invariant(
+            $"{stats.Lines:N0} lines, {stats.CutLengthMm:F1} mm cutting, {stats.RapidLengthMm:F1} mm rapid, {stats.PlungeCount} plunges, {stats.ToolChanges} tool changes");
+        Line($"  gcode       {totals}");
+
+        foreach (var note in job.Notes)
+        {
+            Console.Error.WriteLine($"  CHECK       {note}");
+        }
+
+        return job.Notes.Count > 0 ? 2 : 0;
+    }
+
+    private static bool TryMm(string text, out double value) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && value > 0;
+
+    private static int Bad(string flag)
+    {
+        Console.Error.WriteLine($"{flag} needs a positive number.");
+        return 1;
+    }
 
     private static void Line(FormattableString text) =>
         Console.WriteLine(FormattableString.Invariant(text));
