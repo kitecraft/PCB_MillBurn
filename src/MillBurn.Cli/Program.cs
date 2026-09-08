@@ -5,6 +5,9 @@ using MillBurn.Export;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
+using MillBurn.Pipeline;
+using MillBurn.Viewer;
+using SkiaSharp;
 
 namespace MillBurn.Cli;
 
@@ -18,6 +21,8 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine("  board <directory>              Load a whole export folder: detect layers, realise, report");
+            Console.WriteLine("                                 --png <path> renders the board through the real viewer");
             Console.WriteLine("  render <file-or-directory>     Realise Gerber geometry and report the filled area");
             Console.WriteLine("                                 --svg <path> also writes the result as SVG");
             Console.WriteLine();
@@ -35,6 +40,7 @@ internal static class Program
             "inspect" when args.Length >= 2 => Inspect(args[1]),
             "svg" when args.Length >= 2 => ExportSvg(args),
             "render" when args.Length >= 2 => Render(args),
+            "board" when args.Length >= 2 => LoadBoard(args),
             _ => Unknown(args[0]),
         };
     }
@@ -458,6 +464,130 @@ internal static class Program
         }
 
         return anyErrors ? 2 : 0;
+    }
+
+    /// <summary>
+    /// Load a whole export folder the way the window does: detect each file's role, parse it,
+    /// realise its geometry, and optionally render the result to a PNG.
+    ///
+    /// The PNG matters more than it looks. It drives the real <c>BoardScene</c> and
+    /// <c>BoardRenderer</c> — the same code the viewport uses — so the entire view stack is
+    /// checkable from a terminal, in CI, without launching a window. A board that loads with
+    /// perfect counts and renders as an empty rectangle is a real outcome, and no count catches it.
+    /// </summary>
+    private static int LoadBoard(string[] args)
+    {
+        var folder = args[1];
+        string? png = null;
+        var width = 1400;
+
+        for (var i = 2; i < args.Length; i++)
+        {
+            switch (args[i].ToLowerInvariant())
+            {
+                case "--png" when i + 1 < args.Length:
+                    png = args[++i];
+                    break;
+
+                case "--width" when i + 1 < args.Length:
+                    if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out width)
+                        || width < 64 || width > 8192)
+                    {
+                        Console.Error.WriteLine("--width needs a pixel count between 64 and 8192.");
+                        return 1;
+                    }
+
+                    break;
+
+                default:
+                    Console.Error.WriteLine($"Unknown option '{args[i]}'.");
+                    return 1;
+            }
+        }
+
+        Board board;
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            board = BoardLoader.LoadFolder(folder);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+
+        if (board.Layers.Count == 0)
+        {
+            Console.Error.WriteLine($"No board files found in '{folder}'.");
+            return 1;
+        }
+
+        Console.WriteLine(board.Source);
+        Line($"  layers      {board.Layers.Count}, {board.TotalObjects} objects, {board.TotalRings} rings");
+        Line($"  extents     {board.Bounds}");
+        Line($"  load        {elapsed.TotalMilliseconds:F0} ms");
+        Console.WriteLine();
+
+        foreach (var layer in board.InDrawOrder())
+        {
+            var guessed = layer.RoleGuessed ? " (guessed from the filename)" : "";
+            var negative = layer.DeclaredNegative ? " [negative]" : "";
+            Line($"  {layer.Label,-18} {layer.FileName}{guessed}{negative}");
+            Line($"  {"",-18} {layer.ObjectCount} objects, {layer.RingCount} rings, {layer.AreaMm2:F3} mm^2");
+
+            foreach (var d in layer.Diagnostics.Where(d => d.IsError).Take(3))
+            {
+                Console.Error.WriteLine($"  {"",-18} ERROR {d}");
+            }
+        }
+
+        if (board.Failures.Count > 0)
+        {
+            Console.WriteLine();
+            foreach (var failure in board.Failures)
+            {
+                Console.Error.WriteLine($"  FAILED  {failure}");
+            }
+        }
+
+        if (!board.Layers.Any(l => l.Role == LayerRole.Outline))
+        {
+            Console.WriteLine();
+            Console.WriteLine("  note: no board outline found, so extents come from the drawn geometry.");
+        }
+
+        if (png is not null)
+        {
+            RenderBoardPng(board, png, width);
+            Console.WriteLine();
+            Line($"  png         {png}");
+        }
+
+        return board.HasErrors ? 2 : 0;
+    }
+
+    private static void RenderBoardPng(Board board, string path, int width)
+    {
+        using var scene = BoardSceneBuilder.Build(
+            board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
+            board.Bounds);
+
+        var aspect = scene.Bounds.Height <= 0 ? 1f : scene.Bounds.Height / scene.Bounds.Width;
+        var height = Math.Clamp((int)Math.Round(width * aspect), 64, 8192);
+
+        var viewport = new SKRect(0, 0, width, height);
+        var view = BoardSceneBuilder.FitTo(scene.Bounds, viewport);
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height));
+        BoardRenderer.Draw(surface.Canvas, viewport, scene, view, BoardPalette.Background, BoardPalette.Grid);
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        using var file = File.OpenWrite(path);
+        data.SaveTo(file);
     }
 
     private static void Line(FormattableString text) =>

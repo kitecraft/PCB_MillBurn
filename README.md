@@ -8,10 +8,10 @@ laser output, a live toolpath viewer, and a job model that handles a board movin
 streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
 the laser takes SVG** — see [04 §1](Documentation/04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
 
-> **Status: Phase 1.** Gerber X2 and Excellon parsers, and geometry realisation — apertures,
-> aperture macros, strokes, regions and polarity compositing into Clipper2 polygons — are done and
-> clean on real boards and the full external corpus. The Avalonia viewport holds 98 fps on 500k
-> segments, and silkscreen exports as laser-ready SVG. Toolpaths and G-code are not built yet.
+> **Status: Phase 1 complete.** Drop a Gerber export folder on the window and the board appears:
+> parsers, geometry realisation (apertures, macros, strokes, regions, polarity), layer detection
+> and the viewer are all in, clean on real boards and the full external corpus. Silkscreen exports
+> as laser-ready SVG. Toolpaths and G-code are Phase 2 and not built yet.
 
 ## Documentation
 
@@ -40,12 +40,14 @@ dotnet test  PCB_MillBurn.slnx
 ## Running
 
 ```
+dotnet run --project src/MillBurn.App  -- <gerber-folder>            # open a board in the window
+dotnet run --project src/MillBurn.Cli -- board <gerber-folder>      # detect layers, realise, report
+dotnet run --project src/MillBurn.Cli -- board <folder> --png b.png  # render the board headlessly
 dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse report
-dotnet run --project src/MillBurn.Cli -- render <gerber-folder>      # realise geometry, report area
 dotnet run --project src/MillBurn.Cli -- render <layer.gbr> --svg out.svg
 dotnet run --project src/MillBurn.Cli -- svg <silkscreen.gbr>       # laser-ready SVG
 
-dotnet run --project src/MillBurn.App            # the app
+dotnet run --project src/MillBurn.App            # the app (drag a folder onto it)
 dotnet run --project src/MillBurn.App -- --bench # viewport benchmark (offscreen, CPU raster)
 dotnet run --project src/MillBurn.App -- --probe # render-configuration sweep
 dotnet run --project src/MillBurn.App -- --fpstest  # measures the real GPU render loop

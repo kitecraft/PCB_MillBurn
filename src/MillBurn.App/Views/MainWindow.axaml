@@ -2,7 +2,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MillBurn.App.ViewModels"
         xmlns:ctl="using:MillBurn.App.Controls"
-        xmlns:edit="using:AvaloniaEdit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
@@ -10,7 +9,7 @@
         x:DataType="vm:MainViewModel"
         Width="1280" Height="800"
         Background="{DynamicResource PageBackground}"
-        Title="PCB_MillBurn — Phase 0 spike">
+        Title="PCB_MillBurn">
 
     <Grid RowDefinitions="Auto,*,Auto">
 
@@ -20,85 +19,145 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
                 Padding="14,10">
-            <StackPanel Orientation="Horizontal" Spacing="16">
-                <TextBlock Text="PCB_MillBurn"
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="PCB_MillBurn"
                            FontSize="15" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextHeadline}"
                            VerticalAlignment="Center" />
-                <TextBlock Text="Phase 0 viewport spike"
+                <TextBlock Grid.Column="1"
+                           Text="{Binding BoardTitle}"
+                           Margin="16,0,0,0"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
-                <Button Content="Fit" Click="OnFitClicked" />
-                <Button Content="Toggle theme" Click="OnToggleThemeClicked" />
-            </StackPanel>
+                <Button Grid.Column="3" Content="Open folder…" Click="OnOpenFolderClicked" Margin="0,0,8,0" />
+                <Button Grid.Column="4" Content="Fit" Click="OnFitClicked" Margin="0,0,8,0" />
+                <Button Grid.Column="5" Content="Theme" Click="OnToggleThemeClicked" />
+            </Grid>
         </Border>
 
-        <!-- Three panes. GridSplitters stand in for Dock.Avalonia until the layout is real. -->
-        <Grid Grid.Row="1" ColumnDefinitions="220,4,*,4,380">
+        <!-- Layers | viewport -->
+        <Grid Grid.Row="1" ColumnDefinitions="300,4,*">
 
             <Border Grid.Column="0"
                     Background="{DynamicResource Surface}"
                     BorderBrush="{DynamicResource BorderSubtle}"
-                    BorderThickness="0,0,1,0"
-                    Padding="12">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="OPERATIONS"
+                    BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Row="0"
+                               Text="LAYERS"
                                FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="Setup A · Laser" Foreground="{DynamicResource TextPrimary}" />
-                    <TextBlock Text="   Fiducials" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="   Mask burn" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="Setup B · Mill" Margin="0,8,0,0"
-                               Foreground="{DynamicResource TextPrimary}" />
-                    <TextBlock Text="   Isolation" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="   Drill" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="   Outline" Foreground="{DynamicResource TextSecondary}" />
-                </StackPanel>
+                               Foreground="{DynamicResource TextSecondary}"
+                               Margin="12,12,12,8" />
+
+                    <ScrollViewer Grid.Row="1">
+                        <ItemsControl ItemsSource="{Binding Layers}" Margin="6,0,6,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LayerToggle">
+                                    <Border Padding="6,5" Margin="0,1" CornerRadius="4">
+                                        <Grid ColumnDefinitions="Auto,Auto,*">
+                                            <CheckBox Grid.Column="0"
+                                                      IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" />
+                                            <Border Grid.Column="1"
+                                                    Width="12" Height="12"
+                                                    CornerRadius="2"
+                                                    Margin="0,0,8,0"
+                                                    VerticalAlignment="Center"
+                                                    Background="{Binding Swatch}" />
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="{Binding Label}"
+                                                           Foreground="{DynamicResource TextPrimary}" />
+                                                <TextBlock Text="{Binding Detail}"
+                                                           FontSize="11"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextSecondary}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Anything worth checking before trusting what is on screen. -->
+                    <Border Grid.Row="2"
+                            IsVisible="{Binding Warnings.Count}"
+                            BorderBrush="{DynamicResource BorderSubtle}"
+                            BorderThickness="0,1,0,0"
+                            Padding="12,8">
+                        <StackPanel>
+                            <TextBlock Text="CHECK"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource DrcViolationColor}"
+                                       Margin="0,0,0,4" />
+                            <ItemsControl ItemsSource="{Binding Warnings}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Text="{Binding}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,1"
+                                                   Foreground="{DynamicResource TextSecondary}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </Grid>
             </Border>
 
             <GridSplitter Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
 
-            <ctl:ToolpathView Grid.Column="2"
-                              x:Name="Viewport"
-                              Scene="{Binding Scene}" />
+            <Panel Grid.Column="2">
+                <ctl:BoardView x:Name="Viewport" Scene="{Binding Scene}" />
 
-            <GridSplitter Grid.Column="3" Background="{DynamicResource BorderSubtle}" />
+                <!-- Kept for the fpstest harness: it measures the real Phase 0 render loop. -->
+                <ctl:ToolpathView x:Name="ToolpathViewport"
+                                  Scene="{Binding ToolpathScene}"
+                                  IsVisible="False" />
 
-            <Border Grid.Column="4"
-                    Background="{DynamicResource Surface}"
-                    BorderBrush="{DynamicResource BorderSubtle}"
-                    BorderThickness="1,0,0,0">
-                <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0"
-                               Text="G-CODE  (AvaloniaEdit)"
-                               FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextSecondary}"
-                               Margin="12,12,12,6" />
-                    <edit:TextEditor Grid.Row="1"
-                                     x:Name="GcodeEditor"
-                                     IsReadOnly="True"
-                                     ShowLineNumbers="True"
-                                     FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
-                                     FontSize="12"
-                                     Background="{DynamicResource InputBackground}"
-                                     Foreground="{DynamicResource TextPrimary}" />
-                </Grid>
-            </Border>
+                <Border IsVisible="{Binding !HasBoard}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource Surface}"
+                        BorderBrush="{DynamicResource BorderSubtle}"
+                        BorderThickness="1" CornerRadius="8"
+                        Padding="28,22">
+                    <StackPanel Spacing="6" HorizontalAlignment="Center">
+                        <TextBlock Text="Drop a Gerber export folder here"
+                                   FontSize="15"
+                                   Foreground="{DynamicResource TextHeadline}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Text="KiCad, Altium or Eagle output, drill files included"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Panel>
         </Grid>
 
-        <!-- Status bar: the Phase 0 acceptance numbers, live. -->
+        <!-- Status -->
         <Border Grid.Row="2"
                 Background="{DynamicResource Surface}"
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"
-                Padding="14,8">
-            <StackPanel Orientation="Horizontal" Spacing="24">
-                <TextBlock Text="{Binding BuildSummary}"
-                           Foreground="{DynamicResource TextSecondary}" />
-                <TextBlock Text="{Binding FrameSummary}"
-                           FontWeight="SemiBold"
-                           Foreground="{DynamicResource StatusSuccess}" />
-            </StackPanel>
+                Padding="14,7">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding BoardSummary}"
+                           Margin="16,0"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2"
+                           Text="{Binding FrameSummary}"
+                           FontFamily="Consolas,monospace"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center" />
+            </Grid>
         </Border>
     </Grid>
 </Window>

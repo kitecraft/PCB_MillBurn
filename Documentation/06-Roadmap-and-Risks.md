@@ -38,9 +38,10 @@ attempt at culling was 400x *slower* than none because of a defect in the per-ti
 - SkiaSharp Gerber viewer with layer toggles, pan/zoom.
 
 **Done when:** drop a KiCad output folder on the window and see the board, correctly, including a
-board with aperture macros and negative polarity.
+board with aperture macros and negative polarity. **Met**: both real boards and all 24 corpus
+files load, realise and render, macros and negative polarity included.
 
-**Progress.** Parsers done; geometry realisation done; the viewer is next.
+**Done.** Parsers, geometry realisation, layer detection and the viewer are all in.
 
 - `MillBurn.Geometry`: `Tessellate` (tolerance-driven arc and circle flattening, never a fixed
   segment count) and `Polygons` (booleans, area, bounds, inversion, and a canonical form so a
@@ -52,6 +53,33 @@ board with aperture macros and negative polarity.
   result to the SVG writer.
 - `MillBurn.Cli render` reports area, ring count, vertex count and timing, and `--svg` writes the
   realised geometry out to look at.
+- `MillBurn.Pipeline`: `LayerRoles` identifies each file from its X2 `.FileFunction`, falling back
+  to filename patterns and *saying so* when it does; `BoardLoader` loads a whole export folder,
+  drill files included, realising holes and slots into area like everything else.
+- `MillBurn.Viewer`: `BoardScene`, `BoardRenderer`, `BoardSceneBuilder` and `BoardPalette` — the
+  board as filled area, with paint order, default visibility and a substrate derived from the
+  outline.
+- `MillBurn.App`: drag-and-drop a folder (or any file in one), a layer panel with per-layer
+  toggles, colour swatches and counts, a "check this" panel for anything doubtful, and live frame
+  cost. `MillBurn.Cli board --png` and the app's own `--shot` render the same stack headlessly, so
+  the viewer is checkable from a terminal.
+
+**The board scene has no level of detail and no spatial tiling, and that was measured rather than
+assumed.** Those exist in `ToolpathScene` because a toolpath runs to hundreds of thousands of
+segments; a board does not. PogoTest1 is 10,045 vertices and renders in **0.04 ms**. Phase 0's
+lesson was that guessing here produced a 48x48 grid that made things 140x slower, so the rule is
+now to build the simple thing and let the number decide. The tiling machinery is one class away if
+a panelised board ever needs it.
+
+Two decisions worth remembering:
+
+- **Roles come from `.FileFunction` first, filenames only as a fallback, and a guess is labelled.**
+  Filename conventions are a guess dressed up as a rule — `.gbl` means different things to
+  different tools, and renaming a file to something tidy silently changes what the app believes it
+  is. Getting the role wrong routes the wrong geometry to the wrong operation.
+- **The board is drawn on its own substrate**, filled from the outline. Layer colours model
+  physical reality — copper is copper, silk is white — so they cannot follow the UI theme, and
+  white silk on a light theme background is invisible.
 
 Two decisions worth remembering:
 
