@@ -1,10 +1,19 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!--
+      WinExe suppresses the console window on Windows and means nothing elsewhere; the manifest is
+      a Windows concept and is only applied when building for it. The target framework is plain
+      net10.0, not net10.0-windows, and that is deliberate: nothing in this app is Windows-specific,
+      and pinning the TFM to a platform would be the first step towards something that is.
+    -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true' or $(RuntimeIdentifier.StartsWith('win'))">
+    <ApplicationManifest Include="app.manifest" />
+  </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Models\" />

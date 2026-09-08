@@ -2,8 +2,21 @@
 
 ## 1. Constraints and posture
 
-- **Windows only.** No Android/iOS/MacCatalyst targets — they are dead weight that slows every
+- **Desktop only.** No Android/iOS/MacCatalyst targets — they are dead weight that slows every
   build and forces lowest-common-denominator API choices.
+
+  Desktop, though, means **Windows and Linux** rather than Windows alone, and that came free rather
+  than by design. Every project targets plain `net10.0`, there is no Windows-only API anywhere in
+  the codebase, and the GUI publishes for `linux-x64` with zero warnings — Avalonia brings its X11
+  backend and SkiaSharp its native `libSkiaSharp.so` automatically.
+
+  Three earlier decisions, none about portability, are why. Keeping every algorithm in UI-free
+  libraries was for *shell swappability*. Choosing Avalonia over WPF or WinUI was for the SkiaSharp
+  viewport, and WPF would have been a hard stop. And **not driving machines** (§1.1) removes serial
+  ports, driver installs and USB permissions — which is the platform-specific misery that makes
+  most CNC software Windows-shaped in the first place.
+
+  macOS is likely and unverified; nothing is known to be in the way.
 - **UI shell: Avalonia UI recommended** over the existing MAUI scaffold — see
   [07 — UI Framework Decision](07-UI-Framework-Decision.md) for the full argument. Short version:
   Avalonia *is* SkiaSharp underneath (so the 500k-segment viewport is native, not a composited

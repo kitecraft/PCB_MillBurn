@@ -1,8 +1,12 @@
 # PCB_MillBurn
 
-A modern, Windows-only Gerber-to-G-code converter for **CNC mills**, **laser engravers**, and
-**mixed mill+laser workflows** — a rethink of `pcb2gcode` with a real travel optimizer, first-class
-laser output, a live toolpath viewer, and a job model that handles a board moving between machines.
+A modern Gerber-to-G-code converter for **CNC mills**, **laser engravers**, and **mixed mill+laser
+workflows** — a rethink of `pcb2gcode` with a real travel optimizer, first-class laser output, a
+live toolpath viewer, and a job model that handles a board moving between machines.
+
+Runs on **Windows and Linux**. Every project targets plain `net10.0`, there is no Windows-only API
+in the codebase, and the GUI publishes for `linux-x64` cleanly — Avalonia supplies the X11 backend
+and SkiaSharp the native rendering library.
 
 **PCB_MillBurn converts files. It does not drive machines.** No serial port, no jogging, no
 streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
@@ -36,6 +40,16 @@ Requires the **.NET 10 SDK**. Nothing else — no vcpkg, no CMake, no MSYS2.
 dotnet build PCB_MillBurn.slnx
 dotnet test  PCB_MillBurn.slnx
 ```
+
+For Linux, self-contained so nothing has to be installed on the target:
+
+```
+dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/linux
+dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
+```
+
+On a fresh Debian or Ubuntu the app may need `sudo apt install -y libfontconfig1`; everything else
+it needs ships in the publish output.
 
 ## Running
 

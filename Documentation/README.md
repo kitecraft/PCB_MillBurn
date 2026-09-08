@@ -1,7 +1,7 @@
 # PCB_MillBurn — Design Documentation
 
-A modern, Windows-only, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **laser
-engravers**, and **mixed mill+laser workflows**.
+A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **laser engravers**, and
+**mixed mill+laser workflows**. Desktop: Windows and Linux.
 
 > **Scope: PCB_MillBurn writes files. It does not drive machines.** No serial port, no jogging,
 > no streaming. UGS, Candle, LightBurn and LinuxCNC already do that job well. Where a workflow
