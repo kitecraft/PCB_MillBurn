@@ -1,5 +1,10 @@
 # ---- Reference checkouts (third-party, GPL-3.0, not part of this product) ----
 # See Documentation/01-Architecture.md section 9 (Licensing strategy).
+# Everything that is not project content now lives here: the GPL-3.0 reference checkouts and the
+# scratch board exports. Ignored as a whole so nothing inside it can be committed by accident.
+/WorkingFolder/
+
+# Kept as a safety net in case one is dropped back at the top level.
 /pcb2gcode/
 /Universal-G-Code-Sender/
 

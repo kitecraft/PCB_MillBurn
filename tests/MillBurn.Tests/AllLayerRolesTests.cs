@@ -26,17 +26,21 @@ public sealed class AllLayerRolesTests
     }
 
     /// <summary>
-    /// Paste is a stencil, so it is offered as SVG and never as G-code. Milling a paste layer is
-    /// not an operation, and offering it would produce a file that means nothing.
+    /// Paste is offered both ways, because both are real: burned as a stencil, or milled as mask
+    /// relief — cutting the cured soldermask off the pads so they can be soldered.
+    ///
+    /// This was originally written the other way round, asserting paste could never be milled. That
+    /// was an assumption about what people do rather than a fact about the geometry, and it was
+    /// wrong.
     /// </summary>
     [Fact]
-    public void PasteCanBeCutAsAStencilAndNeverMilled()
+    public void PasteCanBeCutAsAStencilOrMilledAsMaskRelief()
     {
         Assert.Contains(OutputKind.Svg, LayerOperations.Available(LayerRole.TopPaste));
-        Assert.DoesNotContain(OutputKind.Gcode, LayerOperations.Available(LayerRole.TopPaste));
+        Assert.Contains(OutputKind.Gcode, LayerOperations.Available(LayerRole.TopPaste));
 
         Assert.Equal(OperationKind.MaskOpen, LayerOperations.For(LayerRole.TopPaste, OutputKind.Svg));
-        Assert.Equal(OperationKind.None, LayerOperations.For(LayerRole.TopPaste, OutputKind.Gcode));
+        Assert.Equal(OperationKind.Pocket, LayerOperations.For(LayerRole.TopPaste, OutputKind.Gcode));
     }
 
     /// <summary>

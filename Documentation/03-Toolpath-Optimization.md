@@ -5,7 +5,7 @@ excessive travel moves."* That symptom has specific, findable causes in pcb2gcod
 
 ## 1. What pcb2gcode actually does
 
-From `pcb2gcode/src/tsp_solver.hpp`:
+From `WorkingFolder/pcb2gcode/src/tsp_solver.hpp`:
 
 ```cpp
 // nearest_neighbour(), line ~100

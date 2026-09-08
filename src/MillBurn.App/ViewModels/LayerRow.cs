@@ -42,6 +42,15 @@ public sealed partial class LayerRow : ObservableObject
     private readonly BoardSceneLayer? _scene;
     private readonly string _detail;
 
+    /// <summary>
+    /// The operation whose default depth is currently showing, or null once the user has typed one.
+    ///
+    /// Switching a paste layer from a stencil to mask relief has to bring the depth with it: 0.05 mm
+    /// suits isolation and goes clean through 0.02-0.04 mm of soldermask into the copper. Tracking
+    /// what the number came from means a depth the operator chose is never quietly overwritten.
+    /// </summary>
+    private OperationKind? _depthDefaultedFor;
+
     // Wired only after the constructor has set the initial values, so building a row does not read
     // as the user having changed something.
     private Action? _visibilityChanged;
@@ -72,7 +81,8 @@ public sealed partial class LayerRow : ObservableObject
 
         SelectedOutput = Outputs.FirstOrDefault(o => o.Kind == settings.Output) ?? Outputs[0];
         BreakThroughMm = Nm.ToMillimetres(settings.BreakThroughNm);
-        DepthMm = Nm.ToMillimetres(settings.DepthNm);
+        DepthMm = Nm.ToMillimetres(settings.DepthFor(Operation));
+        _depthDefaultedFor = Operation;
         TabCount = settings.TabCount;
         Passes = settings.Passes;
         Mirrored = settings.MirrorFor(layer.Role);
@@ -192,7 +202,8 @@ public sealed partial class LayerRow : ObservableObject
 
     public bool NeedsBreakThrough => IsGcode && LayerOperations.GoesThrough(Operation);
 
-    public bool NeedsDepth => IsGcode && Operation is OperationKind.Isolation or OperationKind.Engrave;
+    public bool NeedsDepth => IsGcode
+        && Operation is OperationKind.Isolation or OperationKind.Engrave or OperationKind.Pocket;
 
     public bool NeedsTabs => IsGcode && Operation == OperationKind.Outline;
 
@@ -220,6 +231,12 @@ public sealed partial class LayerRow : ObservableObject
             Tool = Tools[0];
         }
 
+        if (_depthDefaultedFor is { } was && was != Operation)
+        {
+            _depthDefaultedFor = Operation;
+            DepthMm = Nm.ToMillimetres(LayerOperations.DefaultDepthNm(Operation));
+        }
+
         RaiseDerived();
         _outputChanged?.Invoke();
     }
@@ -240,7 +257,13 @@ public sealed partial class LayerRow : ObservableObject
 
     partial void OnDepthMmChanged(double value)
     {
-        _ = value;
+        // Typed by hand, so it is theirs now and no operation change may replace it.
+        if (_depthDefaultedFor is { } was
+            && Nm.FromMillimetres(value) != LayerOperations.DefaultDepthNm(was))
+        {
+            _depthDefaultedFor = null;
+        }
+
         OnPropertyChanged(nameof(Detail));
         _outputChanged?.Invoke();
     }
@@ -326,6 +349,10 @@ public sealed partial class LayerRow : ObservableObject
                     $"Cuts {cutWidth} mm wide at {DepthMm:F3} mm deep · {passes}{flip}"),
 
                 OperationKind.Engrave when IsGcode => $"Traces the legend {cutWidth} mm wide{flip}",
+
+                OperationKind.Pocket => string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Clears the mask off {layer.RingCount} openings, {cutWidth} mm per pass at {DepthMm:F3} mm{flip}"),
 
                 OperationKind.Drilling => string.Create(
                     CultureInfo.InvariantCulture,

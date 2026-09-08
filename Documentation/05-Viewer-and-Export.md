@@ -2,7 +2,7 @@
 
 ## 1. Viewer: what we can learn from UGS
 
-`Universal-G-Code-Sender/` is checked out in this workspace and its visualizer is the most mature
+`WorkingFolder/Universal-G-Code-Sender/` is checked out in this workspace and its visualizer is the most mature
 open-source G-code viewer in the .NET-adjacent world. It cannot be used directly — it is
 **Java + NetBeans Platform + JOGL, GPL-3.0** — but its *design* is worth copying wholesale.
 
@@ -138,7 +138,7 @@ emitter, and it is held to the same standard: exact units, deterministic bytes, 
 
 ### 3.1 What is wrong with pcb2gcode's SVG
 
-From `pcb2gcode/src/svg_writer.cpp`:
+From `WorkingFolder/pcb2gcode/src/svg_writer.cpp`:
 
 ```cpp
 const unsigned int r = ConsistentRand::rand() % 256;

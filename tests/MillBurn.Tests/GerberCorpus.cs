@@ -41,13 +41,26 @@ public static class GerberCorpus
             return overridePath;
         }
 
+        // Both layouts: the checkout beside the repository, and the one tidied into WorkingFolder
+        // with everything else that is not project content. Looking in only one place means the
+        // corpus quietly stops running the day it is moved, and a skipped test looks like a passing
+        // one.
+        string[] layouts =
+        [
+            Path.Combine("WorkingFolder", "pcb2gcode", "tests", "data", "gerberimporter"),
+            Path.Combine("pcb2gcode", "tests", "data", "gerberimporter"),
+        ];
+
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 10 && dir is not null; i++)
         {
-            var candidate = Path.Combine(dir, "pcb2gcode", "tests", "data", "gerberimporter");
-            if (Directory.Exists(candidate))
+            foreach (var layout in layouts)
             {
-                return candidate;
+                var candidate = Path.Combine(dir, layout);
+                if (Directory.Exists(candidate))
+                {
+                    return candidate;
+                }
             }
 
             dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar));

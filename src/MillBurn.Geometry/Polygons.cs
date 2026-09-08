@@ -57,6 +57,55 @@ public static class Polygons
         return paths.Count == 0 ? [] : Clipper.Union(paths, FillRule.NonZero);
     }
 
+    /// <summary>
+    /// Splits a polygon set into its separate pieces, each carrying its own holes.
+    ///
+    /// Needed wherever an operation is per *region* rather than per ring: clearing a pad, ordering
+    /// one piece at a time. A flat list of rings cannot express which hole belongs to which island,
+    /// and offsetting a ring without its holes fills them in.
+    /// </summary>
+    public static IEnumerable<Paths64> Separate(Paths64 paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        if (paths.Count == 0)
+        {
+            yield break;
+        }
+
+        var tree = new PolyTree64();
+        Clipper.BooleanOp(ClipType.Union, paths, null, tree, FillRule.NonZero);
+
+        foreach (var region in Walk(tree))
+        {
+            yield return region;
+        }
+    }
+
+    /// <summary>
+    /// Depth-first over the containment tree. A polygon's children are its holes; their children
+    /// are islands standing inside those holes, and are regions in their own right.
+    /// </summary>
+    private static IEnumerable<Paths64> Walk(PolyPath64 node)
+    {
+        foreach (PolyPath64 outer in node)
+        {
+            var region = new Paths64 { outer.Polygon! };
+
+            foreach (PolyPath64 hole in outer)
+            {
+                region.Add(hole.Polygon!);
+
+                foreach (var island in Walk(hole))
+                {
+                    yield return island;
+                }
+            }
+
+            yield return region;
+        }
+    }
+
     public static Paths64 Difference(Paths64 subject, Paths64 clip)
     {
         ArgumentNullException.ThrowIfNull(subject);

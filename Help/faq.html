@@ -31,6 +31,7 @@
     <li><a href="#gaps">A trace did not get isolated</a></li>
     <li><a href="#twosided"><strong>Lining up the two sides of a double-sided board</strong></a></li>
     <li><a href="#panels">Can I panelise?</a></li>
+    <li><a href="#relief">Milling the soldermask off the pads</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
     <li><a href="#colours">I cannot see a layer</a></li>
   </ul>
@@ -411,6 +412,42 @@ MyBoard-F_Silkscreen.engrave.svg   legend, for the laser</code></pre>
     is; across 200&nbsp;mm you cannot, and you will need height mapping — which is also planned,
     and also not built.</li>
 </ul>
+
+<h2 id="relief">Milling the soldermask off the pads</h2>
+
+<p>
+  Set a <strong>paste</strong> layer to <strong>G-code</strong> and you get <em>mask relief</em>:
+  the cured soldermask cleared off each pad so it can be soldered. The paste apertures are exactly
+  the right geometry for it — they are where solder is meant to go, which is where the mask must
+  not be.
+</p>
+
+<p>
+  Each opening is cleared with rings working inwards from its edge, and each pad is finished before
+  the tool moves to the next. Openings smaller than the tool cuts are counted and reported: they
+  will keep their mask, and nothing about the picture would tell you.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>This is the operation that board flatness ruins.</strong> Cured mask is about
+    0.02–0.04 mm. The whole depth of this cut is smaller than the flatness of an ordinary piece of
+    copper-clad over even a small board — so the same program leaves mask on one pad and cuts into
+    the copper of another, and neither shows up until the board is under a light.
+  </p>
+  <p>
+    Level the stock as well as you can, and treat this as the operation that most needs a height
+    map. <span class="notyet">not built yet</span> Height mapping — probing a grid and warping the
+    program to it — is planned but not built, so today this works best on small areas and
+    hand-levelled stock.
+  </p>
+</div>
+
+<p>
+  The depth defaults to 0.035 mm here rather than the 0.05 mm that isolation uses, because 0.05 mm
+  goes clean through the mask into the copper. If you type a depth of your own it is kept, whatever
+  you switch the layer to afterwards.
+</p>
 
 <h2 id="svg">The SVGs: masks, openings, and alignment</h2>
 

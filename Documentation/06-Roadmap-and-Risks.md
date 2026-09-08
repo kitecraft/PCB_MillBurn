@@ -406,6 +406,20 @@ gap, and the last run's end is already beside the first run's start. Single-boar
 back to 46 mm, byte-identical to what shipped; the panel's is 1,922 mm and safe, against 793 mm for
 an ordering free to cut a place to full depth before it had been cut shallow.
 
+**Paste can be milled as well as burned.** Asked for from experience rather than from the plan:
+people mill the cured soldermask off the pads, using the paste apertures as the areas to clear.
+`PocketOperation` does contour-parallel clearing — offset the boundary in by half a cut width, then
+step inwards until nothing is left — with each opening as its own stack so a pad is finished before
+the tool moves. Openings smaller than the tool are counted and reported rather than approximated,
+because a pad the tool cannot enter keeps its mask and the picture would look perfect.
+
+The depth default had to become per-operation for this. A single 0.05 mm suits isolation and goes
+clean through 20-40 µm of cured mask into the copper underneath, so `LayerOutputSettings.DepthNm` is
+nullable in the same way `Mirrored` is: unset takes the default for whatever the layer becomes, and
+a depth the operator typed is never replaced. The export warns, with the chosen depth quoted, that
+the whole cut is shallower than an ordinary board's flatness — which is exactly the trouble that was
+reported with it, and the strongest argument yet for Phase 5's height mapping.
+
 Still to come in this phase: Eulerian path merging, travel-at-depth when it is safe, and
 Douglas–Peucker plus arc fitting — which Documentation/03 §7 rates as the bigger real-world win,
 because a 76,000-line isolation file decelerates at every one of those lines.

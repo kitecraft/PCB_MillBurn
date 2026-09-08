@@ -31,8 +31,8 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 
 | Path | What it is | License | How we use it |
 |---|---|---|---|
-| `pcb2gcode/` | The original C++ tool | GPL-3.0 | Behavioural reference + benchmark baseline. **Do not port code.** |
-| `Universal-G-Code-Sender/` | UGS (Java/NetBeans/JOGL) | GPL-3.0 | Design reference for the backplot viewer and the G-code processor chain. **Do not port code.** |
+| `WorkingFolder/pcb2gcode/` | The original C++ tool | GPL-3.0 | Behavioural reference + benchmark baseline. **Do not port code.** |
+| `WorkingFolder/Universal-G-Code-Sender/` | UGS (Java/NetBeans/JOGL) | GPL-3.0 | Design reference for the backplot viewer and the G-code processor chain. **Do not port code.** |
 | `..\IceLight_App\IceLight V2` | Your existing MAUI app | yours | UI reference: the semantic theme-token system, converters, feature-foldered `CoreUI/` layout. Port these ideas forward. |
 
 Both are GPL-3.0. Reading them to understand *approach* is fine; copying code makes PCB_MillBurn

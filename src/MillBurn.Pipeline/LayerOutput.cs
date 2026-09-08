@@ -25,6 +25,14 @@ public enum OperationKind
     Engrave,
     MaskOpen,
     Vector,
+
+    /// <summary>
+    /// Clearing an area rather than tracing round it — milling cured soldermask off the pads.
+    ///
+    /// The paste layer's apertures are exactly where solder is meant to go, which is where the mask
+    /// must not be, so they are the right geometry to clear.
+    /// </summary>
+    Pocket,
 }
 
 /// <summary>
@@ -53,8 +61,19 @@ public sealed record LayerOutputSettings
     /// </summary>
     public long BreakThroughNm { get; init; } = Nm.FromMillimetres(0.3);
 
-    /// <summary>Isolation only: how deep, which for a V-bit is the same as how wide.</summary>
-    public long DepthNm { get; init; } = Nm.FromMillimetres(0.05);
+    /// <summary>
+    /// How deep to cut. Null takes the default for whatever operation this layer becomes.
+    ///
+    /// Nullable because one number cannot be right for both: isolation is a scratch into copper
+    /// where the depth chooses the cut width, and mask relief has to stop inside a film two
+    /// microns thicker than nothing. A shared 0.05 mm default is fine for the first and cuts
+    /// straight through the second into the copper underneath.
+    /// </summary>
+    public long? DepthNm { get; init; }
+
+    /// <summary>What this layer's depth actually resolves to.</summary>
+    public long DepthFor(OperationKind operation) =>
+        DepthNm ?? LayerOperations.DefaultDepthNm(operation);
 
     /// <summary>Isolation only.</summary>
     public int Passes { get; init; } = 1;
@@ -110,6 +129,11 @@ public static class LayerOperations
         (LayerRole.TopMask or LayerRole.BottomMask, OutputKind.Svg) => OperationKind.MaskOpen,
         (LayerRole.TopPaste or LayerRole.BottomPaste, OutputKind.Svg) => OperationKind.MaskOpen,
 
+        // Milling the applied soldermask off the pads. A real workflow, and the one operation here
+        // that usually needs height mapping to work at all: the mask is tens of microns thick, so
+        // the depth error a flat-looking board carries is the whole cut.
+        (LayerRole.TopPaste or LayerRole.BottomPaste, OutputKind.Gcode) => OperationKind.Pocket,
+
         _ => OperationKind.None,
     };
 
@@ -117,8 +141,11 @@ public static class LayerOperations
     public static IReadOnlyList<OutputKind> Available(LayerRole role) => role switch
     {
         LayerRole.PlatedDrill or LayerRole.NonPlatedDrill => [OutputKind.None, OutputKind.Gcode],
-        LayerRole.TopMask or LayerRole.BottomMask or LayerRole.TopPaste or LayerRole.BottomPaste
-            => [OutputKind.None, OutputKind.Svg],
+        LayerRole.TopMask or LayerRole.BottomMask => [OutputKind.None, OutputKind.Svg],
+
+        // Paste can be burned as a stencil or milled as mask relief.
+        LayerRole.TopPaste or LayerRole.BottomPaste
+            => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
         LayerRole.Unknown => [OutputKind.None],
         _ => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
     };
@@ -143,6 +170,18 @@ public static class LayerOperations
     public static bool MirrorByDefault(LayerRole role) =>
         LayerRoleInfo.SideOf(role) == BoardSide.Bottom;
 
+    /// <summary>
+    /// How deep an operation goes unless it is told otherwise.
+    ///
+    /// Mask relief is the odd one: cured soldermask is 20-40 µm, so the depth that suits isolation
+    /// goes through it and into the copper.
+    /// </summary>
+    public static long DefaultDepthNm(OperationKind operation) => operation switch
+    {
+        OperationKind.Pocket => Nm.FromMillimetres(0.035),
+        _ => Nm.FromMillimetres(0.05),
+    };
+
     /// <summary>Does this operation cut all the way through?</summary>
     public static bool GoesThrough(OperationKind operation) =>
         operation is OperationKind.Drilling or OperationKind.Outline;
@@ -151,6 +190,10 @@ public static class LayerOperations
     public static ToolKind? ToolKindFor(OperationKind operation) => operation switch
     {
         OperationKind.Isolation or OperationKind.Engrave => ToolKind.VBit,
+
+        // Both kinds are used for mask relief in practice: a V-bit for its fine tip, a small flat
+        // end mill for a level floor. Neither is wrong, so neither is filtered out.
+        OperationKind.Pocket => null,
         OperationKind.Outline => ToolKind.EndMill,
         OperationKind.Drilling => ToolKind.Drill,
         _ => null,
@@ -163,6 +206,7 @@ public static class LayerOperations
         OperationKind.Outline => "Cut out",
         OperationKind.Engrave => "Engrave",
         OperationKind.MaskOpen => "Mask openings",
+        OperationKind.Pocket => "Mask relief",
         OperationKind.Vector => "Vector outline",
         _ => "Not exported",
     };
@@ -180,6 +224,7 @@ public static class LayerOperations
         OperationKind.Outline => "cutout",
         OperationKind.Engrave => "engrave",
         OperationKind.MaskOpen => "mask",
+        OperationKind.Pocket => "relief",
         OperationKind.Vector => "vector",
         _ => "out",
     };

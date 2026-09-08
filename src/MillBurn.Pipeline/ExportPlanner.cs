@@ -219,6 +219,7 @@ public static class ExportPlanner
             OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary),
             OperationKind.Outline => BuildOutline(layer, setting, tool, boardThicknessNm, summary, warnings),
             OperationKind.Engrave => BuildEngrave(layer, setting, tool, summary),
+            OperationKind.Pocket => BuildPocket(layer, setting, tool, summary, warnings),
             _ => null,
         };
 
@@ -320,12 +321,12 @@ public static class ExportPlanner
         var options = new IsolationOptions
         {
             Tool = tool,
-            DepthNm = setting.DepthNm,
+            DepthNm = setting.DepthFor(OperationKind.Isolation),
             Passes = setting.Passes,
         };
 
         var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
-        var depth = Nm.ToMillimetreString(setting.DepthNm, 3);
+        var depth = Nm.ToMillimetreString(options.DepthNm, 3);
         var passLabel = setting.Passes == 1 ? "1 pass" : Invariant($"{setting.Passes} passes");
         summary.Add(Invariant($"{width} mm wide at {depth} mm deep · {passLabel}"));
 
@@ -435,6 +436,43 @@ public static class ExportPlanner
     }
 
     /// <summary>
+    /// Milling the applied soldermask off the pads, using the paste apertures as the areas to clear.
+    ///
+    /// The warnings are the point of this one. Cured mask is 20–40 µm, which is less than the
+    /// flatness of a typical piece of copper-clad over even a small board — so the same program
+    /// that leaves mask on one pad cuts into the copper of another, and neither shows up until the
+    /// board is under a light.
+    /// </summary>
+    private static Toolpath BuildPocket(
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        Tool tool,
+        List<string> summary,
+        List<string> warnings)
+    {
+        var options = new PocketOptions { Tool = tool, DepthNm = setting.DepthFor(OperationKind.Pocket) };
+
+        var depth = Nm.ToMillimetreString(options.DepthNm, 3);
+        var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
+        summary.Add(Invariant($"{layer.RingCount} openings cleared {width} mm per pass at {depth} mm deep"));
+
+        warnings.Add(
+            Invariant($"Mask relief cuts {depth} mm deep. ")
+            + "Cured soldermask is about 0.02-0.04 mm, so the board's own flatness is the whole "
+            + "depth of this cut: level the stock and probe a height map, or expect bare copper in "
+            + "one place and mask left in another.");
+
+        var unreachable = PocketOperation.UnreachableOpenings(layer.Area, options);
+        if (unreachable > 0)
+        {
+            warnings.Add(Invariant(
+                $"{unreachable} opening(s) are smaller than the tool cuts and will keep their mask."));
+        }
+
+        return PocketOperation.Build(layer.Area, options, layer.Label);
+    }
+
+    /// <summary>
     /// Engraving silk on the mill: trace the stroke centrelines, exactly as the laser path does.
     ///
     /// The same observation makes both work — silk is drawn at about the width the tool cuts — so
@@ -444,7 +482,7 @@ public static class ExportPlanner
         BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary)
     {
         var contours = Clipper.InflatePaths(
-            layer.Area, -tool.WidthAtDepth(setting.DepthNm) / 2, JoinType.Round, EndType.Polygon);
+            layer.Area, -tool.WidthAtDepth(setting.DepthFor(OperationKind.Engrave)) / 2, JoinType.Round, EndType.Polygon);
 
         var passes = new List<ToolpathPass>();
         foreach (var contour in contours.Where(c => c.Count >= 3))
@@ -452,12 +490,12 @@ public static class ExportPlanner
             passes.Add(new ToolpathPass
             {
                 Path = IsolationOperation.ToSegments(contour),
-                DepthNm = setting.DepthNm,
+                DepthNm = setting.DepthFor(OperationKind.Engrave),
                 Closed = true,
             });
         }
 
-        var engraveDepth = Nm.ToMillimetreString(setting.DepthNm, 3);
+        var engraveDepth = Nm.ToMillimetreString(setting.DepthFor(OperationKind.Engrave), 3);
         summary.Add(Invariant($"{passes.Count} strokes at {engraveDepth} mm deep"));
 
         return new Toolpath
