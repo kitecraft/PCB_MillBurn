@@ -16,6 +16,10 @@
   ports, driver installs and USB permissions — which is the platform-specific misery that makes
   most CNC software Windows-shaped in the first place.
 
+  **Verified on WSL2 with WSLg**, not merely built: the window renders, the theme toggle works, the
+  file and folder pickers work — that was the part most likely to break, since Avalonia goes through
+  xdg-desktop-portal on Linux — and G-code saved from the Linux build loaded into gSender.
+
   macOS is likely and unverified; nothing is known to be in the way.
 - **UI shell: Avalonia UI recommended** over the existing MAUI scaffold — see
   [07 — UI Framework Decision](07-UI-Framework-Decision.md) for the full argument. Short version:

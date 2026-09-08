@@ -6,7 +6,8 @@ live toolpath viewer, and a job model that handles a board moving between machin
 
 Runs on **Windows and Linux**. Every project targets plain `net10.0`, there is no Windows-only API
 in the codebase, and the GUI publishes for `linux-x64` cleanly — Avalonia supplies the X11 backend
-and SkiaSharp the native rendering library.
+and SkiaSharp the native rendering library. The Linux build has been run under WSL2/WSLg: window,
+theming, file pickers and G-code export all work, and the output loads in gSender.
 
 **PCB_MillBurn converts files. It does not drive machines.** No serial port, no jogging, no
 streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
