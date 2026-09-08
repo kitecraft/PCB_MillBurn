@@ -65,7 +65,8 @@ public static class DrillOperation
     /// hobby machine, so the ordering that minimises regret is the one where the delicate bits go
     /// in last and spend the least time in the spindle.
     /// </summary>
-    public static IReadOnlyList<Toolpath> Build(ExcellonFile drill, DrillOptions options)
+    public static IReadOnlyList<Toolpath> Build(
+        ExcellonFile drill, DrillOptions options, Tool? template = null)
     {
         ArgumentNullException.ThrowIfNull(drill);
         ArgumentNullException.ThrowIfNull(options);
@@ -92,7 +93,7 @@ public static class DrillOperation
             {
                 Kind = ToolpathKind.Drill,
                 Label = Invariant($"Drill {Nm.ToMillimetreString(tool.DiameterNm, 2)} mm ({hits.Count} holes)"),
-                Tool = Tool.DrillOf(tool.DiameterNm),
+                Tool = Tool.DrillOf(tool.DiameterNm, template),
                 Drills = [.. hits.Select(h => new DrillTarget(h.At, options.DepthNm, options.PeckNm))],
                 Notes = notes,
             });

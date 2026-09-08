@@ -44,6 +44,8 @@ dotnet run --project src/MillBurn.App  -- <gerber-folder>            # open a bo
 dotnet run --project src/MillBurn.App  -- <project.millburn>         # open a saved project
 dotnet run --project src/MillBurn.Cli -- project save <folder> -o p.millburn
 dotnet run --project src/MillBurn.Cli -- project refresh p.millburn  # what changed since the export
+dotnet run --project src/MillBurn.Cli -- tools list                  # the saved tool library
+dotnet run --project src/MillBurn.Cli -- mill <folder> --isolation-tool "30°" --outline-tool "1.0 mm"
 dotnet run --project src/MillBurn.Cli -- board <gerber-folder>      # detect layers, realise, report
 dotnet run --project src/MillBurn.Cli -- board <folder> --png b.png  # render the board headlessly
 dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse report

@@ -379,6 +379,17 @@ public partial class MainWindow : Window
     private void OnRefreshClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainViewModel)?.InspectRefresh();
 
+    private async void OnEditToolsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        await new ToolLibraryWindow(vm.Library).ShowDialog(this);
+        vm.ReloadLibrary();
+    }
+
     private void OnMillClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainViewModel)?.Mill();
 

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MillBurn.Core;
+using MillBurn.Cam;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
@@ -66,6 +67,15 @@ public sealed partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<RefreshItem> RefreshItems { get; } = [];
 
+    public ObservableCollection<ToolChoice> ToolChoices { get; } = [];
+
+    /// <summary>The saved library, reloaded when the tool editor changes it.</summary>
+    public ToolLibrary Library { get; private set; } = ToolLibrary.LoadOrDefault();
+
+    /// <summary>Isolation depth, which for a V-bit is the same thing as choosing the cut width.</summary>
+    [ObservableProperty]
+    public partial double IsolationDepthMm { get; set; } = 0.05;
+
     /// <summary>Raised when a layer is toggled, so the view can repaint without a scene swap.</summary>
     public event EventHandler? RedrawRequested;
 
@@ -75,7 +85,102 @@ public sealed partial class MainViewModel : ViewModelBase
     public string? RefreshSource =>
         _project.OriginFolder is { } folder && Directory.Exists(folder) ? folder : null;
 
-    public MainViewModel() => AttachProject(_project);
+    public MainViewModel()
+    {
+        AttachProject(_project);
+        BuildToolChoices();
+    }
+
+    // ------------------------------------------------------------------ tools
+
+    /// <summary>
+    /// Rebuilds the per-operation tool pickers from the library.
+    ///
+    /// Per operation because traces and edge cuts want genuinely different tools, not because
+    /// someone might prefer it: a V-bit's width follows its depth, which is what makes a 0.13 mm
+    /// isolation cut possible at all, and the same bit taken to 1.9 mm for the outline would be
+    /// millimetres wide at the surface.
+    /// </summary>
+    public void BuildToolChoices()
+    {
+        var previous = ToolChoices.ToDictionary(c => c.Label, c => c.Selected.Id, StringComparer.Ordinal);
+        ToolChoices.Clear();
+
+        // What was chosen last, then the built-in default if the library still has it, then
+        // anything of the right kind. "First of the right kind" alone picks whatever happens to
+        // sort first, which is how the outline ends up defaulting to the most fragile end mill in
+        // the drawer.
+        Tool Pick(string label, ToolKind kind, Tool fallback) =>
+            (previous.TryGetValue(label, out var id) ? Library.Tools.FirstOrDefault(t => t.Id == id) : null)
+            ?? Library.Tools.FirstOrDefault(t => t.Id == fallback.Id)
+            ?? Library.OfKind(kind).FirstOrDefault()
+            ?? fallback;
+
+        var isolation = new ToolChoice(
+            "Isolation",
+            Library.OfKind(ToolKind.VBit).Concat(Library.OfKind(ToolKind.EndMill)),
+            Pick("Isolation", ToolKind.VBit, Tool.DefaultVBit),
+            t => ToolChoice.DescribeIsolation(t, Nm.FromMillimetres(IsolationDepthMm)));
+
+        var outline = new ToolChoice(
+            "Outline",
+            Library.OfKind(ToolKind.EndMill),
+            Pick("Outline", ToolKind.EndMill, Tool.DefaultOutlineMill),
+            ToolChoice.DescribeOutline);
+
+        var drill = new ToolChoice(
+            "Drilling",
+            Library.OfKind(ToolKind.Drill),
+            Pick("Drilling", ToolKind.Drill, Tool.DefaultDrill),
+            ToolChoice.DescribeDrill);
+
+        foreach (var choice in new[] { isolation, outline, drill })
+        {
+            choice.Changed += (_, _) => OnToolChanged();
+            ToolChoices.Add(choice);
+        }
+    }
+
+    public void ReloadLibrary()
+    {
+        Library = ToolLibrary.LoadOrDefault();
+        BuildToolChoices();
+    }
+
+    private void OnToolChanged()
+    {
+        // Choosing a tool is a document change: it changes what gets cut.
+        _project.Touch();
+
+        // Any program on screen was made with the old tool, so it is no longer a picture of this
+        // job. Leaving it there would be the most convincing kind of wrong.
+        if (_backplot.Count > 0)
+        {
+            _backplot = [];
+            Gcode = null;
+            GcodeSummary = string.Empty;
+            Rebuild(TimeSpan.Zero);
+            StatusMessage = "Tool changed. Mill again to see the new program.";
+        }
+    }
+
+    partial void OnIsolationDepthMmChanged(double value)
+    {
+        _ = value;
+        foreach (var choice in ToolChoices)
+        {
+            choice.Refresh();
+        }
+
+        OnToolChanged();
+    }
+
+    private ToolSelection CurrentTools() => new()
+    {
+        Isolation = ToolChoices.FirstOrDefault(c => c.Label == "Isolation")?.Selected ?? Tool.DefaultVBit,
+        Outline = ToolChoices.FirstOrDefault(c => c.Label == "Outline")?.Selected ?? Tool.DefaultOutlineMill,
+        Drill = ToolChoices.FirstOrDefault(c => c.Label == "Drilling")?.Selected ?? Tool.DefaultDrill,
+    };
 
     // ------------------------------------------------------------------ loading
 
@@ -264,7 +369,21 @@ public sealed partial class MainViewModel : ViewModelBase
         try
         {
             var board = ProjectFile.ToBoard(_project);
-            var job = JobBuilder.Build(board, new MillOptions());
+            var tools = CurrentTools();
+            var job = JobBuilder.Build(board, new MillOptions
+            {
+                Tools = tools,
+                Isolation = new IsolationOptions { DepthNm = Nm.FromMillimetres(IsolationDepthMm) },
+            });
+
+            // The project keeps a copy of what it was cut with, not a pointer into the library.
+            _project.Settings = _project.Settings with
+            {
+                Tools = [.. tools.All],
+                IsolationToolId = tools.Isolation.Id,
+                OutlineToolId = tools.Outline.Id,
+                DrillToolId = tools.Drill.Id,
+            };
             var (text, _) = GcodeEmitter.Emit(job, new GcodeOptions());
 
             var program = GcodeParser.Parse(text);
@@ -281,6 +400,11 @@ public sealed partial class MainViewModel : ViewModelBase
                 $"{measured.PlungeCount} plunges · {measured.TimeRange()}");
 
             Rebuild(TimeSpan.Zero);
+
+            foreach (var note in job.Notes.Where(n => !n.Contains("lower-left", StringComparison.Ordinal)))
+            {
+                Warnings.Add(note);
+            }
 
             StatusMessage = measured.GougeCount > 0
                 ? $"{measured.GougeCount} rapid move(s) at cutting depth — do not run this."

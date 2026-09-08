@@ -194,6 +194,29 @@ for every operation instead of chaining, which both ordered badly and reported a
 dominated by one long move in (total rapid 402 mm → 232 mm once fixed); and the peck loop was
 described in a comment but never actually emitted, so drills plunged full depth in one go.
 
+**Tools are a saved library, chosen per operation.** Traces and edge cuts want genuinely different
+cutters and that is physics, not preference: a V-bit's width follows its depth, which is what makes
+a 0.13 mm isolation cut reachable at all and an end mill that narrow unaffordable — while the same
+V-bit taken to 1.9 mm for the outline would be millimetres wide at the surface. So `ToolLibrary`
+persists to `%AppData%/PCB_MillBurn/tools.json`, `ToolSelection` picks one per operation, and the
+app has an editor that shows what a tool will *do* as its numbers are typed, because the cut width
+is a consequence rather than a setting.
+
+Two decisions carried over from elsewhere in the design:
+
+- **A project embeds the tool it was cut with**, exactly as it embeds its Gerbers. Pointing at the
+  library by name would mean that adjusting a tip width to suit a newly bought bit silently changed
+  the toolpaths of every project that ever used it. Stable ids let the app still say "this project
+  used 0.10 mm; your library now says 0.12".
+- **The cone ends at the shank.** A real engraving bit is a cone ground onto a straight shank, so
+  past that depth the cut stops widening — and `DepthForWidth` refuses a width beyond it rather
+  than returning a depth the bit cannot physically reach.
+
+The library also makes validation possible, and each of these produces a program that looks
+entirely reasonable: isolating with an end mill (one width everywhere, so it cannot separate
+anything closer than itself), cutting the outline with a V-bit, going deeper than the cone, or
+taking the whole board thickness in one pass.
+
 **The backplot draws the parsed file, not the toolpaths that made it.** Those two agree right up
 until the emitter has a bug, and only one of them is what the machine will run. `GcodeParser` is a
 proper modal-state interpreter — motion mode, units, distance mode, feed and every unmentioned axis

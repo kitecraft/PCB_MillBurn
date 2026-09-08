@@ -6,9 +6,33 @@ using MillBurn.Optimize;
 
 namespace MillBurn.Pipeline;
 
+/// <summary>
+/// Which tool does which job.
+///
+/// Per-operation rather than per-job, because they are genuinely different tools and not a matter
+/// of preference. Traces want a V-bit: cut width follows depth, so a 0.13 mm isolation cut is
+/// reachable, and an end mill that narrow does not exist at a sane price. The outline wants a flat
+/// end mill: a V taken 1.9 mm deep would be millimetres wide at the surface and would take the
+/// board with it.
+/// </summary>
+public sealed record ToolSelection
+{
+    public Tool Isolation { get; init; } = Tool.DefaultVBit;
+
+    public Tool Outline { get; init; } = Tool.DefaultOutlineMill;
+
+    /// <summary>Feeds and speed for drilling; the diameters come from the drill file.</summary>
+    public Tool Drill { get; init; } = Tool.DefaultDrill;
+
+    /// <summary>Every distinct tool this job will ask the operator to fit.</summary>
+    public IReadOnlyList<Tool> All => [Isolation, Outline, Drill];
+}
+
 /// <summary>Everything needed to turn a board into a mill job.</summary>
 public sealed record MillOptions
 {
+    public ToolSelection Tools { get; init; } = new();
+
     public IsolationOptions Isolation { get; init; } = new();
 
     public DrillOptions Drill { get; init; } = new();
@@ -75,6 +99,19 @@ public static class JobBuilder
             return ordered;
         }
 
+        // The selected tools win over whatever the operation options were constructed with, so a
+        // caller only has to say which tool and not repeat it in three places.
+        var isolationOptions = options.Isolation with { Tool = options.Tools.Isolation };
+        var outlineOptions = options.Outline with
+        {
+            Tool = options.Tools.Outline,
+            DepthPerPassNm = options.Tools.Outline.StepdownNm > 0
+                ? options.Tools.Outline.StepdownNm
+                : options.Outline.DepthPerPassNm,
+        };
+
+        notes.AddRange(Validate(options, isolationOptions, outlineOptions));
+
         var copperRole = options.Side == BoardSide.Bottom ? LayerRole.BottomCopper : LayerRole.TopCopper;
         var copper = board.Layers.FirstOrDefault(l => l.Role == copperRole);
 
@@ -87,15 +124,15 @@ public static class JobBuilder
             else
             {
                 var isolation = IsolationOperation.Build(
-                    copper.Area, options.Isolation, $"Isolation — {copper.Label}");
+                    copper.Area, isolationOptions, $"Isolation — {copper.Label}");
 
-                var unreachable = IsolationOperation.UnreachableGaps(copper.Area, options.Isolation);
+                var unreachable = IsolationOperation.UnreachableGaps(copper.Area, isolationOptions);
                 if (unreachable > 0)
                 {
                     // Not a warning to bury in a log. A gap the tool cannot enter leaves the two
                     // sides connected, and the toolpath shows nothing at all there — the picture
                     // looks fine and the board is shorted.
-                    var width = Nm.ToMillimetreString(options.Isolation.EffectiveWidthNm, 3);
+                    var width = Nm.ToMillimetreString(isolationOptions.EffectiveWidthNm, 3);
                     notes.Add(Invariant(
                         $"{unreachable} gap(s) are narrower than the {width} mm cut: those copper regions stay connected."));
                 }
@@ -108,7 +145,7 @@ public static class JobBuilder
         {
             foreach (var layer in board.Layers.Where(l => LayerRoleInfo.IsDrill(l.Role) && l.Drill is not null))
             {
-                foreach (var path in DrillOperation.Build(layer.Drill!, options.Drill))
+                foreach (var path in DrillOperation.Build(layer.Drill!, options.Drill, options.Tools.Drill))
                 {
                     toolpaths.Add(Sequence(path));
                 }
@@ -128,7 +165,7 @@ public static class JobBuilder
                 // the ring encloses, so the outer boundary is what the cutter must go around.
                 var boundary = Polygons.From(LargestRing(outline.Area));
 
-                toolpaths.Add(Sequence(OutlineOperation.Build(boundary, options.Outline)));
+                toolpaths.Add(Sequence(OutlineOperation.Build(boundary, outlineOptions)));
             }
         }
 
@@ -153,6 +190,46 @@ public static class JobBuilder
             Notes = notes,
             OriginShift = originShift,
         };
+    }
+
+    /// <summary>
+    /// Checks the chosen tools can do what is being asked, before anything is cut.
+    ///
+    /// Every one of these is a thing that produces a plausible-looking program and a ruined board:
+    /// a V-bit asked for a width past the end of its cone, an end mill asked to cut a moat narrower
+    /// than itself, or an outline tool taking the full thickness in one pass.
+    /// </summary>
+    private static IEnumerable<string> Validate(
+        MillOptions options, IsolationOptions isolation, OutlineOptions outline)
+    {
+        var tool = isolation.Tool;
+
+        if (tool.Kind == ToolKind.EndMill && options.IncludeIsolation)
+        {
+            var width = Nm.ToMillimetreString(tool.DiameterNm, 3);
+            yield return Invariant(
+                $"Isolating with a {width} mm end mill: the cut is that wide everywhere, and it cannot separate anything closer than that.");
+        }
+
+        if (tool.Kind == ToolKind.VBit && tool.MaxDepthNm > 0 && isolation.DepthNm > tool.MaxDepthNm)
+        {
+            var limit = Nm.ToMillimetreString(tool.MaxDepthNm, 2);
+            yield return Invariant(
+                $"{tool.Name} stops widening at {limit} mm; deeper than that only pushes the shank into the board.");
+        }
+
+        if (options.IncludeOutline && outline.Tool.Kind == ToolKind.VBit)
+        {
+            yield return Invariant(
+                $"Cutting the outline with {outline.Tool.Name}: a V taken to full depth is enormously wide at the surface. Use a flat end mill.");
+        }
+
+        if (options.IncludeOutline && outline.DepthPerPassNm >= outline.TotalDepthNm)
+        {
+            var depth = Nm.ToMillimetreString(outline.TotalDepthNm, 2);
+            yield return Invariant(
+                $"The outline takes all {depth} mm in one pass. That is what breaks small end mills.");
+        }
     }
 
     private static Toolpath Translate(Toolpath toolpath, Point2 by) => toolpath with

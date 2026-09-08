@@ -23,6 +23,16 @@ public enum ToolKind
 /// </summary>
 public sealed record Tool
 {
+    /// <summary>
+    /// Stable identity, so renaming a tool does not orphan the projects that used it.
+    ///
+    /// A project *embeds* the tool it was cut with rather than pointing at one by name — the same
+    /// reasoning as embedding the Gerbers. If it referenced the library, editing a tip width to
+    /// suit a new bit would silently change the toolpaths of every project that ever used it. The
+    /// id is how the app can still say "this project's tool differs from the one in your library".
+    /// </summary>
+    public Guid Id { get; init; } = Guid.NewGuid();
+
     public required string Name { get; init; }
 
     public required ToolKind Kind { get; init; }
@@ -52,6 +62,28 @@ public sealed record Tool
     public int SpindleRpm { get; init; } = 12_000;
 
     /// <summary>
+    /// Depth at which the cone stops widening, because it has reached the shank. Zero means no
+    /// limit is known.
+    ///
+    /// Real engraving bits are a cone ground onto a straight shank, so past that point the cut
+    /// width simply stops growing. Modelling it matters because the inverse — "how deep for this
+    /// width" — otherwise happily returns a depth the bit cannot reach, and the operator finds out
+    /// by plunging a 3.175 mm shank into the board.
+    /// </summary>
+    public long MaxDepthNm { get; init; }
+
+    /// <summary>
+    /// The most this tool should take in one pass. Used by the outline operation; zero falls back
+    /// to the operation's own default.
+    /// </summary>
+    public long StepdownNm { get; init; }
+
+    public string? Notes { get; init; }
+
+    /// <summary>True when the tool is at the end of its cone and cannot cut any wider.</summary>
+    public bool IsAtFullWidth(long depthNm) => MaxDepthNm > 0 && depthNm >= MaxDepthNm;
+
+    /// <summary>
     /// How wide a groove this tool cuts at a given depth below the surface.
     ///
     /// For a V-bit this is the whole game:
@@ -72,6 +104,11 @@ public sealed record Tool
         }
 
         var depth = Math.Max(0, depthNm);
+        if (MaxDepthNm > 0)
+        {
+            depth = Math.Min(depth, MaxDepthNm);
+        }
+
         var halfAngle = IncludedAngleDegrees * Math.PI / 360.0;
         return TipNm + (long)Math.Round(2 * depth * Math.Tan(halfAngle), MidpointRounding.AwayFromZero);
     }
@@ -97,7 +134,16 @@ public sealed record Tool
 
         var halfAngle = IncludedAngleDegrees * Math.PI / 360.0;
         var tan = Math.Tan(halfAngle);
-        return tan <= 0 ? -1 : (long)Math.Round((widthNm - TipNm) / (2 * tan), MidpointRounding.AwayFromZero);
+        if (tan <= 0)
+        {
+            return -1;
+        }
+
+        var depth = (long)Math.Round((widthNm - TipNm) / (2 * tan), MidpointRounding.AwayFromZero);
+
+        // Past the shank the cone stops widening, so a width beyond that is unreachable. Returning
+        // a depth the bit physically cannot go to is worse than refusing.
+        return MaxDepthNm > 0 && depth > MaxDepthNm ? -1 : depth;
     }
 
     /// <summary>
@@ -118,10 +164,12 @@ public sealed record Tool
     /// </summary>
     public static Tool DefaultVBit { get; } = new()
     {
+        Id = new Guid("00000000-0000-0000-0000-0000000030b1"),
         Name = "30° V-bit, 0.1 mm tip",
         Kind = ToolKind.VBit,
         TipNm = Nm.FromMillimetres(0.1),
         IncludedAngleDegrees = 30,
+        MaxDepthNm = Nm.FromMillimetres(1.0),
         FeedMmPerMin = 200,
         PlungeMmPerMin = 60,
         SpindleRpm = 12_000,
@@ -130,23 +178,46 @@ public sealed record Tool
     /// <summary>A 1 mm end mill for cutting the board out.</summary>
     public static Tool DefaultOutlineMill { get; } = new()
     {
+        Id = new Guid("00000000-0000-0000-0000-000000001000"),
         Name = "1.0 mm end mill",
         Kind = ToolKind.EndMill,
         DiameterNm = Nm.FromMillimetres(1.0),
+        StepdownNm = Nm.FromMillimetres(0.4),
         FeedMmPerMin = 300,
         PlungeMmPerMin = 60,
         SpindleRpm = 12_000,
     };
 
-    public static Tool DrillOf(long diameterNm) => new()
+    /// <summary>The template a drill file's sizes are instantiated from.</summary>
+    public static Tool DefaultDrill { get; } = new()
     {
-        Name = Nm.ToMillimetreString(diameterNm, 2) + " mm drill",
+        Id = new Guid("00000000-0000-0000-0000-00000000d011"),
+        Name = "Drill",
         Kind = ToolKind.Drill,
-        DiameterNm = diameterNm,
+        DiameterNm = Nm.FromMillimetres(1.0),
         FeedMmPerMin = 100,
         PlungeMmPerMin = 100,
         SpindleRpm = 12_000,
     };
+
+    /// <summary>
+    /// A drill of a given size, taking its feeds from a template.
+    ///
+    /// The diameters come from the drill file and are not the operator's to choose; the feeds and
+    /// speed are, and they are what a drill profile is actually for.
+    /// </summary>
+    public static Tool DrillOf(long diameterNm, Tool? template = null)
+    {
+        template ??= DefaultDrill;
+
+        return template with
+        {
+            Id = Guid.NewGuid(),
+            Name = Nm.ToMillimetreString(diameterNm, 2) + " mm drill",
+            Kind = ToolKind.Drill,
+            DiameterNm = diameterNm,
+        };
+    }
 
     public override string ToString() => Kind switch
     {

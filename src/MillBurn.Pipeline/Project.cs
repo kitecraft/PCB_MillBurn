@@ -114,7 +114,28 @@ public sealed record ProjectSettings
     /// <summary>Selections the user has made, by identity. See <see cref="SelectionRef"/>.</summary>
     public ImmutableArray<SelectionRef> Exclusions { get; init; } = [];
 
+    /// <summary>
+    /// The tools this job is cut with — a **copy**, not a reference into the library.
+    ///
+    /// Same reasoning as embedding the Gerbers. A project pointing at the library by name would
+    /// have its toolpaths change the day someone adjusted a tip width to suit a newly bought bit,
+    /// and a job that cut correctly last month would quietly stop doing so. The library is where a
+    /// tool is *chosen* from; what the project keeps is what it was cut with.
+    /// </summary>
+    public ImmutableArray<Tool> Tools { get; init; } = [];
+
+    /// <summary>Which of <see cref="Tools"/> does what. Null falls back to the built-in default.</summary>
+    public Guid? IsolationToolId { get; init; }
+
+    public Guid? OutlineToolId { get; init; }
+
+    public Guid? DrillToolId { get; init; }
+
     public string? Notes { get; init; }
+
+    /// <summary>Resolves the stored selection, falling back to the built-ins.</summary>
+    public Tool ToolFor(Guid? id, Tool fallback) =>
+        id is { } wanted ? Tools.FirstOrDefault(t => t.Id == wanted) ?? fallback : fallback;
 }
 
 /// <summary>

@@ -23,7 +23,9 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
+            Console.WriteLine("  tools [list|add|remove|path]   Manage the saved tool library");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
+            Console.WriteLine("                                 --isolation-tool <name> --outline-tool <name> pick from the library");
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
@@ -52,6 +54,7 @@ internal static class Program
             "board" when args.Length >= 2 => LoadBoard(args),
             "project" when args.Length >= 2 => ProjectCommand(args),
             "mill" when args.Length >= 2 => Mill(args),
+            "tools" => ToolsCommand(args),
             _ => Unknown(args[0]),
         };
     }
@@ -786,6 +789,127 @@ internal static class Program
         System.Text.RegularExpressions.Regex.Count(File.ReadAllText(path), "<g ");
 
     /// <summary>
+    /// The saved tool library: what this machine has bits for.
+    ///
+    /// A library rather than a set of flags because traces and edge cuts want genuinely different
+    /// tools — a V-bit whose width follows depth for the one, a flat end mill for the other — and
+    /// re-entering their geometry on every job is how the numbers drift apart from the bits in the
+    /// drawer.
+    /// </summary>
+    private static int ToolsCommand(string[] args)
+    {
+        var verb = args.Length >= 2 ? args[1].ToLowerInvariant() : "list";
+        var library = ToolLibrary.LoadOrDefault();
+
+        switch (verb)
+        {
+            case "path":
+                Console.WriteLine(ToolLibrary.DefaultPath);
+                Console.WriteLine(File.Exists(ToolLibrary.DefaultPath)
+                    ? "  (saved)"
+                    : "  (not saved yet; the built-in set is in use)");
+                return 0;
+
+            case "list":
+                foreach (var tool in library.Tools)
+                {
+                    Console.WriteLine(tool.Name);
+                    Line($"  kind        {tool.Kind}");
+
+                    if (tool.Kind == ToolKind.VBit)
+                    {
+                        var tip = Nm.ToMillimetreString(tool.TipNm, 3);
+                        Line($"  geometry    {tool.IncludedAngleDegrees:F0}° included, {tip} mm tip");
+                        Line($"  at 0.05 mm  cuts {Nm.ToMillimetreString(tool.WidthAtDepth(Nm.FromMillimetres(0.05)), 3)} mm wide");
+                    }
+                    else
+                    {
+                        Line($"  geometry    {Nm.ToMillimetreString(tool.DiameterNm, 3)} mm diameter");
+                    }
+
+                    Line($"  feeds       {tool.FeedMmPerMin} mm/min, plunge {tool.PlungeMmPerMin}, {tool.SpindleRpm} rpm");
+
+                    if (tool.Notes is not null)
+                    {
+                        Line($"  note        {tool.Notes}");
+                    }
+
+                    Console.WriteLine();
+                }
+
+                return 0;
+
+            case "add":
+                return AddTool(args, library);
+
+            case "remove" when args.Length >= 3:
+                {
+                    var found = library.Find(args[2]);
+                    if (found is null)
+                    {
+                        Console.Error.WriteLine($"No tool matching '{args[2]}'.");
+                        return 1;
+                    }
+
+                    library.Without(found.Id).Save();
+                    Console.WriteLine($"Removed {found.Name}.");
+                    return 0;
+                }
+
+            default:
+                Console.Error.WriteLine($"Unknown tools command '{verb}'. Use list, add, remove or path.");
+                return 1;
+        }
+    }
+
+    private static int AddTool(string[] args, ToolLibrary library)
+    {
+        var name = Argument(args, "--name");
+        var kindText = Argument(args, "--kind");
+
+        if (name is null || kindText is null
+            || !Enum.TryParse<ToolKind>(kindText, ignoreCase: true, out var kind))
+        {
+            Console.Error.WriteLine(
+                "tools add --name <name> --kind vbit|endmill|drill " +
+                "[--angle <deg> --tip <mm> --diameter <mm> --feed <mm/min> --plunge <mm/min> --rpm <n> --stepdown <mm> --maxdepth <mm>]");
+            return 1;
+        }
+
+        double Number(string flag, double fallback) =>
+            Argument(args, flag) is { } text
+            && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : fallback;
+
+        var tool = new Tool
+        {
+            Name = name,
+            Kind = kind,
+            DiameterNm = Nm.FromMillimetres(Number("--diameter", 1.0)),
+            TipNm = Nm.FromMillimetres(Number("--tip", 0.1)),
+            IncludedAngleDegrees = Number("--angle", 30),
+            MaxDepthNm = Nm.FromMillimetres(Number("--maxdepth", 0)),
+            StepdownNm = Nm.FromMillimetres(Number("--stepdown", 0)),
+            FeedMmPerMin = (long)Number("--feed", 200),
+            PlungeMmPerMin = (long)Number("--plunge", 60),
+            SpindleRpm = (int)Number("--rpm", 12_000),
+            Notes = Argument(args, "--notes"),
+        };
+
+        library.With(tool).Save();
+
+        Console.WriteLine($"Added {tool.Name} to {ToolLibrary.DefaultPath}");
+
+        if (kind == ToolKind.VBit)
+        {
+            Line($"  at 0.05 mm  cuts {Nm.ToMillimetreString(tool.WidthAtDepth(Nm.FromMillimetres(0.05)), 3)} mm wide");
+        }
+
+        return 0;
+    }
+
+    /// <summary>
     /// Gerber folder to G-code: isolate, drill, cut out.
     ///
     /// The report is the point as much as the file. Effective cut width, travel distance and the
@@ -864,6 +988,11 @@ internal static class Program
                     side = BoardSide.Bottom;
                     break;
 
+                // Read later by name, but still consumed here so the loop does not reject them.
+                case "--isolation-tool" or "--outline-tool" or "--drill-tool" when value is not null:
+                    i++;
+                    break;
+
                 case "--png" when value is not null:
                     png = value;
                     i++;
@@ -894,26 +1023,59 @@ internal static class Program
             return 1;
         }
 
-        var tool = Tool.DefaultVBit with
+        // A named tool from the library wins; otherwise the geometry flags build one, which is
+        // what makes the quick "try a 60 degree bit" case still work without saving anything.
+        var library = ToolLibrary.LoadOrDefault();
+
+        var isolationTool = Argument(args, "--isolation-tool") is { } isoName
+            ? library.Find(isoName)
+            : null;
+
+        var outlineTool = Argument(args, "--outline-tool") is { } outName
+            ? library.Find(outName)
+            : null;
+
+        foreach (var (flag, wanted) in new[]
+        {
+            ("--isolation-tool", isolationTool is null ? Argument(args, "--isolation-tool") : null),
+            ("--outline-tool", outlineTool is null ? Argument(args, "--outline-tool") : null),
+        })
+        {
+            if (wanted is not null)
+            {
+                Console.Error.WriteLine($"No tool matching '{wanted}' for {flag}. Try 'tools list'.");
+                return 1;
+            }
+        }
+
+        isolationTool ??= Tool.DefaultVBit with
         {
             TipNm = Nm.FromMillimetres(tipMm),
             IncludedAngleDegrees = angle,
             Name = FormattableString.Invariant($"{angle:F0}° V-bit, {tipMm:F2} mm tip"),
         };
 
+        outlineTool ??= Tool.DefaultOutlineMill with { DiameterNm = Nm.FromMillimetres(toolMm) };
+
+        var tool = isolationTool;
+
         var options = new MillOptions
         {
             Side = side,
+            Tools = new ToolSelection
+            {
+                Isolation = isolationTool,
+                Outline = outlineTool,
+                Drill = library.Find("Drill") ?? Tool.DefaultDrill,
+            },
             Isolation = new IsolationOptions
             {
-                Tool = tool,
                 DepthNm = Nm.FromMillimetres(depthMm),
                 Passes = passes,
             },
             Drill = new DrillOptions { BoardThicknessNm = Nm.FromMillimetres(thicknessMm) },
             Outline = new OutlineOptions
             {
-                Tool = Tool.DefaultOutlineMill with { DiameterNm = Nm.FromMillimetres(toolMm) },
                 BoardThicknessNm = Nm.FromMillimetres(thicknessMm),
                 TabCount = tabs,
             },
@@ -933,9 +1095,12 @@ internal static class Program
 
         File.WriteAllText(output, text);
 
+        var effective = isolationTool.WidthAtDepth(Nm.FromMillimetres(depthMm));
+
         Console.WriteLine(output);
-        Line($"  tool        {tool}");
-        Line($"  effective   {Nm.ToMillimetreString(options.Isolation.EffectiveWidthNm, 3)} mm wide at {depthMm:F3} mm deep");
+        Line($"  isolation   {tool}");
+        Line($"  outline     {outlineTool}");
+        Line($"  effective   {Nm.ToMillimetreString(effective, 3)} mm wide at {depthMm:F3} mm deep");
         Line($"  built in    {elapsed.TotalMilliseconds:F0} ms");
         Console.WriteLine();
 
