@@ -93,8 +93,13 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
+                        <!--
+                            Two separate depths, because they are two separate physical facts.
+                            Isolation is a scratch tens of microns into the copper; drilling and the
+                            outline have to go through whatever the board actually is.
+                        -->
                         <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
-                            <TextBlock Grid.Column="0" Text="Depth"
+                            <TextBlock Grid.Column="0" Text="Isolation depth" Width="86"
                                        FontSize="11" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextSecondary}" />
                             <Slider Grid.Column="1" Minimum="0.01" Maximum="0.3"
@@ -105,6 +110,24 @@
                                        FontSize="11" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextPrimary}" />
                         </Grid>
+
+                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
+                            <TextBlock Grid.Column="0" Text="Board" Width="86"
+                                       FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <Slider Grid.Column="1" Minimum="0.4" Maximum="3.2"
+                                    TickFrequency="0.1" IsSnapToTickEnabled="True"
+                                    Value="{Binding BoardThicknessMm, Mode=TwoWay}"
+                                    Margin="8,0" />
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding BoardThicknessMm, StringFormat='{}{0:F1} mm'}"
+                                       FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                        </Grid>
+
+                        <TextBlock Text="Drilling and the outline go through the board; isolation does not."
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource TextSecondary}" />
 
                         <Button Content="Edit tools…" Click="OnEditToolsClicked"
                                 HorizontalAlignment="Stretch" Margin="0,6,0,0" />

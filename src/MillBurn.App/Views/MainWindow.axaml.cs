@@ -89,6 +89,9 @@ public partial class MainWindow : Window
 
     private bool _closeConfirmed;
 
+    /// <summary>A dialog to capture instead of the main window, for checking one headlessly.</summary>
+    private Window? _captureInstead;
+
     private void OnOpened(string[] args)
     {
         if (DataContext is not MainViewModel vm)
@@ -132,6 +135,15 @@ public partial class MainWindow : Window
                 : ThemeVariant.Light;
         }
 
+        // Opens the tool editor for a screenshot, so the dialog is checkable headlessly like
+        // everything else. Non-modal on purpose: a modal one would block the capture.
+        if (args.Contains("--tools", StringComparer.OrdinalIgnoreCase))
+        {
+            var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
+            editor.Show(this);
+            _captureInstead = editor;
+        }
+
         if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase))
         {
             vm.Mill();
@@ -169,9 +181,11 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    var size = new PixelSize((int)Math.Max(ClientSize.Width, 1), (int)Math.Max(ClientSize.Height, 1));
+                    var target = _captureInstead ?? (Visual)this;
+                    var client = _captureInstead?.ClientSize ?? ClientSize;
+                    var size = new PixelSize((int)Math.Max(client.Width, 1), (int)Math.Max(client.Height, 1));
                     using var bitmap = new RenderTargetBitmap(size, new Vector(96, 96));
-                    bitmap.Render(this);
+                    bitmap.Render(target);
 
                     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
                     using var file = File.Create(path);
@@ -386,7 +400,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        await new ToolLibraryWindow(vm.Library).ShowDialog(this);
+        // A dialog is its own top level, so it does not inherit the variant the user chose.
+        var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
+        await editor.ShowDialog(this);
         vm.ReloadLibrary();
     }
 

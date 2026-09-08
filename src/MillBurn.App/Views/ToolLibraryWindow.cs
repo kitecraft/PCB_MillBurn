@@ -11,9 +11,11 @@ namespace MillBurn.App.Views;
 /// <summary>
 /// Creating and editing saved tools.
 ///
-/// Built in code rather than XAML because the form is entirely driven by the tool kind — a V-bit
-/// needs an angle and a tip and no diameter, an end mill the reverse — and expressing that as
-/// visibility bindings across two layouts is more code than writing the fields out.
+/// The form changes with the tool kind — a V-bit needs an angle and a tip and no diameter, an end
+/// mill the reverse — and the rows are built **once** and then shown or hidden. Rebuilding them was
+/// the obvious approach and it crashed on open: clearing a panel's children detaches the row
+/// wrappers, but the text boxes inside them stay parented to those discarded wrappers, so the next
+/// build cannot re-parent them. Editors are long-lived; their containers are not.
 ///
 /// The panel shows what the tool will actually *do* as the numbers are typed. For a V-bit the cut
 /// width is a consequence of the depth rather than a setting, so a form of raw geometry with no
@@ -41,6 +43,8 @@ public sealed class ToolLibraryWindow : Window
     private readonly TextBox _rpm = new();
     private readonly TextBox _notes = new() { AcceptsReturn = true, Height = 54 };
 
+    private readonly List<(Control Row, ToolKind? OnlyFor)> _rows = [];
+
     public ToolLibraryWindow(ToolLibrary library)
     {
         ArgumentNullException.ThrowIfNull(library);
@@ -63,9 +67,11 @@ public sealed class ToolLibraryWindow : Window
 
         _kind.SelectionChanged += (_, _) =>
         {
-            BuildForm();
+            ShowFieldsForKind();
             UpdateEffect();
         };
+
+        BuildForm();
 
         var add = new Button { Content = "New" };
         add.Click += (_, _) => Load(null);
@@ -79,15 +85,28 @@ public sealed class ToolLibraryWindow : Window
         var close = new Button { Content = "Close", IsCancel = true };
         close.Click += (_, _) => Close();
 
+        // The effect panel sits outside the scroller, on its own row. It is the most useful thing
+        // in the window — the number the operator cannot work out from the geometry above — and
+        // inside the scroller it was the first thing pushed below the fold.
+        var effectPanel = new Border
+        {
+            Margin = new Thickness(16, 10, 0, 0),
+            Padding = new Thickness(10, 8),
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.FromArgb(0x20, 0x5A, 0xA9, 0xF5)),
+            Child = _effect,
+        };
+
         Content = new Grid
         {
             Margin = new Thickness(16),
-            RowDefinitions = new RowDefinitions("*,Auto"),
+            RowDefinitions = new RowDefinitions("*,Auto,Auto"),
             ColumnDefinitions = new ColumnDefinitions("Auto,*"),
             Children =
             {
                 Place(_list, 0, 0),
                 Place(new ScrollViewer { Content = _form, Margin = new Thickness(16, 0, 0, 0) }, 0, 1),
+                Place(effectPanel, 1, 1),
                 Place(
                     new StackPanel
                     {
@@ -97,7 +116,7 @@ public sealed class ToolLibraryWindow : Window
                         HorizontalAlignment = HorizontalAlignment.Right,
                         Children = { add, remove, save, close },
                     },
-                    1,
+                    2,
                     1),
             },
         };
@@ -124,6 +143,7 @@ public sealed class ToolLibraryWindow : Window
     {
         _editing = tool;
 
+
         _name.Text = tool?.Name ?? "New tool";
         _kind.SelectedItem = tool?.Kind ?? ToolKind.VBit;
         _diameter.Text = Mm(tool?.DiameterNm ?? Nm.FromMillimetres(1.0));
@@ -136,42 +156,49 @@ public sealed class ToolLibraryWindow : Window
         _rpm.Text = (tool?.SpindleRpm ?? 12_000).ToString(CultureInfo.InvariantCulture);
         _notes.Text = tool?.Notes ?? string.Empty;
 
-        BuildForm();
+        ShowFieldsForKind();
         UpdateEffect();
     }
 
+    /// <summary>Builds every row once. Called from the constructor and never again.</summary>
     private void BuildForm()
+    {
+        void Row(string label, Control editor, ToolKind? onlyFor = null)
+        {
+            var row = Field(label, editor);
+            _rows.Add((row, onlyFor));
+            _form.Children.Add(row);
+        }
+
+        Row("Name", _name);
+        Row("Kind", _kind);
+        Row("Included angle (°)", _angle, ToolKind.VBit);
+        Row("Tip width (mm)", _tip, ToolKind.VBit);
+        Row("Cone ends at (mm, 0 = unknown)", _maxDepth, ToolKind.VBit);
+        Row("Diameter (mm)", _diameter, ToolKind.EndMill);
+        Row("Stepdown (mm, 0 = default)", _stepdown, ToolKind.EndMill);
+        Row("Feed (mm/min)", _feed);
+        Row("Plunge (mm/min)", _plunge);
+        Row("Spindle (rpm)", _rpm);
+        Row("Notes", _notes);
+
+    }
+
+    private void ShowFieldsForKind()
     {
         var kind = _kind.SelectedItem as ToolKind? ?? ToolKind.VBit;
 
-        _form.Children.Clear();
-        _form.Children.Add(Field("Name", _name));
-        _form.Children.Add(Field("Kind", _kind));
-
-        if (kind == ToolKind.VBit)
+        foreach (var (row, onlyFor) in _rows)
         {
-            _form.Children.Add(Field("Included angle (°)", _angle));
-            _form.Children.Add(Field("Tip width (mm)", _tip));
-            _form.Children.Add(Field("Cone ends at (mm, 0 = unknown)", _maxDepth));
+            // A drill has a diameter too, but it comes from the drill file rather than from here,
+            // so the geometry rows belong to the two kinds whose size the operator chooses.
+            row.IsVisible = onlyFor switch
+            {
+                null => true,
+                ToolKind.VBit => kind == ToolKind.VBit,
+                _ => kind != ToolKind.VBit,
+            };
         }
-        else
-        {
-            _form.Children.Add(Field("Diameter (mm)", _diameter));
-            _form.Children.Add(Field("Stepdown (mm, 0 = default)", _stepdown));
-        }
-
-        _form.Children.Add(Field("Feed (mm/min)", _feed));
-        _form.Children.Add(Field("Plunge (mm/min)", _plunge));
-        _form.Children.Add(Field("Spindle (rpm)", _rpm));
-        _form.Children.Add(Field("Notes", _notes));
-
-        _form.Children.Add(new Border
-        {
-            Margin = new Thickness(0, 10, 0, 0),
-            Padding = new Thickness(10, 8),
-            CornerRadius = new CornerRadius(4),
-            Child = _effect,
-        });
     }
 
     private static StackPanel Field(string label, Control editor) => new()

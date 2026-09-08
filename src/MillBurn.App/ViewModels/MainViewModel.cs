@@ -72,9 +72,24 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>The saved library, reloaded when the tool editor changes it.</summary>
     public ToolLibrary Library { get; private set; } = ToolLibrary.LoadOrDefault();
 
-    /// <summary>Isolation depth, which for a V-bit is the same thing as choosing the cut width.</summary>
+    /// <summary>
+    /// How deep the isolation cut runs — which, for a V-bit, is the same thing as choosing the cut
+    /// width. It has nothing to do with the board's thickness.
+    /// </summary>
     [ObservableProperty]
     public partial double IsolationDepthMm { get; set; } = 0.05;
+
+    /// <summary>
+    /// The stock's thickness, which is what actually sets the depth for drilling and for cutting
+    /// out.
+    ///
+    /// A separate setting from the isolation depth because they are separate physical facts:
+    /// isolation is a scratch tens of microns into the copper, while drilling and the outline have
+    /// to go all the way through whatever the board happens to be. Sharing one "depth" between them
+    /// would be a number that means two different things.
+    /// </summary>
+    [ObservableProperty]
+    public partial double BoardThicknessMm { get; set; } = 1.6;
 
     /// <summary>Raised when a layer is toggled, so the view can repaint without a scene swap.</summary>
     public event EventHandler? RedrawRequested;
@@ -172,6 +187,12 @@ public sealed partial class MainViewModel : ViewModelBase
             choice.Refresh();
         }
 
+        OnToolChanged();
+    }
+
+    partial void OnBoardThicknessMmChanged(double value)
+    {
+        _ = value;
         OnToolChanged();
     }
 
@@ -370,10 +391,14 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             var board = ProjectFile.ToBoard(_project);
             var tools = CurrentTools();
+            var thickness = Nm.FromMillimetres(BoardThicknessMm);
+
             var job = JobBuilder.Build(board, new MillOptions
             {
                 Tools = tools,
                 Isolation = new IsolationOptions { DepthNm = Nm.FromMillimetres(IsolationDepthMm) },
+                Drill = new DrillOptions { BoardThicknessNm = thickness },
+                Outline = new OutlineOptions { BoardThicknessNm = thickness },
             });
 
             // The project keeps a copy of what it was cut with, not a pointer into the library.

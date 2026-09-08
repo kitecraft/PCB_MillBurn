@@ -82,7 +82,10 @@ public sealed class ConfirmWindow : Window
     {
         ArgumentNullException.ThrowIfNull(owner);
 
-        var dialog = new ConfirmWindow(title, message, saveText, discardText);
+        var dialog = new ConfirmWindow(title, message, saveText, discardText)
+        {
+            RequestedThemeVariant = owner.ActualThemeVariant,
+        };
         var result = await dialog.ShowDialog<ConfirmResult?>(owner);
         return result ?? dialog._result;
     }
