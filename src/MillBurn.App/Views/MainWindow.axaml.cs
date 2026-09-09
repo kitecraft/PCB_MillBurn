@@ -313,11 +313,20 @@ public partial class MainWindow : Window
             vm.Preview();
         }
 
+        // Loads a probe log at startup, so the export dialog's levelling row can be checked with a
+        // surface actually imported rather than only in its disabled state.
+        if (Argument(args, "--map") is { } probeLog)
+        {
+            vm.ImportHeightMap(probeLog);
+        }
+
         // Opens the export confirmation for a screenshot, so the dialog that decides what actually
         // gets written is checkable headlessly like everything else.
         if (args.Contains("--export", StringComparer.OrdinalIgnoreCase) && vm.PlanExport() is { } plan)
         {
-            var window = new ExportWindow(plan, Environment.CurrentDirectory, vm.Settings.WriteDryRun)
+            var window = new ExportWindow(
+                plan, Environment.CurrentDirectory, vm.Settings.WriteDryRun,
+                vm.Surface, vm.SurfaceProblem)
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -638,11 +647,76 @@ public partial class MainWindow : Window
             ? last
             : vm.Project.OriginFolder ?? Environment.CurrentDirectory;
 
-        if (await ExportWindow.AskAsync(this, plan, folder, vm.Settings.WriteDryRun) is { } chosen)
+        var chosen = await ExportWindow.AskAsync(
+            this, plan, folder, vm.Settings.WriteDryRun, vm.Surface, vm.SurfaceProblem);
+
+        if (chosen is not null)
         {
-            vm.WriteExport(plan, chosen.Folder, chosen.DryRun);
+            vm.WriteExport(plan, chosen.Folder, chosen.DryRun, chosen.Level);
         }
     }
+
+
+    // ------------------------------------------------------------------ height mapping
+
+    private static FilePickerFileType GcodeFileType { get; } = new("G-code")
+    {
+        Patterns = ["*.nc", "*.gcode", "*.ngc", "*.tap"],
+    };
+
+    /// <summary>
+    /// Anything at all, because a probe log is whatever the operator's sender chose to write it
+    /// into — a .log, a .txt, a .csv, a console capture with no extension at all. Filtering to a
+    /// list of extensions would only hide the file people are looking for.
+    /// </summary>
+    private static FilePickerFileType ProbeLogFileType { get; } = new("Probe log")
+    {
+        Patterns = ["*.log", "*.txt", "*.csv", "*.tsv", "*.nc", "*.*"],
+    };
+
+    private async void OnWriteProbeClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !vm.HasBoard)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Write probing routine",
+            SuggestedFileName = vm.Project.DisplayName + ".probe",
+            DefaultExtension = "nc",
+            FileTypeChoices = [GcodeFileType],
+        });
+
+        if (file?.TryGetLocalPath() is { } path)
+        {
+            vm.WriteProbeRoutine(path);
+        }
+    }
+
+    private async void OnImportHeightMapClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import a probe log",
+            AllowMultiple = false,
+            FileTypeFilter = [ProbeLogFileType],
+        });
+
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+        {
+            vm.ImportHeightMap(path);
+        }
+    }
+
+    private void OnForgetHeightMapClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.ForgetHeightMap();
 
     /// <summary>
     /// Changing a layer's colour. Global, and saved immediately: which colours read well is a fact

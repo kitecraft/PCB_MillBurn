@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\MillBurn.Pipeline\MillBurn.Pipeline.csproj" />
     <ProjectReference Include="..\..\src\MillBurn.Optimize\MillBurn.Optimize.csproj" />
     <ProjectReference Include="..\..\src\MillBurn.Viewer\MillBurn.Viewer.csproj" />
+    <ProjectReference Include="..\..\src\MillBurn.Align\MillBurn.Align.csproj" />
   </ItemGroup>
 
 </Project>

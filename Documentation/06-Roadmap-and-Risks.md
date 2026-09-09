@@ -620,6 +620,50 @@ a job in the air is finding out it is a ninety-minute job.
 This also unblocks the travel-at-depth optimisation deferred in Phase 3, whose failure mode was the
 cutter crossing a trace at depth with no way to see it coming.
 
+**Height mapping is done, and it is the one users will feel.** Isolation cuts 0.05 mm deep; clamped
+FR4 is 0.1-0.2 mm out of flat. That single comparison is the most common reason PCB milling
+disappoints people, and nothing about the toolpath can fix it. `ProbeRoutine` emits the grid,
+`ProbeLog` reads the sender's log back, `HeightMap` interpolates, and `Leveller` bends the emitted
+program to the result. In the app it is three menu items and a checkbox; from the CLI,
+`probe`, `export --level <log>`, and a standalone `level <any.nc> --map <log>`.
+
+Four decisions carry the weight.
+
+*Thin-plate spline, not bilinear on a grid.* Bilinear leaves a crease along every grid line, and a
+crease in the depth of a cut is a visible line in the copper. The spline reproduces a plane exactly
+— checked, because a tilted board is the common case and any drift there would be invented
+curvature.
+
+*Outside the probed area it holds the edge value.* A spline has no opinion about ground it was not
+shown, and its linear term will carry a tilt off into space: extrapolating a board bowed 0.1 mm a
+few centimetres past the last touch produces a correction of **millimetres**, which drives the
+cutter through the board rather than into it. Queries are pulled back onto the convex hull of the
+measurements, and a job that runs more than 3 mm outside is refused outright.
+
+*The fit degrades rather than failing.* Three points not in a line support a surface; collinear ones
+support a tilt; one supports an offset. Probing a single row down a long thin board is a reasonable
+thing to do and should give a tilt, not an exception — and claiming a surface the measurements
+cannot justify is how autolevelling produces a board worse than the unlevelled one.
+
+*The map is not saved into the project.* It describes the piece of stock currently clamped to the
+table, and it stops being true the moment that piece is unclamped. Persisting it would invite
+someone to reuse it next week on a different board.
+
+Two bugs are worth recording because both were found by running the thing rather than by building
+it. The probing routine emitted **raw Gerber coordinates** while its own header promised work zero
+at the board's corner — a surface measured in one frame and a toolpath cut in another, with both
+files looking perfectly reasonable on their own. Every test had used a board whose bounds started at
+the origin, where the bug is invisible; there is now one that does not. And `SmoothingMm` was
+cosmetic: 0.05 on the diagonal of a system whose off-diagonal entries run to 2,400 does nothing at
+all. It is now a unitless dial scaled by the kernel's own magnitude, so the same number means the
+same relaxation on a 20 mm board and a 200 mm one.
+
+The parser gained two fixes on the way. `G38.2` was read as an unhandled `G38` and its descent
+recorded as whatever motion mode was already current — so a probing routine backplotted as a series
+of rapids diving to -2 mm. Worse, **`G91.1` was rounded to `G91`**: a file that merely stated how it
+expresses arc centres was read as switching the whole program to incremental distance mode. G words
+now carry their fraction instead of being rounded to the nearest integer.
+
 Still to come in this phase:
 
 - Job / Step / Setup / Fixture model; automatic insertion of fiducial and alignment steps.
@@ -628,9 +672,10 @@ Still to come in this phase:
 - Kabsch/affine fit from typed-in measurements, residual reporting, transform baked in as a
   processor. **No serial code** — see [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).
 - Paste-friendly alignment entry (accepts `X12.345 Y67.890`, TSV, or a pasted GRBL status line).
-- Probe-routine *generator* + probe-log *importer* (UGS surface scanner, Candle heightmap, bCNC,
-  plain CSV).
-- Height mapping with TPS interpolation, reused across a Setup.
+- Reusing one height map across the operations of a Setup, and transforming it when the Setup
+  changes. Also the grid formats Candle and bCNC write, which are matrices with their extents in
+  a header rather than a coordinate per point — not guessed at without a real file to check
+  against, since a parser written from memory of a format is worse than none.
 - **Corner-stop fixture generator** — the recommended default
   ([04 §4.1.1](04-Machines-Laser-and-Mixed-Workflows.md#411-the-corner-stop--the-recommended-default)).
   3-2-1 pad placement sized from the stock, relieved inside corners, stop height derived from

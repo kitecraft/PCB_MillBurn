@@ -6,6 +6,7 @@
          checkable headlessly rather than only by opening a window. -->
     <ProjectReference Include="..\MillBurn.Viewer\MillBurn.Viewer.csproj" />
     <ProjectReference Include="..\MillBurn.Optimize\MillBurn.Optimize.csproj" />
+    <ProjectReference Include="..\MillBurn.Align\MillBurn.Align.csproj" />
   </ItemGroup>
 
   <ItemGroup>

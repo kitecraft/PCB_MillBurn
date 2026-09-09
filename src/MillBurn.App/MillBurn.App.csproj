@@ -52,5 +52,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MillBurn.Pipeline\MillBurn.Pipeline.csproj" />
     <ProjectReference Include="..\MillBurn.Viewer\MillBurn.Viewer.csproj" />
+    <ProjectReference Include="..\MillBurn.Align\MillBurn.Align.csproj" />
   </ItemGroup>
 </Project>

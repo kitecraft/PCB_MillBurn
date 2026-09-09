@@ -30,6 +30,7 @@
     <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
     <li><a href="#tabs">Tabs, and what happens if you use none</a></li>
     <li><a href="#simplified">Why the file is so much smaller than the board looks</a></li>
+    <li><a href="#levelling"><strong>The board is not flat: probing and height mapping</strong></a></li>
     <li><a href="#gaps">A trace did not get isolated</a></li>
     <li><a href="#twosided"><strong>Lining up the two sides of a double-sided board</strong></a></li>
     <li><a href="#panels">Can I panelise?</a></li>
@@ -253,6 +254,105 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
   0.127 mm isolation cut, and below what the machines this targets can repeat anyway.
 </p>
 
+<h2 id="levelling">The board is not flat: probing and height mapping</h2>
+
+<p>
+  Isolation cuts <strong>0.05&nbsp;mm</strong> deep. An ordinary piece of copper-clad FR4, clamped
+  at its corners, is <strong>0.1&ndash;0.2&nbsp;mm</strong> out of flat. Those two numbers are the
+  single most common reason PCB milling disappoints people: the same program skates over the copper
+  at one end of the board and ploughs through into the substrate at the other, and there is nothing
+  wrong with the file.
+</p>
+
+<p>
+  The fix is to measure the surface and follow it. Three steps, and you only do the first two once
+  per piece of stock.
+</p>
+
+<ol>
+  <li>
+    <strong>Job &rsaquo; Write probing routine&hellip;</strong> Put a probe on the tool and a clip
+    on the copper, set work zero exactly as you would for the real job, and run the file. It touches
+    off a grid over the board &mdash; ten millimetres apart by default, about four seconds a touch.
+  </li>
+  <li>
+    <strong>Save your sender's log</strong>, then <strong>Job &rsaquo; Import height map&hellip;</strong>
+    The status bar tells you how far out of flat the stock turned out to be, which is worth knowing
+    on its own.
+  </li>
+  <li>
+    <strong>Export</strong> with <em>Level to the imported height map</em> ticked. Each program gets
+    a <code>.levelled.nc</code> beside it whose depth follows the surface.
+  </li>
+</ol>
+
+<div class="warn">
+  <p>
+    <strong>Work zero must be in exactly the same place when you cut as when you probed.</strong>
+    If it moved, the levelled file is worse than the unlevelled one &mdash; it is now confidently
+    applying the wrong correction. Probe, then cut, without re-zeroing in between.
+  </p>
+  <p>
+    A height map belongs to the piece of stock on the table, not to the design. It is deliberately
+    not saved into your project: unclamp the board and the map stops being true.
+  </p>
+</div>
+
+<h3>What it reads</h3>
+
+<p>
+  Any log with the numbers in it. GRBL probe reports &mdash; <code>[PRB:12.000,8.000,-24.512:1]</code>
+  &mdash; are found in among whatever else your sender wrote to the console, and so is a plain file
+  of three numbers a line separated by commas, tabs, semicolons or spaces. A header row is fine. A
+  probe that never touched anything (a trailing <code>:0</code>) is thrown away rather than believed,
+  because the position it reports is where the machine gave up.
+</p>
+
+<p>
+  GRBL reports those positions in <em>machine</em> coordinates, tens of millimetres from zero. That
+  is handled: work zero is the board's own corner, sitting on the surface, so the surface height
+  there is zero by definition and the whole map is shifted to match. The shift applied is reported.
+</p>
+
+<h3>What it does between the touches</h3>
+
+<p>
+  A <strong>thin-plate spline</strong> &mdash; the shape a thin sheet of metal would take if it were
+  forced through every measured point and otherwise left alone. Not bilinear interpolation on a
+  grid, which leaves a crease along every grid line, and a crease in the depth of a cut is a visible
+  line in the copper.
+</p>
+
+<p>
+  Cutting moves are broken into 1&nbsp;mm steps so they follow the surface rather than chording
+  across it; moves held in the air are left long. Cutting arcs become straight segments, because an
+  arc whose depth changes along its length is not something <code>G2</code> can express.
+</p>
+
+<p>
+  If the measurements cannot support a surface, it says so and does less rather than inventing one:
+  probe points all in a line give a tilted plane, two points give a plane, one gives a flat offset.
+</p>
+
+<div class="note">
+  <p>
+    <strong>Outside the probed area it holds the edge value rather than extrapolating.</strong> A
+    spline has no opinion about ground it has not been shown, and its tilt would run off into space
+    &mdash; on a board 0.1&nbsp;mm out of flat, carrying that trend a few centimetres past the last
+    touch produces a correction of <em>millimetres</em>, which drives the cutter through the board.
+    If the job runs more than 3&nbsp;mm outside what you probed, levelling is refused outright and
+    tells you to probe a bigger area.
+  </p>
+</div>
+
+<p>
+  From the command line:
+  <code>millburn probe &lt;folder&gt;</code>,
+  then <code>millburn export &lt;folder&gt; --level &lt;log&gt; --write</code>.
+  There is also <code>millburn level &lt;program.nc&gt; --map &lt;log&gt;</code>, which will level
+  <em>any</em> G-code, not only ours.
+</p>
+
 <h2 id="gaps">A trace did not get isolated</h2>
 
 <p>
@@ -445,10 +545,11 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 
 <p>
   <span class="notyet">not built yet</span>
-  Fixture generators (corner stop, dowel plate, nest pocket), automatic fiducial placement, probe
-  routines, and fitting a measured transform back into the output are all planned. Today the mirror
-  is handled for you and the registration is yours — which the pin-plate recipe above covers without
-  any of that, because it never measures anything.
+  Fixture generators (corner stop, dowel plate, nest pocket), automatic fiducial placement, and
+  fitting a measured transform back into the output are all planned. Today the mirror is handled for
+  you and the registration is yours — which the pin-plate recipe above covers without any of
+  that, because it never measures anything. Probing itself <em>is</em> built, for surfaces rather
+  than for alignment: see <a href="#levelling">The board is not flat</a>.
 </p>
 
 <div class="note">
@@ -506,8 +607,8 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
     break. One snapped V-bit part way through costs you six boards instead of one. For most home
     work, running the same job six times is genuinely the lower-risk option.</li>
   <li>Panels amplify flatness problems. Across 30&nbsp;mm you can usually ignore how flat the stock
-    is; across 200&nbsp;mm you cannot, and you will need height mapping — which is also planned,
-    and also not built.</li>
+    is; across 200&nbsp;mm you cannot, so probe the panel and level the job — see
+    <a href="#levelling">The board is not flat</a>.</li>
 </ul>
 
 <h2 id="relief">Milling the soldermask off the pads</h2>
@@ -539,10 +640,10 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
     the copper of another, and neither shows up until the board is under a light.
   </p>
   <p>
-    Level the stock as well as you can, and treat this as the operation that most needs a height
-    map. <span class="notyet">not built yet</span> Height mapping — probing a grid and warping the
-    program to it — is planned but not built, so today this works best on small areas and
-    hand-levelled stock.
+    <strong>Use a height map for this one.</strong> Of everything the app does, mask relief is the
+    operation that most needs it: probe the stock, import the log, and tick <em>Level to the
+    imported height map</em> when you export. See
+    <a href="#levelling">The board is not flat</a>.
   </p>
 </div>
 

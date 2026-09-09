@@ -74,7 +74,7 @@ PCB_MillBurn.slnx
 │   ├── MillBurn.Gcode           net10.0   Mill only: emitter, parser, processors, backplot
 │   ├── MillBurn.Post            net10.0   Mill only: profiles + post-processor templates
 │   ├── MillBurn.Export          net10.0   SVG / DXF / PDF / PNG - the whole laser path
-│   ├── MillBurn.Align           net10.0   Fiducial fits, transforms, height-map import
+│   ├── MillBurn.Align           net10.0   Fiducial fits, transforms, height maps + levelling
 │   ├── MillBurn.Viewer          net10.0   Toolpath scene, LOD, spatial culling, Skia renderer
 │   ├── MillBurn.Pipeline        net10.0   The cached, cancellable stage graph tying it together
 │   ├── MillBurn.App             net10.0-windows   Shell ONLY: MVVM, docking, Skia viewport
@@ -87,6 +87,11 @@ PCB_MillBurn.slnx
 
 Dependency direction is strictly downward. `MillBurn.App` references everything; nothing
 references `MillBurn.App`.
+
+`MillBurn.Align` references `MillBurn.Gcode`, because the height-map *leveller* is a rewrite of an
+emitted program and belongs beside the map it applies. The alternative — putting the leveller in
+`MillBurn.Gcode` with the other processors — would drag MathNet.Numerics into a project that every
+consumer references for the emitter and the parser, to serve one feature most of them never touch.
 
 ## 3. Third-party libraries
 

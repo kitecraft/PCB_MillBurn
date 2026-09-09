@@ -4,6 +4,7 @@ using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MillBurn.Core;
+using MillBurn.Align;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
@@ -201,6 +202,150 @@ public sealed partial class MainViewModel : ViewModelBase
         StatusMessage = "New project. Import a Gerber folder to begin.";
     }
 
+
+    // ------------------------------------------------------------------ height mapping
+
+    /// <summary>
+    /// The measured surface of the stock, once a probe log has been imported.
+    ///
+    /// Held on the view model rather than in the project because it belongs to the *setup*, not to
+    /// the design: it describes the piece of FR4 currently clamped to the table, and it stops being
+    /// true the moment that piece is unclamped. Saving it into a project would invite someone to
+    /// reuse it a week later on a different board, which is worse than not having it.
+    /// </summary>
+    public HeightMap? Surface { get; private set; }
+
+    /// <summary>What to say about the imported surface, or null when there is none.</summary>
+    public string? SurfaceSummary => Surface is not { } map
+        ? null
+        : string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{map.PointCount} probe points · {map.RangeMm:F3} mm out of flat");
+
+    /// <summary>Writes a probing routine for the loaded board.</summary>
+    public bool WriteProbeRoutine(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        if (_board is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var (text, report) = ProbeRoutine.Generate(_board.Bounds);
+            File.WriteAllText(path, text);
+
+            var minutes = report.EstimatedSeconds / 60;
+
+            StatusMessage = string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"Wrote a {report.Columns} x {report.Rows} probing grid ({report.PointCount} touches, "
+                + $"about {minutes:F0} min) to {path}.");
+
+            return true;
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not write '{path}': {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>Reads a sender's probe log and keeps the surface it describes.</summary>
+    public bool ImportHeightMap(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        string text;
+
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not read '{path}': {ex.Message}";
+            return false;
+        }
+
+        var (map, log) = ProbeLog.Read(text);
+
+        if (map is null)
+        {
+            StatusMessage = "No probe points in that file. Expected GRBL [PRB:] reports, "
+                + "or three numbers a line.";
+            return false;
+        }
+
+        Surface = map;
+        OnPropertyChanged(nameof(Surface));
+        OnPropertyChanged(nameof(HasSurface));
+        OnPropertyChanged(nameof(SurfaceSummary));
+        OnPropertyChanged(nameof(SurfaceProblem));
+
+        var notes = log.Notes.Concat(map.Notes).FirstOrDefault();
+
+        var summary = string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"Imported {map.PointCount} probe points: {map.RangeMm:F3} mm out of flat.");
+
+        StatusMessage = notes is null ? summary : summary + " " + notes;
+
+        return true;
+    }
+
+    public bool HasSurface => Surface is not null;
+
+    /// <summary>
+    /// Why the imported surface cannot be used for this board, or null when it can.
+    ///
+    /// Checked here rather than left to the leveller's own refusal, because by then the operator
+    /// has already picked a folder and pressed the button. A map probed for a different board is
+    /// the easy mistake to make — the file sits there between sessions and nothing about it says
+    /// which piece of stock it measured.
+    /// </summary>
+    public string? SurfaceProblem
+    {
+        get
+        {
+            if (Surface is not { } map || _board is null)
+            {
+                return null;
+            }
+
+            // The board in work coordinates: its own corner is the origin, as in every export.
+            var corners = new[]
+            {
+                Point2.Origin,
+                new Point2(_board.Bounds.Width, 0),
+                new Point2(0, _board.Bounds.Height),
+                new Point2(_board.Bounds.Width, _board.Bounds.Height),
+            };
+
+            var outside = corners.Max(map.OutsideByMm);
+
+            return outside <= 3
+                ? null
+                : string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"This map covers {Nm.ToMillimetreString(map.Bounds.Width, 1)} x "
+                    + $"{Nm.ToMillimetreString(map.Bounds.Height, 1)} mm — the board runs "
+                    + $"{outside:F0} mm outside it. Probe this board.");
+        }
+    }
+
+    public void ForgetHeightMap()
+    {
+        Surface = null;
+        OnPropertyChanged(nameof(Surface));
+        OnPropertyChanged(nameof(HasSurface));
+        OnPropertyChanged(nameof(SurfaceSummary));
+        OnPropertyChanged(nameof(SurfaceProblem));
+        StatusMessage = "Height map cleared. Exports will not be levelled.";
+    }
+
     // ------------------------------------------------------------------ export
 
     public OutputKind? CurrentFilter => SelectedExportFilter switch
@@ -238,7 +383,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// The dry runs are built from the emitted text, not from the toolpaths, so what you watch in
     /// the air is the file you are about to run — the same reasoning as the backplot.
     /// </summary>
-    public bool WriteExport(ExportPlan plan, string folder, bool dryRun = false)
+    public bool WriteExport(ExportPlan plan, string folder, bool dryRun = false, bool level = false)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(folder);
@@ -253,6 +398,26 @@ public sealed partial class MainViewModel : ViewModelBase
 
             var extra = 0;
             var refused = 0;
+
+            if (level && Surface is { } surface)
+            {
+                foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
+                {
+                    var (text, report) = Leveller.Apply(item.Content, surface);
+
+                    if (report.Refusal is not null)
+                    {
+                        refused++;
+                        continue;
+                    }
+
+                    var name = Path.GetFileNameWithoutExtension(item.TargetName)
+                        + ".levelled" + Path.GetExtension(item.TargetName);
+
+                    File.WriteAllText(Path.Combine(folder, name), text);
+                    extra++;
+                }
+            }
 
             if (dryRun)
             {
@@ -280,7 +445,7 @@ public sealed partial class MainViewModel : ViewModelBase
             SaveSettings(Settings with { LastExportFolder = folder, WriteDryRun = dryRun });
 
             StatusMessage = refused > 0
-                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refused} program(s) could not be dry run."
+                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refused} program(s) could not be rewritten."
                 : $"Wrote {plan.Count + extra} file(s) to {folder}.";
 
             return true;

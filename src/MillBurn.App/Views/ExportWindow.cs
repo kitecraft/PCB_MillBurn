@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using MillBurn.Align;
 using MillBurn.Core;
 using MillBurn.Pipeline;
 
@@ -20,15 +21,20 @@ namespace MillBurn.App.Views;
 /// </summary>
 public sealed class ExportWindow : Window
 {
+    private static string Invariant(FormattableString text) => FormattableString.Invariant(text);
+
     private readonly ExportPlan _plan;
     private readonly TextBlock _folderText;
     private readonly CheckBox _dryRun;
+    private readonly CheckBox _level;
+    private readonly string? _surfaceProblem;
     private string _folder;
 
     /// <summary>What was chosen, or null if the export was called off.</summary>
     public ExportChoice? Result { get; private set; }
 
-    public ExportWindow(ExportPlan plan, string folder, bool dryRun)
+    public ExportWindow(
+        ExportPlan plan, string folder, bool dryRun, HeightMap? surface, string? surfaceProblem)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -46,6 +52,33 @@ public sealed class ExportWindow : Window
             _dryRun,
             "A second copy of each .nc that holds the tool 5 mm up and never starts the spindle, "
             + "so you can watch the whole job run before it touches anything.");
+
+        // Offered rather than assumed, and off unless a surface has actually been measured. The
+        // heading says what the map is, because levelling to the wrong board's surface is worse
+        // than not levelling at all and there is nothing in the file to warn you.
+        var hasSurface = surface is not null
+            && surfaceProblem is null
+            && plan.Items.Any(i => i.Output == OutputKind.Gcode);
+
+        var measured = surface is null
+            ? null
+            : Invariant($"{surface.PointCount} points, {surface.RangeMm:F3} mm out of flat");
+
+        _level = new CheckBox
+        {
+            Content = measured is null
+                ? "Level to a height map  (none imported — Job ▸ Import height map…)"
+                : $"Level to the imported height map  ({measured})",
+            IsChecked = hasSurface,
+            IsEnabled = hasSurface,
+        };
+
+        _surfaceProblem = surfaceProblem;
+
+        ToolTip.SetTip(
+            _level,
+            "A copy of each .nc whose depth follows the measured surface. Work zero must be exactly "
+            + "where it was when you probed.");
 
         Title = "Export";
         Width = 640;
@@ -78,6 +111,7 @@ public sealed class ExportWindow : Window
         var count = new TextBlock { FontSize = 15, FontWeight = FontWeight.SemiBold };
         UpdateCount(count);
         _dryRun.IsCheckedChanged += (_, _) => UpdateCount(count);
+        _level.IsCheckedChanged += (_, _) => UpdateCount(count);
         heading.Children.Add(count);
         heading.Children.Add(Token(new TextBlock
         {
@@ -137,8 +171,23 @@ public sealed class ExportWindow : Window
         Grid.SetRow(folderRow, 2);
         root.Children.Add(folderRow);
 
-        Grid.SetRow(_dryRun, 3);
-        root.Children.Add(_dryRun);
+        var options = new StackPanel { Spacing = 6, Margin = new Thickness(0, 4, 0, 8) };
+        options.Children.Add(_dryRun);
+        options.Children.Add(_level);
+
+        if (_surfaceProblem is not null)
+        {
+            options.Children.Add(Token(new TextBlock
+            {
+                Text = _surfaceProblem,
+                FontSize = 11,
+                Margin = new Thickness(26, -2, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            }, "DrcViolation"));
+        }
+
+        Grid.SetRow(options, 3);
+        root.Children.Add(options);
 
         var buttons = new StackPanel
         {
@@ -158,7 +207,8 @@ public sealed class ExportWindow : Window
         };
         write.Click += (_, _) =>
         {
-            Result = new ExportChoice(_folder, _dryRun.IsChecked == true);
+            Result = new ExportChoice(
+                _folder, _dryRun.IsChecked == true, _level.IsChecked == true && _level.IsEnabled);
             Close();
         };
 
@@ -172,9 +222,9 @@ public sealed class ExportWindow : Window
 
     private void UpdateCount(TextBlock text)
     {
-        var extra = _dryRun.IsChecked == true
-            ? _plan.Items.Count(i => i.Output == OutputKind.Gcode)
-            : 0;
+        var programs = _plan.Items.Count(i => i.Output == OutputKind.Gcode);
+        var extra = (_dryRun.IsChecked == true ? programs : 0)
+            + (_level.IsChecked == true && _level.IsEnabled ? programs : 0);
 
         var total = _plan.Count + extra;
         text.Text = total == 1 ? "1 file will be written" : $"{total} files will be written";
@@ -258,12 +308,13 @@ public sealed class ExportWindow : Window
 
     /// <summary>Shows the plan and returns what to do, or null if it was called off.</summary>
     public static async Task<ExportChoice?> AskAsync(
-        Window owner, ExportPlan plan, string folder, bool dryRun)
+        Window owner, ExportPlan plan, string folder, bool dryRun,
+        HeightMap? surface, string? surfaceProblem)
     {
         ArgumentNullException.ThrowIfNull(owner);
 
         // A dialog is its own top level, so it does not inherit the variant the user chose.
-        var window = new ExportWindow(plan, folder, dryRun)
+        var window = new ExportWindow(plan, folder, dryRun, surface, surfaceProblem)
         {
             RequestedThemeVariant = owner.ActualThemeVariant,
         };
@@ -273,7 +324,8 @@ public sealed class ExportWindow : Window
     }
 }
 
-/// <summary>Where the files go, and whether a dry run goes with them.</summary>
+/// <summary>Where the files go, and what goes with them.</summary>
 /// <param name="Folder">The folder to write into.</param>
 /// <param name="DryRun">Whether each program gets a companion that cuts nothing.</param>
-public sealed record ExportChoice(string Folder, bool DryRun);
+/// <param name="Level">Whether each program gets a companion that follows the measured surface.</param>
+public sealed record ExportChoice(string Folder, bool DryRun, bool Level);

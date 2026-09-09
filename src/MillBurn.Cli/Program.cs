@@ -6,6 +6,7 @@ using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
 using MillBurn.Pipeline;
+using MillBurn.Align;
 using MillBurn.Gcode;
 using MillBurn.Optimize;
 using MillBurn.Viewer;
@@ -28,6 +29,12 @@ internal static class Program
             Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
             Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
+            Console.WriteLine("                                 --probe also writes a probing routine for the board");
+            Console.WriteLine("                                 --level <log> bends every program to a probed surface");
+            Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
+            Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
+            Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
+            Console.WriteLine("                                 -o <file> --segment <mm> --smoothing <0..1>");
             Console.WriteLine("  tools [list|add|remove|path]   Manage the saved tool library");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
             Console.WriteLine("                                 --isolation-tool <name> --outline-tool <name> pick from the library");
@@ -61,6 +68,8 @@ internal static class Program
             "project" when args.Length >= 2 => ProjectCommand(args),
             "mill" when args.Length >= 2 => Mill(args),
             "export" when args.Length >= 2 => Export(args),
+            "probe" when args.Length >= 2 => Probe(args),
+            "level" when args.Length >= 3 => Level(args),
             "tools" => ToolsCommand(args),
             _ => Unknown(args[0]),
         };
@@ -1471,6 +1480,47 @@ internal static class Program
         // came out safe. A refusal is worth knowing about before you have committed to anything.
         var dryRuns = new Dictionary<string, string>(StringComparer.Ordinal);
         var dryRunNotes = new Dictionary<string, string>(StringComparer.Ordinal);
+        var extras = new Dictionary<string, string>(StringComparer.Ordinal);
+        ProbeRoutineReport? probeGrid = null;
+
+        if (args.Contains("--probe", StringComparer.OrdinalIgnoreCase))
+        {
+            var (routine, plan2) = ProbeRoutine.Generate(board.Bounds, new ProbeRoutineOptions
+            {
+                SpacingMm = Number(args, "--spacing", 10),
+                MaxPoints = (int)Number(args, "--max", 200),
+            });
+
+            extras[SafeName(board.Source) + ".probe.nc"] = routine;
+            probeGrid = plan2;
+        }
+
+        // Levelling comes last, after the dry runs are built from the unlevelled text: a dry run of
+        // a levelled program would be a dry run of a program held in the air, which is no more
+        // informative and rather harder to explain.
+        HeightMap? map = null;
+
+        if (Argument(args, "--level") is { } logPath)
+        {
+            string logText;
+
+            try
+            {
+                logText = File.ReadAllText(logPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"Could not read the probe log '{logPath}': {ex.Message}");
+                return 1;
+            }
+
+            map = ReadMap(logText, args);
+
+            if (map is null)
+            {
+                return 1;
+            }
+        }
 
         if (dryRun)
         {
@@ -1494,7 +1544,14 @@ internal static class Program
 
         Console.WriteLine(board.Source);
         Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
-        Line($"  files       {plan.Count + dryRuns.Count}");
+        Line($"  files       {plan.Count + dryRuns.Count + extras.Count}");
+
+        if (probeGrid is { } grid)
+        {
+            var minutes = grid.EstimatedSeconds / 60;
+            Line($"  probing     {grid.Columns} x {grid.Rows} = {grid.PointCount} touches, about {minutes:F0} minute(s)");
+        }
+
         Console.WriteLine();
 
         foreach (var item in plan.Items)
@@ -1510,6 +1567,30 @@ internal static class Program
             if (dryRunNotes.TryGetValue(item.TargetName, out var note))
             {
                 Line($"  {"",-4}{note}");
+            }
+
+            if (map is not null && item.Output == OutputKind.Gcode)
+            {
+                var (text, report) = Leveller.Apply(item.Content, map, LevelOptionsFrom(args));
+
+                if (report.Refusal is { } why)
+                {
+                    Console.Error.WriteLine($"  {"",-4}CHECK not levelled: {why}");
+                }
+                else
+                {
+                    var name = Path.GetFileNameWithoutExtension(item.TargetName)
+                        + ".levelled" + Path.GetExtension(item.TargetName);
+
+                    extras[name] = text;
+
+                    var range = FormattableString.Invariant(
+                        $"{report.MaxFallMm:F3} to {report.MaxRiseMm:F3} mm");
+                    var grew = FormattableString.Invariant($"{report.SegmentsAdded:N0} segments added");
+                    var summary = $"levelled   {name} · {range}, {grew}";
+
+                    Line($"  {"",-4}{summary}");
+                }
             }
 
             foreach (var warning in item.Warnings)
@@ -1539,12 +1620,12 @@ internal static class Program
             File.WriteAllText(Path.Combine(outDir, item.TargetName), item.Content);
         }
 
-        foreach (var (name, text) in dryRuns)
+        foreach (var (name, text) in dryRuns.Concat(extras))
         {
             File.WriteAllText(Path.Combine(outDir, name), text);
         }
 
-        Line($"  wrote       {plan.Count + dryRuns.Count} file(s) to {outDir}");
+        Line($"  wrote       {plan.Count + dryRuns.Count + extras.Count} file(s) to {outDir}");
         return plan.HasWarnings ? 2 : 0;
     }
 
@@ -1557,6 +1638,191 @@ internal static class Program
     /// </summary>
     private static string DryRunName(string target) =>
         Path.GetFileNameWithoutExtension(target) + ".dryrun" + Path.GetExtension(target);
+
+
+    // ------------------------------------------------------------------ height mapping
+
+    /// <summary>
+    /// Writes a probing routine for a board: a grid of <c>G38.2</c> touches the operator runs in
+    /// their own sender, keeping the log.
+    ///
+    /// A separate command as well as an export flag, because the probing happens on its own
+    /// schedule — you probe the stock once it is clamped, which is usually well before you have
+    /// settled what to cut.
+    /// </summary>
+    private static int Probe(string[] args)
+    {
+        if (LoadBoardOrProject(args[1]) is not { } board)
+        {
+            return 1;
+        }
+
+        var options = new ProbeRoutineOptions
+        {
+            SpacingMm = Number(args, "--spacing", 10),
+            MaxDepthMm = Number(args, "--depth", 2),
+            FeedMmPerMin = Number(args, "--feed", 30),
+            MarginMm = Number(args, "--margin", 1),
+            MaxPoints = (int)Number(args, "--max", 200),
+        };
+
+        var (text, report) = ProbeRoutine.Generate(board.Bounds, options);
+
+        var output = Argument(args, "-o") ?? Argument(args, "--out")
+            ?? Path.Combine(
+                Directory.Exists(args[1]) ? args[1] : Path.GetDirectoryName(Path.GetFullPath(args[1]))!,
+                SafeName(board.Source) + ".probe.nc");
+
+        File.WriteAllText(output, text);
+
+        var minutes = report.EstimatedSeconds / 60;
+
+        Console.WriteLine(board.Source);
+        Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
+        Line($"  grid        {report.Columns} x {report.Rows} = {report.PointCount} touches, {report.SpacingMm:F1} mm apart");
+        Line($"  time        about {minutes:F0} minute(s)");
+
+        foreach (var note in report.Notes)
+        {
+            Line($"  note        {note}");
+        }
+
+        Console.WriteLine();
+        Line($"  wrote       {output}");
+        Console.WriteLine("  Zero Z on the copper, run it, then save your sender's log and pass it to --level.");
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Bends a finished program to follow a probed surface.
+    ///
+    /// Takes any G-code, not only ours, which makes this useful as a standalone levelling utility —
+    /// the same reason the backplot parses files rather than toolpaths.
+    /// </summary>
+    private static int Level(string[] args)
+    {
+        var source = args[1];
+        var log = Argument(args, "--map") ?? Argument(args, "--log");
+
+        if (log is null)
+        {
+            Console.Error.WriteLine("level needs --map <probe log>.");
+            return 1;
+        }
+
+        string program;
+        string logText;
+
+        try
+        {
+            program = File.ReadAllText(source);
+            logText = File.ReadAllText(log);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Could not read: {ex.Message}");
+            return 1;
+        }
+
+        if (ReadMap(logText, args) is not { } map)
+        {
+            return 1;
+        }
+
+        var (text, report) = Leveller.Apply(program, map, LevelOptionsFrom(args));
+
+        if (report.Refusal is { } refusal)
+        {
+            Console.Error.WriteLine($"Not levelled: {refusal}");
+            return 1;
+        }
+
+        var output = Argument(args, "-o") ?? Argument(args, "--out") ?? LevelledName(source);
+        File.WriteAllText(output, text);
+
+        ReportMap(map);
+        Line($"  corrections {report.MaxFallMm:F3} to {report.MaxRiseMm:F3} mm over {report.MovesLevelled:N0} moves");
+        Line($"  detail      {report.SegmentsAdded:N0} segments added, {report.ArcsExpanded:N0} arc(s) expanded");
+        Line($"  wrote       {output}");
+
+        return 0;
+    }
+
+    private static LevelOptions LevelOptionsFrom(string[] args) => new()
+    {
+        SegmentMm = Number(args, "--segment", 1),
+        SubdivideBelowMm = Number(args, "--below", 0.5),
+        MaxOutsideMm = Number(args, "--outside", 3),
+    };
+
+    /// <summary>Reads a probe log into a map, reporting anything odd about it.</summary>
+    private static HeightMap? ReadMap(string logText, string[] args)
+    {
+        var (map, log) = ProbeLog.Read(
+            logText,
+            new HeightMapOptions { Smoothing = Number(args, "--smoothing", 0) });
+
+        if (map is null)
+        {
+            Console.Error.WriteLine(
+                "No probe points found in that log. Expected GRBL [PRB:] reports, or three "
+                + "numbers a line.");
+            return null;
+        }
+
+        foreach (var note in log.Notes)
+        {
+            Console.Error.WriteLine($"  note        {note}");
+        }
+
+        return map;
+    }
+
+    private static void ReportMap(HeightMap map)
+    {
+        var fit = map.Fit.ToString().ToLowerInvariant();
+        var width = Nm.ToMillimetreString(map.Bounds.Width, 1);
+        var height = Nm.ToMillimetreString(map.Bounds.Height, 1);
+
+        Line($"  surface     {map.PointCount} probe points, {fit} fit");
+        Line($"  flatness    {map.RangeMm:F3} mm out of flat over {width} x {height} mm");
+
+        foreach (var note in map.Notes)
+        {
+            Line($"  note        {note}");
+        }
+    }
+
+    /// <summary><c>Board-F_Cu.nc</c> becomes <c>Board-F_Cu.levelled.nc</c>.</summary>
+    private static string LevelledName(string target) =>
+        Path.Combine(
+            Path.GetDirectoryName(Path.GetFullPath(target))!,
+            Path.GetFileNameWithoutExtension(target) + ".levelled" + Path.GetExtension(target));
+
+    private static string SafeName(string source) =>
+        string.Concat(Path.GetFileNameWithoutExtension(source).Split(Path.GetInvalidFileNameChars()));
+
+    private static Board? LoadBoardOrProject(string input)
+    {
+        try
+        {
+            return input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
+                ? ProjectFile.ToBoard(ProjectFile.Open(input))
+                : BoardLoader.LoadFolder(input);
+        }
+        catch (Exception ex) when (ex is IOException or DirectoryNotFoundException or InvalidDataException)
+        {
+            Console.Error.WriteLine($"Could not read '{input}': {ex.Message}");
+            return null;
+        }
+    }
+
+    private static double Number(string[] args, string name, double fallback) =>
+        Argument(args, name) is { } text
+        && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : fallback;
 
     private static void Line(FormattableString text) =>
         Console.WriteLine(FormattableString.Invariant(text));

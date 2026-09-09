@@ -112,6 +112,12 @@
                                   IsEnabled="{Binding HasBoard}" />
                         <MenuItem Header="_Export…" Click="OnExportClicked"
                                   IsEnabled="{Binding HasBoard}" />
+                        <Separator />
+                        <MenuItem Header="Write _probing routine…" Click="OnWriteProbeClicked"
+                                  IsEnabled="{Binding HasBoard}" />
+                        <MenuItem Header="_Import height map…" Click="OnImportHeightMapClicked" />
+                        <MenuItem Header="_Forget height map" Click="OnForgetHeightMapClicked"
+                                  IsEnabled="{Binding HasSurface}" />
                     </MenuItem>
 
                     <MenuItem Header="_Help">

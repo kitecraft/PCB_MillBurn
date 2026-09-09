@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MillBurn.Core\MillBurn.Core.csproj" />
+    <ProjectReference Include="..\MillBurn.Gcode\MillBurn.Gcode.csproj" />
     <ProjectReference Include="..\MillBurn.Geometry\MillBurn.Geometry.csproj" />
   </ItemGroup>
 

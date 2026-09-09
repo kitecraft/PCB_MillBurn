@@ -136,16 +136,30 @@ public static class GcodeParser
                 switch (letter)
                 {
                     case 'G':
-                        switch ((int)Math.Round(value))
+                        // Floor, not round, and the fraction kept: a G word can carry one. G38.2
+                        // is probing and G91.1 is arc-centre mode — and rounding turned that
+                        // second one into G91, so a file that merely stated how it measures arc
+                        // centres was read as switching the whole program to incremental.
+                        var code = (int)Math.Floor(value + 1e-6);
+                        var minor = value - code > 0.05;
+
+                        switch (minor && code != 38 && code != 91 ? -1 : code)
                         {
                             case 0: motion = MoveKind.Rapid; motionThisLine = true; break;
                             case 1: motion = MoveKind.Feed; motionThisLine = true; break;
                             case 2: motion = MoveKind.ArcClockwise; motionThisLine = true; break;
                             case 3: motion = MoveKind.ArcCounterClockwise; motionThisLine = true; break;
+                            // Probing: G38.2 and .3 toward the work, .4 and .5 away from it. All
+                            // four travel at the feed rate, which is what matters for drawing one
+                            // and for costing it. Where it actually stops is up to the switch.
+                            case 38: motion = MoveKind.Feed; motionThisLine = true; break;
+
                             case 20: metric = false; break;
                             case 21: metric = true; break;
                             case 90: absolute = true; break;
-                            case 91: absolute = false; break;
+                            // G91.1 is arc-centre mode and says nothing about distance mode.
+                            case 91 when !minor: absolute = false; break;
+                            case 91: break;
                             case 17 or 40 or 49 or 54 or 61 or 64 or 80 or 94: break;
                             case 81 or 82 or 83 or 85:
                                 // Canned cycles are not interpreted. Saying so matters: GRBL does
@@ -158,7 +172,11 @@ public static class GcodeParser
                                 break;
                             default:
                                 diagnostics.Add(new GcodeDiagnostic(
-                                    $"Unhandled G{(int)value}.", lineNumber, IsError: false));
+                                    minor
+                                        ? FormattableString.Invariant($"Unhandled G{value:0.0#}.")
+                                        : $"Unhandled G{code}.",
+                                    lineNumber,
+                                    IsError: false));
                                 break;
                         }
 
