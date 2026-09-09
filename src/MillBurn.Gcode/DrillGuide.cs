@@ -257,14 +257,20 @@ public static class DrillGuide
 
         if (report.Changes > 0)
         {
+            // Scoped to X and Y, and only to X and Y. An earlier version said the tool change
+            // "does not need re-zeroing" — meaning the two axes that had not moved — immediately
+            // above a warning to re-zero Z. On a page somebody reads standing at the machine, an
+            // apparent contradiction is worse than saying nothing: they have to pick one.
             page.Append("<p>The program <strong>stops on its own</strong> between each of these, "
                 + "with the spindle off and the tool lifted clear. Change the bit, then resume in "
-                + "your sender — it does not need re-zeroing, and X and Y have not moved.</p>\n");
+                + "your sender. <strong>X and Y keep their zero</strong> — the machine has not "
+                + "moved sideways and the holes stay where they are.</p>\n");
 
-            page.Append("<div class=\"warn\"><p><strong>Re-zero Z after every bit change.</strong> "
+            page.Append("<div class=\"warn\"><p><strong>Z is the one you have to set again.</strong> "
                 + "A new bit sits at a different height in the collet, and the program's depths are "
-                + "measured from the surface, not from the spindle. This is the one thing that "
-                + "cannot be done for you.</p></div>\n");
+                + "measured from the surface of the board rather than from the spindle. Touch off Z "
+                + "on the board after every bit change. It is the one part of this that cannot be "
+                + "done for you.</p></div>\n");
         }
     }
 

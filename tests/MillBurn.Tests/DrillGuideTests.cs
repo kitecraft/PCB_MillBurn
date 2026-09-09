@@ -153,8 +153,30 @@ public sealed class DrillGuideTests(ITestOutputHelper output)
         var item = Drilling(RealBoards.PogoTest1);
         var (html, _) = DrillGuide.Build(item.Content, Context(item));
 
-        Assert.Contains("Re-zero Z after every bit change", html, StringComparison.Ordinal);
+        Assert.Contains("Z is the one you have to set again", html, StringComparison.Ordinal);
         Assert.Contains("sacrificial board", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The page must not tell the operator two different things about re-zeroing.
+    ///
+    /// It did. "It does not need re-zeroing" — meaning the two axes that had not moved — sat
+    /// directly above "re-zero Z after every bit change". Both sentences were defensible and the
+    /// pair was not, and this is a page somebody reads standing at a machine, where an apparent
+    /// contradiction means picking one and being wrong half the time.
+    ///
+    /// The reassurance has to name the axes it is about.
+    /// </summary>
+    [Fact]
+    public void ItDoesNotContradictItselfAboutRezeroing()
+    {
+        var item = Drilling(RealBoards.PogoTest1);
+        var (html, _) = DrillGuide.Build(item.Content, Context(item));
+
+        Assert.DoesNotContain("does not need re-zeroing", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("no re-zeroing", html, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("X and Y keep their zero", html, StringComparison.Ordinal);
     }
 
     /// <summary>
