@@ -656,9 +656,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
         if (facts.Holes > 0)
         {
+            var sizes = facts.HoleSizes == 1
+                ? "1 size"
+                : string.Create(CultureInfo.InvariantCulture, $"{facts.HoleSizes} sizes");
+
             Facts.Add(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{facts.Holes} holes in {facts.HoleSizes} sizes, {facts.SmallestHoleMm:F2}–{facts.LargestHoleMm:F2} mm"));
+                $"{facts.Holes} holes in {sizes}, {facts.SmallestHoleMm:F2}–{facts.LargestHoleMm:F2} mm"));
         }
 
         if (facts.CopperIslands > 0)

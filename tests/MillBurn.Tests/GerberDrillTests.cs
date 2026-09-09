@@ -186,6 +186,81 @@ public sealed class GerberDrillTests
         M30
         """;
 
+    /// <summary>The same three holes and two sizes as <see cref="DrillGerber"/>, in Excellon.</summary>
+    private const string SameHolesAsExcellon = """
+        M48
+        METRIC,TZ
+        T1C1.000
+        T2C1.700
+        %
+        G90
+        T1
+        X1.0Y1.0
+        X3.0Y1.0
+        T2
+        X5.0Y1.0
+        M30
+        """;
+
+    /// <summary>An outline, so the board's extents come from the board rather than from the holes.</summary>
+    private const string Outline = """
+        %TF.FileFunction,Profile,NP*%
+        %FSLAX46Y46*%
+        %MOMM*%
+        %ADD10C,0.100000*%
+        D10*
+        X0Y0D02*
+        X10000000Y0D01*
+        X10000000Y10000000D01*
+        X0Y10000000D01*
+        X0Y0D01*
+        M02*
+        """;
+
+    /// <summary>
+    /// The two drill formats are two spellings of the same holes, so they have to produce the same
+    /// program. Checked on the emitted G-code rather than on the parsed holes, because that is the
+    /// artefact the machine runs and the only place a difference would actually matter.
+    ///
+    /// An outline is included because a real board has one. Without it the board's extents come
+    /// from the holes themselves, and the two paths derive those differently — a flashed circle
+    /// realises as a polygon drawn *around* the true circle, so its bounds sit about half a micron
+    /// wide of the Excellon file's exact centre-plus-radius. That is far below anything a machine
+    /// can act on, and it is not what this test is about.
+    /// </summary>
+    [Fact]
+    public void TheSameHolesGiveTheSameProgramInEitherFormat()
+    {
+        static string Program(string fileName, string text)
+        {
+            var board = BoardLoader.LoadSources(
+                "memory",
+                [
+                    ("Board-Edge_Cuts.gbr", System.Text.Encoding.UTF8.GetBytes(Outline), LayerRole.Outline),
+                    (fileName, System.Text.Encoding.UTF8.GetBytes(text), LayerRole.PlatedDrill),
+                ]);
+
+            var plan = ExportPlanner.Plan(
+                board,
+                new Dictionary<string, LayerOutputSettings>(StringComparer.Ordinal)
+                {
+                    [fileName] = new() { FileName = fileName, Output = OutputKind.Gcode },
+                },
+                ToolLibrary.Default,
+                Nm.FromMillimetres(1.6));
+
+            // The layer's own name appears in the header, and it is the one thing that legitimately
+            // differs between two files holding the same holes.
+            return Assert.Single(plan.Items).Content.Replace(
+                Path.GetFileNameWithoutExtension(fileName), "drill", StringComparison.Ordinal);
+        }
+
+        Assert.Equal(
+            Program("Board-PTH.drl", SameHolesAsExcellon),
+            Program("Board-PTH-drl.gbr", DrillGerber),
+            StringComparer.Ordinal);
+    }
+
     /// <summary>
     /// A project holds its files in memory, and that path chose the parser from the layer's
     /// <em>role</em> — so an X2 drill file, whose role is a drill role, was handed to the Excellon

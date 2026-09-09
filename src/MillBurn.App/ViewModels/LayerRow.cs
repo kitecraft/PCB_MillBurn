@@ -382,7 +382,10 @@ public sealed partial class LayerRow : ObservableObject
 
             var cutWidth = Nm.ToMillimetreString(Tool.WidthAtDepth(Nm.FromMillimetres(DepthMm)), 3);
             var holes = layer.Drill?.Hits.Count ?? 0;
-            var sizes = layer.Drill?.Tools.Count ?? 0;
+            var sizeCount = layer.Drill?.Tools.Count ?? 0;
+            var sizes = sizeCount == 1
+                ? "1 size"
+                : string.Create(CultureInfo.InvariantCulture, $"{sizeCount} sizes");
             var cutter = Nm.ToMillimetreString(Tool.DiameterNm, 2);
             var passes = Passes == 1
                 ? "1 pass"
@@ -404,7 +407,7 @@ public sealed partial class LayerRow : ObservableObject
 
                 OperationKind.Drilling => string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{holes} holes, {sizes} sizes · {BreakThroughMm:F2} mm through the back{flip}"),
+                    $"{holes} holes, {sizes} · {BreakThroughMm:F2} mm through the back{flip}"),
 
                 OperationKind.Outline => string.Create(
                     CultureInfo.InvariantCulture,
