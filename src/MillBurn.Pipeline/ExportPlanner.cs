@@ -259,7 +259,16 @@ public static class ExportPlanner
         // looks completely correct on screen and scraps the board.
         var notes = new List<string> { OriginNote(board) };
 
-        // The flip comes first, so the route is optimised for the geometry that will actually be
+        // Simplify first, before the flip and before ordering.
+        //
+        // It keeps every path's endpoints, so ordering is unaffected by going second. Doing it last
+        // instead breaks the mirror: arc fitting is greedy against a hard tolerance, so a run that
+        // just fits in one orientation just misses in the other, and the two sides of a board stop
+        // being exact reflections of each other for no reason anyone could see.
+        var (reducedPath, reduced) = PathSimplifier.Apply(toolpath);
+        toolpath = reducedPath;
+
+        // The flip comes next, so the route is optimised for the geometry that will actually be
         // cut rather than for its mirror image.
         if (setting.MirrorFor(layer.Role))
         {
@@ -306,6 +315,20 @@ public static class ExportPlanner
             ? Invariant($"{measured.PlungeCount} plunges, {measured.TravelMm:F0} mm travel")
             : Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
+
+        // Worth showing: fewer, longer moves is what lets the controller reach its programmed feed,
+        // and it is invisible in the geometry.
+        if (reduced.Reduction > 0.02)
+        {
+            var arcs = reduced.Arcs > 0
+                ? Invariant($", {reduced.Arcs:N0} arcs")
+                : string.Empty;
+
+            summary.Add(
+                Invariant($"Simplified: {reduced.SegmentsBefore:N0} → {reduced.SegmentsAfter:N0} moves")
+                + arcs
+                + Invariant($" ({reduced.Reduction:P0} fewer)"));
+        }
 
         // Shown because a claim that the optimizer helps is worth nothing unless the size of the
         // help is visible on the job it helped (Documentation/03, section 6).

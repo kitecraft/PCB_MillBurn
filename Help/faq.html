@@ -28,6 +28,7 @@
     <li><a href="#vbit">Why does the isolation depth change the cut width?</a></li>
     <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
     <li><a href="#tabs">Tabs, and what happens if you use none</a></li>
+    <li><a href="#simplified">Why the file is so much smaller than the board looks</a></li>
     <li><a href="#gaps">A trace did not get isolated</a></li>
     <li><a href="#twosided"><strong>Lining up the two sides of a double-sided board</strong></a></li>
     <li><a href="#panels">Can I panelise?</a></li>
@@ -179,6 +180,27 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
     tabs are for.
   </p>
 </div>
+
+<h2 id="simplified">Why the file is so much smaller than the board looks</h2>
+
+<p>
+  Exported programs are simplified: points that say nothing are dropped, and the fans of tiny
+  segments that a rounded corner arrives as become real <code>G2</code>/<code>G3</code> arcs. A
+  fifty-up panel goes from about 301,000 lines to about 15,000.
+</p>
+
+<p>
+  This is not about disk space. A controller slows down for every block it cannot see past, so a
+  contour delivered as thousands of one-micron moves never reaches the feed you programmed — the
+  machine crawls through geometry it could have taken at speed. Fewer, longer moves is the single
+  biggest thing that makes a job finish sooner.
+</p>
+
+<p>
+  Nothing moves more than <strong>2 µm</strong> from where it was asked to be, and that bound covers
+  both steps together rather than each of them separately. For scale, that is under two percent of a
+  0.127 mm isolation cut, and below what the machines this targets can repeat anyway.
+</p>
 
 <h2 id="gaps">A trace did not get isolated</h2>
 

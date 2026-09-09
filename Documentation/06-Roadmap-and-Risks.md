@@ -487,9 +487,56 @@ G-code rather than producing a program that mills the whole board away.
 `PogoTest1-F_Cu.nc`: a layer produces one output, so there was nothing for the tag to disambiguate,
 and the extension already says which machine wants the file.
 
-Still to come in this phase: Eulerian path merging, travel-at-depth when it is safe, and
-Douglas–Peucker plus arc fitting — which Documentation/03 §7 rates as the bigger real-world win,
-because a 76,000-line isolation file decelerates at every one of those lines.
+**Simplification and arc fitting: the panel went from 301,097 lines to 15,191.** Documentation/03
+§7.3 rates this above the travel ordering and it is right to. A controller decelerates into every
+block it cannot see past, so an isolation contour delivered as tens of thousands of one-micron
+segments never reaches its programmed feed at all — the estimate's own pessimistic bound fell from
+1h 18m to 1h 4m on the panel's copper, which is the machine no longer stopping at corners that were
+never really there.
+
+| | segments | after | arcs |
+|---|---|---|---|
+| Panel isolation | 75,768 | 5,610 | 2,640 |
+| Panel outline | 222,988 | 7,240 | 3,814 |
+
+Three things had to be right for that to be safe rather than merely small.
+
+The **deviation bound has to hold end to end**. The two stages compose: an arc within its tolerance
+of a point that was itself within tolerance of the original sits at up to the sum of the two from
+where the cutter is actually needed. The first version budgeted the full tolerance twice and drifted
+2.21 µm against a stated 2 µm — measured, not reasoned about. Each stage gets half now, and the
+worst observed deviation on a real board is 1.48 µm.
+
+The tolerance itself is **2 µm rather than the 5 µm the sketch suggested**, because the number that
+matters is not how accurate the shape looks but how much of the *clearance* it spends: an isolation
+cut is offset half a tool width from the copper and every micron of simplification is a micron of
+that margin given away.
+
+And **simplification runs before the mirror**, not after. It preserves every path's endpoints, so
+ordering is unaffected by going second — but arc fitting is greedy against a hard tolerance, so a
+run that just fits in one orientation just misses in the other, and the two sides of a board stopped
+being exact reflections for no reason anyone could see. The exact-mirror test caught it.
+
+The arc fitter also had a bug worth remembering: it *stopped searching* when a candidate run swept
+too little to be worth an arc, rather than extending further. That meant an arc was only ever found
+where the first few points already spanned enough angle — on a finely tessellated circle, never. A
+180-sided circle fitted nothing at all; it now fits one arc. Fixing it tripled the reduction on real
+boards, from 77% to 93%.
+
+**Eulerian path merging was measured and not built.** Documentation/03 §7.2 wants it because
+pcb2gcode's isolation produces open segments that can be chained. Ours does not: every isolation and
+engrave path is a closed contour out of a Clipper offset, and two distinct closed contours never
+share a vertex — if they touched, the offset would have merged them into one. Counted on both
+PogoTest1 and the fifty-up panel: **zero endpoints shared by more than one pass**, in isolation and
+in engraving alike. There is nothing to merge, and machinery that provably does nothing is worse
+than none.
+
+**Travel-at-depth is deferred, on the numbers.** On the panel, 67 of 198 transitions are under 2 mm
+— the plausible candidates. Each avoided lift saves a retract and a plunge, about 0.4 s, so the
+whole opportunity is roughly 27 seconds of a one-hour job: under 1%. Against that, deciding it needs
+a visibility test whose failure mode is the cutter crossing a trace at depth, and there is still no
+dry-run generator to catch that before it happens. It is the right feature in the wrong order;
+revisit it once Phase 5 can verify a program without cutting.
 - Benchmark harness vs. pcb2gcode; before/after comparison view.
 
 **Done when:** the acceptance metrics in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria)
