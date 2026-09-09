@@ -15,6 +15,15 @@
     <ApplicationManifest Include="app.manifest" />
   </ItemGroup>
 
+  <!--
+    The icon burned into the .exe, so the file has a face in Explorer and on the taskbar before it
+    is ever run. Windows-only by nature; the window icon that every platform uses is set in code
+    from Assets/millburn.png. Both come from art/millburn-logo.png via art/make-icons.py.
+  -->
+  <PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true' or $(RuntimeIdentifier.StartsWith('win'))">
+    <ApplicationIcon>Assets\millburn.ico</ApplicationIcon>
+  </PropertyGroup>
+
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />

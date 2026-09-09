@@ -28,6 +28,7 @@ public sealed class ConfirmWindow : Window
     private ConfirmWindow(string title, string message, string saveText, string? discardText)
     {
         Title = title;
+        AppIcon.Apply(this);
         SizeToContent = SizeToContent.WidthAndHeight;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

@@ -47,6 +47,33 @@ public sealed record SimplifyResult
     public required double LengthAfterMm { get; init; }
 
     public double Reduction => SegmentsBefore <= 0 ? 0 : 1.0 - ((double)SegmentsAfter / SegmentsBefore);
+
+    /// <summary>Nothing simplified yet: the identity to fold several toolpaths onto.</summary>
+    public static SimplifyResult Nothing { get; } = new()
+    {
+        SegmentsBefore = 0,
+        SegmentsAfter = 0,
+        Arcs = 0,
+        LengthBeforeMm = 0,
+        LengthAfterMm = 0,
+    };
+
+    /// <summary>
+    /// Two toolpaths' worth of simplification, reported as one.
+    ///
+    /// A drilling operation is one file but several toolpaths, one per bit, and the operator wants
+    /// a line about the file rather than a line per bit.
+    /// </summary>
+    public static SimplifyResult operator +(SimplifyResult a, SimplifyResult b) => new()
+    {
+        SegmentsBefore = a.SegmentsBefore + b.SegmentsBefore,
+        SegmentsAfter = a.SegmentsAfter + b.SegmentsAfter,
+        Arcs = a.Arcs + b.Arcs,
+        LengthBeforeMm = a.LengthBeforeMm + b.LengthBeforeMm,
+        LengthAfterMm = a.LengthAfterMm + b.LengthAfterMm,
+    };
+
+    public static SimplifyResult Add(SimplifyResult left, SimplifyResult right) => left + right;
 }
 
 /// <summary>

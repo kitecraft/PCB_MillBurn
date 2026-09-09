@@ -232,17 +232,22 @@ public static class ExportPlanner
         var warnings = new List<string>();
         var summary = new List<string>();
 
-        Toolpath? toolpath = operation switch
+        // A list, because drilling is genuinely several toolpaths: one per hole size, each with its
+        // own bit. Every other operation is one. Collapsing them into a single toolpath -- which is
+        // what this used to do -- silently drilled every hole with whichever bit came first.
+        IReadOnlyList<Toolpath> toolpaths = operation switch
         {
-            OperationKind.Isolation => BuildIsolation(layer, setting, tool, summary, warnings),
+            OperationKind.Isolation => Only(BuildIsolation(layer, setting, tool, summary, warnings)),
             OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary),
-            OperationKind.Outline => BuildOutline(layer, setting, tool, boardThicknessNm, summary, warnings),
-            OperationKind.Engrave => BuildEngrave(layer, setting, tool, summary),
-            OperationKind.Pocket => BuildPocket(layer, setting, tool, summary, warnings),
-            _ => null,
+            OperationKind.Outline => Only(BuildOutline(layer, setting, tool, boardThicknessNm, summary, warnings)),
+            OperationKind.Engrave => Only(BuildEngrave(layer, setting, tool, summary)),
+            OperationKind.Pocket => Only(BuildPocket(layer, setting, tool, summary, warnings)),
+            _ => [],
         };
 
-        if (toolpath is null || (toolpath.Passes.Count == 0 && toolpath.Drills.Count == 0))
+        toolpaths = [.. toolpaths.Where(t => t.Passes.Count > 0 || t.Drills.Count > 0)];
+
+        if (toolpaths.Count == 0)
         {
             return null;
         }
@@ -259,20 +264,10 @@ public static class ExportPlanner
         // looks completely correct on screen and scraps the board.
         var notes = new List<string> { OriginNote(board) };
 
-        // Simplify first, before the flip and before ordering.
-        //
-        // It keeps every path's endpoints, so ordering is unaffected by going second. Doing it last
-        // instead breaks the mirror: arc fitting is greedy against a hard tolerance, so a run that
-        // just fits in one orientation just misses in the other, and the two sides of a board stop
-        // being exact reflections of each other for no reason anyone could see.
-        var (reducedPath, reduced) = PathSimplifier.Apply(toolpath);
-        toolpath = reducedPath;
+        var mirrored = setting.MirrorFor(layer.Role);
 
-        // The flip comes next, so the route is optimised for the geometry that will actually be
-        // cut rather than for its mirror image.
-        if (setting.MirrorFor(layer.Role))
+        if (mirrored)
         {
-            toolpath = MirrorX(toolpath, board.Bounds.MinX + board.Bounds.MaxX);
             notes.Add(FlipNote());
             summary.Add("Mirrored · flip the stock left-to-right");
             warnings.Add(
@@ -293,15 +288,50 @@ public static class ExportPlanner
             ? Point2.Origin
             : new Point2(board.Bounds.MinX, board.Bounds.MinY);
 
-        // The emitter parks back at work zero when it finishes, so the route is a closed tour.
-        // On PogoTest1 that last hop was 35 mm of a 79 mm total — nearly half the rapid in the
-        // file, and entirely invisible to an optimizer that stops at the last cut.
-        var (ordered, route) = ToolpathRouter.Order(toolpath, start, machine, effort, start);
+        var prepared = new List<Toolpath>(toolpaths.Count);
+        var reduced = SimplifyResult.Nothing;
+        var route = RoutePlan.Nothing;
+        var at = start;
+
+        for (var i = 0; i < toolpaths.Count; i++)
+        {
+            // Simplify first, before the flip and before ordering.
+            //
+            // It keeps every path's endpoints, so ordering is unaffected by going second. Doing it
+            // last instead breaks the mirror: arc fitting is greedy against a hard tolerance, so a
+            // run that just fits in one orientation just misses in the other, and the two sides of
+            // a board stop being exact reflections of each other for no reason anyone could see.
+            var (path, step) = PathSimplifier.Apply(toolpaths[i]);
+            reduced += step;
+
+            // The flip comes next, so the route is optimised for the geometry that will actually be
+            // cut rather than for its mirror image.
+            if (mirrored)
+            {
+                path = MirrorX(path, board.Bounds.MinX + board.Bounds.MaxX);
+            }
+
+            // Each toolpath picks up where the last one left off. A tool change lifts to safe Z and
+            // stops; it does not move in X or Y, so the next bit starts over the last hole rather
+            // than back at the corner.
+            //
+            // Only the last returns to work zero: the emitter parks there when the program ends, so
+            // the tour is closed. On PogoTest1 that last hop was 35 mm of a 79 mm total — nearly
+            // half the rapid in the file, and invisible to an optimizer that stops at the last cut.
+            var last = i == toolpaths.Count - 1;
+            var (ordered, plan) = ToolpathRouter.Order(
+                path, at, machine, effort, last ? start : null);
+
+            route += plan;
+            at = last ? start : EndOf(ordered, at);
+
+            prepared.Add(Translate(ordered, shift));
+        }
 
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(layer.FileName) + " — " + LayerOperations.Label(operation),
-            Toolpaths = [Translate(ordered, shift)],
+            Toolpaths = prepared,
             OriginShift = shift,
             Notes = notes,
         };
@@ -387,12 +417,12 @@ public static class ExportPlanner
         return IsolationOperation.Build(layer.Area, options, layer.Label);
     }
 
-    private static Toolpath? BuildDrilling(
+    private static IReadOnlyList<Toolpath> BuildDrilling(
         BoardLayer layer, LayerOutputSettings setting, Tool tool, long thicknessNm, List<string> summary)
     {
         if (layer.Drill is null)
         {
-            return null;
+            return [];
         }
 
         var options = new DrillOptions
@@ -407,17 +437,34 @@ public static class ExportPlanner
         summary.Add(Invariant(
             $"{layer.Drill.Hits.Count} holes in {sizes} · {depth} mm deep ({through} mm through the back)"));
 
-        var paths = DrillOperation.Build(layer.Drill, options, tool);
-
-        // One file per layer, so the sizes inside it become tool changes rather than more files.
-        return paths.Count == 0
-            ? null
-            : paths.Aggregate((a, b) => a with
-            {
-                Label = layer.Label,
-                Drills = [.. a.Drills, .. b.Drills],
-            });
+        // One file per layer, and the sizes inside it become tool changes rather than more files.
+        // Returned as separate toolpaths because each carries its own bit: merging them into one
+        // kept only the first tool, so a board with 0.8 mm and 1.0 mm holes had every one of them
+        // drilled 1.0 mm and nothing in the file said so.
+        return DrillOperation.Build(layer.Drill, options, tool);
     }
+
+    /// <summary>Where a toolpath leaves the tool, so the next one can start from there.</summary>
+    private static Point2 EndOf(Toolpath toolpath, Point2 fallback)
+    {
+        if (toolpath.Drills.Count > 0)
+        {
+            return toolpath.Drills[^1].At;
+        }
+
+        for (var i = toolpath.Passes.Count - 1; i >= 0; i--)
+        {
+            if (toolpath.Passes[i].Path.Count > 0)
+            {
+                return toolpath.Passes[i].Path[^1].To;
+            }
+        }
+
+        return fallback;
+    }
+
+    private static IReadOnlyList<Toolpath> Only(Toolpath? toolpath) =>
+        toolpath is null ? [] : [toolpath];
 
     private static Toolpath BuildOutline(
         BoardLayer layer,

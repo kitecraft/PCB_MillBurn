@@ -198,6 +198,30 @@ public sealed record RoutePlan
     public double TravelSavedFraction =>
         InitialTravelMm <= 0 ? 0 : 1.0 - (TravelMm / InitialTravelMm);
 
+    /// <summary>No route yet: the identity to fold several toolpaths onto.</summary>
+    public static RoutePlan Nothing { get; } = new()
+    {
+        Steps = [],
+        InitialTravelMm = 0,
+        TravelMm = 0,
+        InitialSeconds = 0,
+        Seconds = 0,
+    };
+
+    /// <summary>Two toolpaths' routes, reported as the one file they end up in.</summary>
+    public static RoutePlan operator +(RoutePlan a, RoutePlan b) => new()
+    {
+        Steps = [.. a.Steps, .. b.Steps],
+        InitialTravelMm = a.InitialTravelMm + b.InitialTravelMm,
+        TravelMm = a.TravelMm + b.TravelMm,
+        InitialSeconds = a.InitialSeconds + b.InitialSeconds,
+        Seconds = a.Seconds + b.Seconds,
+        Improvements = a.Improvements + b.Improvements,
+        Elapsed = a.Elapsed + b.Elapsed,
+    };
+
+    public static RoutePlan Add(RoutePlan left, RoutePlan right) => left + right;
+
     public double TimeSavedFraction =>
         InitialSeconds <= 0 ? 0 : 1.0 - (Seconds / InitialSeconds);
 }

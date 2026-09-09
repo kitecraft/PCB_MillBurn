@@ -81,6 +81,7 @@ public sealed class ExportWindow : Window
             + "where it was when you probed.");
 
         Title = "Export";
+        AppIcon.Apply(this);
         Width = 640;
         Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

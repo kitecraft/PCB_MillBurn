@@ -694,6 +694,110 @@ Still to come in this phase:
 **Done when:** Use Case 1 and Use Case 2 both run end-to-end with ≤ 50 µm registration measured
 on a test coupon.
 
+### A bug that shipped: every hole drilled with the first bit
+
+Found while sizing the drilling companion above, which is the only reason it was found at all.
+
+`ExportPlanner.BuildDrilling` built one toolpath per hole size — correctly, each with its own tool —
+and then folded them together with `paths.Aggregate((a, b) => a with { Drills = [..a.Drills,
+..b.Drills] })`. A `Toolpath` carries one `Tool`, so the fold kept the first and discarded the rest.
+The comment above it read *"the sizes inside it become tool changes rather than more files"*, which
+is what it was supposed to do and never did.
+
+PogoTest1 has sixteen plated holes in two sizes. Every one of them was drilled at 1.70 mm; the eight
+that should have been 1.00 mm came out nearly twice the diameter they were asked for.
+
+**Nothing showed it.** The hole count was right. The positions were right. The summary said "16
+holes in 2 sizes" because it counts the Excellon's tools, not the program's. The backplot draws
+plunges, not diameters. Five hundred tests passed. The only symptom was on the board.
+
+The fix carries a list of toolpaths through the whole pipeline — simplify, mirror, order, emit —
+rather than one, which is what the emitter always expected: it already knew how to write a manual
+tool change, and had simply never been given two tools. Each toolpath is routed from where the last
+one finished, because a tool change lifts to safe Z and stops without moving in X or Y, and only the
+last returns to work zero.
+
+That costs a little travel — PogoTest1's plated holes went from 100 mm to 118 mm — and that increase
+is correct. The old number was the distance to visit sixteen holes in one tour, which is only
+available if you are willing to drill them all the same size.
+
+`DrillSizeTests` now checks the three things that were wrong: a stop for every size after the first,
+each diameter named with its own hole count, and no hole lost in the split. Plus that the biggest
+bit goes first, which was right all along and is worth pinning.
+
+### Requested, not yet scheduled
+
+Five ideas from the workshop, recorded here so they keep their reasoning. The first is done; the
+rest are sized but unbuilt.
+
+**An app icon.** Done. `art/millburn-logo.png` is the source; `art/make-icons.py` cuts the mark out
+of it — the wordmark is dropped, because at 16 px "PCB_MillBurn" set across a taskbar tile is a grey
+smear — and writes `Assets/millburn.png` for the window icon and `Assets/millburn.ico` for the
+executable. Regenerate by running the script; do not hand-edit the outputs.
+
+**A drilling companion, as HTML beside the program.** The operator's problem with a drill file is
+not the toolpath, it is the choreography: which bit goes in first, when it stops, what to put in
+next, and how many holes each one makes. All of that is already known at export time — the program
+even has it in comments — and a comment in a `.nc` is the wrong place to read it from, because the
+person needing it is standing at the machine with the sender open, not a text editor.
+
+So: one page per drill program, opened in a browser, with the bits in order, their diameters and
+hole counts, where in the run each change falls, and roughly how long each section takes. A
+checkbox on the drill layer, on by default. The same page shape would suit the outline and the
+isolation later, but drilling is where it earns its keep, because drilling is the operation with
+tool changes in it.
+
+Worth doing **after** the fix that made tool changes real. Until that landed, a companion file would
+have described a run that was not happening.
+
+**How far to take tool configuration.** Fusion's tool dialog is the reference the question came
+with, and most of it is there to feed two things we do not have and do not plan: a materials
+database, and a collision simulator that needs holder geometry and gauge length. Copying fields for
+their own sake makes the dialog longer without making any output better.
+
+The test that separates the useful from the decorative is *does it let the app tell the operator
+something they did not already know?* By that test:
+
+| Field | Worth it | Because |
+|---|---|---|
+| Flutes | **Yes** | With feed and RPM this gives chipload, `feed / (rpm × flutes)`. On a 0.4 mm end mill that number is the difference between a bit that lasts one board and twenty — under about 5 µm it rubs and work-hardens instead of cutting, and well over it snaps. We already hold feed and RPM, so this is one field for a real warning. |
+| Plunge feed per revolution | **Yes** | Derived the same way, and it is what breaks small drills. A 0.3 mm drill at 100 mm/min and 12,000 rpm is 8 µm a revolution, which is fine; the same feed at 3,000 rpm is 33 µm, which is not. |
+| Surface speed | Derived, show it | `π × D × rpm`, free to compute. Not a warning on its own, but it is the number people compare against a table. |
+| Flute length | **Yes** | It is the honest source for `MaxDepthNm`, which we already have and currently ask the user to type. A 0.8 mm bit with 3 mm of flute cannot cut a 1.6 mm board plus break-through if it is only stuck 2 mm out of the collet. |
+| Length below holder | Later | Answers "will the collet nut hit a clamp", which needs fixture geometry we do not have until the fixture generators land. |
+| Ramp angle, ramp feedrate | With ramping | Belongs to the tool, but only once entry ramping is implemented. |
+| Lead-in / lead-out feedrate | No | Our isolation and engraving paths are closed contours entered by plunging in place. There is no lead to give a feedrate to. |
+| Transition feedrate | With travel-at-depth | The deferred Phase 3 optimisation is the only thing that would move between cuts without lifting. |
+| Shaft diameter, overall length, shoulder length | No | Geometry for drawing the tool and for collision checks. We draw toolpaths, not tools. |
+| Material, holder, gauge length, tool assembly | No | Fusion needs these for its speeds-and-feeds calculator and its machine simulation. We have neither, and a field nobody reads is a field that goes stale and then lies. |
+
+So the answer to "how far can we go" is: **four more fields, not thirty** — flutes, flute length,
+and the two derived numbers shown next to them — and the payoff is not the fields but the warnings
+they make possible. A tool dialog that says "this is 2 µm a tooth, you are rubbing not cutting" is
+worth more than one with every dimension of the bit and no opinion about any of them.
+
+**Custom pre- and post-G-code.** Every machine has a ritual: home, set an offset, turn on a vacuum,
+run a tool-length probe, dwell for a spindle to come up. Ours emits a fixed preamble, and anyone
+whose ritual differs currently edits every file by hand after every export.
+
+The shape: a header and a footer per machine profile, overridable per project, with the project's
+version stored in the `.millburn` file so a job that needed something unusual keeps it. Two things
+make it more than a text box. It should be **run through our own parser** on entry, so a typo is
+caught while it is being typed rather than by the machine; and it should be **checked for modal
+damage** — a custom header that leaves the machine in `G91`, or in inches, quietly invalidates every
+coordinate in the program that follows it, and that is exactly the class of mistake the dry run and
+the leveller already refuse to guess at.
+
+**Open an existing program.** A viewer-only File ▸ Open for `.nc`, drawing it in the backplot. Cheap
+— the parser, the classifier and the scene builder are all built and all work on any G-code, not
+only ours — and it makes the app useful for looking at output from anywhere. It would also have
+shown the `G38.2` problem in reverse: our own viewer draws a probing routine correctly, which is
+exactly what the senders that prompted that warning do not.
+
+The one design question is what to do without a board behind it: the backplot currently draws over
+board geometry and takes its work zero from the board's corner. Opened on its own, a program has no
+board, so the view has to be able to stand on the program's own extents.
+
 ### Phase 6 — Polish and reach
 
 - Material-removal simulation as a first-class view and test oracle.

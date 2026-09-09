@@ -52,6 +52,7 @@ public sealed class ToolLibraryWindow : Window
         _library = library;
 
         Title = "Tools";
+        AppIcon.Apply(this);
         Width = 720;
         Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

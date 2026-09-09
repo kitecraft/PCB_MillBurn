@@ -23,6 +23,7 @@ public sealed class ColourWindow : Window
     public ColourWindow(string layerLabel, Color current)
     {
         Title = "Colour — " + layerLabel;
+        AppIcon.Apply(this);
         Width = 420;
         Height = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
