@@ -71,3 +71,7 @@ scratch/
 MyGerbers*/
 Scratch[Gg]erbers/
 out/
+
+# What a failing snapshot generated, written beside its baseline so the two can be compared. It is
+# the output of a failure, not a reviewed artefact, and it must never be committed as one.
+tests/MillBurn.GoldenTests/Snapshots/*.actual.txt

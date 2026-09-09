@@ -1,0 +1,47 @@
+GridStripConnector_Panelized
+============================
+
+GridStripConnector_Panelized-Edge_Cuts.nc
+  operation Cut out
+  layer     Board outline
+  lines     8577
+  sha256    fc1e19c9c75c51ae
+  summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
+  summary   51 profiles · inner pieces cut before the frame around them
+  summary   20996 mm cutting, 772 mm travel
+  summary   1h 21m – 1h 25m · 8,576 lines
+  summary   Simplified: 222,988 → 7,240 moves, 3,814 arcs (97 % fewer)
+  comment   ( PCB_MillBurn - GridStripConnector_Panelized-Edge_Cuts — Cut out )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 66.150, -126.850 mm. )
+  comment   ( Board outline )
+  comment   ( 5 passes of 0.40 mm to 1.90 mm. )
+  comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
+  comment   ( Tabs on the 1 outer profile[s] only; the 50 inside are held by whatever joins them in the design. )
+  control   M3 S12000 · M5 · M30
+  depths    -1.900, -1.600, -1.200, -0.800, -0.400
+  moves     1059 rapid, 3690 feed, 3814 arc
+  distance  20995.44 mm cutting, 772.48 mm travel
+  plunges   528
+  extent    -0.500 .. 165.200 x -0.500 .. 107.400 mm
+
+GridStripConnector_Panelized-F_Cu.nc
+  operation Isolation routing
+  layer     Top copper
+  lines     6616
+  sha256    f0a7be90caa636f8
+  summary   0.127 mm wide at 0.050 mm deep · 1 pass
+  summary   11329 mm cutting, 924 mm travel
+  summary   1h 2m – 1h 4m · 6,615 lines
+  summary   Simplified: 75,768 → 5,610 moves, 2,640 arcs (93 % fewer)
+  summary   Ordering: 1030 mm rapid → 924 mm (10 % less)
+  comment   ( PCB_MillBurn - GridStripConnector_Panelized-F_Cu — Isolation routing )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 66.150, -126.850 mm. )
+  comment   ( Top copper )
+  comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
+  comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
+  control   M3 S12000 · M5 · M30
+  depths    -0.050
+  moves     795 rapid, 3168 feed, 2640 arc
+  distance  11329.59 mm cutting, 924.04 mm travel
+  plunges   396
+  extent    0.000 .. 163.714 x -0.014 .. 105.913 mm

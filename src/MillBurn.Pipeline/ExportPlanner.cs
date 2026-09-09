@@ -337,12 +337,18 @@ public static class ExportPlanner
         };
 
         var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions());
-        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(GcodeParser.Parse(text)));
+        var emitted = GcodeParser.Parse(text);
+        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(emitted));
 
         // Drilling has no lateral cutting distance, so reporting "0 mm cutting" for it reads as a
         // failure rather than as the shape of the operation.
+        //
+        // Holes rather than plunges: a plunge count includes the rapid down to the approach plane
+        // and every peck, so two holes were being reported as "8 plunges" directly under a line
+        // saying "2 holes". Counted here from the emitted program rather than from the drill file,
+        // so it is a check on the output and not a restatement of the input.
         summary.Add(operation == OperationKind.Drilling
-            ? Invariant($"{measured.PlungeCount} plunges, {measured.TravelMm:F0} mm travel")
+            ? Invariant($"{HolesDrilled(emitted)} holes drilled, {measured.TravelMm:F0} mm travel")
             : Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
 
@@ -443,6 +449,18 @@ public static class ExportPlanner
         // drilled 1.0 mm and nothing in the file said so.
         return DrillOperation.Build(layer.Drill, options, tool);
     }
+
+    /// <summary>
+    /// How many holes the emitted program actually drills: distinct places it feeds below zero.
+    ///
+    /// Pecking makes several descents at one spot and they are one hole, so the positions are
+    /// counted rather than the moves.
+    /// </summary>
+    private static int HolesDrilled(GcodeProgram program) => program.Moves
+        .Where(m => !m.IsRapid && m.IsVertical && m.ToZNm < 0)
+        .Select(m => m.From)
+        .Distinct()
+        .Count();
 
     /// <summary>Where a toolpath leaves the tool, so the next one can start from there.</summary>
     private static Point2 EndOf(Toolpath toolpath, Point2 fallback)

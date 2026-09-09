@@ -224,6 +224,12 @@ public sealed record Tool
         ToolKind.VBit => string.Create(
             CultureInfo.InvariantCulture,
             $"{Name} ({IncludedAngleDegrees:F0}° included, {Nm.ToMillimetreString(TipNm, 3)} mm tip)"),
+
+        // A drill is fully described by its diameter, and DrillOf names it from exactly that, so
+        // the parenthetical only ever said the same thing twice: "1.00 mm drill (1.000 mm)". That
+        // is the text an operator reads off the screen when the program stops for a bit change.
+        ToolKind.Drill => Name,
+
         _ => $"{Name} ({Nm.ToMillimetreString(DiameterNm, 3)} mm)",
     };
 }

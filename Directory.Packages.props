@@ -69,7 +69,12 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
-    <!-- Verify (MIT): golden-file snapshot testing for G-code and SVG output. -->
+    <!--
+      Verify (MIT) was pinned for golden-file snapshotting and never wired up. Snapshots are done
+      by tests/MillBurn.GoldenTests/Snapshot.cs instead: the baselines are fingerprints rather than
+      whole programs, so the comparison is a few lines and the failure message can talk about
+      G-code. Left pinned in case a future need is a better fit for the library than for that.
+    -->
     <PackageVersion Include="Verify.Xunit" Version="31.12.5" />
   </ItemGroup>
 
