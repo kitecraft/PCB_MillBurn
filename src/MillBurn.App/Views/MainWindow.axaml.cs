@@ -317,7 +317,7 @@ public partial class MainWindow : Window
         // gets written is checkable headlessly like everything else.
         if (args.Contains("--export", StringComparer.OrdinalIgnoreCase) && vm.PlanExport() is { } plan)
         {
-            var window = new ExportWindow(plan, Environment.CurrentDirectory)
+            var window = new ExportWindow(plan, Environment.CurrentDirectory, vm.Settings.WriteDryRun)
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -638,9 +638,9 @@ public partial class MainWindow : Window
             ? last
             : vm.Project.OriginFolder ?? Environment.CurrentDirectory;
 
-        if (await ExportWindow.AskAsync(this, plan, folder) is { } chosen)
+        if (await ExportWindow.AskAsync(this, plan, folder, vm.Settings.WriteDryRun) is { } chosen)
         {
-            vm.WriteExport(plan, chosen);
+            vm.WriteExport(plan, chosen.Folder, chosen.DryRun);
         }
     }
 

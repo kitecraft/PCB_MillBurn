@@ -232,7 +232,13 @@ public sealed partial class MainViewModel : ViewModelBase
             _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter);
     }
 
-    public bool WriteExport(ExportPlan plan, string folder)
+    /// <summary>
+    /// Writes the plan, optionally with a dry run of each program beside it.
+    ///
+    /// The dry runs are built from the emitted text, not from the toolpaths, so what you watch in
+    /// the air is the file you are about to run — the same reasoning as the backplot.
+    /// </summary>
+    public bool WriteExport(ExportPlan plan, string folder, bool dryRun = false)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(folder);
@@ -245,8 +251,38 @@ public sealed partial class MainViewModel : ViewModelBase
                 File.WriteAllText(Path.Combine(folder, item.TargetName), item.Content);
             }
 
-            SaveSettings(Settings with { LastExportFolder = folder });
-            StatusMessage = $"Wrote {plan.Count} file(s) to {folder}.";
+            var extra = 0;
+            var refused = 0;
+
+            if (dryRun)
+            {
+                foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
+                {
+                    var (text, report) = DryRun.Rewrite(item.Content);
+
+                    // A refusal is not a failure of the export: the real program is written and
+                    // correct. It only means this one could not be traced in the air, and saying
+                    // so is far better than writing a dry run that might not be one.
+                    if (report.Refusal is not null)
+                    {
+                        refused++;
+                        continue;
+                    }
+
+                    var name = Path.GetFileNameWithoutExtension(item.TargetName)
+                        + ".dryrun" + Path.GetExtension(item.TargetName);
+
+                    File.WriteAllText(Path.Combine(folder, name), text);
+                    extra++;
+                }
+            }
+
+            SaveSettings(Settings with { LastExportFolder = folder, WriteDryRun = dryRun });
+
+            StatusMessage = refused > 0
+                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refused} program(s) could not be dry run."
+                : $"Wrote {plan.Count + extra} file(s) to {folder}.";
+
             return true;
         }
         catch (Exception ex) when (IsExpected(ex))

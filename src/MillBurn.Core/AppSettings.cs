@@ -64,6 +64,15 @@ public sealed record AppSettings
 
     public string? LastExportFolder { get; init; }
 
+    /// <summary>
+    /// Whether an export also writes a dry run of each program.
+    ///
+    /// Remembered because it is a habit rather than a decision: someone who wants to watch a job
+    /// in the air before committing to it wants that for every job, not for the one they thought
+    /// to tick the box on.
+    /// </summary>
+    public bool WriteDryRun { get; init; }
+
     /// <summary>Where the window was when it was last closed, or null if it never has been.</summary>
     public WindowPlacement? Window { get; init; }
 

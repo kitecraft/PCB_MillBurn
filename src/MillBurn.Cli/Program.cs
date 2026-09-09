@@ -25,6 +25,8 @@ internal static class Program
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
             Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode, --write, -o <dir>");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none  (svg- inverts)");
+            Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
+            Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("  tools [list|add|remove|path]   Manage the saved tool library");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
@@ -1341,7 +1343,21 @@ internal static class Program
 
         var thicknessMm = 1.6;
         var write = args.Contains("--write", StringComparer.OrdinalIgnoreCase);
+        var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
+        var dryRunHeightMm = 5.0;
         OutputKind? only = null;
+
+        if (Argument(args, "--dry-run-height") is { } heightText)
+        {
+            if (!double.TryParse(heightText, NumberStyles.Float, CultureInfo.InvariantCulture, out dryRunHeightMm)
+                || dryRunHeightMm <= 0)
+            {
+                Console.Error.WriteLine("--dry-run-height needs a positive height in millimetres.");
+                return 1;
+            }
+
+            dryRun = true;
+        }
 
         if (Argument(args, "--only") is { } filter)
         {
@@ -1450,9 +1466,35 @@ internal static class Program
         var plan = ExportPlanner.Plan(
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only);
 
+        // Companion programs that trace the same path in the air. Built here rather than at write
+        // time so that a plain `export --dry-run` — no --write — still reports whether each one
+        // came out safe. A refusal is worth knowing about before you have committed to anything.
+        var dryRuns = new Dictionary<string, string>(StringComparer.Ordinal);
+        var dryRunNotes = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (dryRun)
+        {
+            foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
+            {
+                var (text, report) = DryRun.Rewrite(
+                    item.Content, new DryRunOptions { HeightMm = dryRunHeightMm });
+
+                if (report.Refusal is { } refusal)
+                {
+                    dryRunNotes[item.TargetName] = $"no dry run: {refusal}";
+                    continue;
+                }
+
+                var name = DryRunName(item.TargetName);
+                dryRuns[name] = text;
+                dryRunNotes[item.TargetName] = FormattableString.Invariant(
+                    $"dry run    {name} · held at {report.LowestZMm:F3} mm, spindle off");
+            }
+        }
+
         Console.WriteLine(board.Source);
         Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
-        Line($"  files       {plan.Count}");
+        Line($"  files       {plan.Count + dryRuns.Count}");
         Console.WriteLine();
 
         foreach (var item in plan.Items)
@@ -1463,6 +1505,11 @@ internal static class Program
             foreach (var line in item.Summary)
             {
                 Line($"  {"",-4}{line}");
+            }
+
+            if (dryRunNotes.TryGetValue(item.TargetName, out var note))
+            {
+                Line($"  {"",-4}{note}");
             }
 
             foreach (var warning in item.Warnings)
@@ -1492,9 +1539,24 @@ internal static class Program
             File.WriteAllText(Path.Combine(outDir, item.TargetName), item.Content);
         }
 
-        Line($"  wrote       {plan.Count} file(s) to {outDir}");
+        foreach (var (name, text) in dryRuns)
+        {
+            File.WriteAllText(Path.Combine(outDir, name), text);
+        }
+
+        Line($"  wrote       {plan.Count + dryRuns.Count} file(s) to {outDir}");
         return plan.HasWarnings ? 2 : 0;
     }
+
+    /// <summary>
+    /// <c>Board-F_Cu.nc</c> becomes <c>Board-F_Cu.dryrun.nc</c>.
+    ///
+    /// Before the extension rather than after, so it still opens in a sender and still sorts next
+    /// to the program it belongs to — and so that nobody has to wonder which of two files in a
+    /// folder is the one that cuts.
+    /// </summary>
+    private static string DryRunName(string target) =>
+        Path.GetFileNameWithoutExtension(target) + ".dryrun" + Path.GetExtension(target);
 
     private static void Line(FormattableString text) =>
         Console.WriteLine(FormattableString.Invariant(text));

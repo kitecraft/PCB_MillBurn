@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using MillBurn.Core;
 using MillBurn.Pipeline;
 
 namespace MillBurn.App.Views;
@@ -21,17 +22,30 @@ public sealed class ExportWindow : Window
 {
     private readonly ExportPlan _plan;
     private readonly TextBlock _folderText;
+    private readonly CheckBox _dryRun;
     private string _folder;
 
-    /// <summary>The folder chosen, or null if the export was called off.</summary>
-    public string? Result { get; private set; }
+    /// <summary>What was chosen, or null if the export was called off.</summary>
+    public ExportChoice? Result { get; private set; }
 
-    public ExportWindow(ExportPlan plan, string folder)
+    public ExportWindow(ExportPlan plan, string folder, bool dryRun)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
         _plan = plan;
         _folder = folder;
+
+        _dryRun = new CheckBox
+        {
+            Content = "Also write a dry run of each program",
+            IsChecked = dryRun,
+            IsEnabled = plan.Items.Any(i => i.Output == OutputKind.Gcode),
+        };
+
+        ToolTip.SetTip(
+            _dryRun,
+            "A second copy of each .nc that holds the tool 5 mm up and never starts the spindle, "
+            + "so you can watch the whole job run before it touches anything.");
 
         Title = "Export";
         Width = 640;
@@ -53,17 +67,18 @@ public sealed class ExportWindow : Window
     {
         var root = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto"),
             Margin = new Thickness(18),
         };
 
         var heading = new StackPanel { Spacing = 4 };
-        heading.Children.Add(new TextBlock
-        {
-            Text = _plan.Count == 1 ? "1 file will be written" : $"{_plan.Count} files will be written",
-            FontSize = 15,
-            FontWeight = FontWeight.SemiBold,
-        });
+
+        // The count follows the checkbox. This window exists to say what will be written, so a
+        // heading that stays at four while eight files land would be the one thing it got wrong.
+        var count = new TextBlock { FontSize = 15, FontWeight = FontWeight.SemiBold };
+        UpdateCount(count);
+        _dryRun.IsCheckedChanged += (_, _) => UpdateCount(count);
+        heading.Children.Add(count);
         heading.Children.Add(Token(new TextBlock
         {
             Text = "One file per layer, all sharing the board's lower-left corner as work zero.",
@@ -122,6 +137,9 @@ public sealed class ExportWindow : Window
         Grid.SetRow(folderRow, 2);
         root.Children.Add(folderRow);
 
+        Grid.SetRow(_dryRun, 3);
+        root.Children.Add(_dryRun);
+
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -140,16 +158,26 @@ public sealed class ExportWindow : Window
         };
         write.Click += (_, _) =>
         {
-            Result = _folder;
+            Result = new ExportChoice(_folder, _dryRun.IsChecked == true);
             Close();
         };
 
         buttons.Children.Add(cancel);
         buttons.Children.Add(write);
-        Grid.SetRow(buttons, 3);
+        Grid.SetRow(buttons, 4);
         root.Children.Add(buttons);
 
         return root;
+    }
+
+    private void UpdateCount(TextBlock text)
+    {
+        var extra = _dryRun.IsChecked == true
+            ? _plan.Items.Count(i => i.Output == OutputKind.Gcode)
+            : 0;
+
+        var total = _plan.Count + extra;
+        text.Text = total == 1 ? "1 file will be written" : $"{total} files will be written";
     }
 
     /// <summary>
@@ -228,14 +256,24 @@ public sealed class ExportWindow : Window
         return control;
     }
 
-    /// <summary>Shows the plan and returns the folder to write to, or null if it was called off.</summary>
-    public static async Task<string?> AskAsync(Window owner, ExportPlan plan, string folder)
+    /// <summary>Shows the plan and returns what to do, or null if it was called off.</summary>
+    public static async Task<ExportChoice?> AskAsync(
+        Window owner, ExportPlan plan, string folder, bool dryRun)
     {
         ArgumentNullException.ThrowIfNull(owner);
 
         // A dialog is its own top level, so it does not inherit the variant the user chose.
-        var window = new ExportWindow(plan, folder) { RequestedThemeVariant = owner.ActualThemeVariant };
+        var window = new ExportWindow(plan, folder, dryRun)
+        {
+            RequestedThemeVariant = owner.ActualThemeVariant,
+        };
+
         await window.ShowDialog(owner);
         return window.Result;
     }
 }
+
+/// <summary>Where the files go, and whether a dry run goes with them.</summary>
+/// <param name="Folder">The folder to write into.</param>
+/// <param name="DryRun">Whether each program gets a companion that cuts nothing.</param>
+public sealed record ExportChoice(string Folder, bool DryRun);

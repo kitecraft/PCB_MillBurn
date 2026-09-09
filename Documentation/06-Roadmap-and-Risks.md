@@ -581,7 +581,46 @@ the etched result is dimensionally within one etch-bias unit of nominal.
 Still to come in this phase: copper inversion and pad selection, kerf and etch-bias offsets, the
 LightBurn layer preset, DXF, and the calibration generators.
 
-### Phase 5 — Jobs, setups, alignment
+### Phase 5 — Jobs, setups, alignment — **started**
+
+**The dry-run generator is done.** `DryRun.Rewrite` turns an emitted program into one that traces
+the same path 5 mm in the air with the spindle never started: `export --dry-run` writes
+`Board-F_Cu.dryrun.nc` beside `Board-F_Cu.nc`, and the Export window offers the same as a
+checkbox that is remembered.
+
+It rewrites **the emitted file**, not the toolpath — the same reasoning as the backplot
+([05 §2.1](05-Testing-Strategy.md)). Those two agree right up until the emitter has a bug, and only
+one of them is what the machine will run; a dry run generated from the toolpath would faithfully
+prove the safety of a program nobody is about to run.
+
+Three decisions are worth recording, because each is the difference between a safety feature and a
+plausible-looking one.
+
+*The rise is in the preamble, not trusted to the file.* Every program this app emits does lift
+before it travels — but a dry run is exactly the thing you point at a file you are unsure of, and
+"safe as long as the file was already sensible" is not a guarantee worth making. So the output
+opens with `M5`, an explicit `G21 G90`, and `G0 Z<height>`.
+
+*The claim is checked by re-parsing the result.* Not "we substituted every Z", which is a statement
+about the rewrite, but "nothing that moves in X or Y does so below the height", measured through
+`GcodeParser` on the text that will be written. The first version asserted the weaker "no Z below
+the height" and immediately caught itself out: the parser starts at Z0, so a program can satisfy it
+and still drag the tool sideways before it has risen. The stronger property is the one that matters
+and it is the one the tests assert.
+
+*Incremental mode is refused rather than guessed at.* Under `G91` a Z word is a change, not a
+position, so substituting an absolute height sends the tool somewhere nobody asked for. Nothing we
+emit does that; other people's files might. **A dry run that is wrong is worse than none, because
+it is the thing people trust before committing a board** — so it hands back the original untouched
+and says why. (`G91.1` is arc-centre mode and is not mistaken for it.)
+
+Feeds are kept by default, so the dry run takes as long as the real one. Half the value of watching
+a job in the air is finding out it is a ninety-minute job.
+
+This also unblocks the travel-at-depth optimisation deferred in Phase 3, whose failure mode was the
+cutter crossing a trace at depth with no way to see it coming.
+
+Still to come in this phase:
 
 - Job / Step / Setup / Fixture model; automatic insertion of fiducial and alignment steps.
 - Fiducial generation (drilled holes, copper crosses, engraved marks) with survivability rules
@@ -592,7 +631,6 @@ LightBurn layer preset, DXF, and the calibration generators.
 - Probe-routine *generator* + probe-log *importer* (UGS surface scanner, Candle heightmap, bCNC,
   plain CSV).
 - Height mapping with TPS interpolation, reused across a Setup.
-- Dry-run verification file generator.
 - **Corner-stop fixture generator** — the recommended default
   ([04 §4.1.1](04-Machines-Laser-and-Mixed-Workflows.md#411-the-corner-stop--the-recommended-default)).
   3-2-1 pad placement sized from the stock, relieved inside corners, stop height derived from

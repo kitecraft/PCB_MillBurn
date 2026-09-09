@@ -25,6 +25,7 @@
   <ul>
     <li><a href="#files">The exported files</a></li>
     <li><a href="#zero">Where is work zero?</a></li>
+    <li><a href="#dryrun">Watching a job before it cuts anything</a></li>
     <li><a href="#vbit">Why does the isolation depth change the cut width?</a></li>
     <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
     <li><a href="#tabs">Tabs, and what happens if you use none</a></li>
@@ -98,6 +99,56 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 <p>
   So: jog to the lower-left corner of where the board will be, zero X and Y there, and load any of
   the files. They all agree.
+</p>
+
+<h2 id="dryrun">Watching a job before it cuts anything</h2>
+
+<p>
+  Tick <strong>Also write a dry run of each program</strong> in the Export window and every
+  <code>.nc</code> gets a companion beside it &mdash; <code>Board-F_Cu.dryrun.nc</code> next to
+  <code>Board-F_Cu.nc</code>. It traces exactly the same path, held <strong>5&nbsp;mm above work
+  zero</strong>, with the spindle never started. Set work zero as you would for the real job, run
+  the dry one, and watch.
+</p>
+
+<p>
+  It answers the questions that otherwise cost a board: is work zero where you think it is, does
+  the job fit on the stock, does it reach past a clamp, is the cutter on the side of the line you
+  expected, and how long is this actually going to take. Until this existed the first run of any
+  program was into copper.
+</p>
+
+<div class="note">
+  <p>
+    The feeds are kept, so the dry run takes as long as the real one. That is deliberate: half the
+    value is finding out that a job you were about to start is a ninety-minute job.
+  </p>
+</div>
+
+<p>
+  The rewrite is done on the <em>emitted file</em>, not on the toolpath that produced it. Those two
+  agree right up until the emitter has a bug &mdash; and only one of them is what the machine will
+  run. Every Z word becomes the safe height, every <code>M3</code>/<code>M4</code> is removed, an
+  <code>M5</code> and a lift are put at the top before anything moves sideways, and the result is
+  read back and measured before it is written.
+</p>
+
+<div class="warn">
+  <p>
+    A dry run proves the <em>path</em>, not the machine. It cannot know that your tool is long
+    enough to reach, that the stock is where the fixture thinks, or that a clamp will be in the
+    way at depth. Watch it; do not walk away from it.
+  </p>
+  <p>
+    A program that selects incremental mode (<code>G91</code>) is refused rather than rewritten: a
+    Z word there is a change, not a position, so substituting a height would send the tool
+    somewhere nobody asked for. Nothing this app emits does that, but files from elsewhere might.
+  </p>
+</div>
+
+<p>
+  From the command line: <code>millburn export &lt;folder&gt; --dry-run --write</code>, with
+  <code>--dry-run-height&nbsp;&lt;mm&gt;</code> if 5&nbsp;mm is not the clearance you want.
 </p>
 
 <h2 id="vbit">Why does the isolation depth change the cut width?</h2>
@@ -176,8 +227,8 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
   <p>
     On a panel that means the frame gets tabs and the boards inside it do not &mdash; they are
     already joined to each other by whatever the designer drew. Adding four more to every one of
-    board leaves a panel that has to be cut apart by hand, which is the opposite of what
-    tabs are for.
+    them leaves a panel that has to be cut apart by hand, which is the opposite of what tabs
+    are for.
   </p>
 </div>
 
