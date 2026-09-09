@@ -32,6 +32,7 @@ internal static class Program
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
+            Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none records what a layer becomes");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
             Console.WriteLine("  board <directory>              Load a whole export folder: detect layers, realise, report");
@@ -666,11 +667,82 @@ internal static class Program
             return 1;
         }
 
+        // Layer outputs can be set here too, so a configured project is scriptable rather than
+        // only clickable — and so the round trip can be checked without a person in the loop.
+        if (ApplyLayerSettings(args, project) is { } failure)
+        {
+            Console.Error.WriteLine(failure);
+            return 1;
+        }
+
         ProjectFile.Save(project, output);
         Console.WriteLine(output);
         Line($"  sources     {project.Sources.Length} files embedded");
         Line($"  origin      {project.OriginFolder}");
+
+        if (project.Settings.LayerOutputs.Length > 0)
+        {
+            Line($"  outputs     {project.Settings.LayerOutputs.Length} layers configured");
+        }
+
         return 0;
+    }
+
+    /// <summary>
+    /// Applies every <c>--set layer=kind</c> to a project. Returns a message on failure, null on
+    /// success.
+    /// </summary>
+    private static string? ApplyLayerSettings(string[] args, MillBurnProject project)
+    {
+        var names = project.Sources.Select(s => s.FileName).ToList();
+
+        for (var i = 2; i < args.Length - 1; i++)
+        {
+            if (!args[i].Equals("--set", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parts = args[i + 1].Split('=', 2);
+            if (parts.Length != 2)
+            {
+                return $"--set wants <layer>=<svg|svg-|gcode|none>, got '{args[i + 1]}'.";
+            }
+
+            var inverted = parts[1].EndsWith('-');
+            var kind = parts[1].TrimEnd('-').ToLowerInvariant() switch
+            {
+                "svg" => OutputKind.Svg,
+                "gcode" or "nc" => OutputKind.Gcode,
+                "none" or "off" => OutputKind.None,
+                _ => (OutputKind?)null,
+            };
+
+            if (kind is null)
+            {
+                return $"--set wants svg, svg-, gcode or none, got '{parts[1]}'.";
+            }
+
+            var matched = names
+                .Where(n => n.Contains(parts[0], StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (matched.Count == 0)
+            {
+                return $"No layer matching '{parts[0]}'.";
+            }
+
+            foreach (var name in matched)
+            {
+                var existing = project.Settings.OutputFor(name)
+                    ?? new LayerOutputSettings { FileName = name };
+
+                project.Settings = project.Settings.WithOutput(
+                    existing with { Output = kind.Value, Invert = inverted });
+            }
+        }
+
+        return null;
     }
 
     private static int ProjectInfo(string path)
@@ -1294,11 +1366,19 @@ internal static class Program
         }
 
         Board board;
+        MillBurnProject? project = null;
+
         try
         {
-            board = input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
-                ? ProjectFile.ToBoard(ProjectFile.Open(input))
-                : BoardLoader.LoadFolder(input);
+            if (input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                project = ProjectFile.Open(input);
+                board = ProjectFile.ToBoard(project);
+            }
+            else
+            {
+                board = BoardLoader.LoadFolder(input);
+            }
         }
         catch (Exception ex) when (ex is IOException or DirectoryNotFoundException or InvalidDataException)
         {
@@ -1306,15 +1386,18 @@ internal static class Program
             return 1;
         }
 
-        // Defaults per role, which is what most boards want: cut the top copper, drill the holes,
-        // cut the outline, and leave everything else alone.
+        // A project's own settings first, then defaults per role for anything it never recorded.
+        //
+        // Defaulting everything when a project was given would export a different job from the one
+        // that was configured and saved, which is the whole reason the settings are in the file.
         var settings = board.Layers.ToDictionary(
             l => l.FileName,
-            l => new LayerOutputSettings
-            {
-                FileName = l.FileName,
-                Output = LayerOperations.DefaultFor(l.Role),
-            },
+            l => project?.Settings.OutputFor(l.FileName)
+                ?? new LayerOutputSettings
+                {
+                    FileName = l.FileName,
+                    Output = LayerOperations.DefaultFor(l.Role),
+                },
             StringComparer.Ordinal);
 
         // Per-layer overrides, repeatable: --set F_Cu=svg --set Edge_Cuts=none. Matching on a

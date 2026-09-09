@@ -336,6 +336,24 @@ survived every screenshot. Fixed at the root, and again at the guard: `NeedsSavi
 believes itself to be. A prompt that appears when there is nothing to lose is not an extra
 safeguard — it is what teaches people to dismiss the prompt without reading it.
 
+**A project did not remember what its layers become, and that is the document.** It embedded the
+Gerbers, embedded the tools it was cut with, kept the hidden layers — and the per-layer output
+settings were session state, so opening a saved project handed back the defaults. Nothing about the
+file showed it; the job simply came out differently the second time.
+
+`ProjectSettings.LayerOutputs` holds them now, keyed by file name — the only identifier that
+survives a refresh, since roles repeat and indices move when a file is added. The view model writes
+straight through to the project rather than keeping its own copy, because two answers to "what does
+this layer become" means the one that gets saved is whichever was updated last. Untouched layers are
+not recorded at all, so their defaults can still improve without silently overriding a choice nobody
+made.
+
+Fixing the storage exposed the consumer: the CLI's `export` built its own role defaults even when
+handed a project, so a configured, saved job still exported as if it had never been configured. It
+reads the project's own settings first now. `project save` gained the same `--set` as `export`, so a
+configured project is scriptable rather than only clickable — which is also what makes the round
+trip checkable without a person in the loop.
+
 ### Phase 3 — The optimizer — **in progress**
 
 - GTSP model with entry-configuration sets, closed-loop free start.

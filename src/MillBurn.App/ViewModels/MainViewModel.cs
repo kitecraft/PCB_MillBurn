@@ -179,6 +179,7 @@ public sealed partial class MainViewModel : ViewModelBase
             // The view state is session state, but it is worth keeping: capture it at save time
             // rather than letting it mark the document dirty as it changes.
             _project.ViewState = CaptureViewState();
+            RecordOutputs();
             ProjectFile.Save(_project, path);
             SaveSettings(Settings.WithRecent(path));
             RefreshTitles();
@@ -222,9 +223,10 @@ public sealed partial class MainViewModel : ViewModelBase
             return null;
         }
 
-        var settings = Layers
-            .Where(r => r.Layer is not null)
-            .ToDictionary(r => r.FileName, r => r.ToSettings(), StringComparer.Ordinal);
+        RecordOutputs();
+
+        var settings = _project.Settings.LayerOutputs.ToDictionary(
+            o => o.FileName, o => o, StringComparer.Ordinal);
 
         return ExportPlanner.Plan(
             _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter);
@@ -606,10 +608,6 @@ public sealed partial class MainViewModel : ViewModelBase
         var byName = board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
         var backplotRuns = _backplot.ToDictionary(b => b.Id, b => b.Runs.Count, StringComparer.Ordinal);
 
-        var chosen = Layers
-            .Where(r => r.Layer is not null)
-            .ToDictionary(r => r.FileName, r => r.ToSettings(), StringComparer.Ordinal);
-
         _suspendOutputChanges = true;
         Layers.Clear();
 
@@ -617,9 +615,11 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             if (byName.TryGetValue(layer.Id, out var source))
             {
-                var settings = chosen.TryGetValue(layer.Id, out var existing)
-                    ? existing
-                    : new LayerOutputSettings
+                // The project is the only place these live. Keeping a second copy in the view would
+                // mean two answers to "what does this layer become", and the one that got saved
+                // would be whichever was updated last.
+                var settings = _project.Settings.OutputFor(layer.Id)
+                    ?? new LayerOutputSettings
                     {
                         FileName = layer.Id,
                         Output = LayerOperations.DefaultFor(source.Role),
@@ -696,6 +696,7 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
+        RecordOutputs();
         _project.Touch();
 
         if (_backplot.Count == 0)
@@ -708,6 +709,25 @@ public sealed partial class MainViewModel : ViewModelBase
         GcodeSummary = string.Empty;
         Rebuild(TimeSpan.Zero);
         StatusMessage = "Output changed. Preview again to see the new programs.";
+    }
+
+    /// <summary>
+    /// Copies every layer's settings into the project.
+    ///
+    /// Whole rather than incremental: a layer whose output changed can also have had its tool
+    /// swapped underneath it, and writing only the field that raised the event is how the two
+    /// drift apart.
+    /// </summary>
+    private void RecordOutputs()
+    {
+        var settings = _project.Settings;
+
+        foreach (var row in Layers.Where(r => r.Layer is not null))
+        {
+            settings = settings.WithOutput(row.ToSettings());
+        }
+
+        _project.Settings = settings;
     }
 
     partial void OnBoardThicknessMmChanged(double value)

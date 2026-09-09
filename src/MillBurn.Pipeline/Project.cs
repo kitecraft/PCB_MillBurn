@@ -124,6 +124,20 @@ public sealed record ProjectSettings
     /// </summary>
     public ImmutableArray<Tool> Tools { get; init; } = [];
 
+    /// <summary>
+    /// What each layer becomes, keyed by the layer's own file name.
+    ///
+    /// This is the document. A project that remembers its Gerbers but not that the soldermask is an
+    /// inverted SVG, that the bottom copper is mirrored, or that the outline wants six tabs is a
+    /// project that has to be set up again every time it is opened — and the second setup is the
+    /// one that quietly differs from the first.
+    ///
+    /// Keyed by file name because that is what identifies a layer across a refresh: roles can
+    /// repeat, indices move when a file is added, and the name is what the EDA tool will write
+    /// again next time.
+    /// </summary>
+    public ImmutableArray<LayerOutputSettings> LayerOutputs { get; init; } = [];
+
     /// <summary>Which of <see cref="Tools"/> does what. Null falls back to the built-in default.</summary>
     public Guid? IsolationToolId { get; init; }
 
@@ -136,6 +150,30 @@ public sealed record ProjectSettings
     /// <summary>Resolves the stored selection, falling back to the built-ins.</summary>
     public Tool ToolFor(Guid? id, Tool fallback) =>
         id is { } wanted ? Tools.FirstOrDefault(t => t.Id == wanted) ?? fallback : fallback;
+
+    /// <summary>What this layer was set to, or nothing if it has never been set.</summary>
+    public LayerOutputSettings? OutputFor(string fileName) =>
+        LayerOutputs.FirstOrDefault(o => string.Equals(o.FileName, fileName, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Records one layer's settings, replacing whatever was there.
+    ///
+    /// Ordered by file name so two projects configured the same way save the same bytes — a
+    /// manifest whose order depends on which layer the user happened to touch last cannot be
+    /// diffed.
+    /// </summary>
+    public ProjectSettings WithOutput(LayerOutputSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var others = LayerOutputs.Where(
+            o => !string.Equals(o.FileName, settings.FileName, StringComparison.Ordinal));
+
+        return this with
+        {
+            LayerOutputs = [.. others.Append(settings).OrderBy(o => o.FileName, StringComparer.Ordinal)],
+        };
+    }
 }
 
 /// <summary>
