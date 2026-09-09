@@ -301,6 +301,22 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </li>
 </ol>
 
+<div class="note">
+  <p>
+    <strong>Your sender&rsquo;s preview of the probing file may look alarming, and be wrong.</strong>
+    Plenty of G-code viewers have no <code>G38.2</code> in their vocabulary &mdash; it is
+    &ldquo;probe toward the work&rdquo;, not a cutting move &mdash; and simply skip the line. The
+    preview then shows <em>no Z movement at all</em>, or draws the tool going down at the first
+    point and dragging across the whole board at depth.
+  </p>
+  <p>
+    The file is right; the picture is not. Every touch in it is three lines: a move to the point at
+    <code>Z1.000</code>, a probe down, and a retract back to <code>Z1.000</code>. You can read them
+    in the file, and the header says so as well, because this is the moment it matters. Nothing in a
+    probing routine cuts &mdash; there is no spindle command in it at all.
+  </p>
+</div>
+
 <div class="warn">
   <p>
     <strong>Work zero must be in exactly the same place when you cut as when you probed.</strong>

@@ -193,15 +193,33 @@ public static class ProbeRoutine
         var depth = Millimetres(-Nm.FromMillimetres(options.MaxDepthMm));
         var feed = options.FeedMmPerMin.ToString("0.###", CultureInfo.InvariantCulture);
 
-        lines.Add("( ******************************************************** )");
-        lines.Add("( PROBE ROUTINE. This program cuts nothing.                 )");
-        lines.Add(Invariant($"( {columns} x {rows} = {columns * rows} touches at {spacingMm:F1} mm spacing. )"));
-        lines.Add(Invariant($"( About {minutes:F0} minute(s). Work zero is the board's lower-left )"));
-        lines.Add("( corner, the same as every other file in this export.      )");
-        lines.Add("(                                                           )");
-        lines.Add("( Put a probe on the tool and a clip on the copper, zero Z   )");
-        lines.Add("( on the surface, then run this and save your sender's log.  )");
-        lines.Add("( ******************************************************** )");
+        var grid = Invariant(
+            $"{columns} x {rows} = {columns * rows} touches at {spacingMm:F1} mm spacing.");
+        var howLong = Invariant($"About {minutes:F0} minutes of standing and watching.");
+
+        lines.Add(Rule());
+        lines.Add(Boxed("PROBE ROUTINE. This program cuts nothing."));
+        lines.Add(Boxed(string.Empty));
+        lines.Add(Boxed(grid));
+        lines.Add(Boxed(howLong));
+        lines.Add(Boxed("Work zero is the board's lower-left corner, the same"));
+        lines.Add(Boxed("as every other file in this export."));
+        lines.Add(Boxed(string.Empty));
+        lines.Add(Boxed("Put a probe on the tool and a clip on the copper, zero"));
+        lines.Add(Boxed("Z on the surface, run this, and save your sender's log."));
+        lines.Add(Boxed(string.Empty));
+
+        // Said here rather than only in the help, because this is what the operator is looking at
+        // the moment it happens. Plenty of G-code viewers have no G38.2 in their vocabulary, and a
+        // preview that appears to show the tool dragging through the board is exactly the sort of
+        // thing that stops someone pressing start — rightly, if they had no way to know better.
+        lines.Add(Boxed("YOUR SENDER'S PREVIEW MAY LOOK WRONG. Many G-code"));
+        lines.Add(Boxed("viewers do not understand G38.2 - probe toward the"));
+        lines.Add(Boxed("work - so they draw no Z movement at all, or show the"));
+        lines.Add(Boxed("tool dragging across the board at depth. The file is"));
+        lines.Add(Boxed(Invariant($"right: every touch is a move at Z{start}, a probe")));
+        lines.Add(Boxed(Invariant($"down, and a retract to Z{start}. Nothing here cuts.")));
+        lines.Add(Rule());
         lines.Add("M5");
         lines.Add("G21 G90");
         lines.Add(Invariant($"G0 Z{safe}"));
@@ -231,6 +249,22 @@ public static class ProbeRoutine
 
         return string.Join("\n", lines);
     }
+
+    /// <summary>The width of the comment box, so the header lines up however long the numbers are.</summary>
+    private const int BoxWidth = 56;
+
+    private static string Rule() => "( " + new string('*', BoxWidth) + " )";
+
+    /// <summary>
+    /// One line of the header box.
+    ///
+    /// Brackets are stripped rather than trusted. A G-code comment runs to its closing bracket, so
+    /// an innocent "minute(s)" ends the comment early and leaves the rest of the sentence to be
+    /// read as code; LinuxCNC rejects the nested opening bracket outright. Easier to make that
+    /// impossible here than to remember it in every line of prose.
+    /// </summary>
+    private static string Boxed(string text) =>
+        "( " + text.Replace('(', '[').Replace(')', ']').PadRight(BoxWidth) + " )";
 
     private static string Millimetres(long nm) =>
         (nm / (double)Nm.PerMillimetre).ToString("0.000", CultureInfo.InvariantCulture);
