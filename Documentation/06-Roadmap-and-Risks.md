@@ -727,28 +727,33 @@ bit goes first, which was right all along and is worth pinning.
 
 ### Requested, not yet scheduled
 
-Five ideas from the workshop, recorded here so they keep their reasoning. The first is done; the
-rest are sized but unbuilt.
+Five ideas from the workshop, recorded here so they keep their reasoning. The first three are done;
+the last two are sized but unbuilt.
 
 **An app icon.** Done. `art/millburn-logo.png` is the source; `art/make-icons.py` cuts the mark out
 of it — the wordmark is dropped, because at 16 px "PCB_MillBurn" set across a taskbar tile is a grey
 smear — and writes `Assets/millburn.png` for the window icon and `Assets/millburn.ico` for the
 executable. Regenerate by running the script; do not hand-edit the outputs.
 
-**A drilling companion, as HTML beside the program.** The operator's problem with a drill file is
-not the toolpath, it is the choreography: which bit goes in first, when it stops, what to put in
-next, and how many holes each one makes. All of that is already known at export time — the program
-even has it in comments — and a comment in a `.nc` is the wrong place to read it from, because the
-person needing it is standing at the machine with the sender open, not a text editor.
+**A drilling companion, as HTML beside the program.** Done. `MyBoard-PTH.drilling.html` lands next
+to `MyBoard-PTH.nc`: the bits in the order they go in, hole counts, per-section times, the line each
+section starts at, and the setup notes that matter — sacrificial board, biggest bit first, and
+re-zero Z after every change. A checkbox on the drill layer, on by default. One self-contained file
+with no links out, because it opens on a workshop machine that has never been online.
 
-So: one page per drill program, opened in a browser, with the bits in order, their diameters and
-hole counts, where in the run each change falls, and roughly how long each section takes. A
-checkbox on the drill layer, on by default. The same page shape would suit the outline and the
-isolation later, but drilling is where it earns its keep, because drilling is the operation with
-tool changes in it.
+Derived from **the emitted program**, like the backplot, the dry run and the leveller: it splits the
+file at its `M0` stops and measures each section, so the times are the file's own rather than an
+estimate of what was intended.
 
-Worth doing **after** the fix that made tool changes real. Until that landed, a companion file would
-have described a run that was not happening.
+One bug worth remembering, because the shape of it recurs. The emitter writes a toolpath's label
+*before* the tool-change sequence that precedes it, so splitting at `M0` leaves every label attached
+to the section before the one it names. The first version read each section's label out of that
+section and confidently listed the second bit as "the bit already in the spindle". Labels are now
+collected across the whole file in order and zipped with the sections. **A guide that names the
+wrong bit is worse than no guide**, because somebody will follow it.
+
+The same page shape would suit the outline and isolation later, but drilling is where it earns its
+keep: it is the only operation with tool changes in it.
 
 **How far to take tool configuration.** Fusion's tool dialog is the reference the question came
 with, and most of it is there to feed two things we do not have and do not plan: a materials
@@ -775,6 +780,16 @@ So the answer to "how far can we go" is: **four more fields, not thirty** — fl
 and the two derived numbers shown next to them — and the payoff is not the fields but the warnings
 they make possible. A tool dialog that says "this is 2 µm a tooth, you are rubbing not cutting" is
 worth more than one with every dimension of the bit and no opinion about any of them.
+
+**Built.** `Tool.Flutes` and `Tool.FluteLengthNm` are stored; `ChipLoadNm`, `SurfaceSpeedMPerMin`,
+`PlungePerRevNm` and `UsableDepthNm` are derived and `[JsonIgnore]`d, along with `WidthPerDepth`
+which was being written into `tools.json` as though it were a decision rather than a consequence.
+`ToolAdvice` turns them into warnings, shown in `tools list` and against the operation at export.
+
+Running it against the shipped library immediately caught the advice being wrong: it flagged a
+sensible 1.0 mm drill as "rubbing" on its *lateral* feed, which a drill never uses because drilling
+only plunges. Drills are judged on the plunge alone now. Advice that cries wolf gets ignored, and
+then it is worse than none.
 
 **Custom pre- and post-G-code.** Every machine has a ritual: home, set an offset, turn on a vacuum,
 run a tool-length probe, dwell for a spindle to come up. Ours emits a fixed preamble, and anyone

@@ -1571,7 +1571,7 @@ internal static class Program
 
         Console.WriteLine(board.Source);
         Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
-        Line($"  files       {plan.Count + dryRuns.Count + extras.Count}");
+        Line($"  files       {plan.Count + plan.Items.Count(i => i.Companion is not null) + dryRuns.Count + extras.Count}");
 
         if (probeGrid is { } grid)
         {
@@ -1589,6 +1589,11 @@ internal static class Program
             foreach (var line in item.Summary)
             {
                 Line($"  {"",-4}{line}");
+            }
+
+            if (item.Companion is { } guide)
+            {
+                Line($"  {"",-4}guide      {guide.TargetName} · {guide.Description}");
             }
 
             if (dryRunNotes.TryGetValue(item.TargetName, out var note))
@@ -1645,6 +1650,11 @@ internal static class Program
         foreach (var item in plan.Items)
         {
             File.WriteAllText(Path.Combine(outDir, item.TargetName), item.Content);
+
+            if (item.Companion is { } guide)
+            {
+                File.WriteAllText(Path.Combine(outDir, guide.TargetName), guide.Content);
+            }
         }
 
         foreach (var (name, text) in dryRuns.Concat(extras))
@@ -1652,7 +1662,8 @@ internal static class Program
             File.WriteAllText(Path.Combine(outDir, name), text);
         }
 
-        Line($"  wrote       {plan.Count + dryRuns.Count + extras.Count} file(s) to {outDir}");
+        var written = plan.Count + plan.Items.Count(i => i.Companion is not null) + dryRuns.Count + extras.Count;
+        Line($"  wrote       {written} file(s) to {outDir}");
         return plan.HasWarnings ? 2 : 0;
     }
 

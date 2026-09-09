@@ -347,6 +347,13 @@
                                                                        ToolTip.Tip="Uncut bridges holding the board in the stock. Zero cuts it fully free, and the last pass throws it." />
                                                     </Grid>
 
+                                                    <CheckBox Content="Drilling guide"
+                                                              Margin="0"
+                                                              MinHeight="0"
+                                                              IsVisible="{Binding NeedsDrillGuide}"
+                                                              IsChecked="{Binding DrillGuide, Mode=TwoWay}"
+                                                              ToolTip.Tip="Write a page beside the program listing the bits in order, their hole counts, and when it stops to change them." />
+
                                                     <CheckBox Content="Mirrored"
                                                               Margin="0"
                                                               MinHeight="0"

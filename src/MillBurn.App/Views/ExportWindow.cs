@@ -224,7 +224,8 @@ public sealed class ExportWindow : Window
     private void UpdateCount(TextBlock text)
     {
         var programs = _plan.Items.Count(i => i.Output == OutputKind.Gcode);
-        var extra = (_dryRun.IsChecked == true ? programs : 0)
+        var extra = _plan.Items.Count(i => i.Companion is not null)
+            + (_dryRun.IsChecked == true ? programs : 0)
             + (_level.IsChecked == true && _level.IsEnabled ? programs : 0);
 
         var total = _plan.Count + extra;
@@ -258,6 +259,17 @@ public sealed class ExportWindow : Window
             panel.Children.Add(Token(new TextBlock
             {
                 Text = line,
+                FontSize = 11,
+                Margin = new Thickness(12, 1, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+            }, "TextSecondary"));
+        }
+
+        if (item.Companion is { } guide)
+        {
+            panel.Children.Add(Token(new TextBlock
+            {
+                Text = $"+ {guide.TargetName} · {guide.Description}",
                 FontSize = 11,
                 Margin = new Thickness(12, 1, 0, 0),
                 TextWrapping = TextWrapping.Wrap,

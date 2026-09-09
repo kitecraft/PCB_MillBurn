@@ -84,6 +84,7 @@ public sealed partial class LayerRow : ObservableObject
         DepthMm = Nm.ToMillimetres(settings.DepthFor(Operation));
         _depthDefaultedFor = Operation;
         TabCount = settings.TabCount;
+        DrillGuide = settings.WriteDrillGuide;
         Passes = settings.Passes;
         Mirrored = settings.MirrorFor(layer.Role);
         Invert = settings.Invert;
@@ -198,6 +199,10 @@ public sealed partial class LayerRow : ObservableObject
     [ObservableProperty]
     public partial int TabCount { get; set; }
 
+    /// <summary>Drilling only: write the page that explains how to run the program.</summary>
+    [ObservableProperty]
+    public partial bool DrillGuide { get; set; } = true;
+
     /// <summary>Isolation only: how many offsets out from the copper.</summary>
     [ObservableProperty]
     public partial int Passes { get; set; } = 1;
@@ -237,6 +242,12 @@ public sealed partial class LayerRow : ObservableObject
         && Operation is OperationKind.Isolation or OperationKind.Engrave or OperationKind.Pocket;
 
     public bool NeedsTabs => IsGcode && Operation == OperationKind.Outline;
+
+    /// <summary>
+    /// Drilling is the only operation with tool changes in it, so it is the only one where the
+    /// program alone does not tell the operator what to do.
+    /// </summary>
+    public bool NeedsDrillGuide => IsGcode && Operation == OperationKind.Drilling;
 
     public bool NeedsPasses => IsGcode && Operation == OperationKind.Isolation;
 
@@ -314,6 +325,12 @@ public sealed partial class LayerRow : ObservableObject
         _outputChanged?.Invoke();
     }
 
+    partial void OnDrillGuideChanged(bool value)
+    {
+        _ = value;
+        _outputChanged?.Invoke();
+    }
+
     partial void OnPassesChanged(int value)
     {
         _ = value;
@@ -341,6 +358,7 @@ public sealed partial class LayerRow : ObservableObject
         {
             nameof(Output), nameof(Operation), nameof(IsGcode), nameof(IsSvg), nameof(NeedsBreakThrough),
             nameof(NeedsDepth), nameof(NeedsTabs), nameof(NeedsPasses), nameof(NeedsMirror),
+            nameof(NeedsDrillGuide),
             nameof(NeedsInvert), nameof(Tools), nameof(Detail), nameof(TargetName),
         })
         {
@@ -426,6 +444,7 @@ public sealed partial class LayerRow : ObservableObject
         BreakThroughNm = Nm.FromMillimetres(BreakThroughMm),
         DepthNm = Nm.FromMillimetres(DepthMm),
         TabCount = TabCount,
+        WriteDrillGuide = DrillGuide,
         Passes = Passes,
         Mirrored = Mirrored,
         Invert = Invert,

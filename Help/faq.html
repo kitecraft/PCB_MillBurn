@@ -25,6 +25,7 @@
   <ul>
     <li><a href="#files">The exported files</a></li>
     <li><a href="#zero">Where is work zero?</a></li>
+    <li><a href="#drilling">Drilling: which bit, and when it stops</a></li>
     <li><a href="#dryrun">Watching a job before it cuts anything</a></li>
     <li><a href="#vbit">Why does the isolation depth change the cut width?</a></li>
     <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
@@ -68,6 +69,12 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 
 <pre><code>MyBoard-F_Cu.dryrun.nc     the same path, 5 mm up, spindle off
 MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</code></pre>
+
+<p>
+  Drill programs also get a <code>MyBoard-PTH.drilling.html</code>, which is a page rather than a
+  program: the bits in order, their hole counts, and when the run stops to change them. See
+  <a href="#drilling">Drilling: which bit, and when it stops</a>.
+</p>
 
 <p>
   See <a href="#dryrun">Watching a job before it cuts anything</a> and
@@ -115,6 +122,57 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   So: jog to the lower-left corner of where the board will be, zero X and Y there, and load any of
   the files. They all agree.
+</p>
+
+<h2 id="drilling">Drilling: which bit, and when it stops</h2>
+
+<p>
+  Drilling is the only operation with <strong>tool changes</strong> in it, so it is the only one
+  where the program alone does not tell you what to do. A board with holes in four sizes is four
+  runs with three stops between them, and the file says so only in comments you would have to go
+  looking for.
+</p>
+
+<p>
+  So every drill program gets a page beside it &mdash; <code>MyBoard-PTH.drilling.html</code> next to
+  <code>MyBoard-PTH.nc</code> &mdash; listing the bits <strong>in the order they go in</strong>, how
+  many holes each one makes, roughly how long that takes, and which line of the program it starts
+  at. Open it in a browser and work down it.
+</p>
+
+<p>
+  It is one self-contained file with no links out, so it opens on a workshop machine that has never
+  been online. Untick <em>Drilling guide</em> on the layer if you do not want it.
+</p>
+
+<div class="note">
+  <p>
+    <strong>The program stops on its own</strong> between bits &mdash; spindle off, tool lifted
+    clear &mdash; and waits. Change the bit and resume in your sender. X and Y have not moved and do
+    not need re-setting.
+  </p>
+</div>
+
+<div class="warn">
+  <p>
+    <strong>Re-zero Z after every bit change.</strong> A new bit sits at a different height in the
+    collet, and the depths in the program are measured from the surface of the board, not from the
+    spindle. This is the one part of a tool change that cannot be done for you, and getting it wrong
+    either drills nothing or drills through the table.
+  </p>
+</div>
+
+<p>
+  <strong>Biggest bit first.</strong> That is the opposite of what feels natural, and it is
+  deliberate: a small drill wanders when it starts on a surface a larger one has already broken, so
+  the usual reason to go small-to-large does not apply. It also means the delicate bits spend the
+  least time in the spindle.
+</p>
+
+<p>
+  If your drill file lists the same position twice for the same bit &mdash; real ones do &mdash; it
+  is drilled once, and the page says how many were repeated. Drilling a hole that already exists
+  cuts nothing and is how drills get grabbed and snapped.
 </p>
 
 <h2 id="dryrun">Watching a job before it cuts anything</h2>

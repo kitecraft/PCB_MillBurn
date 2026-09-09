@@ -33,8 +33,23 @@ public sealed record ExportItem
     /// <summary>Things that would spoil the result. Never a reason to refuse, always to show.</summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
+    /// <summary>A page written beside this file to explain it, or null.</summary>
+    public ExportCompanion? Companion { get; init; }
+
     public int Bytes => System.Text.Encoding.UTF8.GetByteCount(Content);
 }
+
+/// <summary>
+/// Something written next to a program to explain it, rather than to be run.
+///
+/// Kept beside its item rather than made an item of its own, because it is not a choice the
+/// operator makes about a layer — it belongs to the file it describes and it goes wherever that
+/// file goes.
+/// </summary>
+/// <param name="TargetName">Name only, no directory.</param>
+/// <param name="Content">The whole file.</param>
+/// <param name="Description">One line, for the export report.</param>
+public sealed record ExportCompanion(string TargetName, string Content, string Description);
 
 /// <summary>Everything a single Export would write.</summary>
 public sealed record ExportPlan
@@ -389,6 +404,8 @@ public static class ExportPlanner
             warnings.Add(Invariant($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this."));
         }
 
+        var target = TargetNameFor(layer.FileName, operation, OutputKind.Gcode);
+
         return new ExportItem
         {
             LayerFileName = layer.FileName,
@@ -396,11 +413,60 @@ public static class ExportPlanner
             Role = layer.Role,
             Operation = operation,
             Output = OutputKind.Gcode,
-            TargetName = TargetNameFor(layer.FileName, operation, OutputKind.Gcode),
+            TargetName = target,
             Content = text,
             Summary = summary,
             Warnings = warnings,
+            Companion = operation == OperationKind.Drilling && setting.WriteDrillGuide
+                ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings)
+                : null,
         };
+    }
+
+    /// <summary>
+    /// The page that explains how to run a drilling program.
+    ///
+    /// Built from the emitted text rather than from the toolpaths, like everything else here that
+    /// describes a program: a guide made from the toolpaths would describe the run somebody meant
+    /// rather than the one about to happen.
+    /// </summary>
+    private static ExportCompanion? GuideFor(
+        Board board,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        string target,
+        string program,
+        long thicknessNm,
+        List<string> warnings)
+    {
+        var repeats = layer.Drill is { } drill
+            ? drill.Hits.Count - drill.Hits.DistinctBy(h => (h.Tool, h.At)).Count()
+            : 0;
+
+        var (html, report) = DrillGuide.Build(program, new DrillGuideContext
+        {
+            BoardName = Path.GetFileName(board.Source),
+            LayerLabel = layer.Label,
+            ProgramName = target,
+            BoardThicknessNm = thicknessNm,
+            BreakThroughNm = setting.BreakThroughNm,
+            RepeatedPositions = repeats,
+            Warnings = warnings,
+        });
+
+        if (report.Steps.Count == 0)
+        {
+            return null;
+        }
+
+        var changes = report.Changes == 1 ? "1 tool change" : Invariant($"{report.Changes} tool changes");
+        var bits = report.Steps.Count == 1 ? "1 bit" : Invariant($"{report.Steps.Count} bits");
+        var holes = report.Holes == 1 ? "1 hole" : Invariant($"{report.Holes} holes");
+
+        return new ExportCompanion(
+            Path.GetFileNameWithoutExtension(target) + ".drilling.html",
+            html,
+            $"{bits}, {changes}, {holes}");
     }
 
     private static Toolpath BuildIsolation(

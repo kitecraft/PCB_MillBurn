@@ -82,6 +82,15 @@ public sealed record LayerOutputSettings
     public int TabCount { get; init; } = 4;
 
     /// <summary>
+    /// Drilling only: write a page beside the program explaining how to run it.
+    ///
+    /// On by default. A drilling program is the one operation with tool changes in it, so it is the
+    /// one where the file alone does not tell you what to do — and somebody who does not want the
+    /// page can untick it, which costs less than somebody not knowing it was available.
+    /// </summary>
+    public bool WriteDrillGuide { get; init; } = true;
+
+    /// <summary>
     /// Whether to reflect this layer, for work done on a flipped board. Null takes the default for
     /// the layer's side.
     ///

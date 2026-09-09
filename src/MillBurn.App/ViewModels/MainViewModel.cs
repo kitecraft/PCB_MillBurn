@@ -391,12 +391,20 @@ public sealed partial class MainViewModel : ViewModelBase
         try
         {
             Directory.CreateDirectory(folder);
+            var pages = 0;
+
             foreach (var item in plan.Items)
             {
                 File.WriteAllText(Path.Combine(folder, item.TargetName), item.Content);
+
+                if (item.Companion is { } guide)
+                {
+                    File.WriteAllText(Path.Combine(folder, guide.TargetName), guide.Content);
+                    pages++;
+                }
             }
 
-            var extra = 0;
+            var extra = pages;
             var refused = 0;
 
             if (level && Surface is { } surface)
