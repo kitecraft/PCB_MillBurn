@@ -53,6 +53,12 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool HasBoard { get; set; }
 
+    partial void OnHasBoardChanged(bool value)
+    {
+        _ = value;
+        OnPropertyChanged(nameof(ShowingNothing));
+    }
+
     [ObservableProperty]
     public partial bool CanRefresh { get; set; }
 
@@ -220,6 +226,151 @@ public sealed partial class MainViewModel : ViewModelBase
         StatusMessage = "New project. Import a Gerber folder to begin.";
     }
 
+
+
+    // ------------------------------------------------------------------ opening a program
+
+    /// <summary>The extents of a program opened on its own, or null when none is.</summary>
+    private Bounds? _programBounds;
+
+    private string? _programPath;
+
+    /// <summary>True when a standalone program is being shown rather than a board's own output.</summary>
+    public bool HasProgram => _programPath is not null;
+
+    /// <summary>
+    /// True when the viewport has nothing in it at all.
+    ///
+    /// Distinct from "no board": a program opened on its own is something to look at, and the
+    /// empty-state panel and the drop hint were both drawing over one.
+    /// </summary>
+    public bool ShowingNothing => !HasBoard && !HasProgram;
+
+    /// <summary>
+    /// Draws any G-code file, ours or anybody's.
+    ///
+    /// The parser, the classifier and the scene are all built on emitted text rather than on the
+    /// toolpaths that produced it, so they already work on a program from anywhere. This is mostly
+    /// the file picker they were missing — and it is what makes the <c>.dryrun.nc</c>,
+    /// <c>.levelled.nc</c> and <c>.probe.nc</c> files we now write something you can look at.
+    /// </summary>
+    public bool OpenProgram(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        string text;
+
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not read '{path}': {ex.Message}";
+            return false;
+        }
+
+        var parsed = GcodeParser.Parse(text);
+
+        if (parsed.Moves.Count == 0)
+        {
+            StatusMessage = $"{Path.GetFileName(path)} has no motion in it.";
+            return false;
+        }
+
+        var classified = GcodeBackplot.Classify(parsed);
+        var measured = GcodeBackplot.Measure(classified);
+
+        // Drawn against the board when there is one, so a program opened over the board it came
+        // from lands on it. On its own it stands in work coordinates, which is where it was
+        // written.
+        var shift = _board is null
+            ? Point2.Origin
+            : new Point2(_board.Bounds.MinX, _board.Bounds.MinY);
+
+        _backplot = BackplotBuilder.Build(classified, shift);
+        _programBounds = WithAir(parsed.Bounds);
+        _programPath = path;
+
+        Gcode = text;
+        GcodeSummary = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{Path.GetFileName(path)} · {measured.CutMm:F0} mm cut · {measured.TravelMm:F0} mm travel "
+            + $"· {measured.PlungeCount} plunges · {parsed.LineCount:N0} lines");
+
+        Rebuild(TimeSpan.Zero);
+        OnPropertyChanged(nameof(HasProgram));
+        OnPropertyChanged(nameof(ShowingNothing));
+
+        Warnings.Clear();
+
+        // Anything the parser could not make sense of. On somebody else's file this is the useful
+        // part: it says which lines are not being drawn, so an empty-looking picture has a reason.
+        foreach (var diagnostic in parsed.Diagnostics.Take(20))
+        {
+            Warnings.Add(diagnostic.ToString());
+        }
+
+        if (measured.GougeCount > 0)
+        {
+            Warnings.Add($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this.");
+        }
+
+        StatusMessage = measured.GougeCount > 0
+            ? $"{Path.GetFileName(path)}: {measured.GougeCount} rapid move(s) at cutting depth — do not run this."
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"Showing {Path.GetFileName(path)} · {measured.TimeRange()}");
+
+        return true;
+    }
+
+    /// <summary>
+    /// A little space around a program's own extents.
+    ///
+    /// A board is framed by its outline and the copper sits inside that, so fitting to a board
+    /// leaves room by itself. A program has no such frame — its extent *is* the outermost thing it
+    /// draws — so fitted raw it sits against the edges of the window, with the stroke width of the
+    /// outermost move half over the side.
+    /// </summary>
+    private static Bounds WithAir(Bounds bounds)
+    {
+        if (bounds.IsEmpty)
+        {
+            return bounds;
+        }
+
+        var air = Math.Max(Nm.FromMillimetres(1), (long)(Math.Max(bounds.Width, bounds.Height) * 0.03));
+
+        return new Bounds(
+            bounds.MinX - air, bounds.MinY - air,
+            bounds.MaxX + air, bounds.MaxY + air);
+    }
+
+    /// <summary>Puts the viewport back to whatever board is loaded.</summary>
+    public void CloseProgram()
+    {
+        if (_programPath is null)
+        {
+            return;
+        }
+
+        ForgetProgram();
+        Rebuild(TimeSpan.Zero);
+        OnPropertyChanged(nameof(HasProgram));
+        OnPropertyChanged(nameof(ShowingNothing));
+        StatusMessage = "Closed the program.";
+    }
+
+    private void ForgetProgram()
+    {
+        _backplot = [];
+        _programBounds = null;
+        _programPath = null;
+        Gcode = null;
+        GcodeSummary = string.Empty;
+        Warnings.Clear();
+    }
 
     // ------------------------------------------------------------------ height mapping
 
@@ -749,9 +900,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private void Adopt(MillBurnProject project, TimeSpan elapsed)
     {
         // A program made from the previous board is not a program for this one.
-        _backplot = [];
-        Gcode = null;
-        GcodeSummary = string.Empty;
+        ForgetProgram();
 
         DetachProject(_project);
         _project = project;
@@ -768,17 +917,45 @@ public sealed partial class MainViewModel : ViewModelBase
 
         if (_project.Sources.Length == 0)
         {
+            _board = null;
+            HasBoard = false;
+            CanRefresh = false;
+
+            // With no board, a program opened on its own is the whole picture, and its own extents
+            // are the only frame there is to draw it in.
+            if (_backplot.Count > 0 && _programBounds is { } extent)
+            {
+                Scene = BoardSceneBuilder.Build(
+                    [],
+                    extent,
+                    Palette,
+                    Recoloured(_backplot),
+                    SceneStyle(BoardSceneBuilder.SubstrateId, BoardPalette.Substrate));
+
+                // Everything on, which is the opposite of the board view's default and right here.
+                // Travel is hidden over a board because it clutters the copper; over nothing it is
+                // most of the picture — a dry run is *all* travel by construction, and opened with
+                // the default it showed two dashed lines and looked broken.
+                foreach (var layer in Scene.Layers)
+                {
+                    layer.Visible = true;
+                }
+
+                previous?.Dispose();
+                BuildRows(null, Scene);
+                Facts.Clear();
+                RefreshTitles();
+                return;
+            }
+
             Scene = null;
             previous?.Dispose();
             Layers.Clear();
             Warnings.Clear();
             Facts.Clear();
-            _board = null;
             _backplot = [];
             Gcode = null;
             GcodeSummary = string.Empty;
-            HasBoard = false;
-            CanRefresh = false;
             RefreshTitles();
             return;
         }
@@ -831,9 +1008,13 @@ public sealed partial class MainViewModel : ViewModelBase
     /// Rebuilds the layer rows from the scene, so the panel lists exactly what is drawn — including
     /// the substrate and any backplot, which have no file behind them.
     /// </summary>
-    private void BuildRows(Board board, BoardScene scene)
+    private void BuildRows(Board? board, BoardScene scene)
     {
-        var byName = board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
+        // Null when a program is being shown on its own: there are no file-backed layers to match,
+        // only the backplot's own.
+        var byName = board is null
+            ? new Dictionary<string, BoardLayer>(StringComparer.Ordinal)
+            : board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
         var backplotRuns = _backplot.ToDictionary(b => b.Id, b => b.Runs.Count, StringComparer.Ordinal);
 
         _suspendOutputChanges = true;

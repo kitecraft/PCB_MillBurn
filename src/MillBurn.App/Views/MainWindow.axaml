@@ -88,6 +88,11 @@
                         <MenuItem Header="_Export…" Click="OnExportClicked" InputGesture="Ctrl+E"
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
+                        <Separator />
+                        <MenuItem Header="Open _G-code…" Click="OnOpenProgramClicked" />
+                        <MenuItem Header="_Close G-code" Click="OnCloseProgramClicked"
+                                  IsEnabled="{Binding HasProgram}" />
+                        <Separator />
                         <MenuItem Header="E_xit" Click="OnExitClicked" />
                     </MenuItem>
 
@@ -166,7 +171,7 @@
                         <StackPanel>
 
                             <!-- Nothing open: the two ways in, and nothing else to read. -->
-                            <StackPanel Spacing="8" IsVisible="{Binding !HasBoard}" Margin="2,8">
+                            <StackPanel Spacing="8" IsVisible="{Binding ShowingNothing}" Margin="2,8">
                                 <TextBlock Text="No project open"
                                            FontSize="14" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextHeadline}" />
@@ -225,7 +230,7 @@
                             </Expander>
 
                             <!-- LAYERS -->
-                            <Expander Header="Layers" IsExpanded="True" IsVisible="{Binding HasBoard}">
+                            <Expander Header="Layers" IsExpanded="True" IsVisible="{Binding !ShowingNothing}">
                                 <ItemsControl ItemsSource="{Binding Layers}" Margin="0,4,6,4">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LayerRow">
@@ -490,7 +495,7 @@
                                   Scene="{Binding ToolpathScene}"
                                   IsVisible="False" />
 
-                <Border IsVisible="{Binding !HasBoard}"
+                <Border IsVisible="{Binding ShowingNothing}"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource Surface}"
                         BorderBrush="{DynamicResource BorderSubtle}"

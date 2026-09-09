@@ -727,8 +727,7 @@ bit goes first, which was right all along and is worth pinning.
 
 ### Requested, not yet scheduled
 
-Five ideas from the workshop, recorded here so they keep their reasoning. Four are done; the last
-is sized but unbuilt.
+Five ideas from the workshop, recorded here so they keep their reasoning. All five are done.
 
 **An app icon.** Done. `art/millburn-logo.png` is the source; `art/make-icons.py` cuts the mark out
 of it — the wordmark is dropped, because at 16 px "PCB_MillBurn" set across a taskbar tile is a grey
@@ -814,15 +813,25 @@ Null and empty are kept distinct throughout: null is "use the machine's", empty 
 deliberately has none". Collapsing them would make a project that was told to add nothing start
 adding something when the machine default changed.
 
-**Open an existing program.** A viewer-only File ▸ Open for `.nc`, drawing it in the backplot. Cheap
-— the parser, the classifier and the scene builder are all built and all work on any G-code, not
-only ours — and it makes the app useful for looking at output from anywhere. It would also have
-shown the `G38.2` problem in reverse: our own viewer draws a probing routine correctly, which is
-exactly what the senders that prompted that warning do not.
+**Open an existing program.** Done. `File ▸ Open G-code…`, a dropped `.nc`, or one on the command
+line. It draws any G-code, not only ours, because the viewer has always parsed emitted text rather
+than the toolpaths behind it — so this needed no new geometry at all, only a scene with no layers
+in it and an extent taken from the program.
 
-The one design question is what to do without a board behind it: the backplot currently draws over
-board geometry and takes its work zero from the board's corner. Opened on its own, a program has no
-board, so the view has to be able to stand on the program's own extents.
+Three things had to change, and all three came from looking at the result rather than from writing
+it.
+
+*The empty-state panel and the drop hint were bound to "no board" and drew on top of a program.*
+They are about having nothing to look at, which a program is not.
+
+*A program's extent is its own outermost move,* where a board's is its outline with the copper
+inset — so fitted raw it sat hard against the window edge with the stroke width half over the side.
+It gets a few per cent of air now. Worth recording that the first reading of this was wrong: it
+looked unfitted, and measuring the rendered pixels showed the fit was correct and merely tight.
+
+*A dry run is all travel by construction,* and travel is hidden by default so it does not clutter
+the copper. Opened on its own, the first dry run drew two dashed lines and looked broken. A
+standalone program now turns every backplot layer on: over nothing, there is nothing to declutter.
 
 ### Phase 6 — Polish and reach
 

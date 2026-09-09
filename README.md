@@ -103,6 +103,7 @@ it needs ships in the publish output, including `libSkiaSharp.so` and the `Help/
 
 ```
 dotnet run --project src/MillBurn.App  -- <gerber-folder>            # open a board in the window
+dotnet run --project src/MillBurn.App  -- <program.nc>              # look at any G-code file
 dotnet run --project src/MillBurn.App  -- <project.millburn>         # open a saved project
 dotnet run --project src/MillBurn.Cli -- project save <folder> -o p.millburn
 dotnet run --project src/MillBurn.Cli -- project refresh p.millburn  # what changed since the export

@@ -39,6 +39,7 @@
     <li><a href="#negative">Etching: burning the negative</a></li>
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
+    <li><a href="#viewer">Looking at a G-code file</a></li>
     <li><a href="#framing">My machine needs its own lines at the start</a></li>
     <li><a href="#colours">I cannot see a layer</a></li>
   </ul>
@@ -849,6 +850,39 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   Each file is also written as a <em>single</em> layer. Some laser software creates one of its own
   cut layers per imported object, which turns a board into several hundred of them.
 </p>
+
+<h2 id="viewer">Looking at a G-code file</h2>
+
+<p>
+  <strong>File &rsaquo; Open G-code&hellip;</strong>, or drag a <code>.nc</code> onto the window, or
+  pass one on the command line. It draws &mdash; cutting moves, travel and long rapids, each its own
+  layer you can turn on and off &mdash; with the cut and travel distances, the plunge count and the
+  line count along the bottom.
+</p>
+
+<p>
+  It will draw <em>any</em> G-code, not only ours. The viewer has always worked by parsing the
+  emitted text rather than the toolpaths behind it, so a program from another CAM tool, or one you
+  edited by hand, opens exactly the same way. Anything the parser could not make sense of is listed,
+  so a picture with something missing from it says why.
+</p>
+
+<p>
+  It is the way to look at the files that are not the job itself: the <code>.dryrun.nc</code>, the
+  <code>.levelled.nc</code>, and the <code>.probe.nc</code>. Open a program over the board it came
+  from and it lands on the copper; open one with no board and it stands on its own.
+  <strong>File &rsaquo; Close G-code</strong> puts the board back.
+</p>
+
+<div class="note">
+  <p>
+    <strong>A dry run is all travel</strong> &mdash; that is what makes it a dry run &mdash; so it
+    draws entirely in the travel colour with nothing in the cutting one. A program opened on its own
+    turns every layer on for that reason. If it still looks empty, check the travel colour is not
+    something invisible against your theme: click the swatch beside the layer, or
+    <strong>Edit &rsaquo; Reset layer colours</strong>.
+  </p>
+</div>
 
 <h2 id="framing">My machine needs its own lines at the start</h2>
 

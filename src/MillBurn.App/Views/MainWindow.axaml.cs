@@ -266,6 +266,15 @@ public partial class MainWindow : Window
             {
                 vm.LoadFolder(target);
             }
+            else if (ProgramExtensions.Contains(Path.GetExtension(target), StringComparer.OrdinalIgnoreCase))
+            {
+                // So that a .nc on the command line — or double-clicked, once the association is
+                // made — opens in the viewer rather than being ignored.
+                if (vm.OpenProgram(target))
+                {
+                    Viewport.FitToContent();
+                }
+            }
         }
 
         // A saved placement is only honoured for a normal run. A screenshot dictates its own size,
@@ -449,10 +458,24 @@ public partial class MainWindow : Window
                 return;
             }
 
+            // A dropped program is shown rather than opened as a project, so it replaces nothing
+            // and needs no guard. Checked before PathFrom, which would otherwise resolve it to the
+            // folder it sits in and import that.
+            if (DroppedProgram(e.DataTransfer) is { } program)
+            {
+                if (vm.OpenProgram(program))
+                {
+                    Viewport.FitToContent();
+                }
+
+                return;
+            }
+
             var dropped = PathFrom(e.DataTransfer);
             if (dropped is null)
             {
-                vm.StatusMessage = "Drop a folder of Gerber files, a file from inside one, or a .millburn project.";
+                vm.StatusMessage =
+                    "Drop a folder of Gerber files, a file from inside one, a .millburn project, or a .nc.";
                 return;
             }
 
@@ -473,6 +496,19 @@ public partial class MainWindow : Window
             vm.LoadFolder(dropped);
         });
     }
+
+    /// <summary>A single dropped G-code file, or null if that is not what this was.</summary>
+    private static string? DroppedProgram(IDataTransfer data)
+    {
+        var files = data.TryGetFiles()?.Select(f => f.TryGetLocalPath()).Where(p => p is not null).ToList();
+
+        return files is { Count: 1 } && ProgramExtensions.Contains(
+            Path.GetExtension(files[0])!, StringComparer.OrdinalIgnoreCase)
+            ? files[0]
+            : null;
+    }
+
+    private static readonly string[] ProgramExtensions = [".nc", ".gcode", ".ngc", ".tap"];
 
     /// <summary>
     /// What was dropped: a project file, a folder, or the folder containing a dropped board file.
@@ -602,6 +638,37 @@ public partial class MainWindow : Window
             vm.OpenProject(path);
         }
     }
+
+    /// <summary>
+    /// Opening any G-code file to look at, ours or anybody's.
+    ///
+    /// No unsaved-changes guard: this does not replace the project, it draws a program over
+    /// whatever is already open. Closing it puts the board back.
+    /// </summary>
+    private async void OnOpenProgramClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open G-code",
+            AllowMultiple = false,
+            FileTypeFilter = [GcodeFileType],
+        });
+
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path && vm.OpenProgram(path))
+        {
+            // A program arrives at whatever zoom the last thing was at, which for an unrelated file
+            // is meaningless. Fitting is what makes "open this and show me" one action.
+            Viewport.FitToContent();
+        }
+    }
+
+    private void OnCloseProgramClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.CloseProgram();
 
     private async void OnSaveClicked(object? sender, RoutedEventArgs e) => await SaveAsync();
 
