@@ -163,7 +163,8 @@ public static class LayerOperations
         // Paste can be burned as a stencil or milled as mask relief.
         LayerRole.TopPaste or LayerRole.BottomPaste
             => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
-        LayerRole.Unknown => [OutputKind.None],
+        // Drawings are for reading. Offering to burn or mill one is offering to make a mistake.
+        LayerRole.Unknown or LayerRole.DrillMap or LayerRole.Documentation => [OutputKind.None],
         _ => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
     };
 

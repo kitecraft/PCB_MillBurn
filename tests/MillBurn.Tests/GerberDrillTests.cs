@@ -116,14 +116,40 @@ public sealed class GerberDrillTests
     public void OnlyRealDrillFunctionsCount(string? fileFunction, bool expected) =>
         Assert.Equal(expected, GerberDrills.IsDrillFunction(fileFunction));
 
+    /// <summary>
+    /// A drill map is named, not shrugged at. Calling it "Unknown" makes an identified thing look
+    /// like a failure to identify, and leaves the operator wondering which layer went wrong.
+    /// </summary>
     [Fact]
-    public void ADrillMapIsNeverGuessedIntoADrillLayer()
+    public void ADrillMapIsNamedRatherThanGuessedOrUnknown()
     {
         // The filename says PTH; the file says drill map. The file wins.
         var (role, guessed) = LayerRoles.Detect(Parse(DrillMap), "Board-PTH-drl_map.gbr");
 
-        Assert.Equal(LayerRole.Unknown, role);
+        Assert.Equal(LayerRole.DrillMap, role);
         Assert.False(guessed, "a file that says what it is has not been guessed at");
+        Assert.Equal("Drill map", LayerRoleInfo.Label(role));
+    }
+
+    /// <summary>A drawing is off by default and cannot be cut. It is for reading.</summary>
+    [Theory]
+    [InlineData(LayerRole.DrillMap)]
+    [InlineData(LayerRole.Documentation)]
+    public void ADrawingIsNotDrawnAndNotCut(LayerRole role)
+    {
+        Assert.False(LayerRoleInfo.VisibleByDefault(role));
+        Assert.Equal([OutputKind.None], LayerOperations.Available(role));
+        Assert.False(LayerRoleInfo.IsDrill(role));
+        Assert.False(LayerRoleInfo.IsCopper(role));
+    }
+
+    [Fact]
+    public void OtherDrawingsAreDocumentationRatherThanUnknown()
+    {
+        foreach (var function in new[] { "FabricationDrawing", "AssemblyDrawing", "ArrayDrawing" })
+        {
+            Assert.Equal(LayerRole.Documentation, LayerRoles.FromFileFunction(function));
+        }
     }
 
     [Fact]
@@ -146,6 +172,56 @@ public sealed class GerberDrillTests
     [InlineData("AssemblyDrawing")]
     public void DocumentationLayersAreKnownNotGuessed(string function) =>
         Assert.True(LayerRoles.DeclaresNonBoardFunction(function));
+
+    // ------------------------------------------------------------------ which parser reads it
+
+    private const string Excellon = """
+        M48
+        METRIC,TZ
+        T1C1.000
+        %
+        G90
+        T1
+        X10.0Y10.0
+        M30
+        """;
+
+    /// <summary>
+    /// A project holds its files in memory, and that path chose the parser from the layer's
+    /// <em>role</em> — so an X2 drill file, whose role is a drill role, was handed to the Excellon
+    /// parser. It read no holes, warned about a units declaration the file plainly had, and the
+    /// drill layers disappeared from a project that opened perfectly well from a folder.
+    ///
+    /// Same bytes, same role, both ways in: they have to agree.
+    /// </summary>
+    [Fact]
+    public void AProjectReadsAnX2DrillFileTheSameWayAFolderDoes()
+    {
+        var board = BoardLoader.LoadSources(
+            "memory",
+            [("Board-PTH-drl.gbr", System.Text.Encoding.UTF8.GetBytes(DrillGerber), LayerRole.PlatedDrill)]);
+
+        var layer = Assert.Single(board.Layers);
+
+        Assert.NotNull(layer.Drill);
+        Assert.Equal(3, layer.Drill.Hits.Count);
+        Assert.DoesNotContain(layer.Diagnostics, d => d.IsError);
+        Assert.Equal(3, layer.ObjectCount);
+    }
+
+    /// <summary>And a real Excellon file must still take the Excellon path.</summary>
+    [Fact]
+    public void AnExcellonDrillFileIsStillReadAsExcellon()
+    {
+        var board = BoardLoader.LoadSources(
+            "memory",
+            [("Board-PTH.drl", System.Text.Encoding.UTF8.GetBytes(Excellon), LayerRole.PlatedDrill)]);
+
+        var layer = Assert.Single(board.Layers);
+
+        Assert.NotNull(layer.Drill);
+        Assert.Single(layer.Drill.Hits);
+    }
 
     [Fact]
     public void ARealLayerIsNotMistakenForDocumentation() =>

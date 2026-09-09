@@ -529,10 +529,17 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 </p>
 
 <p>
-  One thing to know about that export: it also writes a <strong>drill map</strong>
-  (<code>*_map.gbr</code>) &mdash; a chart of symbols and text showing an operator where the holes
-  go. That is documentation, not holes, and is recognised as such from the file&rsquo;s own
-  declaration rather than from its name. You can leave it in the folder; it will not be cut.
+  That export also writes a <strong>drill map</strong> (<code>*_map.gbr</code>) &mdash; a chart of
+  symbols and text showing an operator where the holes go. It appears in the layer list as
+  <strong>Drill map</strong>, switched off, and cannot be exported: it is documentation, not holes.
+  Leave it in the folder; nothing will be cut from it.
+</p>
+
+<p>
+  The same goes for fabrication, assembly and array drawings, which show as
+  <strong>Documentation</strong>. All of them are recognised from the file&rsquo;s own declaration
+  rather than from its name &mdash; which matters, because a drill map is usually called something
+  like <code>Board-PTH-drl_map.gbr</code> and a name-based guess reads that as plated holes.
 </p>
 
 <h2 id="svg">The SVGs: masks, openings, and alignment</h2>

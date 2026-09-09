@@ -440,6 +440,21 @@ fell through to the guess. A file that says what it is and says it is not part o
 *known*, not unknown — so declared documentation functions now stop the fallback instead of
 triggering it.
 
+**A project read X2 drill files differently from a folder, and lost the holes.** `LoadSources` —
+the path a saved project takes, because its files live in the container rather than on disk — chose
+its parser from the layer's *role*. An X2 drill file has a drill role, so it went to the Excellon
+parser, which found no holes in it and warned about a units declaration the file plainly had. The
+drill layers simply were not there, in a project that opened perfectly well from a folder. The
+parser is chosen by the file now: every Gerber declares a format specification and no Excellon file
+does.
+
+**Drawings are named rather than shrugged at.** A drill map was showing as "Unknown", drawn over the
+board in orange, which makes an identified thing look like a failure to identify — the file says
+exactly what it is. `DrillMap` and `Documentation` are roles now: labelled, off by default, and not
+offered for export, because a drawing is for reading. Two drill maps also stopped triggering the
+duplicate-role warning; KiCad writes one per drill file, and warning about the normal case teaches
+people to skim past the warning that matters.
+
 **Soldermask joins paste as a millable layer**, since its openings are by definition everywhere the
 mask is not meant to be — a superset of the paste apertures, because vias and test points have mask
 openings and no paste.

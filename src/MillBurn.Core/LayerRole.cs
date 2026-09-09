@@ -16,6 +16,20 @@ public enum LayerRole
     Outline,
     PlatedDrill,
     NonPlatedDrill,
+
+    /// <summary>
+    /// A chart of where the holes go: symbols, a legend and text, for a person to read.
+    ///
+    /// A separate role from <see cref="Unknown"/> because it is not unknown at all — the file says
+    /// what it is. Calling it unknown makes an identified thing look like a failure to identify,
+    /// and leaves the operator wondering which of their layers went wrong.
+    /// </summary>
+    DrillMap,
+
+    /// <summary>
+    /// A fabrication, assembly or array drawing. Documentation for a person, not a layer to make.
+    /// </summary>
+    Documentation,
 }
 
 /// <summary>Which physical side a layer belongs to, for mirroring and for grouping the UI.</summary>
@@ -64,6 +78,10 @@ public static class LayerRoleInfo
         LayerRole.PlatedDrill => 9,
         LayerRole.NonPlatedDrill => 10,
         LayerRole.Outline => 11,
+
+        // Drawings last of all, on the rare occasion anyone turns one on.
+        LayerRole.DrillMap => 13,
+        LayerRole.Documentation => 14,
         _ => 12,
     };
 
@@ -76,6 +94,8 @@ public static class LayerRoleInfo
         LayerRole.BottomMask => "Bottom soldermask",
         LayerRole.TopSilk => "Top silkscreen",
         LayerRole.BottomSilk => "Bottom silkscreen",
+        LayerRole.DrillMap => "Drill map",
+        LayerRole.Documentation => "Documentation",
         LayerRole.TopPaste => "Top paste",
         LayerRole.BottomPaste => "Bottom paste",
         LayerRole.Outline => "Board outline",
@@ -89,6 +109,10 @@ public static class LayerRoleInfo
     {
         LayerRole.BottomSilk or LayerRole.BottomPaste or LayerRole.TopPaste => false,
         LayerRole.BottomMask or LayerRole.TopMask => false,
+
+        // Off by default. A drill map is several hundred symbols and a page of text; drawn over the
+        // board it hides the thing it is describing.
+        LayerRole.DrillMap or LayerRole.Documentation => false,
         _ => true,
     };
 }

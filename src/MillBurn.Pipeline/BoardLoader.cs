@@ -95,7 +95,15 @@ public static class BoardLoader
             try
             {
                 var text = System.Text.Encoding.UTF8.GetString(content);
-                layers.Add(LayerRoleInfo.IsDrill(role)
+
+                // Which parser to use is decided by the file, not by the role.
+                //
+                // A drill file can be Excellon or Gerber X2 — KiCad offers both — and they share
+                // the role. Choosing the parser from the role fed a Gerber to the Excellon parser,
+                // which read no holes out of it and warned about a units declaration the file
+                // plainly had, so the drill layers vanished from a project that opened fine from a
+                // folder.
+                layers.Add(LayerRoleInfo.IsDrill(role) && !IsGerberText(text)
                     ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
                     : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options));
             }
@@ -117,6 +125,17 @@ public static class BoardLoader
 
     private static bool IsDrill(string path) =>
         DrillExtensions.Contains(Path.GetExtension(path).ToLowerInvariant());
+
+    /// <summary>
+    /// Whether this text is Gerber rather than Excellon.
+    ///
+    /// The format specification is the giveaway: every Gerber file must declare one, and no
+    /// Excellon file has one. Cheaper and far more reliable than the extension, which is
+    /// <c>.gbr</c> for both a copper layer and a drill file when the drills were written as X2.
+    /// </summary>
+    private static bool IsGerberText(string text) =>
+        text.Contains("%FS", StringComparison.Ordinal)
+        || text.Contains("G04 #@! TF.", StringComparison.Ordinal);
 
     private static BoardLayer LoadGerber(string file, RealisationOptions options)
     {

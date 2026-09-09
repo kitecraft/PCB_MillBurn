@@ -787,8 +787,11 @@ public sealed partial class MainViewModel : ViewModelBase
             Warnings.Add("No board outline: extents are taken from the drawn geometry.");
         }
 
+        // Two files claiming to be the top copper is a real problem; two drill maps is a normal
+        // export, because KiCad writes one per drill file. Warning about the second teaches people
+        // to skim past the first.
         foreach (var group in board.Layers
-            .Where(l => l.Role != LayerRole.Unknown)
+            .Where(l => l.Role is not (LayerRole.Unknown or LayerRole.DrillMap or LayerRole.Documentation))
             .GroupBy(l => l.Role)
             .Where(g => g.Count() > 1))
         {

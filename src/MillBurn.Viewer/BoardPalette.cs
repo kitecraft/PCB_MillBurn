@@ -40,6 +40,11 @@ public static class BoardPalette
         // a slab over everything it is meant to frame.
         LayerRole.Outline => new BoardLayerStyle(new SKColor(0xE0, 0xE0, 0xE0), 0.9f, Outlined: true),
 
+        // Drawings are for reading, not for making, so they are drawn faintly and outlined: on the
+        // rare occasion one is turned on it should read as an overlay rather than as board.
+        LayerRole.DrillMap => new BoardLayerStyle(new SKColor(0x8E, 0x99, 0xA4), 0.7f, Outlined: true),
+        LayerRole.Documentation => new BoardLayerStyle(new SKColor(0x78, 0x82, 0x8C), 0.7f, Outlined: true),
+
         _ => new BoardLayerStyle(new SKColor(0xFF, 0x6D, 0x00), 0.7f),
     };
 

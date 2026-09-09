@@ -25,17 +25,13 @@ public static class LayerRoles
     {
         ArgumentNullException.ThrowIfNull(image);
 
+        // A file that says what it is has not been guessed at — including when what it says is
+        // "I am a drawing". Falling through to the filename is how "PogoTest1-PTH-drl_map.gbr"
+        // became 688 plated holes: the name said PTH, the file said drill map, and the name won.
         var declared = FromFileFunction(image.FileFunction);
-        if (declared != LayerRole.Unknown)
-        {
-            return (declared, false);
-        }
 
-        // A file that says what it is and says it is not part of the board is *known*, not
-        // unknown. Falling through to the filename here is how "PogoTest1-PTH-drl_map.gbr" became
-        // 688 plated holes: the name says PTH, the file says drill map, and the name won.
-        return DeclaresNonBoardFunction(image.FileFunction)
-            ? (LayerRole.Unknown, false)
+        return declared != LayerRole.Unknown
+            ? (declared, false)
             : (FromFileName(fileName), true);
     }
 
@@ -91,7 +87,12 @@ public static class LayerRoles
         // legend, so it is named explicitly rather than left to fall through to a filename guess.
         if (kind.Equals("Drillmap", StringComparison.OrdinalIgnoreCase))
         {
-            return LayerRole.Unknown;
+            return LayerRole.DrillMap;
+        }
+
+        if (DeclaresNonBoardFunction(fileFunction))
+        {
+            return LayerRole.Documentation;
         }
 
         // KiCad can write drill files as Gerber X2 instead of Excellon: same holes, same
