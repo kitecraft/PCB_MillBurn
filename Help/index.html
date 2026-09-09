@@ -28,6 +28,8 @@
     program in the air first.</li>
   <li><a href="faq.html#levelling">The board is not flat</a> &mdash; probe the stock and make the
     cut follow the surface.</li>
+  <li><a href="faq.html#twosided">Lining up the two sides of a double-sided board</a> &mdash; the
+    recipe, and the one rule it puts on your design.</li>
 </ul>
 
 <h2>The short version</h2>
@@ -107,6 +109,34 @@
     the board is under a light.
   </p>
 </div>
+
+<h2>Also worth knowing</h2>
+
+<ul>
+  <li>
+    <strong><a href="faq.html#drilling">Drilling gets a page of its own.</a></strong> Every drill
+    program is written with an HTML page beside it listing the bits in the order they go in, their
+    hole counts, and when the run stops to change them. It is the only operation with tool changes
+    in it, so it is the only one where the file alone does not tell you what to do.
+  </li>
+  <li>
+    <strong><a href="faq.html#viewer">You can open any G-code file and look at it.</a></strong>
+    File &rsaquo; Open G-code, or drag a <code>.nc</code> onto the window. Not only ours &mdash; the
+    viewer reads emitted text rather than the toolpaths behind it, so a program from any CAM tool
+    draws the same way. It is also how you look at the dry runs and levelled files.
+  </li>
+  <li>
+    <strong><a href="faq.html#framing">Your machine can have its own start and end lines.</a></strong>
+    Edit &rsaquo; Start and end G-code. Homing, a work offset, a vacuum relay, a spindle dwell
+    &mdash; whatever yours needs, added to every program, checked as you type.
+  </li>
+  <li>
+    <strong><a href="faq.html#twosided">Double-sided boards line up without measuring anything.</a></strong>
+    The recipe is drilling before you flip, and pinning through the holes you already made. It
+    reaches 20&ndash;50&nbsp;&micro;m and needs no fiducials, no probe and no arithmetic &mdash; but
+    it does put one rule on your design, so read it before you lay the board out.
+  </li>
+</ul>
 
 <h2>What this app does not do</h2>
 

@@ -557,6 +557,16 @@ Improvements over pcb2gcode:
 4. **Import a map probed by any tool**, including one made months ago for the same fixture.
 
 Implemented as a processor in the chain, so it also applies to imported third-party G-code — which
-makes PCB_MillBurn useful as a standalone levelling utility. Visualise the surface as a
+makes PCB_MillBurn useful as a standalone levelling utility.
+
+**Built as described**, with one addition the sketch did not have: outside the probed area the map
+holds its edge value rather than extrapolating, and a job straying more than 3 mm outside is refused
+outright. A thin-plate spline has no opinion about ground it was not shown, and its linear term will
+carry a tilt off into space — on a board 0.1 mm out of flat, a few centimetres past the last touch
+is a correction of *millimetres*, which drives the cutter through the board rather than into it.
+Item 1 above — adaptive densification near clamps — is *not* built: it needs to know where the
+clamps are, which needs the fixture model from the same phase.
+
+See [06](06-Roadmap-and-Risks.md) for what the implementation turned up. Visualise the surface as a
 colour-mapped mesh in the viewport; users immediately see that their stock is bowed, which is
 educational in itself.

@@ -592,7 +592,7 @@ the same path 5 mm in the air with the spindle never started: `export --dry-run`
 checkbox that is remembered.
 
 It rewrites **the emitted file**, not the toolpath — the same reasoning as the backplot
-([05 §2.1](05-Testing-Strategy.md)). Those two agree right up until the emitter has a bug, and only
+([05 §2.1](05-Viewer-and-Export.md#21-two-data-sources-one-renderer)). Those two agree right up until the emitter has a bug, and only
 one of them is what the machine will run; a dry run generated from the toolpath would faithfully
 prove the safety of a program nobody is about to run.
 

@@ -39,6 +39,12 @@ bug and should be flagged.
 This also means the viewer works on **imported G-code** from any source, which is a useful
 product in its own right.
 
+**Built.** `File ▸ Open G-code…`, a dropped `.nc`, or one on the command line. It needed no new
+geometry — a scene with no layers in it and an extent taken from the program rather than from a
+board outline was the whole of it, which is the dividend of having always drawn the emitted text.
+It is also the only way to look at the files that are not the job: the `.dryrun.nc`, the
+`.levelled.nc` and the `.probe.nc`.
+
 ### 2.2 Rendering: SkiaSharp
 
 A custom Avalonia `Control` drawing through `ICustomDrawOperation` + `ISkiaSharpApiLeaseFeature`,

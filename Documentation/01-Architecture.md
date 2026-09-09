@@ -71,7 +71,7 @@ PCB_MillBurn.slnx
 │   ├── MillBurn.Geometry        net10.0   Clipper2 + NTS: offset, boolean, voronoi, pocket, arcs
 │   ├── MillBurn.Cam             net10.0   Operation generators (isolation, drill, outline, mask)
 │   ├── MillBurn.Optimize        net10.0   Travel optimizer, precedence constraints, time model
-│   ├── MillBurn.Gcode           net10.0   Mill only: emitter, parser, processors, backplot
+│   ├── MillBurn.Gcode           net10.0   Mill only: emitter, parser, backplot, dry run, probing
 │   ├── MillBurn.Post            net10.0   Mill only: profiles + post-processor templates
 │   ├── MillBurn.Export          net10.0   SVG / DXF / PDF / PNG - the whole laser path
 │   ├── MillBurn.Align           net10.0   Fiducial fits, transforms, height maps + levelling

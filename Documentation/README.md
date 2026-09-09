@@ -19,7 +19,7 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 
 | # | Document | Contents |
 |---|---|---|
-| 01 | [Architecture](01-Architecture.md) | Solution layout, project graph, MAUI/WinUI decisions, incremental pipeline, licensing |
+| 01 | [Architecture](01-Architecture.md) | Solution layout, project graph, the scope boundary, incremental pipeline, licensing |
 | 02 | [Gerber & Geometry Pipeline](02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 + Excellon parsing, Clipper2/NTS geometry, isolation, pocketing, DRC |
 | 03 | [Toolpath Optimization](03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, the GTSP model, cost model, constraints, arc fitting |
 | 04 | [Machines, Laser & Mixed Workflows](04-Machines-Laser-and-Mixed-Workflows.md) | **Mill takes G-code, laser takes SVG**; machine profiles, kerf/etch compensation, the Job/Operation/Setup model, **board re-alignment** |
