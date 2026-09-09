@@ -73,6 +73,15 @@ public sealed record AppSettings
     /// </summary>
     public bool WriteDryRun { get; init; }
 
+    /// <summary>
+    /// The machine's own start and end G-code, used by every project that does not override it.
+    ///
+    /// Machine-level rather than per-project because it describes the machine, not the board: the
+    /// homing cycle, work offset, vacuum relay or spindle dwell that this one needs is the same
+    /// whatever is being cut on it.
+    /// </summary>
+    public ProgramFraming Framing { get; init; } = ProgramFraming.None;
+
     /// <summary>Where the window was when it was last closed, or null if it never has been.</summary>
     public WindowPlacement? Window { get; init; }
 

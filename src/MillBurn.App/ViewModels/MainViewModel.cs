@@ -126,6 +126,24 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Remembers light or dark, so the app opens the way it was closed.</summary>
     public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
 
+    /// <summary>
+    /// The lines that top and tail every program: the project's where it has them, the machine's
+    /// otherwise.
+    /// </summary>
+    public ProgramFraming Framing => _project.Settings.Framing.Over(Settings.Framing);
+
+    public void SaveFraming(ProgramFraming framing)
+    {
+        ArgumentNullException.ThrowIfNull(framing);
+
+        SaveSettings(Settings with { Framing = framing });
+        OnPropertyChanged(nameof(Framing));
+
+        StatusMessage = framing.IsEmpty
+            ? "Start and end G-code cleared."
+            : "Start and end G-code saved. It goes into every program this machine writes.";
+    }
+
     // ------------------------------------------------------------------ loading
 
     public void LoadFolder(string folder)
@@ -374,7 +392,8 @@ public sealed partial class MainViewModel : ViewModelBase
             o => o.FileName, o => o, StringComparer.Ordinal);
 
         return ExportPlanner.Plan(
-            _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter);
+            _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter,
+            framing: Framing);
     }
 
     /// <summary>

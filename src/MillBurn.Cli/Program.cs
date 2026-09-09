@@ -29,6 +29,8 @@ internal static class Program
             Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
             Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
+            Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
+            Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
@@ -1499,8 +1501,48 @@ internal static class Program
             }
         }
 
+        // The project's own lines where it has them, the machine's where it does not. A project
+        // carries what it was cut with, so one that needed something unusual keeps it when it is
+        // opened on another machine or a year later.
+        var framing = (project?.Settings.Framing ?? ProgramFraming.None)
+            .Over(AppSettings.LoadOrDefault().Framing);
+
+        if (Argument(args, "--start-gcode") is { } startPath)
+        {
+            if (ReadBlock(startPath) is not { } start)
+            {
+                return 1;
+            }
+
+            framing = framing with { Start = start };
+        }
+
+        if (Argument(args, "--end-gcode") is { } endPath)
+        {
+            if (ReadBlock(endPath) is not { } end)
+            {
+                return 1;
+            }
+
+            framing = framing with { End = end };
+        }
+
+        foreach (var issue in ProgramFraming.Check(framing.Start)
+            .Concat(ProgramFraming.Check(framing.End, isEnd: true)))
+        {
+            Console.Error.WriteLine($"  {(issue.IsError ? "ERROR" : "CHECK")}       start/end G-code {issue}");
+        }
+
+        if (ProgramFraming.Check(framing.Start).Concat(ProgramFraming.Check(framing.End, isEnd: true))
+            .Any(i => i.IsError))
+        {
+            Console.Error.WriteLine("  Refusing to write files with that in them.");
+            return 1;
+        }
+
         var plan = ExportPlanner.Plan(
-            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only);
+            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
+            framing: framing);
 
         // Companion programs that trace the same path in the air. Built here rather than at write
         // time so that a plain `export --dry-run` — no --write — still reports whether each one
@@ -1793,6 +1835,31 @@ internal static class Program
         SubdivideBelowMm = Number(args, "--below", 0.5),
         MaxOutsideMm = Number(args, "--outside", 3),
     };
+
+    /// <summary>
+    /// A block of the operator's own G-code, from a file or given inline.
+    ///
+    /// A path if one exists, otherwise the text itself — because "$H" is a perfectly reasonable
+    /// thing to want to type on the command line, and making somebody put it in a file first would
+    /// be ceremony for its own sake.
+    /// </summary>
+    private static string? ReadBlock(string pathOrText)
+    {
+        if (!File.Exists(pathOrText))
+        {
+            return pathOrText;
+        }
+
+        try
+        {
+            return File.ReadAllText(pathOrText);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Could not read '{pathOrText}': {ex.Message}");
+            return null;
+        }
+    }
 
     /// <summary>Reads a probe log into a map, reporting anything odd about it.</summary>
     private static HeightMap? ReadMap(string logText, string[] args)

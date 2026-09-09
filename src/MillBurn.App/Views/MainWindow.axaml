@@ -93,6 +93,7 @@
 
                     <MenuItem Header="_Edit">
                         <MenuItem Header="_Tool library…" Click="OnEditToolsClicked" InputGesture="Ctrl+T" />
+                        <MenuItem Header="_Start and end G-code…" Click="OnEditFramingClicked" />
                         <MenuItem Header="Reset layer _colours" Click="OnResetColoursClicked" />
                     </MenuItem>
 

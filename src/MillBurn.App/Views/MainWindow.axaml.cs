@@ -336,6 +336,13 @@ public partial class MainWindow : Window
             _captureInstead = window;
         }
 
+        if (args.Contains("--framing", StringComparer.OrdinalIgnoreCase))
+        {
+            var editor = new FramingWindow(vm.Framing) { RequestedThemeVariant = ActualThemeVariant };
+            editor.Show(this);
+            _captureInstead = editor;
+        }
+
         // Opens the colour picker for a screenshot: it lives in a separate package with its own
         // theme resources, so "does it render at all" is a real question rather than a formality.
         if (args.Contains("--colour", StringComparer.OrdinalIgnoreCase) && vm.Layers.Count > 0)
@@ -740,6 +747,25 @@ public partial class MainWindow : Window
         else if (colour is { } picked)
         {
             vm.SetColour(row, picked);
+        }
+    }
+
+    /// <summary>
+    /// Editing the lines that top and tail every program.
+    ///
+    /// Saved to the machine settings rather than to the project: what this machine needs before a
+    /// job is a fact about the machine, and it should not arrive or vanish with a board.
+    /// </summary>
+    private async void OnEditFramingClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (await FramingWindow.AskAsync(this, vm.Framing) is { } chosen)
+        {
+            vm.SaveFraming(chosen);
         }
     }
 

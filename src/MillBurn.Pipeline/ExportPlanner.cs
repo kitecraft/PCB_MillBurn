@@ -79,7 +79,8 @@ public static class ExportPlanner
         long boardThicknessNm,
         OutputKind? only = null,
         MachineProfile? machine = null,
-        RouteEffort effort = RouteEffort.Balanced)
+        RouteEffort effort = RouteEffort.Balanced,
+        ProgramFraming? framing = null)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(settings);
@@ -116,7 +117,7 @@ public static class ExportPlanner
 
             var item = setting.Output == OutputKind.Svg
                 ? PlanSvg(board, layer, setting, operation, page)
-                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort);
+                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort, framing);
 
             if (item is null)
             {
@@ -241,7 +242,8 @@ public static class ExportPlanner
         ToolLibrary library,
         long boardThicknessNm,
         MachineProfile? machine,
-        RouteEffort effort)
+        RouteEffort effort,
+        ProgramFraming? framing)
     {
         var tool = ResolveTool(setting, operation, library);
         var warnings = new List<string>();
@@ -361,7 +363,18 @@ public static class ExportPlanner
             Notes = notes,
         };
 
-        var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions());
+        var (text, stats) = GcodeEmitter.Emit(
+            job, new GcodeOptions { Framing = framing ?? ProgramFraming.None });
+
+        // Checked against the program it is going into rather than only when it was typed: a block
+        // that was fine in the editor is still worth refusing here if it would end the file early,
+        // because this is the last point before something gets written to disk.
+        foreach (var issue in Framing(framing))
+        {
+            warnings.Add(issue.IsError
+                ? $"Start/end G-code, line {issue.Line}: {issue.Message} This file should not be run."
+                : $"Start/end G-code, line {issue.Line}: {issue.Message}");
+        }
         var emitted = GcodeParser.Parse(text);
         var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(emitted));
 
@@ -543,6 +556,11 @@ public static class ExportPlanner
         .Select(m => m.From)
         .Distinct()
         .Count();
+
+    /// <summary>Everything wrong with the operator's own lines, both blocks together.</summary>
+    private static IReadOnlyList<FramingIssue> Framing(ProgramFraming? framing) => framing is null
+        ? []
+        : [.. ProgramFraming.Check(framing.Start), .. ProgramFraming.Check(framing.End, isEnd: true)];
 
     /// <summary>Where a toolpath leaves the tool, so the next one can start from there.</summary>
     private static Point2 EndOf(Toolpath toolpath, Point2 fallback)

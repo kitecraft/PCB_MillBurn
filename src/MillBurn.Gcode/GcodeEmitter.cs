@@ -29,6 +29,16 @@ public sealed record GcodeOptions
     public Point2 Origin { get; init; } = Point2.Origin;
 
     public bool IncludeComments { get; init; } = true;
+
+    /// <summary>
+    /// The operator's own lines at the start and end of the program.
+    ///
+    /// Where these land is documented on <see cref="ProgramFraming"/> and is a safety decision: the
+    /// start block goes in *before* the modal setup, so a header that leaves the machine in inches
+    /// or in incremental cannot change what the job's coordinates mean; the end block goes in
+    /// before <c>M30</c>, because nothing after the program end is ever read.
+    /// </summary>
+    public ProgramFraming Framing { get; init; } = ProgramFraming.None;
 }
 
 /// <summary>What a program turned out to cost.</summary>
@@ -88,11 +98,41 @@ public static class GcodeEmitter
 
         string Mm(long nm) => Nm.ToMillimetres(nm).ToString(format, CultureInfo.InvariantCulture);
 
+        // Marked with a comment, so anyone reading the file can tell at a glance which lines came
+        // from the machine profile and which this program wrote. Trailing whitespace goes; blank
+        // lines inside the block stay, because somebody's spacing is theirs.
+        void Framing(string? block, string label)
+        {
+            if (string.IsNullOrWhiteSpace(block))
+            {
+                return;
+            }
+
+            Comment(label);
+
+            // Trimmed at the ends only: a trailing newline in the stored text is punctuation rather
+            // than intent, and left in it produces a blank line on top of the separator below.
+            // Blank lines *inside* the block stay, because somebody's spacing is theirs.
+            var body = block.Replace("\r\n", "\n", StringComparison.Ordinal).Trim('\n', '\r', ' ', '\t');
+
+            foreach (var line in body.Split('\n'))
+            {
+                sb.Append(line.TrimEnd()).Append('\n');
+            }
+
+            sb.Append('\n');
+        }
+
         Comment($"PCB_MillBurn - {job.Name}");
         foreach (var note in job.Notes)
         {
             Comment(note);
         }
+
+        // Before the modal block on purpose. Whatever this block leaves behind, the next two lines
+        // put the machine back into millimetres, absolute distance and the XY plane — so the one
+        // mistake that would silently reinterpret every coordinate in the file cannot happen.
+        Framing(options.Framing.Start, "Your start G-code");
 
         sb.Append("G21 G90 G94\n");
         sb.Append("G17\n");
@@ -157,6 +197,10 @@ public static class GcodeEmitter
         sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
         sb.Append("M5\n");
         sb.Append("G0 X").Append(Mm(options.Origin.X)).Append(" Y").Append(Mm(options.Origin.Y)).Append('\n');
+
+        // Before M30, because a controller stops reading there.
+        Framing(options.Framing.End, "Your end G-code");
+
         sb.Append("M30\n");
 
         var text = sb.ToString();

@@ -39,6 +39,7 @@
     <li><a href="#negative">Etching: burning the negative</a></li>
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
+    <li><a href="#framing">My machine needs its own lines at the start</a></li>
     <li><a href="#colours">I cannot see a layer</a></li>
   </ul>
 </div>
@@ -847,6 +848,80 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   Each file is also written as a <em>single</em> layer. Some laser software creates one of its own
   cut layers per imported object, which turns a board into several hundred of them.
+</p>
+
+<h2 id="framing">My machine needs its own lines at the start</h2>
+
+<p>
+  <strong>Edit &rsaquo; Start and end G-code&hellip;</strong> Whatever you put there goes into every
+  program this app writes: a homing cycle, a work offset, a vacuum relay, a spindle dwell, a coolant
+  line. Without it, anyone whose machine wants something ours does not emit is editing every file by
+  hand after every export.
+</p>
+
+<p>
+  The two blocks land in specific places, and the placement is a safety decision rather than a
+  formatting one.
+</p>
+
+<ul>
+  <li>
+    <strong>The start block runs before the program sets its own modes.</strong> The next thing in
+    the file is always <code>G21 G90 G94</code> and <code>G17</code> &mdash; millimetres, absolute,
+    XY plane &mdash; so whatever state you leave the machine in, the job puts it back before cutting
+    anything. That makes the worst mistake impossible rather than merely warned about: a header that
+    quietly switches to inches or to incremental would otherwise change what every coordinate in the
+    file means, with nothing about the file looking wrong.
+  </li>
+  <li>
+    <strong>The end block runs after the spindle stops and before <code>M30</code></strong>, because
+    a controller stops reading at the program end.
+  </li>
+</ul>
+
+<p>
+  Your lines are marked in the output &mdash; <code>( Your start G-code )</code> &mdash; so anyone
+  reading the file can tell at a glance which lines came from your machine profile and which the app
+  wrote.
+</p>
+
+<h3>What it will not let you save</h3>
+
+<p>
+  The editor checks as you type. Two things are refused outright, because both produce a file that
+  looks perfectly fine and does not do what it says:
+</p>
+
+<ul>
+  <li>
+    <strong>A comment that does not close, or a bracket inside one.</strong> A G-code comment runs
+    to the first closing bracket, so <code>( oops (nested) )</code> ends early and the rest of the
+    line is read as code. LinuxCNC refuses the file outright.
+  </li>
+  <li>
+    <strong><code>M30</code> or <code>M2</code>.</strong> That ends the program where it stands. In
+    a start block, the job never runs at all.
+  </li>
+</ul>
+
+<p>
+  Everything else is advice and you can save it anyway &mdash; it is your G-code for your machine.
+  You will be told if you use <code>G92</code> (it shifts every coordinate after it and the file
+  gives no sign), if you move in X or Y before the program has lifted the tool, or if you set a mode
+  the program is about to set again for itself.
+</p>
+
+<div class="note">
+  <p>
+    Saved against the <strong>machine</strong>, not the board, because that is what it describes.
+    A project can carry its own instead, and then keeps it &mdash; opened a year later or on another
+    machine, it still has the lines it was cut with.
+  </p>
+</div>
+
+<p>
+  From the command line:
+  <code>millburn export &lt;folder&gt; --start-gcode &lt;file or text&gt; --end-gcode &lt;&hellip;&gt;</code>.
 </p>
 
 <h2 id="colours">I cannot see a layer</h2>

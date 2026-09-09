@@ -138,6 +138,17 @@ public sealed record ProjectSettings
     /// </summary>
     public ImmutableArray<LayerOutputSettings> LayerOutputs { get; init; } = [];
 
+    /// <summary>
+    /// This project's own start and end G-code, or nulls to use the machine's.
+    ///
+    /// Saved in the project so a job that needed something unusual keeps it — moved to another
+    /// machine, or opened a year later, it still carries the lines it was cut with. Null means
+    /// "whatever the machine says"; empty means "deliberately nothing", and the two must stay
+    /// distinguishable or a project told to add nothing starts adding something when the machine
+    /// default changes.
+    /// </summary>
+    public ProgramFraming Framing { get; init; } = ProgramFraming.None;
+
     /// <summary>Which of <see cref="Tools"/> does what. Null falls back to the built-in default.</summary>
     public Guid? IsolationToolId { get; init; }
 

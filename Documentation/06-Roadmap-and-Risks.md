@@ -727,8 +727,8 @@ bit goes first, which was right all along and is worth pinning.
 
 ### Requested, not yet scheduled
 
-Five ideas from the workshop, recorded here so they keep their reasoning. The first three are done;
-the last two are sized but unbuilt.
+Five ideas from the workshop, recorded here so they keep their reasoning. Four are done; the last
+is sized but unbuilt.
 
 **An app icon.** Done. `art/millburn-logo.png` is the source; `art/make-icons.py` cuts the mark out
 of it — the wordmark is dropped, because at 16 px "PCB_MillBurn" set across a taskbar tile is a grey
@@ -791,17 +791,28 @@ sensible 1.0 mm drill as "rubbing" on its *lateral* feed, which a drill never us
 only plunges. Drills are judged on the plunge alone now. Advice that cries wolf gets ignored, and
 then it is worse than none.
 
-**Custom pre- and post-G-code.** Every machine has a ritual: home, set an offset, turn on a vacuum,
-run a tool-length probe, dwell for a spindle to come up. Ours emits a fixed preamble, and anyone
-whose ritual differs currently edits every file by hand after every export.
+**Custom pre- and post-G-code.** Done. `ProgramFraming` holds a start and an end block; the machine
+default lives in settings, a project can override either half, and `Edit ▸ Start and end G-code…`
+edits it with the checks running as you type.
 
-The shape: a header and a footer per machine profile, overridable per project, with the project's
-version stored in the `.millburn` file so a job that needed something unusual keeps it. Two things
-make it more than a text box. It should be **run through our own parser** on entry, so a typo is
-caught while it is being typed rather than by the machine; and it should be **checked for modal
-damage** — a custom header that leaves the machine in `G91`, or in inches, quietly invalidates every
-coordinate in the program that follows it, and that is exactly the class of mistake the dry run and
-the leveller already refuse to guess at.
+The interesting decision turned out not to be the validation but **the placement**. The start block
+goes in *before* `G21 G90 G94` / `G17`, so whatever state it leaves the machine in, the program puts
+it back before cutting. That makes the worst class of mistake — a header that quietly switches to
+inches or to incremental, after which every coordinate in the file means something else and nothing
+about the file looks wrong — **impossible rather than merely warned about**. The end block goes in
+after the spindle stops and before `M30`, because a controller stops reading there.
+
+That left only two things worth refusing, both of which produce a file that looks fine and is not: a
+comment that does not close or has a bracket inside it (GRBL truncates it and feeds the rest to the
+parser; LinuxCNC rejects the file), and an `M30`/`M2` that ends the program where it stands. Save is
+disabled on those. Everything else is advice and can be saved anyway — `G92` shifting every
+coordinate after it, moving in X or Y before the program has lifted, or setting a mode the program
+is about to set again. It is somebody's own G-code for their own machine, and refusing things merely
+because we would not have written them is how a feature like this stops being useful.
+
+Null and empty are kept distinct throughout: null is "use the machine's", empty is "this project
+deliberately has none". Collapsing them would make a project that was told to add nothing start
+adding something when the machine default changed.
 
 **Open an existing program.** A viewer-only File ▸ Open for `.nc`, drawing it in the backplot. Cheap
 — the parser, the classifier and the scene builder are all built and all work on any G-code, not
