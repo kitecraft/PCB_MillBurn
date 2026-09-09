@@ -38,14 +38,19 @@
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
 
-        <!-- A layer row expander is a disclosure, not a panel: no border, minimal padding. -->
-        <Style Selector="Expander.layer">
-            <Setter Property="Margin" Value="0" />
+        <!--
+            The disclosure is a row of text that happens to toggle, so it carries no button chrome
+            of its own until the pointer is over it.
+        -->
+        <Style Selector="ToggleButton.disclose">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2,3" />
             <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="3" />
         </Style>
-        <Style Selector="Expander.layer /template/ ToggleButton">
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Padding" Value="4,2" />
+        <Style Selector="ToggleButton.disclose:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
         </Style>
 
         <Style Selector="TextBlock.fact">
@@ -96,6 +101,9 @@
                         <MenuItem Header="Show _all layers" Click="OnShowAllLayersClicked" />
                         <MenuItem Header="_Hide all layers" Click="OnHideAllLayersClicked" />
                         <Separator />
+                        <MenuItem Header="_Expand all layer settings" Click="OnExpandLayersClicked" />
+                        <MenuItem Header="_Collapse all layer settings" Click="OnCollapseLayersClicked" />
+                        <Separator />
                         <MenuItem Header="Toggle light / _dark" Click="OnToggleThemeClicked" />
                     </MenuItem>
 
@@ -139,9 +147,16 @@
                     Background="{DynamicResource Surface}"
                     BorderBrush="{DynamicResource BorderSubtle}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="10,10,10,0">
+                <Grid RowDefinitions="*,Auto,Auto,Auto" Margin="10,10,10,0">
 
-                    <StackPanel Grid.Row="0">
+                    <!--
+                        Project info and Layers share one scroller, and Export is pinned under it.
+                        Giving the layer list a guaranteed minimum instead made it overlap its own
+                        heading on a short window: a minimum cannot shrink, so the panel overflowed
+                        rather than scrolled.
+                    -->
+                    <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
 
                             <!-- Nothing open: the two ways in, and nothing else to read. -->
                             <StackPanel Spacing="8" IsVisible="{Binding !HasBoard}" Margin="2,8">
@@ -161,10 +176,8 @@
                                         ToolTip.Tip="Open a .millburn project (Ctrl+O)" />
                             </StackPanel>
 
-                    </StackPanel>
-
                             <!-- PROJECT INFO -->
-                            <Expander Grid.Row="1" Header="Project info" IsExpanded="True" IsVisible="{Binding HasBoard}">
+                            <Expander Header="Project info" IsExpanded="True" IsVisible="{Binding HasBoard}">
                                 <StackPanel Spacing="6" Margin="0,4">
                                     <ItemsControl ItemsSource="{Binding Facts}">
                                         <ItemsControl.ItemTemplate>
@@ -205,16 +218,7 @@
                             </Expander>
 
                             <!-- LAYERS -->
-                            <!--
-                                Layers takes whatever height is left and scrolls inside itself, so
-                                Export stays pinned at the bottom of the panel. A nine-layer board
-                                otherwise pushes Export off-screen, and Export is the drawer people
-                                are reaching for.
-                            -->
-                            <Expander Grid.Row="2" Header="Layers" IsExpanded="True"
-                                      VerticalAlignment="Stretch"
-                                      IsVisible="{Binding HasBoard}">
-                                <ScrollViewer MinHeight="220">
+                            <Expander Header="Layers" IsExpanded="True" IsVisible="{Binding HasBoard}">
                                 <ItemsControl ItemsSource="{Binding Layers}" Margin="0,4,6,4">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LayerRow">
@@ -222,33 +226,54 @@
                                                     BorderBrush="{DynamicResource BorderSubtle}"
                                                     BorderThickness="0,0,0,1">
                                                 <!--
-                                                    The eye and the colour sit outside the expander,
-                                                    so they stay reachable while it is shut and a
-                                                    click on either cannot also toggle it.
+                                                    The header is one row and the settings are a
+                                                    sibling underneath it, not a child of its third
+                                                    column. Nesting them left the checkbox and
+                                                    swatch stranded at the top of a column as tall
+                                                    as the open panel, with everything indented past
+                                                    the empty gutter that made.
                                                 -->
-                                                <Grid ColumnDefinitions="Auto,Auto,*">
-                                                    <CheckBox Grid.Column="0"
-                                                              IsChecked="{Binding IsVisible, Mode=TwoWay}"
-                                                              VerticalAlignment="Top"
-                                                              Margin="0,6,0,0"
-                                                              ToolTip.Tip="Show this layer in the viewport. Has nothing to do with what gets exported." />
-                                                    <Button Grid.Column="1"
-                                                            Classes="swatch"
-                                                            Width="16" Height="16"
-                                                            Margin="0,8,8,0"
-                                                            VerticalAlignment="Top"
-                                                            Click="OnSwatchClicked"
-                                                            ToolTip.Tip="Change this layer colour">
-                                                        <Border Background="{Binding Swatch}"
-                                                                CornerRadius="2" />
-                                                    </Button>
+                                                <StackPanel>
+                                                    <Grid ColumnDefinitions="Auto,Auto,*">
+                                                        <CheckBox Grid.Column="0"
+                                                                  IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                                  VerticalAlignment="Center"
+                                                                  ToolTip.Tip="Show this layer in the viewport. Has nothing to do with what gets exported." />
+                                                        <Button Grid.Column="1"
+                                                                Classes="swatch"
+                                                                Width="16" Height="16"
+                                                                Margin="0,0,8,0"
+                                                                VerticalAlignment="Center"
+                                                                Click="OnSwatchClicked"
+                                                                ToolTip.Tip="Change this layer colour">
+                                                            <Border Background="{Binding Swatch}"
+                                                                    CornerRadius="2" />
+                                                        </Button>
 
-                                                    <Expander Grid.Column="2"
-                                                              Classes="layer"
-                                                              Header="{Binding Label}"
-                                                              HorizontalAlignment="Stretch"
-                                                              Margin="0">
-                                                        <StackPanel Spacing="3" Margin="0,2,0,4">
+                                                        <ToggleButton Grid.Column="2"
+                                                                      Classes="disclose"
+                                                                      IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                                                      HorizontalAlignment="Stretch"
+                                                                      HorizontalContentAlignment="Stretch"
+                                                                      ToolTip.Tip="Show what this layer becomes">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="{Binding Label}"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource TextPrimary}" />
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="{Binding Chevron}"
+                                                                           FontSize="14"
+                                                                           Margin="6,0,4,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource TextPrimary}" />
+                                                            </Grid>
+                                                        </ToggleButton>
+                                                    </Grid>
+
+                                                    <StackPanel Spacing="3"
+                                                                Margin="26,3,0,4"
+                                                                IsVisible="{Binding IsExpanded}">
 
                                                     <ComboBox ItemsSource="{Binding Outputs}"
                                                               SelectedItem="{Binding SelectedOutput, Mode=TwoWay}"
@@ -334,23 +359,23 @@
                                                                Margin="0"
                                                                Text="{Binding Detail}" />
 
-                                                            <TextBlock FontSize="11"
-                                                                       FontFamily="Consolas,monospace"
-                                                                       Foreground="{DynamicResource StatusInfo}"
-                                                                       IsVisible="{Binding TargetName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                                                       Text="{Binding TargetName}" />
-                                                        </StackPanel>
-                                                    </Expander>
-                                                </Grid>
+                                                        <TextBlock FontSize="11"
+                                                                   FontFamily="Consolas,monospace"
+                                                                   Foreground="{DynamicResource StatusInfo}"
+                                                                   IsVisible="{Binding TargetName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                                   Text="{Binding TargetName}" />
+                                                    </StackPanel>
+                                                </StackPanel>
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                </ScrollViewer>
                             </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
 
-                            <!-- EXPORT -->
-                            <Expander Grid.Row="3" Header="Export" IsExpanded="True" IsVisible="{Binding HasBoard}">
+                    <!-- EXPORT -->
+                    <Expander Grid.Row="1" Header="Export" IsExpanded="True" IsVisible="{Binding HasBoard}">
                                 <StackPanel Spacing="6" Margin="0,4">
                                     <ComboBox ItemsSource="{Binding ExportFilters}"
                                               SelectedItem="{Binding SelectedExportFilter, Mode=TwoWay}"
@@ -367,14 +392,14 @@
                                                 ToolTip.Tip="Review every file, then choose where they go (Ctrl+E)" />
                                     </Grid>
                                 </StackPanel>
-                            </Expander>
+                    </Expander>
 
                     <!--
                         Refresh review. Nothing is applied until it has been seen: a CAM tool that
                         swaps geometry underneath you without saying what changed is how a board
                         gets scrapped.
                     -->
-                    <Border Grid.Row="4"
+                    <Border Grid.Row="2"
                             IsVisible="{Binding RefreshSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"
@@ -415,7 +440,7 @@
                     </Border>
 
                     <!-- Anything worth checking before trusting what is on screen. -->
-                    <Border Grid.Row="5"
+                    <Border Grid.Row="3"
                             IsVisible="{Binding Warnings.Count}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"

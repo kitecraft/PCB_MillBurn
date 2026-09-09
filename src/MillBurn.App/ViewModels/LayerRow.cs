@@ -149,6 +149,25 @@ public sealed partial class LayerRow : ObservableObject
     [ObservableProperty]
     public partial IBrush Swatch { get; set; }
 
+    /// <summary>
+    /// Whether this row is showing its settings.
+    ///
+    /// On the row rather than in the view so it survives a rebuild — changing a colour or taking a
+    /// refresh re-creates every row, and having them all snap shut underneath you would make the
+    /// panel feel broken.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
+
+    /// <summary>The disclosure marker. A string beats a converter for one character.</summary>
+    public string Chevron => IsExpanded ? "▾" : "▸";
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        _ = value;
+        OnPropertyChanged(nameof(Chevron));
+    }
+
     partial void OnIsVisibleChanged(bool value)
     {
         if (_scene is not null)

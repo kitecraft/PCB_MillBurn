@@ -342,6 +342,13 @@ public partial class MainWindow : Window
             _captureInstead = picker;
         }
 
+        // Opens every layer's settings, so a screenshot can show the expanded row rather than only
+        // the shut one. The rows are the part most likely to lay out wrongly.
+        if (args.Contains("--expand", StringComparer.OrdinalIgnoreCase))
+        {
+            ExpandLayers(true);
+        }
+
         var shot = ShotPath(args);
         if (shot is not null)
         {
@@ -665,6 +672,23 @@ public partial class MainWindow : Window
         (DataContext as MainViewModel)?.ResetColours();
 
     private void OnShowAllLayersClicked(object? sender, RoutedEventArgs e) => SetAllLayers(true);
+
+    private void OnExpandLayersClicked(object? sender, RoutedEventArgs e) => ExpandLayers(true);
+
+    private void OnCollapseLayersClicked(object? sender, RoutedEventArgs e) => ExpandLayers(false);
+
+    private void ExpandLayers(bool expanded)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        foreach (var row in vm.Layers)
+        {
+            row.IsExpanded = expanded;
+        }
+    }
 
     private void OnHideAllLayersClicked(object? sender, RoutedEventArgs e) => SetAllLayers(false);
 
