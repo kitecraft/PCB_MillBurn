@@ -15,26 +15,30 @@
 </header>
 
 <p class="lead">
-  Shipped with the app and opened from the Help menu. No network needed — this works next to a
+  Shipped with the app and opened from the Help menu. No network needed &mdash; this works next to a
   machine on a computer that has never been online.
 </p>
 
 <h2>Start here</h2>
 
 <ul>
-  <li><a href="faq.html"><strong>Questions and answers</strong></a> — the exported files, work
+  <li><a href="faq.html"><strong>Questions and answers</strong></a> &mdash; the exported files, work
     zero, V-bit depth and cut width, tabs, double-sided registration, panels, and the SVGs.</li>
+  <li><a href="faq.html#dryrun">Watching a job before it cuts anything</a> &mdash; run the whole
+    program in the air first.</li>
+  <li><a href="faq.html#levelling">The board is not flat</a> &mdash; probe the stock and make the
+    cut follow the surface.</li>
 </ul>
 
 <h2>The short version</h2>
 
 <ol>
-  <li><strong>Import a Gerber folder</strong> — everything your EDA tool exported, drill files
+  <li><strong>Import a Gerber folder</strong> &mdash; everything your EDA tool exported, drill files
     included. Roles are read from the files themselves; anything guessed is labelled.</li>
   <li><strong>Set each layer&rsquo;s output</strong> in the Layers drawer. G-code for the mill, SVG
     for the laser, or nothing. Each one becomes its own file.</li>
-  <li><strong>Preview</strong> (F5) draws the emitted programs back over the board — parsed from
-    the G-code itself, not from the toolpaths that made it.</li>
+  <li><strong>Preview</strong> (F5) draws the emitted programs back over the board &mdash; parsed
+    from the G-code itself, not from the toolpaths that made it.</li>
   <li><strong>Export</strong> (Ctrl+E) shows every file, what it will do, and anything worth
     checking, before a single byte is written. You choose the folder; the names come from the
     layers.</li>
@@ -45,12 +49,55 @@
   board&rsquo;s lower-left corner, shared by every file in an export.
 </p>
 
-<div class="warn">
+<h2>Two things worth doing before you cut</h2>
+
+<p>
+  Both are optional, both are ticked in the Export window, and between them they account for most of
+  the boards people ruin.
+</p>
+
+<h3>Run it in the air first</h3>
+
+<p>
+  Tick <strong>Also write a dry run of each program</strong>. Every <code>.nc</code> gets a
+  <code>.dryrun.nc</code> beside it that traces exactly the same path, held 5&nbsp;mm above work
+  zero, with the spindle never started. Set work zero as you would for the real job, run the dry one,
+  and watch.
+</p>
+
+<p>
+  It answers the questions that otherwise cost a board: is work zero where you think, does the job
+  fit on the stock, will it reach a clamp, which side of the line is the cutter on, and how long is
+  this actually going to take &mdash; the feeds are kept, so it takes as long as the real thing.
+  <a href="faq.html#dryrun">More &rsaquo;</a>
+</p>
+
+<h3>Measure the board and follow it</h3>
+
+<p>
+  Isolation cuts <strong>0.05&nbsp;mm</strong> deep. An ordinary piece of clamped copper-clad is
+  <strong>0.1&ndash;0.2&nbsp;mm</strong> out of flat. That comparison is the single most common
+  reason PCB milling disappoints people, and no amount of care with the toolpath fixes it.
+</p>
+
+<ol>
+  <li><strong>Job &rsaquo; Write probing routine&hellip;</strong> and run it in your sender.</li>
+  <li><strong>Job &rsaquo; Import height map&hellip;</strong> with your sender&rsquo;s log.</li>
+  <li><strong>Export</strong> with <em>Level to the imported height map</em> ticked.</li>
+</ol>
+
+<p>
+  Each program gets a <code>.levelled.nc</code> whose depth follows the measured surface. Work zero
+  has to be in the same place when you cut as when you probed.
+  <a href="faq.html#levelling">More &rsaquo;</a>
+</p>
+
+<div class="note">
   <p>
-    <strong>Nothing here has been verified by cutting air first.</strong> A dry-run generator — the
-    same program with the Z moves lifted clear — is planned but not built. Until it exists, the
-    first time a program runs, it runs into copper. Check the preview, and consider running the
-    first job on scrap.
+    <strong>Mask relief needs this one.</strong> Cured soldermask is 0.02&ndash;0.04&nbsp;mm thick
+    &mdash; thinner than the flatness of ordinary stock &mdash; so without a height map the same
+    program leaves mask on one pad and cuts into the copper of another, and neither shows up until
+    the board is under a light.
   </p>
 </div>
 
@@ -58,17 +105,19 @@
 
 <p>
   It writes files. It never opens a serial port, never drives a machine, and never needs to know
-  what controller you have. You load its output into whatever sender you already use — gSender,
-  UGS, Candle, LightBurn, LinuxCNC — exactly like any other program.
+  what controller you have. You load its output into whatever sender you already use &mdash; gSender,
+  UGS, Candle, LightBurn, LinuxCNC &mdash; exactly like any other program.
 </p>
 
 <p>
   That boundary is the reason it works with every controller that has ever existed, and it is not
-  going to move.
+  going to move. It is also why probing is <em>generate and import</em>: the app writes the routine,
+  your sender runs it, and the log comes back here. A map probed months ago, by a tool that has
+  never heard of this one, imports just as well.
 </p>
 
 <footer>
-  PCB_MillBurn — MIT licensed.
+  PCB_MillBurn &mdash; MIT licensed.
 </footer>
 
 </div>

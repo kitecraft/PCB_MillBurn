@@ -13,10 +13,23 @@ theming, file pickers and G-code export all work, and the output loads in gSende
 streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
 the laser takes SVG** — see [04 §1](Documentation/04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
 
-> **Status: Phase 1 complete.** Drop a Gerber export folder on the window and the board appears:
-> parsers, geometry realisation (apertures, macros, strokes, regions, polarity), layer detection
-> and the viewer are all in, clean on real boards and the full external corpus. Silkscreen exports
-> as laser-ready SVG. Toolpaths and G-code are Phase 2 and not built yet.
+> **Status: it cuts boards.** Drop a Gerber export folder on the window and the board appears;
+> set what each layer becomes and export isolation, drilling, mask relief, outline-with-tabs, and
+> laser-ready SVG — one file per layer, backplotted from the emitted G-code rather than from the
+> toolpaths that made it.
+>
+> Reading and drawing (Phase 1), toolpaths and G-code (Phase 2) and the travel optimizer
+> (Phase 3) are done. Phase 3 also brought simplification and arc fitting: a 66-up panel's
+> isolation goes from 301,097 lines to 15,191, within a 2 µm bound.
+>
+> Phase 5 has started with the two features that stop people ruining boards. **Dry runs** rewrite
+> any program to trace the same path 5 mm in the air with the spindle off. **Height mapping**
+> generates a probing routine, imports your sender's log, and bends the program to follow the
+> measured surface — which is what makes 0.05 mm isolation and 0.035 mm mask relief work on stock
+> that is 0.15 mm out of flat.
+>
+> Still open: fiducial fitting and fixture generators (Phase 5), kerf compensation and DXF
+> (Phase 4), and panelising in CAM (Phase 6).
 
 ## Documentation
 
@@ -101,9 +114,14 @@ dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse rep
 dotnet run --project src/MillBurn.Cli -- render <layer.gbr> --svg out.svg
 dotnet run --project src/MillBurn.Cli -- svg <silkscreen.gbr>       # laser-ready SVG
 
+dotnet run --project src/MillBurn.Cli -- export <folder> --dry-run --write   # + a .dryrun.nc each
+dotnet run --project src/MillBurn.Cli -- probe <folder>              # a G38.2 grid to run and log
+dotnet run --project src/MillBurn.Cli -- export <folder> --level probe.log --write
+dotnet run --project src/MillBurn.Cli -- level any.nc --map probe.log        # levels anyone's G-code
+
 dotnet run --project src/MillBurn.App            # the app (drag a folder onto it)
 dotnet run --project src/MillBurn.App -- --bench # viewport benchmark (offscreen, CPU raster)
-dotnet run --project src/MillBurn.App -- --probe # render-configuration sweep
+dotnet run --project src/MillBurn.App -- --probe # render-configuration sweep (not board probing)
 dotnet run --project src/MillBurn.App -- --fpstest  # measures the real GPU render loop
 ```
 
@@ -118,7 +136,7 @@ src/
   MillBurn.Optimize   travel optimizer and the motion time model
   MillBurn.Gcode      mill only: emitter, parser, processor chain, backplot
   MillBurn.Post       mill only: machine profiles and post-processors
-  MillBurn.Align      fiducial fits, transforms, height-map import
+  MillBurn.Align      height maps (probe-log import, TPS), G-code levelling, fiducial fits
   MillBurn.Export     SVG / DXF / PDF / PNG - the whole laser output path
   MillBurn.Viewer     toolpath scene, level of detail, spatial culling, Skia renderer
   MillBurn.Pipeline   the cached, cancellable stage graph tying it together

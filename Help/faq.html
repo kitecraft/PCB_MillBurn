@@ -62,6 +62,21 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 </p>
 
 <p>
+  Two of the Export window&rsquo;s tick boxes add a companion beside each program, named so it sorts
+  next to the one it belongs to and so nobody has to wonder which of two files is the one that cuts:
+</p>
+
+<pre><code>MyBoard-F_Cu.dryrun.nc     the same path, 5 mm up, spindle off
+MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</code></pre>
+
+<p>
+  See <a href="#dryrun">Watching a job before it cuts anything</a> and
+  <a href="#levelling">The board is not flat</a>. <strong>Job &rsaquo; Write probing
+  routine&hellip;</strong> writes one more, <code>MyBoard.probe.nc</code>, which is what measures
+  the surface in the first place.
+</p>
+
+<p>
   One file per layer is deliberate. A single program containing isolation, three drill sizes and
   the outline assumes one person watching one long run. Split up, a broken bit costs you the
   drilling rather than the board — and it is the only arrangement that works at all when the

@@ -149,7 +149,7 @@ tool that swaps geometry underneath you without saying so is how a board gets sc
 marks the project dirty, so closing without saving reverts it; that is the whole undo story for
 now, and it is honest. **Not yet built:** the before/after ghost overlay in the viewport.
 
-### Phase 2 — Mill toolpaths + G-code + backplot
+### Phase 2 — Mill toolpaths + G-code + backplot — **done**
 
 - Clipper2 offsets; isolation passes; V-bit effective-diameter model; minimum-clearance DRC.
 - Drilling with grouping and peck.
@@ -354,7 +354,7 @@ reads the project's own settings first now. `project save` gained the same `--se
 configured project is scriptable rather than only clickable — which is also what makes the round
 trip checkable without a person in the loop.
 
-### Phase 3 — The optimizer — **in progress**
+### Phase 3 — The optimizer — **done**
 
 - GTSP model with entry-configuration sets, closed-loop free start.
 - Trapezoidal time cost model.
@@ -542,7 +542,7 @@ revisit it once Phase 5 can verify a program without cutting.
 **Done when:** the acceptance metrics in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria)
 are met on the corpus and enforced in CI.
 
-### Phase 4 — Laser output (SVG)
+### Phase 4 — Laser output (SVG) — **in progress**
 
 Laser output is **SVG, not G-code** ([04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats)),
 which deletes most of what this phase used to contain: no laser dialect, no scanline fill, no
@@ -578,7 +578,10 @@ the etched result is dimensionally within one etch-bias unit of nominal.
 - Verified on both real boards: `PogoTest1-F_Silkscreen` is 217 paths in two elements, 26.8 x 33.7
   mm page, every coordinate inside the viewBox, and the legend reads the right way up.
 
-Still to come in this phase: copper inversion and pad selection, kerf and etch-bias offsets, the
+Copper inversion has since landed too — an inverted SVG is everything inside the board edge
+*except* the layer, which is what burning a resist mask off a painted board wants.
+
+Still to come in this phase: pad selection from X2 attributes, kerf and etch-bias offsets, the
 LightBurn layer preset, DXF, and the calibration generators.
 
 ### Phase 5 — Jobs, setups, alignment — **started**
