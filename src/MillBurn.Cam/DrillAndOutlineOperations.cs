@@ -75,13 +75,32 @@ public static class DrillOperation
 
         foreach (var (tool, _) in drill.ByTool())
         {
-            var hits = drill.Hits.Where(h => h.Tool == tool.Number).ToList();
+            // Coincident hits are dropped. A drill file that lists the same position twice for the
+            // same bit — which real ones do, and the IceZUM board does eight times — otherwise
+            // drills the hole, then drills the empty hole again. The second pass cuts nothing, and
+            // a drill dropped into a hole it already made is the one most likely to grab and snap.
+            //
+            // Same tool only. The same position under two different diameters is a hole being
+            // opened out, which is a deliberate thing somebody might mean.
+            var seen = new HashSet<Point2>();
+            var hits = drill.Hits
+                .Where(h => h.Tool == tool.Number)
+                .Where(h => seen.Add(h.At))
+                .ToList();
+
             if (hits.Count == 0)
             {
                 continue;
             }
 
+            var repeats = drill.Hits.Count(h => h.Tool == tool.Number) - hits.Count;
             var notes = new List<string>();
+
+            if (repeats > 0)
+            {
+                notes.Add(Invariant(
+                    $"{repeats} repeated position(s) in the drill file were only drilled once."));
+            }
             if (options.PeckNm > 0 && options.DepthNm > options.PeckNm)
             {
                 var peck = Nm.ToMillimetreString(options.PeckNm, 2);

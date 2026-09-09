@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 namespace MillBurn.Core;
 
@@ -78,10 +79,83 @@ public sealed record Tool
     /// </summary>
     public long StepdownNm { get; init; }
 
+    /// <summary>
+    /// How many cutting edges. Two on almost everything that cuts a PCB.
+    ///
+    /// Stored because it is the missing term in chipload: the feed, the speed and the flute count
+    /// together say how much material each edge takes per pass, and that number — not the feed —
+    /// is what decides whether a 0.4 mm bit lasts one board or twenty. Everything else needed for
+    /// it was already here.
+    /// </summary>
+    public int Flutes { get; init; } = 2;
+
+    /// <summary>
+    /// Length of the fluted part, in nanometres. Zero means unknown.
+    ///
+    /// The honest source for how deep this tool can cut: past the flutes there is nothing to clear
+    /// the chips, so a cut deeper than this packs and snaps the bit rather than cutting. It does
+    /// not replace <see cref="MaxDepthNm"/>, which for a V-bit is a statement about width rather
+    /// than about survival — it bounds it.
+    /// </summary>
+    public long FluteLengthNm { get; init; }
+
     public string? Notes { get; init; }
 
     /// <summary>True when the tool is at the end of its cone and cannot cut any wider.</summary>
     public bool IsAtFullWidth(long depthNm) => MaxDepthNm > 0 && depthNm >= MaxDepthNm;
+
+    // ------------------------------------------------------------------ derived, never stored
+
+    /// <summary>
+    /// How much material each cutting edge takes per revolution, in nanometres.
+    ///
+    /// <c>feed / (rpm × flutes)</c>. The single most useful number about a small cutter, and the
+    /// one nobody computes by hand: too little and the edge rubs instead of cutting, which
+    /// work-hardens the copper and blunts the bit doing no work at all; too much and it snaps.
+    ///
+    /// Derived rather than stored, so it cannot disagree with the feed it comes from.
+    /// </summary>
+    [JsonIgnore]
+    public double ChipLoadNm => SpindleRpm <= 0 || Flutes <= 0
+        ? 0
+        : FeedMmPerMin * (double)Nm.PerMillimetre / (SpindleRpm * (double)Flutes);
+
+    /// <summary>
+    /// How fast the edge moves through the work, in metres per minute: <c>π × diameter × rpm</c>.
+    ///
+    /// Not a warning on its own — it is the number people look up in a table — but free to compute
+    /// and meaningless to store. Zero for a V-bit, whose cutting diameter depends on depth.
+    /// </summary>
+    [JsonIgnore]
+    public double SurfaceSpeedMPerMin => Kind == ToolKind.VBit
+        ? 0
+        : Math.PI * (DiameterNm / (double)Nm.PerMillimetre) * SpindleRpm / 1000.0;
+
+    /// <summary>
+    /// How far a drill advances per revolution, in nanometres: <c>plunge feed / rpm</c>.
+    ///
+    /// This is what breaks small drills. A 0.3 mm drill at 100 mm/min and 12,000 rpm takes 8 µm a
+    /// revolution and is fine; the same feed at 3,000 rpm takes 33 µm and is not, and nothing about
+    /// the feed number says so.
+    /// </summary>
+    [JsonIgnore]
+    public double PlungePerRevNm => SpindleRpm <= 0
+        ? 0
+        : PlungeMmPerMin * (double)Nm.PerMillimetre / SpindleRpm;
+
+    /// <summary>
+    /// The deepest this tool can sensibly cut, in nanometres, or zero if nothing is known.
+    ///
+    /// Whichever of the flute length and the cone limit is smaller and actually stated. Two
+    /// different reasons a tool stops working at depth, and the tool stops at the first of them.
+    /// </summary>
+    [JsonIgnore]
+    public long UsableDepthNm => (FluteLengthNm, MaxDepthNm) switch
+    {
+        (0, var cone) => cone,
+        (var flute, 0) => flute,
+        var (flute, cone) => Math.Min(flute, cone),
+    };
 
     /// <summary>
     /// How wide a groove this tool cuts at a given depth below the surface.
@@ -152,6 +226,7 @@ public sealed record Tool
     /// Surfaced because it is the number that decides whether a board needs height mapping, and it
     /// is not obvious: a shallower V is *more* sensitive, not less.
     /// </summary>
+    [JsonIgnore]
     public double WidthPerDepth => Kind is ToolKind.VBit
         ? 2 * Math.Tan(IncludedAngleDegrees * Math.PI / 360.0)
         : 0;

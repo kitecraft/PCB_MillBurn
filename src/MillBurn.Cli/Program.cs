@@ -928,10 +928,37 @@ internal static class Program
                     }
 
                     Line($"  feeds       {tool.FeedMmPerMin} mm/min, plunge {tool.PlungeMmPerMin}, {tool.SpindleRpm} rpm");
+                    Line($"  flutes      {tool.Flutes}");
+
+                    // The derived numbers, beside the stored ones they come from. This is the whole
+                    // reason for holding a flute count: chipload is what decides whether a small bit
+                    // survives, and nobody works it out in their head.
+                    var chip = tool.ChipLoadNm / 1000;
+                    Line($"  chipload    {chip:F1} µm per tooth");
+
+                    if (tool.SurfaceSpeedMPerMin > 0)
+                    {
+                        Line($"  surface     {tool.SurfaceSpeedMPerMin:F1} m/min");
+                    }
+
+                    if (tool.Kind == ToolKind.Drill)
+                    {
+                        Line($"  per rev     {tool.PlungePerRevNm / 1000:F1} µm on the plunge");
+                    }
+
+                    if (tool.FluteLengthNm > 0)
+                    {
+                        Line($"  flute len   {Nm.ToMillimetreString(tool.FluteLengthNm, 2)} mm");
+                    }
 
                     if (tool.Notes is not null)
                     {
                         Line($"  note        {tool.Notes}");
+                    }
+
+                    foreach (var advice in ToolAdvice.For(tool))
+                    {
+                        Console.Error.WriteLine($"  {"",-2}CHECK {advice}");
                     }
 
                     Console.WriteLine();

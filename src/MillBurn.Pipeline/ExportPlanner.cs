@@ -232,6 +232,16 @@ public static class ExportPlanner
         var warnings = new List<string>();
         var summary = new List<string>();
 
+        // What the tool's own numbers say about how it will behave. Shown against the operation
+        // rather than only in the tool editor, because this is the moment somebody is deciding to
+        // press go, and the feed that suited the last bit may not suit this one.
+        warnings.AddRange(ToolAdvice.For(tool));
+
+        // What the tool's own numbers say about how it will behave. Shown against the operation
+        // rather than only in the tool editor, because this is the moment somebody is deciding to
+        // press go, and the feed that was fine for the last bit may not be for this one.
+        warnings.AddRange(ToolAdvice.For(tool));
+
         // A list, because drilling is genuinely several toolpaths: one per hole size, each with its
         // own bit. Every other operation is one. Collapsing them into a single toolpath -- which is
         // what this used to do -- silently drilled every hole with whichever bit came first.
@@ -440,14 +450,20 @@ public static class ExportPlanner
         var depth = Nm.ToMillimetreString(options.DepthNm, 2);
         var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
         var sizes = layer.Drill.Tools.Count == 1 ? "1 size" : Invariant($"{layer.Drill.Tools.Count} sizes");
-        summary.Add(Invariant(
-            $"{layer.Drill.Hits.Count} holes in {sizes} · {depth} mm deep ({through} mm through the back)"));
+
+        var built = DrillOperation.Build(layer.Drill, options, tool);
+        var repeats = layer.Drill.Hits.Count - built.Sum(p => p.Drills.Count);
+        var holes = repeats > 0
+            ? Invariant($"{layer.Drill.Hits.Count} holes in {sizes}, {repeats} of them repeated")
+            : Invariant($"{layer.Drill.Hits.Count} holes in {sizes}");
+
+        summary.Add(Invariant($"{holes} · {depth} mm deep ({through} mm through the back)"));
 
         // One file per layer, and the sizes inside it become tool changes rather than more files.
         // Returned as separate toolpaths because each carries its own bit: merging them into one
         // kept only the first tool, so a board with 0.8 mm and 1.0 mm holes had every one of them
         // drilled 1.0 mm and nothing in the file said so.
-        return DrillOperation.Build(layer.Drill, options, tool);
+        return built;
     }
 
     /// <summary>
