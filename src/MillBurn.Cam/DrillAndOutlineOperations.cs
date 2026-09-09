@@ -129,7 +129,7 @@ public static class OutlineOperation
         //
         // Offsetting them together makes Clipper fill the whole set: a panel frame's own rectangle
         // then covers every board inside it and they disappear, which is a program that cuts the
-        // frame out and leaves fifty boards attached to it. Independently, each profile keeps its
+        // frame out and leaves every board attached to it. Independently, each profile keeps its
         // own boundary.
         var contours = new Paths64();
         foreach (var profile in outline)
@@ -196,7 +196,7 @@ public static class OutlineOperation
             // A tab holds a piece to the stock around it, so only the boundary between the job and
             // the material it sits in needs one. Everything nested inside that boundary is already
             // held — on a panel the individual boards are joined to each other by the tabs the
-            // designer drew, and adding more on all four sides of all fifty of them leaves a panel
+            // designer drew, and adding more on all four sides of every one of them leaves a panel
             // that has to be cut apart by hand.
             var outermost = nesting.GetValueOrDefault(c) == 0;
 
@@ -285,7 +285,7 @@ public static class OutlineOperation
     /// <summary>
     /// How many of the other profiles each profile sits inside.
     ///
-    /// A bounds test first, because on a fifty-up panel that rejects almost every pair immediately;
+    /// A bounds test first, because on a 66-up panel that rejects almost every pair immediately;
     /// only the survivors pay for a point-in-polygon test.
     /// </summary>
     private static Dictionary<int, int> NestingOf(Paths64 contours)

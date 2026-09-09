@@ -456,8 +456,8 @@ public static class ExportPlanner
         //
         // A stroked Edge_Cuts realises as an annulus per outline: a positive ring around the
         // outside of the pen and a negative one inside it. Taking only the largest positive ring is
-        // right for a single board and silently wrong for everything else — on a fifty-up panel it
-        // cut the frame and left all fifty boards attached, and it would drop an interior slot the
+        // right for a single board and silently wrong for everything else — on a 66-up panel it
+        // cut the frame and left every board attached, and it would drop an interior slot the
         // same way. The negative rings are the inside of the pen stroke rather than real cutouts,
         // so they are not profiles and are left alone.
         var profiles = new Paths64(layer.Area.Where(r => Clipper.Area(r) > 0));
@@ -470,6 +470,9 @@ public static class ExportPlanner
 
         if (profiles.Count > 1)
         {
+            // "Profiles", not "boards". A panel's Edge_Cuts is usually a shared lattice with tab
+            // gaps rather than one closed outline per board, so the number of ring regions it
+            // realises to is not the number of boards and must not be reported as though it were.
             summary.Add(Invariant(
                 $"{profiles.Count} profiles · inner pieces cut before the frame around them"));
         }

@@ -402,7 +402,7 @@ travel disagreed with the file's until both were fixed — they now agree exactl
 952.4 mm on the panel, which is the check that says the number in the UI is the number the machine
 will do.
 
-**A fifty-up panel was cutting the frame and leaving all fifty boards attached.** `BuildOutline`
+**A 66-up panel was cutting the frame and leaving every board attached.** `BuildOutline`
 took only the largest ring, which is right for one board and silently wrong for everything else —
 it would drop an interior slot the same way. Every positive ring is now a profile, and each is
 offset on its own: offsetting them as one polygon set makes Clipper fill the whole thing, so the
@@ -438,12 +438,12 @@ a depth the operator typed is never replaced. The export warns, with the chosen 
 the whole cut is shallower than an ordinary board's flatness — which is exactly the trouble that was
 reported with it, and the strongest argument yet for Phase 5's height mapping.
 
-**Tabs go on the outermost profile only.** Reported from a fifty-up panel: every one of the fifty
+**Tabs go on the outermost profile only.** Reported from a 66-up panel: every one of the
 boards was getting four tabs of our own, on top of the tabs the designer had already drawn between
 them, leaving a panel that had to be cut apart by hand. A tab holds a piece to the material around
 it, so the only boundary that needs one is between the job and the stock — which is exactly the
 `nesting == 0` test the containment tree already computes. Panel cutout travel fell from 1,922 mm to
-772 mm as a side effect, because the fifty inner boards became closed contours again instead of
+772 mm as a side effect, because the inner profiles became closed contours again instead of
 four tabbed runs each.
 
 **Drill files written as Gerber X2 now drill.** KiCad's *Generate Drill Files* offers X2 instead of
@@ -527,7 +527,7 @@ boards, from 77% to 93%.
 pcb2gcode's isolation produces open segments that can be chained. Ours does not: every isolation and
 engrave path is a closed contour out of a Clipper offset, and two distinct closed contours never
 share a vertex — if they touched, the offset would have merged them into one. Counted on both
-PogoTest1 and the fifty-up panel: **zero endpoints shared by more than one pass**, in isolation and
+PogoTest1 and the 66-up panel: **zero endpoints shared by more than one pass**, in isolation and
 in engraving alike. There is nothing to merge, and machinery that provably does nothing is worse
 than none.
 

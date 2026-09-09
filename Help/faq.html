@@ -176,7 +176,7 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
   <p>
     On a panel that means the frame gets tabs and the boards inside it do not &mdash; they are
     already joined to each other by whatever the designer drew. Adding four more to every one of
-    fifty boards leaves a panel that has to be cut apart by hand, which is the opposite of what
+    board leaves a panel that has to be cut apart by hand, which is the opposite of what
     tabs are for.
   </p>
 </div>
@@ -186,7 +186,7 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 <p>
   Exported programs are simplified: points that say nothing are dropped, and the fans of tiny
   segments that a rounded corner arrives as become real <code>G2</code>/<code>G3</code> arcs. A
-  fifty-up panel goes from about 301,000 lines to about 15,000.
+  66-up panel goes from about 301,000 lines to about 15,000.
 </p>
 
 <p>
@@ -414,7 +414,7 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 
 <p>
   <strong>A panel you made in your EDA tool is cut correctly.</strong> Every closed profile in
-  <code>Edge_Cuts</code> is milled — a fifty-up panel gives fifty boards plus the frame — and the
+  <code>Edge_Cuts</code> is milled — a 66-up panel gives all 66 boards plus the frame — and the
   pieces inside are cut before the frame around them, because taking the frame out first leaves
   everything still attached to it loose while the cutter is still working.
 </p>

@@ -22,7 +22,7 @@ public static class RealBoards
     /// Fifty boards and a frame, exported from KiCad as one panel.
     ///
     /// The case the optimizer is most worth measuring on, and the one that found the outline bug:
-    /// taking only the largest ring cut the frame and left all fifty boards attached to it. Nothing
+    /// taking only the largest ring cut the frame and left every board attached to it. Nothing
     /// smaller reproduces that, because on a single board the largest ring is the right answer.
     /// </summary>
     public const string Panel = "GridStripConnector_Panelized";

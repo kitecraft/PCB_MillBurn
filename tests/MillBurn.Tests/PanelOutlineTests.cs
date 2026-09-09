@@ -8,7 +8,7 @@ namespace MillBurn.Tests;
 /// <summary>
 /// Cutting out more than one thing.
 ///
-/// Found on a real fifty-up panel: the exporter cut the frame and left every board inside it
+/// Found on a real 66-up panel: the exporter cut the frame and left every board inside it
 /// attached. It is the worst shape a bug can have — the file runs, the machine sounds right, the
 /// frame comes free, and the boards are still in it. Nothing in the output said so, because from
 /// the program's point of view it did exactly what it was asked.
