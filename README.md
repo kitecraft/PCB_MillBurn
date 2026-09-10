@@ -1,77 +1,308 @@
-# PCB_MillBurn
+<div align="center">
+  <img src="art/millburn-mark.png" alt="" width="120">
+  <h1>PCB_MillBurn</h1>
+  <p>
+    <b>Turn your Gerber files into a circuit board.</b><br>
+    G-code for the mill. SVG for the laser. One app, one board, no guesswork.
+  </p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue.svg" alt="Licence: MIT"></a>
+    <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-10-512BD4.svg" alt=".NET 10"></a>
+    <a href="#build-it-yourself"><img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Linux-informational.svg" alt="Runs on Windows and Linux"></a>
+    <a href="THIRD-PARTY-NOTICES.md"><img src="https://img.shields.io/badge/dependencies-permissive%20only-success.svg" alt="Permissively licensed dependencies only"></a>
+  </p>
+</div>
 
-A modern Gerber-to-G-code converter for **CNC mills**, **laser engravers**, and **mixed mill+laser
-workflows** — a rethink of `pcb2gcode` with a real travel optimizer, first-class laser output, a
-live toolpath viewer, and a job model that handles a board moving between machines.
+<!--
+  Once this is pushed to GitHub, add the build badge beside the others — replace OWNER/REPO:
+  <a href="../../actions/workflows/build.yml"><img src="https://github.com/OWNER/REPO/actions/workflows/build.yml/badge.svg" alt="build"></a>
+-->
 
-Runs on **Windows and Linux**. Every project targets plain `net10.0`, there is no Windows-only API
-in the codebase, and the GUI publishes for `linux-x64` cleanly — Avalonia supplies the X11 backend
-and SkiaSharp the native rendering library. The Linux build has been run under WSL2/WSLg: window,
-theming, file pickers and G-code export all work, and the output loads in gSender.
+<img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with isolation toolpaths drawn over the copper">
 
-**PCB_MillBurn converts files. It does not drive machines.** No serial port, no jogging, no
-streaming — UGS, Candle, LightBurn and LinuxCNC already do that well. **The mill takes G-code;
-the laser takes SVG** — see [04 §1](Documentation/04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
+<sub>A 66-up panel — 11,414 objects, 198 copper islands — with the emitted isolation program drawn back over the copper it was made from.</sub>
 
-> **Status: it cuts boards.** Drop a Gerber export folder on the window and the board appears;
-> set what each layer becomes and export isolation, drilling, mask relief, outline-with-tabs, and
-> laser-ready SVG — one file per layer, backplotted from the emitted G-code rather than from the
-> toolpaths that made it.
->
-> Reading and drawing (Phase 1), toolpaths and G-code (Phase 2) and the travel optimizer
-> (Phase 3) are done. Phase 3 also brought simplification and arc fitting: a 66-up panel's
-> isolation goes from 301,097 lines to 15,191, within a 2 µm bound.
->
-> Phase 5 has started with the two features that stop people ruining boards. **Dry runs** rewrite
-> any program to trace the same path 5 mm in the air with the spindle off. **Height mapping**
-> generates a probing routine, imports your sender's log, and bends the program to follow the
-> measured surface — which is what makes 0.05 mm isolation and 0.035 mm mask relief work on stock
-> that is 0.15 mm out of flat.
->
-> Still open: fiducial fitting and fixture generators (Phase 5), pad selection and DXF
-> (Phase 4). Panelising is deliberately **not** on the list: make the panel in your EDA tool —
-> KiKit for KiCad — and this cuts it.
+---
 
-## Documentation
+## What it does
 
-Design docs live in [`Documentation/`](Documentation/README.md). Start there — the plan is
-considerably more interesting than the code so far.
+Drop a folder of Gerbers on the window. The board appears. Tell each layer what it should become.
+Press Export.
 
-| Doc | Subject |
-|---|---|
-| [01](Documentation/01-Architecture.md) | Solution layout, incremental pipeline, scope boundary, licensing |
-| [02](Documentation/02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 parsing, Clipper2/NTS geometry, isolation, DRC |
-| [03](Documentation/03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, and the replacement |
-| [04](Documentation/04-Machines-Laser-and-Mixed-Workflows.md) | Laser output, the Job model, board re-alignment |
-| [05](Documentation/05-Viewer-and-Export.md) | The G-code viewer, SVG/DXF export |
-| [06](Documentation/06-Roadmap-and-Risks.md) | Phases, acceptance metrics, risks |
-| [07](Documentation/07-UI-Framework-Decision.md) | Avalonia vs. WPF vs. MAUI |
+- **Mill it.** Isolation routing, drilling, soldermask relief, cut-out with tabs. Real G-code.
+- **Burn it.** Laser-ready SVG at true 1:1 millimetres, for LightBurn or Inkscape.
+- **Or both.** Etch the traces with the laser, drill and cut the outline on the mill. Same board,
+  same origin, same export.
 
-## Building
+Every file is one layer. Every file shares the board's lower-left corner as work zero. Nothing is
+written until you have seen a list of exactly what is about to be written.
+
+**It writes files. It does not drive machines.** No serial port, no jogging, no streaming — gSender,
+UGS, Candle, LightBurn and LinuxCNC already do that well.
+
+---
+
+## 🔍 It is also just a really good Gerber viewer
+
+**Use it for nothing else and it still earns its place on your machine.**
+
+Point it at any Gerber export folder and look at your board — fast, correct, and offline.
+
+- **Reads what your EDA tool actually writes.** Gerber RS-274X and X2, aperture macros, negative
+  polarity, step-and-repeat, arcs kept as arcs. Excellon drill files including the zero-suppressed
+  dialects, G85 slots and routed slots.
+- **Knows what each file is** from its X2 `.FileFunction` — not from its filename — and *says so*
+  when it had to guess.
+- **Fast.** The viewport holds **98 fps** through a full fit → 40× → fit zoom sweep on 500,247
+  segments. A board renders in 0.04 ms.
+- **Every layer independently toggleable**, with colours you pick and it remembers.
+- **Opens anybody's G-code too.** `File ▸ Open G-code…`, or drag a `.nc` onto the window. It parses
+  the text, so a program from any CAM tool draws the same way.
+- **Light and dark**, and it means it.
+
+<img src="art/screenshots/viewer-light.png" alt="The board viewer in light theme showing copper, silkscreen, holes and outline">
+
+---
+
+## See it
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="art/screenshots/toolpath.png" alt="One layer's copper with its isolation toolpath drawn over it">
+<p><b>Check the cut before you make it.</b> One layer's copper, one layer's toolpath, everything
+else off. The path drawn is parsed back out of the emitted G-code — not from the toolpath that made
+it — so what you are looking at is the file the machine will run.</p>
+</td>
+<td width="50%" valign="top">
+<img src="art/screenshots/export.png" alt="The export review window listing every file with its facts and warnings">
+<p><b>Nothing is written by surprise.</b> Every file, what it will do, how long it takes, how much
+it simplified, and anything worth checking — before a single byte lands on disk.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="art/screenshots/drill-guide.png" alt="The drilling companion page listing bits in order with hole counts">
+<p><b>Drilling gets a page of its own.</b> The bits in the order they go in, hole counts, when the
+run stops to change them, and what you have to re-zero. Written beside the program, as HTML.</p>
+</td>
+<td width="50%" valign="top">
+<img src="art/screenshots/settings.png" alt="The settings window showing machine, dry run and probing values">
+<p><b>The machine's numbers are yours.</b> Safe height, approach, rapid rate, decimals, canned
+cycles, dry-run height, probing grid, levelling. Checked for contradictions, and refused rather
+than silently clamped.</p>
+</td>
+</tr>
+</table>
+
+<img src="art/screenshots/svg-output.png" alt="The exported SVG rendered in a browser: 66 boards in LightBurn green">
+
+<sub>The actual exported SVG, opened in a browser. Real millimetres, named layers, LightBurn's
+palette. This artwork has been laser-engraved onto copper-clad and measured true to within 0.1 mm.</sub>
+
+---
+
+## Quick start
+
+1. **Get it.** Download a release, or [build it yourself](#build-it-yourself). Self-contained —
+   you do not need .NET installed.
+2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
+   folder…`. Drill files come along with it.
+3. **Set the board thickness** in Project info. Everything that cuts through uses it.
+4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG
+   (laser)**, or **Not exported**. The pill on the collapsed row shows what you chose.
+5. **Press Preview** (F5). The programs are drawn back over your board.
+6. **Press Export…** (Ctrl+E). Read the list. Choose a folder. Done.
+
+Press **F1** at any point — the help pages ship with the app and work with no network, which is
+the condition a workshop is usually in.
+
+---
+
+## How to
+
+### Mill a board
+
+| Layer | Set it to | You get |
+|---|---|---|
+| Top / bottom copper | G-code | Isolation routing around every trace and pad |
+| Plated / non-plated holes | G-code | A drilling program with tool changes, plus its HTML guide |
+| Board outline | G-code | Cut-out with tabs, in depth passes |
+| Soldermask | G-code | Mask relief — mills the mask off the pads only |
+
+Run order on the machine: **isolate, drill, cut out.** Work zero is the board's lower-left corner,
+shared by every file in the export.
+
+Per layer you can set the tool, cut depth, number of passes, break-through past the underside, and
+tab count. Pick tools from your saved library (`Edit ▸ Tool library…`) — diameter, tip and included
+angle for V-bits, feeds, plunge rate, RPM, max depth, stepdown, flutes.
+
+### Burn a board
+
+| Layer | Set it to | You get |
+|---|---|---|
+| Copper | SVG | The traces, ready to burn as a resist |
+| Copper, **inverted** | SVG | Everything inside the board edge *except* the traces — burn the resist *off* a painted board |
+| Silkscreen | SVG | Centrelines straight from the strokes, bucketed by whether they fit your beam |
+| Soldermask | SVG | The openings, which is exactly what gets lasered |
+
+Every SVG in one export shares **one page origin and size**, so layers land on top of each other
+in the laser software without a single alignment step. Bottom-side layers are mirrored for you, and
+the export says which way to flip the stock.
+
+### Both machines, one board
+
+Etch the copper with the laser, then drill and cut the outline on the mill — set the copper layers
+to SVG and the drill and outline layers to G-code, and export once. Same board, same origin.
+
+For **double-sided** work there is a recipe rather than a feature: drill every hole in the first
+setup while the stock is still located, into a scrap plate underneath, then pin through both. It
+reaches 20–50 µm and nothing is ever measured, so nothing can be measured wrong. It does put one
+rule on your layout, so read the help page before you route.
+
+---
+
+## The parts that stop you ruining boards
+
+This is the half that does not show up in a feature list, and it is the half worth having.
+
+**Watch the job in the air first.** Any program can be rewritten to trace the same path 5 mm up
+with the spindle never started. It rewrites *the emitted file*, not the toolpath, and it re-parses
+its own output to prove that nothing moving sideways does so below the height. Feeds are kept, so
+you also find out it is a ninety-minute job.
+
+**Follow the board that is actually on your table.** Isolation cuts 0.05 mm deep; clamped FR4 is
+0.1–0.2 mm out of flat. That one comparison is the most common reason PCB milling disappoints
+people. So: generate a `G38.2` probing grid, run it, feed your sender's log back in, and every
+program is bent to the measured surface — thin-plate spline, clamped to the probed area, degrading
+to a tilt or an offset when the measurements cannot justify a surface.
+
+**Refuse rather than guess.** A dry run that is wrong is worse than no dry run, because it is the
+thing you trust just before committing a board. So incremental mode is refused, not guessed at. A
+levelling job that runs outside the probed area is refused. Settings that contradict each other are
+refused rather than quietly clamped. Every one of those is a case where being helpful would mean
+being wrong silently.
+
+**Say what changed.** `File ▸ Refresh from source` compares the project against the folder it came
+from and shows you what moved before it applies anything.
+
+---
+
+## The CLI
+
+The whole pipeline is scriptable, and it is the same code the window runs — a job exported either
+way comes out identical.
+
+The executable is `MillBurn.Cli`; it is called `millburn` below for brevity. From a source tree,
+`dotnet run --project src/MillBurn.Cli --` takes its place.
+
+```sh
+millburn board   <gerber-folder>              # detect layers, realise geometry, report
+millburn board   <folder> --png board.png     # render the board headlessly
+millburn inspect <folder>                     # parse report: what was understood, what was not
+millburn render  <layer.gbr> --svg out.svg    # realise one layer's geometry
+```
+
+**Make the files:**
+
+```sh
+millburn export <folder> --write -o out/
+millburn export <folder> --set F_Cu.gbr=gcode --set F_Mask.gbr=svg- --write   # svg- inverts
+millburn export <folder> --only gcode --write
+millburn export <folder> --dry-run --write            # + a .dryrun.nc beside each program
+millburn export <folder> --start-gcode preamble.nc --end-gcode shutdown.nc
+millburn mill   <folder> --isolation-tool "30°" --outline-tool "1.0 mm" --png cut.png
+millburn svg    <silkscreen.gbr> --flavour lightburn --spot 0.1
+```
+
+**Probe and level:**
+
+```sh
+millburn probe  <folder> --spacing 8 --depth 2 --feed 30   # a G38.2 grid to run and log
+millburn export <folder> --level probe.log --write         # bend every program to the surface
+millburn level  anyones.nc --map probe.log                 # works on any G-code, not just ours
+```
+
+**Projects:**
+
+```sh
+millburn project save    <folder> -o board.millburn
+millburn project info    board.millburn
+millburn project refresh board.millburn --apply   # take changes from the source folder
+millburn tools list
+```
+
+Run `millburn` with no arguments for the full list.
+
+---
+
+## What it will not do
+
+Deliberate, all of it.
+
+- **Drive your machine.** No serial port, ever. That is a solved problem and not this one.
+- **Panelise.** Do it in your EDA tool — [KiKit](https://github.com/yaqwsx/KiKit) for KiCad — and
+  this will cut the panel. A panelising tool that does not know your design rules is a worse
+  panelising tool.
+- **Compensate for kerf or etch bias.** Kerf is a function of power, speed, focus, lens and
+  material, all of which live in your laser software beside a calibrated material library. A number
+  held here would go stale the moment any of them changed, with nothing to say so — and two tools
+  each applying an offset gives you a doubly compensated board that looks wrong in neither.
+- **Guess.** Where the honest answer is "this file does something I cannot safely handle", it says
+  so and hands the file back unchanged.
+
+---
+
+## Status
+
+**The laser half is physically verified.** A 66-up panel — the hardest artwork in the test corpus,
+not the easiest — was exported as front-copper SVG and laser-engraved onto copper-clad. Traces,
+pads and outer dimensions all measure true to within the ~0.1 mm the caliper is good for, which
+bounds any scale error across 165 mm at **0.061%**.
+
+**The mill half is not physically verified yet**, and that is the honest headline. Everything is
+built and tested — isolation, drilling, outline, mask relief, dry runs, height mapping, the
+optimizer — and 617 tests pass with zero warnings under `TreatWarningsAsErrors`. But the cut width,
+the drilling run and the levelled surface have not yet been measured on real copper. That work is
+in progress; until it is done, the mill path is "believed correct", not "proven".
+
+Done: reading and drawing boards, projects, toolpaths and G-code, the travel optimizer,
+simplification and arc fitting (a panel's isolation goes from 301,097 lines to 15,191, within a
+2 µm bound), dry runs, height mapping, machine settings, custom start/end G-code, the standalone
+G-code viewer.
+
+Open: fiducial fitting and fixture generators, pad selection from X2 attributes, DXF output, a
+LightBurn layer preset.
+
+The full picture — including the bugs, and what each one taught — is in
+[Documentation/06](Documentation/06-Roadmap-and-Risks.md).
+
+---
+
+## Build it yourself
 
 Requires the **.NET 10 SDK**. Nothing else — no vcpkg, no CMake, no MSYS2.
 
-```
+```sh
 dotnet build PCB_MillBurn.slnx
 dotnet test  PCB_MillBurn.slnx
+dotnet run --project src/MillBurn.App -- <gerber-folder>
 ```
+
+`Directory.Build.props` sets `TreatWarningsAsErrors`, and CI builds Release on every push — so a
+warning is a failed build, which is the point.
 
 ### Publishing
 
-Self-contained, so nothing has to be installed on the target — not even .NET. Both the app and the
-CLI go to the same directory and share their runtime.
+Self-contained, so nothing has to be installed on the target — not even .NET. The app and the CLI
+go to the same directory and share their runtime.
 
-**Windows:**
-
-```
+```sh
 dotnet publish src/MillBurn.App -c Release -r win-x64 --self-contained -o out/windows
 dotnet publish src/MillBurn.Cli -c Release -r win-x64 --self-contained -o out/windows
-Compress-Archive -Path out\windows\* -DestinationPath out\millburn-win-x64.zip
 ```
 
-**Linux:**
-
-```
+```sh
 dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/linux
 dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
 ```
@@ -83,99 +314,139 @@ launchers non-executable: NTFS has no execute bit, so the ELF files come out `rw
 will not start. Either `chmod +x MillBurn.App MillBurn.Cli` after copying them across, or package
 them from a filesystem that can hold the permission:
 
-```
+```sh
 tar --owner=0 --group=0 -czf out/millburn-linux-x64.tar.gz -C out/linux .
 ```
 
-Publishing on Linux sets the bit itself and needs neither step. Windows has no matching problem —
-a `.exe` is executable by virtue of being one.
-
-The `Help/` pages ship beside the executable on both, so the Help menu and F1 work offline.
+Publishing on Linux sets the bit itself. On a fresh Debian or Ubuntu the app may want
+`sudo apt install -y libfontconfig1`; everything else it needs ships in the output, including
+`libSkiaSharp.so` and the `Help/` pages, so the Help menu and F1 work offline.
 
 | Target | Publish output | Archive |
 |---|---|---|
 | `win-x64` | `out/windows/`, 296 files, 214 MB | `out/millburn-win-x64.zip`, 75 MB |
 | `linux-x64` | `out/linux/`, 293 files, 111 MB | `out/millburn-linux-x64.tar.gz`, 46 MB |
 
-On a fresh Debian or Ubuntu the app may need `sudo apt install -y libfontconfig1`; everything else
-it needs ships in the publish output, including `libSkiaSharp.so` and the `Help/` pages.
+---
 
-## Running
-
-```
-dotnet run --project src/MillBurn.App  -- <gerber-folder>            # open a board in the window
-dotnet run --project src/MillBurn.App  -- <program.nc>              # look at any G-code file
-dotnet run --project src/MillBurn.App  -- <project.millburn>         # open a saved project
-dotnet run --project src/MillBurn.Cli -- project save <folder> -o p.millburn
-dotnet run --project src/MillBurn.Cli -- project refresh p.millburn  # what changed since the export
-dotnet run --project src/MillBurn.Cli -- tools list                  # the saved tool library
-dotnet run --project src/MillBurn.Cli -- mill <folder> --isolation-tool "30°" --outline-tool "1.0 mm"
-dotnet run --project src/MillBurn.Cli -- board <gerber-folder>      # detect layers, realise, report
-dotnet run --project src/MillBurn.Cli -- board <folder> --png b.png  # render the board headlessly
-dotnet run --project src/MillBurn.Cli -- inspect <gerber-folder>     # parse report
-dotnet run --project src/MillBurn.Cli -- render <layer.gbr> --svg out.svg
-dotnet run --project src/MillBurn.Cli -- svg <silkscreen.gbr>       # laser-ready SVG
-
-dotnet run --project src/MillBurn.Cli -- export <folder> --dry-run --write   # + a .dryrun.nc each
-dotnet run --project src/MillBurn.Cli -- probe <folder>              # a G38.2 grid to run and log
-dotnet run --project src/MillBurn.Cli -- export <folder> --level probe.log --write
-dotnet run --project src/MillBurn.Cli -- level any.nc --map probe.log        # levels anyone's G-code
-
-dotnet run --project src/MillBurn.App            # the app (drag a folder onto it)
-dotnet run --project src/MillBurn.App -- --bench # viewport benchmark (offscreen, CPU raster)
-dotnet run --project src/MillBurn.App -- --probe # render-configuration sweep (not board probing)
-dotnet run --project src/MillBurn.App -- --fpstest  # measures the real GPU render loop
-```
-
-## Layout
+## How it is put together
 
 ```
 src/
-  MillBurn.Core       units, transforms, project model
+  MillBurn.Core       units, transforms, project model, settings
   MillBurn.Gerber     Gerber X2/X3 + Excellon parsing
   MillBurn.Geometry   Clipper2 + NetTopologySuite: tessellation, booleans, offsets, pocketing
   MillBurn.Cam        isolation, drilling, outline, mask and silkscreen generators
   MillBurn.Optimize   travel optimizer and the motion time model
-  MillBurn.Gcode      mill only: emitter, parser, processor chain, backplot
+  MillBurn.Gcode      mill only: emitter, parser, processor chain, backplot, dry runs
   MillBurn.Post       mill only: machine profiles and post-processors
   MillBurn.Align      height maps (probe-log import, TPS), G-code levelling, fiducial fits
-  MillBurn.Export     SVG / DXF / PDF / PNG - the whole laser output path
-  MillBurn.Viewer     toolpath scene, level of detail, spatial culling, Skia renderer
+  MillBurn.Export     SVG / DXF / PDF / PNG — the whole laser output path
+  MillBurn.Viewer     scene, level of detail, spatial culling, Skia renderer
   MillBurn.Pipeline   the cached, cancellable stage graph tying it together
   MillBurn.App        Avalonia shell (UI only)
   MillBurn.Cli        headless batch driver
 tests/
-  MillBurn.Tests      unit and property tests
+  MillBurn.Tests        unit and property tests
   MillBurn.GoldenTests  golden-file and determinism regression
-  corpus/             Gerber test boards
+  boards/               real KiCad exports, committed
+  corpus/               Gerber test files from the specification
 ```
 
-Every algorithm lives in a UI-free `net10.0` library; only `MillBurn.App` references a UI
-framework. That is deliberate — see [07 §4](Documentation/07-UI-Framework-Decision.md).
+Every algorithm lives in a UI-free `net10.0` library; only `MillBurn.App` references a UI framework.
 
-## Working material beside the repo (all git-ignored)
+**Design documentation is in [`Documentation/`](Documentation/README.md)** — why the code is shaped
+the way it is, written for whoever maintains it. It is considerably more interesting than a
+changelog.
 
-| Path | What it is | Note |
-|---|---|---|
-| `WorkingFolder/pcb2gcode/` | The original C++ tool | **GPL-3.0.** Read for approach; do not copy code. See [01 §9](Documentation/01-Architecture.md#9-licensing-strategy). |
-| `WorkingFolder/Universal-G-Code-Sender/` | UGS, whose visualizer informed ours | **GPL-3.0.** Same rule. |
-| `MyGerbers/`, `MyGerbers2/` | Scratch Gerber exports | A drop zone for boards that are *not* project content. Boards that earn a place in the suite go in `tests/boards/`. |
-
-None of these is committed, linked, or shipped.
+| Doc | Subject |
+|---|---|
+| [01](Documentation/01-Architecture.md) | Solution layout, incremental pipeline, scope boundary, licensing |
+| [02](Documentation/02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 parsing, Clipper2/NTS geometry, isolation, DRC |
+| [03](Documentation/03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, and the replacement |
+| [04](Documentation/04-Machines-Laser-and-Mixed-Workflows.md) | Laser output, the Job model, board re-alignment |
+| [05](Documentation/05-Viewer-and-Export.md) | The G-code viewer, SVG/DXF export |
+| [06](Documentation/06-Roadmap-and-Risks.md) | Phases, acceptance metrics, risks, and every bug worth remembering |
+| [07](Documentation/07-UI-Framework-Decision.md) | Avalonia vs. WPF vs. MAUI |
 
 Test fixtures come in two kinds, both committed and both run everywhere: hand-written cases from
-the Ucamco specification, inline in the test files, and two real KiCad 10 board exports in
+the Ucamco specification, and real KiCad board exports in
 [`tests/boards/`](tests/boards/README.md). The first prove the parser handles the specification;
 the second prove it handles what an EDA tool actually writes, which is where the bugs have been.
 Set `MILLBURN_BOARDS` to run the suite against a private board without committing it.
+
+---
+
+## Thanks
+
+### To pcb2gcode, first and by a distance
+
+**[pcb2gcode](https://github.com/pcb2gcode/pcb2gcode) is the reason this project knows what it is
+for.** For the better part of two decades it has been the answer to "how do I mill a PCB at home",
+and an enormous number of boards exist because of it — mine among them. It solved the hard, unglamorous
+problems first: isolation from real Gerbers, V-bit geometry, break-through, tabs, the whole shape of
+the job. Everything here starts from a problem statement that tool worked out and then proved, in
+copper, on thousands of benches.
+
+Where this project does something differently, that is a difference of goals and of what is cheap in
+2026 — not a criticism of a tool that got there twenty years earlier with far less to build on. The
+maintainers gave that away for free, for decades, and asked for nothing. Thank you.
+
+pcb2gcode is GPL-3.0. It was **read for approach and never copied** — not a line of it is in this
+repository — because this project is MIT and taking the code would have quietly relicensed everyone
+else's work along with it. That constraint is a form of respect, not an evasion: the ideas are
+credited here, and the code stays where its authors put it.
+
+### To Universal G-code Sender
+
+**[UGS](https://github.com/winder/Universal-G-Code-Sender)** and its visualizer taught this project
+what a G-code viewer owes the person reading it — the decomposition into renderable layers, the
+honest time model, the idea that seeing the rapids is what makes a problem obvious. Also GPL-3.0,
+also read and never copied, also given away free for years. Thank you.
+
+### To the libraries this is built on
+
+None of this would exist without work other people gave away:
+
+[**Clipper2**](https://github.com/AngusJohnson/Clipper2) (Angus Johnson) — every boolean and every
+offset in this project, on exact Int64 coordinates. It is the single most load-bearing dependency
+here and it has never once been wrong. ·
+[**NetTopologySuite**](https://github.com/NetTopologySuite/NetTopologySuite) — Voronoi, spatial
+indexing, validity. ·
+[**SkiaSharp**](https://github.com/mono/SkiaSharp) and the Skia team — the viewport draws half a
+million segments at 98 fps because of it. ·
+[**Avalonia**](https://github.com/AvaloniaUI/Avalonia) — the reason one codebase is a real desktop
+app on Windows and Linux with no per-platform branch. Plus
+[**AvaloniaEdit**](https://github.com/AvaloniaUI/AvaloniaEdit) and
+[**Dock.Avalonia**](https://github.com/wieslawsoltes/Dock). ·
+[**MathNet.Numerics**](https://github.com/mathnet/mathnet-numerics) — the SVD behind the height-map
+fit. ·
+[**CommunityToolkit.Mvvm**](https://github.com/CommunityToolkit/dotnet) ·
+[**Scriban**](https://github.com/scriban/scriban) ·
+[**xUnit**](https://github.com/xunit/xunit) and [**Verify**](https://github.com/VerifyTests/Verify)
+— 617 tests' worth. ·
+And **.NET** itself, which is why the build instructions are two lines long.
+
+### And to the people who made the inputs make sense
+
+**[Ucamco](https://www.ucamco.com/en/gerber)**, for publishing the Gerber specification openly and
+keeping it readable — X2's `.FileFunction` is why this app knows what your files *are* instead of
+guessing from their names. · **[KiCad](https://www.kicad.org/)**, for being free, excellent, and
+the source of every real board in the test suite. · **[KiKit](https://github.com/yaqwsx/KiKit)**,
+which panelises so much better than this ever would that panelising is deliberately not here. ·
+And the **gSender**, **Candle**, **LinuxCNC** and **LightBurn** communities, who make the machines
+actually run — this app only writes the files.
+
+---
 
 ## Licence
 
 **[MIT](LICENSE).** Use it for anything, including commercially; keep the copyright notice.
 
 Every dependency is permissively licensed as well — MIT, BSD, BSL-1.0, Apache-2.0 — so there is no
-copyleft anywhere in the graph and a build can be shipped by anyone in any product. The full list,
-with the licence of each, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+copyleft anywhere in the graph and a build can be shipped by anyone, in any product. The full list
+is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-That is only possible because the two GPL-3.0 reference checkouts above are read and never copied.
-It is a live constraint, not a formality.
+The two GPL-3.0 projects credited above were read for approach and never copied — no line of either
+is in this repository. That is a live constraint on how this project is written, not a formality:
+it is what keeps this licence honest and everyone else's work unencumbered.

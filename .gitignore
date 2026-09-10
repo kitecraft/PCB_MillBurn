@@ -4,6 +4,9 @@
 # scratch board exports. Ignored as a whole so nothing inside it can be committed by accident.
 /WorkingFolder/
 
+# Scratch: screenshots being looked at, files being compared, anything mid-thought.
+/tmp/
+
 # Kept as a safety net in case one is dropped back at the top level.
 /pcb2gcode/
 /Universal-G-Code-Sender/
