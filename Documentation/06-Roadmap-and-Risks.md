@@ -584,6 +584,31 @@ Copper inversion has since landed too — an inverted SVG is everything inside t
 Still to come in this phase: pad selection from X2 attributes, kerf and etch-bias offsets, the
 LightBurn layer preset, DXF, and the calibration generators.
 
+### First physical result
+
+**The SVG path has produced a real board.** `GridStripConnector_Panelized` — the 66-up panel, 165 x
+107 mm, 11,414 objects, 198 copper islands — exported as front-copper SVG, burned as a resist and
+etched. Reported as "as best as I can tell, it's perfect".
+
+Worth recording precisely, because it is the first time anything this project has made has been
+made *physically*, and because the chain it exercises had no other verification at all: Gerber
+parse, geometry realisation, the neutral artwork model, the SVG writer, an import into laser
+software, and the etch. Everything before this was checked by rendering it.
+
+It also happens to be the hardest artwork in the corpus rather than the easiest, which is a better
+first result than a small board would have been.
+
+**Not yet measured, and the two numbers that would settle it:**
+
+- **Scale.** A uniform scale error is the silent failure of any SVG hand-off — it looks entirely
+  correct until a part does not fit. Measured across the panel's 165 mm rather than across one pad,
+  a 1% error is 1.65 mm and unmissable.
+- **Etch bias.** How much narrower or wider the etched traces are than designed. That is not a pass
+  or fail, it is the calibration input for the kerf and etch-bias compensation still outstanding in
+  Phase 4 — one measurement turns that feature from a guess into a correction.
+
+The mill half remains physically unverified.
+
 ### Phase 5 — Jobs, setups, alignment — **started**
 
 **The dry-run generator is done.** `DryRun.Rewrite` turns an emitted program into one that traces
