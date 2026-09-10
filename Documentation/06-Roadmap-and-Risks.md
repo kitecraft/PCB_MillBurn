@@ -554,6 +554,9 @@ overscan, no power model. What is left is geometry and packaging.
   at all, so it lands first.
 - Pad selection from X2 attributes; copper inversion against the outline; mask-open regions.
 - Kerf and etch-bias compensation as signed Clipper2 offsets, reported numerically on export.
+  **Blocked on a measurement, deliberately** — see "First physical result": engraved output
+  is already dimensionally correct to caliper resolution, so the comb below has to come first
+  and give a real number, or this corrects nothing by an amount nobody checked.
 - LightBurn palette mapping and a shipped layer preset; DXF as a second flavour.
 - One page origin and size shared by every export in a Job, asserted in the golden tests.
 - Calibration generators: kerf comb, registration repeatability.
@@ -599,20 +602,33 @@ previously checked only by rendering.
 It also happens to be the hardest artwork in the corpus rather than the easiest, which is a better
 first result than a small board would have been.
 
-**Not yet measured, and two numbers that would settle it:**
+**Measured.** Traces, pads and outer dimensions all match nominal to within the ~0.1 mm the
+measurement itself is good for.
 
-- **Scale.** A uniform scale error is the silent failure of any SVG hand-off — it looks entirely
-  correct until a part does not fit. Measured across the panel's 165 mm rather than across one pad,
-  a 1% error is 1.65 mm and unmissable. This is fully answerable from the engraved board as it is.
-- **Laser kerf.** How much wider or narrower an engraved line is than the width it was drawn at.
-  Measurable *now*, in isolation, precisely because the etch has not happened — which is a cleaner
-  calibration than measuring it after the acid has had its own go at the edges.
+**Scale is settled.** 0.1 mm across a 165 mm panel bounds any scale error at **0.061%** — and a
+scale error is the silent failure of an SVG hand-off, the one that looks entirely correct until a
+part will not fit. The `width="165mm" viewBox=...` contract in [05 §3](05-Viewer-and-Export.md)
+holds on real hardware, which is the single most valuable thing this measurement could have told us.
 
-Etch bias — the undercut the acid adds on top of the kerf — is a separate number for later. Both
-are signed offsets on the same geometry, which is why Phase 4 treats them together, but they are
-measured at different stages and should not be conflated.
+**Kerf is bounded, not measured — and that changes what to build.** A caliper good to 0.1 mm cannot
+resolve kerf on a 0.25 mm trace to better than ±40% of the trace's own width. What the measurement
+establishes is that laser kerf on this setup is *below the threshold where it matters*, not what it
+is.
 
-The mill half remains physically unverified.
+So **kerf compensation is not currently justified**, and building it now would mean applying a
+correction nobody can measure to output that is already dimensionally right. Two things would change
+that:
+
+1. **The acid undercut**, which is a genuinely separate and probably larger number, and is unmeasured
+   because no board has been through the tank.
+2. **A different laser**, with a beam wide enough to matter.
+
+Either way the prerequisite is the **kerf comb** already listed in Phase 4's calibration generators —
+a burn of known widths and gaps that turns a sub-caliper effect into a countable one. Build the comb
+before the compensation, or neither. A compensation calibrated by guesswork is worse than none,
+because it moves every edge on the board by a number nobody checked.
+
+**The mill half remains physically unverified**, and is now the larger unknown of the two.
 
 ### Phase 5 — Jobs, setups, alignment — **started**
 
