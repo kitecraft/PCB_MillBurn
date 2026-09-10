@@ -44,7 +44,7 @@ public sealed class SettingsWindow : Window
         Title = "Settings";
         AppIcon.Apply(this);
         Width = 640;
-        Height = 700;
+        Height = 780;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this[!BackgroundProperty] = new DynamicResourceExtension("PageBackground");
 
@@ -70,8 +70,8 @@ public sealed class SettingsWindow : Window
             FontWeight = FontWeight.SemiBold,
         });
         heading.Children.Add(Muted(
-            "These describe the machine, not the board, so they stay put when you open a different "
-            + "project.", 12));
+            "How this machine behaves, and what a freshly imported board starts out doing. Both "
+            + "stay put when you open a different project.", 12));
 
         Grid.SetRow(heading, 0);
         root.Children.Add(heading);
@@ -114,6 +114,19 @@ public sealed class SettingsWindow : Window
         Number(body, "maxPoints", "Most touches", "", settings.Probe.MaxPoints, 4, 2000, 20,
             "The spacing opens up rather than the grid being cropped. Roughly four seconds each.");
 
+        Section(body, "Levelling");
+        Number(body, "segment", "Segment length", "mm", settings.Level.SegmentMm, 0.1, 20, 0.1,
+            "The longest a cutting move may be before it is broken up to follow the surface.");
+        Number(body, "below", "Break up below", "mm", settings.Level.SubdivideBelowMm, 0, 10, 0.1,
+            "Moves at or below this height get broken up; higher ones only have their ends corrected.");
+        Number(body, "outside", "Refuse past", "mm", settings.Level.MaxOutsideMm, 0, 50, 0.5,
+            "How far outside the probed area a job may stray before levelling is refused. Past the "
+            + "measurements the map holds its edge value, which is a guess further out.");
+        Number(body, "smoothing", "Smoothing", "", settings.Level.Smoothing, 0, 1, 0.05,
+            "0 passes through every probe point; 1 is barely more than a plane. A little helps, "
+            + "because a probe repeats to a few microns and a surface forced through that noise "
+            + "ripples in a way the board does not.");
+
         Section(body, "When a folder is imported");
         body.Children.Add(Muted(
             "What each kind of layer becomes before you change anything. Layers with nothing in "
@@ -152,19 +165,6 @@ public sealed class SettingsWindow : Window
         }
 
         body.Children.Add(presets);
-
-        Section(body, "Levelling");
-        Number(body, "segment", "Segment length", "mm", settings.Level.SegmentMm, 0.1, 20, 0.1,
-            "The longest a cutting move may be before it is broken up to follow the surface.");
-        Number(body, "below", "Break up below", "mm", settings.Level.SubdivideBelowMm, 0, 10, 0.1,
-            "Moves at or below this height get broken up; higher ones only have their ends corrected.");
-        Number(body, "outside", "Refuse past", "mm", settings.Level.MaxOutsideMm, 0, 50, 0.5,
-            "How far outside the probed area a job may stray before levelling is refused. Past the "
-            + "measurements the map holds its edge value, which is a guess further out.");
-        Number(body, "smoothing", "Smoothing", "", settings.Level.Smoothing, 0, 1, 0.05,
-            "0 passes through every probe point; 1 is barely more than a plane. A little helps, "
-            + "because a probe repeats to a few microns and a surface forced through that noise "
-            + "ripples in a way the board does not.");
 
         var scroller = new ScrollViewer { Content = body };
         Grid.SetRow(scroller, 1);
