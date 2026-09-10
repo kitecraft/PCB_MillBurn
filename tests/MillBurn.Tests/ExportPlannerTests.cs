@@ -281,7 +281,7 @@ public sealed class ExportPlannerTests
 
         var mask = Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-F_Mask.gbr");
 
-        Assert.Contains(mask.Warnings, w => w.Contains("openings, not the material", StringComparison.Ordinal));
+        Assert.Contains(mask.Warnings, w => w.Contains("openings, not its material", StringComparison.Ordinal));
     }
 
     // ------------------------------------------------------------------ the flip

@@ -199,7 +199,11 @@ public static class ExportPlanner
         var summary = new List<string>
         {
             Invariant($"{page.WidthMm:F2} × {page.HeightMm:F2} mm page, shared by every layer in this export"),
-            Invariant($"{layer.RingCount} shapes, {layer.AreaMm2:F2} mm²"),
+            // Measured from what is going into the file, not from the layer it came from. Mirroring
+            // leaves both alone, but inverting replaces the geometry entirely — and reporting the
+            // source layer's 18 shapes and 112 mm² for a drawing that is now the board minus those
+            // shapes describes the wrong thing, in the one place someone checks before writing it.
+            Invariant($"{area.Count} shapes, {Polygons.AreaMm2(area):F2} mm²"),
         };
 
         if (mirrored)
@@ -209,13 +213,25 @@ public static class ExportPlanner
 
         if (setting.Invert)
         {
-            summary.Add("Inverted · everything inside the board edge except this layer");
+            // On a negative layer, inverting is not "the opposite of this layer" — it is the step
+            // the realiser deliberately left undone, because the complement of a shape needs a
+            // frame and the only real one is the board outline, which lives in a different file.
+            // Saying "everything except this layer" there would describe the operation and not the
+            // result.
+            summary.Add(layer.DeclaredNegative
+                ? "Inverted · the layer's material, since its shapes are the openings"
+                : "Inverted · everything inside the board edge except this layer");
         }
 
         var warnings = new List<string>();
-        if (layer.DeclaredNegative)
+
+        // Only while it is still true. Inverting a negative layer against the board outline
+        // resolves the polarity, so carrying the warning past that point contradicts the summary
+        // line directly above it.
+        if (layer.DeclaredNegative && !setting.Invert)
         {
-            warnings.Add("This layer is negative: the shapes are the openings, not the material.");
+            warnings.Add("This layer is negative: the shapes are its openings, not its material. "
+                + "Inverting gives the material instead.");
         }
 
         warnings.AddRange(MirrorWarnings(layer.Role, setting));
