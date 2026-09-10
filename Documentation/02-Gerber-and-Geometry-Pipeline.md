@@ -151,6 +151,10 @@ The core operation. Given copper geometry and a tool:
 - **Mill-drill** for holes larger than the largest available bit: helical interpolation with
   proper lead-in, not pcb2gcode's plunge-and-circle. Also handles **routed slots** from the
   Excellon G85 records, which pcb2gcode handles poorly.
+  *Scheduled as [Phase 5.5](06-Roadmap-and-Risks.md#phase-55).
+  Slots are read and drawn today and deliberately left out of the drilling program, which says so:
+  a slot needs an end mill, not a drill, and choosing one means consulting the tool library, which
+  nothing in this path has ever done.*
 - Tool changes: `M6` + configurable pause/probe sequence, with an optional **tool-length probe**
   step so Z stays correct across changes.
 

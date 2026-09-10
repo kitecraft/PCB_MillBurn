@@ -845,6 +845,9 @@ mill, and that pulls the whole thing out of the drilling operation:
 None of that is built. What is built is the export saying, in the summary and in a warning, that
 these features exist in the file and are not being made.
 
+It is now scheduled: [Phase 5.5](#phase-55), together
+with mill-drill and the library-aware tool selection both of them need underneath.
+
 ### The layer panel, rearranged — and the bug that fell out of it
 
 All of this came from using the app rather than from the plan, and it is recorded because the last
@@ -1007,6 +1010,110 @@ looked unfitted, and measuring the rendered pixels showed the fit was correct an
 *A dry run is all travel by construction,* and travel is hidden by default so it does not clutter
 the copper. Opened on its own, the first dry run drew two dashed lines and looked broken. A
 standalone program now turns every backplot layer on: over nothing, there is nothing to declutter.
+
+<a id="phase-55"></a>
+
+### Phase 5.5 — Drilling, finished — **scheduled, not started**
+
+Three features that belong to Phase 2 and were left behind when it closed. Numbered 5.5 because
+that is when they were scheduled, not where their subject lives — the same reason Phase 1.5 sits
+where it does.
+
+They are one phase rather than three because two of them are the same machinery and the third is
+what both need underneath. An end mill moving laterally at depth, with a proper lead-in, is a slot
+and is also a hole too big to drill; choosing the cutter that does it is a question neither can
+answer today, because nothing in the drilling path has ever looked at the tool library at all.
+
+#### 5.5.1 Library-aware tool selection — the foundation
+
+`DrillAndOutlineOperations` calls `Tool.DrillOf(diameter, template)`: it **synthesises** a drill of
+exactly the diameter the file asked for. There is no notion of a bit you own or do not own, and no
+size a board can ask for that this refuses.
+
+That is fine for drilling and only for drilling — a hole is drilled by a bit its own size, so the
+file's diameter *is* the answer, and the drilling companion page tells you which bits to fit. It is
+a real assumption though, and worth saying plainly: an Arduino Mega asks for six sizes down to
+0.30 mm, and nothing anywhere checks that those exist in your library or your drawer.
+
+Slots and mill-drill cannot work this way. There is no cutter of exactly the right size to make a
+2 mm slot; there is a set of end mills you own, of which some are narrow enough. So:
+
+- The drilling path gains a **tool chooser** that reads `ToolLibrary`: given a required maximum
+  diameter and a required depth, return the largest end mill that fits, or nothing.
+- Largest, not smallest: a wider cutter clears the same slot in fewer passes and deflects less. The
+  constraint is the slot's width, so the best tool is the one closest to it from below.
+- `MaxDepthNm` and `FluteLengthNm` are already on `Tool` and are currently read by nobody in this
+  path. A cutter that cannot reach through the board is not a candidate.
+- **Nothing is synthesised.** The moment a program depends on a tool you might not own, inventing
+  one is how a file gets written for a machine that cannot run it.
+
+Also worth doing here, because it costs nothing once the library is being consulted: say on the
+drilling summary when the board wants a drill size the library has never heard of. Not a refusal —
+you may well own it and not have entered it — but the export window is the right place to find out
+that the run stops for a 0.30 mm bit.
+
+#### 5.5.2 Routing slots
+
+An oval or routed hole. Seven per board on both Arduino designs; every KiCad board with a slotted
+pad has some. Currently read, drawn, reported and **not made**, which is the state
+[the slot section above](#a-second-silent-omission-slots) left them in.
+
+- **Geometry.** `DrillSlot` is already a `From`, a `To` and a tool whose diameter is the slot's
+  width. The cut is the centreline offset inward by the cutter's radius — for a cutter narrower
+  than the slot, a racetrack around the inside; for a cutter exactly the slot's width, the
+  centreline itself, in one pass.
+- **Motion.** Ramp along the slot rather than plunging: an end mill plunged vertically at full
+  depth into FR4 is how small cutters break. Depth passes at the tool's `StepdownNm`, ramping down
+  the length of the slot on each one, which is a lead-in the geometry gives us for free.
+- **Feed.** The isolation feed and the lateral feed, not the plunge feed. `ToolAdvice` already
+  knows how to complain about the wrong one.
+- **Arcs.** An arc-shaped slot is currently dropped at the parser rather than straightened. It can
+  come through as an arc once there is something that can cut one.
+
+#### 5.5.3 Mill-drill for holes too big for any bit
+
+The same machinery pointed at a circle instead of a line. Helical interpolation with a proper
+lead-in — not pcb2gcode's plunge-and-circle, which
+[02 §6](02-Gerber-and-Geometry-Pipeline.md#6-drilling--routing) has wanted replacing since before any of
+this was written.
+
+It has not bitten yet only by luck. Both Arduino boards put their mounting holes on `Edge_Cuts`
+rather than in the drill file, so they are cut as outline profiles and the drilling path never sees
+a hole it cannot make. A board that puts a 3.2 mm mounting hole in the drill file, on a machine
+whose largest drill is 2 mm, has no correct answer today.
+
+#### 5.5.4 What it refuses
+
+This is the part that decides whether the phase is worth having, and it is the reason all three
+belong together: each one introduces a case where **there is no correct program to write**.
+
+- **No cutter narrow enough.** The stock library's smallest end mill is 0.8 mm; four of the seven
+  slots on an Arduino Uno are 0.60 mm. Refuse those, name the width, name the widest cutter that
+  would work. Cutting a 0.8 mm slot where the board asked for 0.6 mm puts a hole through the
+  adjacent pad.
+- **No cutter that reaches.** A 0.6 mm end mill with 2 mm of flute cannot go through 1.6 mm of FR4
+  plus break-through on a board that thick. Refuse, and say the depth rather than the diameter.
+- **A hole too big to drill and too small to mill.** A cutter needs room to spiral: a hole barely
+  wider than the only end mill available is not millable, and the arithmetic should say so rather
+  than emitting a helix of zero radius.
+- **Partial success is still success.** A board with four 0.6 mm slots and three 1.0 mm slots on a
+  library holding a 0.8 mm end mill should get a program for the three and a refusal naming the
+  four — not an all-or-nothing failure. The export list already shows one item per file and one
+  warning per problem; this fits it.
+
+#### Done when
+
+An Arduino Uno exports a slot program that cuts three of its seven slots and says, in the export
+window and in the file, exactly which four it will not cut and why. Add a 0.5 mm end mill to the
+library and re-export: seven slots, no refusals, no other change.
+
+That board is the acceptance test because it exercises both paths at once with the shipped library,
+which is not a coincidence — it is the board that found the omission in the first place.
+
+Two things this phase does **not** do. It does not put an end mill into the middle of the drilling
+program: a run that alternates drills and cutters is a tool change the drilling companion page
+cannot describe honestly, so slots get their own file (`Board-PTH.slots.nc`) and their own line in
+the export list. And it does not guess a cutter you have not entered into the library.
 
 ### Phase 6 — Polish and reach
 

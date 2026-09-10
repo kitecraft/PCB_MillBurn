@@ -249,7 +249,7 @@ Deliberate, all of it.
   held here would go stale the moment any of them changed, with nothing to say so — and two tools
   each applying an offset gives you a doubly compensated board that looks wrong in neither.
 - **Mill slotted holes** &mdash; yet. A slot needs an end mill, not a drill, so it is a different
-  tool and a different motion from everything else in a drilling program. It is on the list. Until
+  tool and a different motion from everything else in a drilling program. It is scheduled. Until
   then the export **says** which slots it is not making, rather than leaving them out quietly.
 - **Guess.** Where the honest answer is "this file does something I cannot safely handle", it says
   so and hands the file back unchanged.
@@ -274,8 +274,10 @@ simplification and arc fitting (a panel's isolation goes from 301,097 lines to 1
 2 µm bound), dry runs, height mapping, machine settings, custom start/end G-code, the standalone
 G-code viewer.
 
-Open: routing slotted holes, fiducial fitting and fixture generators, pad selection from X2
-attributes, DXF output, a LightBurn layer preset.
+Next: **slots, mill-drill and library-aware tool selection** — an end mill moving sideways at
+depth is a slot and is also a hole too big to drill, and neither can pick its own cutter today.
+Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF output, and a
+LightBurn layer preset.
 
 The full picture — including the bugs, and what each one taught — is in
 [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
