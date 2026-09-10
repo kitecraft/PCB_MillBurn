@@ -40,6 +40,7 @@
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
     <li><a href="#viewer">Looking at a G-code file</a></li>
+    <li><a href="#settings">Settings: safe height, and the rest of the machine</a></li>
     <li><a href="#framing">My machine needs its own lines at the start</a></li>
     <li><a href="#colours">I cannot see a layer</a></li>
   </ul>
@@ -612,35 +613,31 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  <span class="notyet">not built yet</span>
-  What is not built is panelising <em>here</em>: laying an array of copies out in CAM, and adding
-  mouse-bites or V-scoring between them. That is planned, and the shape of the answer is already
-  decided.
+  <strong>Making the panel is your EDA tool's job, and it is not going to be ours.</strong> For
+  KiCad the answer is <strong>KiKit</strong>, which lays out the array, adds mouse-bites or
+  V-scoring, handles tooling holes and fiducials, and knows about your netlist and your design
+  rules. Altium and Eagle have their own. Whatever they produce, this app cuts.
 </p>
-
-<p>
-  Two different things get called panelisation, and only one of them is hard:
-</p>
-
-<ul>
-  <li><strong>An array of copies</strong> — the same board six times in one piece of stock. This is
-    a transform applied to geometry that has already been realised, so most of the work is the
-    interface, not the maths.</li>
-  <li><strong>Separation features</strong> — mouse-bites (a perforation of small drilled holes along
-    the split line) or V-scoring. Mouse-bites are close to what the outline already does: the tab
-    machinery exists, and a row of holes is a drill operation.</li>
-</ul>
 
 <div class="note">
   <p>
-    <strong>Panelising in your EDA tool works, with one cost.</strong> The Gerber set you get is no
-    longer <em>your board</em>: the layer roles are still read correctly and the cutting is right,
-    but <em>Refresh from source</em> can no longer tell you what changed in the design, because
-    everything changed. That is the reason a CAM-side array is planned — one board stays one board.
+    <strong>Why not here.</strong> Panelising properly means understanding the design, not just the
+    geometry — which copies share a net, where a mouse-bite may cross a trace, what the clearances
+    are. By the time a board reaches this app it is a set of Gerbers: shapes on layers, with the
+    design gone. A CAM-side array could copy the shapes, and it could not tell you it had put a
+    perforation through a track. A tool that panelises badly is worse than one that does not
+    pretend to.
   </p>
 </div>
 
-<p>Two things worth knowing before you want this:</p>
+<p>
+  The one cost of panelising upstream is that the Gerber set you get back is no longer <em>your
+  board</em>: layer roles are still read correctly and the cutting is right, but <em>Refresh from
+  source</em> can no longer tell you what changed in the design, because everything changed. Keep
+  the single-board project alongside the panel one if that matters to you.
+</p>
+
+<p>Two things worth knowing before you decide to panelise at all:</p>
 
 <ul>
   <li>Isolation milling a panel takes <strong>N times as long</strong>, and isolation is where bits
@@ -881,6 +878,55 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     turns every layer on for that reason. If it still looks empty, check the travel colour is not
     something invisible against your theme: click the swatch beside the layer, or
     <strong>Edit &rsaquo; Reset layer colours</strong>.
+  </p>
+</div>
+
+<h2 id="settings">Settings: safe height, and the rest of the machine</h2>
+
+<p>
+  <strong>Edit &rsaquo; Settings&hellip;</strong> holds the numbers that describe your machine rather
+  than your board, so they stay put when you open a different project.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Safe height is the one to check first.</strong> Every travel move in every program this
+    app writes crosses the board at exactly that height &mdash; and it defaults to
+    <strong>2&nbsp;mm</strong>, which clears a bare board and very little else. If anything stands
+    proud of your stock &mdash; clamps, hold-downs, tape, a probe clip &mdash; raise it, or the
+    first traverse hits it at rapid.
+  </p>
+</div>
+
+<p>The rest, briefly:</p>
+
+<ul>
+  <li><strong>Approach height</strong> &mdash; where a rapid descent stops and the plunge feed takes
+    over. Lower is quicker and leaves less room for a surface higher than you expected. It has to
+    stay below the safe height.</li>
+  <li><strong>Rapid rate</strong> &mdash; used for the time estimates, and for a dry run with the
+    programmed feeds turned off. It is never written into a file; <code>G0</code> carries no feed
+    word.</li>
+  <li><strong>Coordinate decimals</strong> &mdash; three is one micron, past what these machines
+    repeat to.</li>
+  <li><strong>Canned drilling cycles</strong> &mdash; off, and leave them off for GRBL. It ignores
+    what it cannot parse, so a drill file would travel the whole pattern without drilling anything
+    and without complaining. LinuxCNC and Mach3 do support them.</li>
+  <li><strong>Dry run</strong> &mdash; how high it is held, and whether it keeps your feeds so the
+    run takes as long as the real one.</li>
+  <li><strong>Probing</strong> &mdash; grid spacing, feed, search depth, edge margin, and the most
+    touches to ask for. Roughly four seconds a touch, so the last one is a time budget.</li>
+  <li><strong>Levelling</strong> &mdash; how finely a cut is broken up to follow the surface, how
+    far outside the probed area a job may stray before it is refused, and how much to relax the fit
+    against probe noise.</li>
+</ul>
+
+<div class="note">
+  <p>
+    Save is refused while anything contradicts itself &mdash; an approach height above the safe
+    height, or a dry run held lower than the job's own travel. Those are not preferences, and
+    silently correcting one would leave you believing the machine is set up one way while it is set
+    up another. <strong>Restore defaults</strong> puts every number back.
   </p>
 </div>
 

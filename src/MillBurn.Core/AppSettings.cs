@@ -82,6 +82,18 @@ public sealed record AppSettings
     /// </summary>
     public ProgramFraming Framing { get; init; } = ProgramFraming.None;
 
+    /// <summary>How this machine moves, and how its files are written.</summary>
+    public MachineSettings Machine { get; init; } = new();
+
+    /// <summary>What a dry run does when one is asked for.</summary>
+    public DryRunSettings DryRun { get; init; } = new();
+
+    /// <summary>The probing grid, and how it is touched off.</summary>
+    public ProbeSettings Probe { get; init; } = new();
+
+    /// <summary>How closely a levelled program follows the measured surface.</summary>
+    public LevelSettings Level { get; init; } = new();
+
     /// <summary>Where the window was when it was last closed, or null if it never has been.</summary>
     public WindowPlacement? Window { get; init; }
 

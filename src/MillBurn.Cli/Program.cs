@@ -1382,7 +1382,7 @@ internal static class Program
         var thicknessMm = 1.6;
         var write = args.Contains("--write", StringComparer.OrdinalIgnoreCase);
         var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
-        var dryRunHeightMm = 5.0;
+        var dryRunHeightMm = AppSettings.LoadOrDefault().DryRun.HeightMm;
         OutputKind? only = null;
 
         if (Argument(args, "--dry-run-height") is { } heightText)
@@ -1504,8 +1504,11 @@ internal static class Program
         // The project's own lines where it has them, the machine's where it does not. A project
         // carries what it was cut with, so one that needed something unusual keeps it when it is
         // opened on another machine or a year later.
-        var framing = (project?.Settings.Framing ?? ProgramFraming.None)
-            .Over(AppSettings.LoadOrDefault().Framing);
+        // The same machine settings the app uses, so a job exported from the command line comes out
+        // identical to one exported from the window. A safe height that only applied to one of them
+        // would be worse than none.
+        var app = AppSettings.LoadOrDefault();
+        var framing = (project?.Settings.Framing ?? ProgramFraming.None).Over(app.Framing);
 
         if (Argument(args, "--start-gcode") is { } startPath)
         {
@@ -1542,7 +1545,7 @@ internal static class Program
 
         var plan = ExportPlanner.Plan(
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
-            framing: framing);
+            framing: framing, machineSettings: app.Machine);
 
         // Companion programs that trace the same path in the air. Built here rather than at write
         // time so that a plain `export --dry-run` — no --write — still reports whether each one
@@ -1556,8 +1559,11 @@ internal static class Program
         {
             var (routine, plan2) = ProbeRoutine.Generate(board.Bounds, new ProbeRoutineOptions
             {
-                SpacingMm = Number(args, "--spacing", 10),
-                MaxPoints = (int)Number(args, "--max", 200),
+                SpacingMm = Number(args, "--spacing", app.Probe.SpacingMm),
+                FeedMmPerMin = app.Probe.FeedMmPerMin,
+                MaxDepthMm = app.Probe.MaxDepthMm,
+                MarginMm = app.Probe.MarginMm,
+                MaxPoints = (int)Number(args, "--max", app.Probe.MaxPoints),
             });
 
             extras[SafeName(board.Source) + ".probe.nc"] = routine;
@@ -1595,8 +1601,12 @@ internal static class Program
         {
             foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
             {
-                var (text, report) = DryRun.Rewrite(
-                    item.Content, new DryRunOptions { HeightMm = dryRunHeightMm });
+                var (text, report) = DryRun.Rewrite(item.Content, new DryRunOptions
+                {
+                    HeightMm = dryRunHeightMm,
+                    KeepFeeds = app.DryRun.KeepFeeds,
+                    RapidMmPerMin = app.Machine.RapidMmPerMin,
+                });
 
                 if (report.Refusal is { } refusal)
                 {
@@ -1737,13 +1747,15 @@ internal static class Program
             return 1;
         }
 
+        var saved = AppSettings.LoadOrDefault().Probe;
+
         var options = new ProbeRoutineOptions
         {
-            SpacingMm = Number(args, "--spacing", 10),
-            MaxDepthMm = Number(args, "--depth", 2),
-            FeedMmPerMin = Number(args, "--feed", 30),
-            MarginMm = Number(args, "--margin", 1),
-            MaxPoints = (int)Number(args, "--max", 200),
+            SpacingMm = Number(args, "--spacing", saved.SpacingMm),
+            MaxDepthMm = Number(args, "--depth", saved.MaxDepthMm),
+            FeedMmPerMin = Number(args, "--feed", saved.FeedMmPerMin),
+            MarginMm = Number(args, "--margin", saved.MarginMm),
+            MaxPoints = (int)Number(args, "--max", saved.MaxPoints),
         };
 
         var (text, report) = ProbeRoutine.Generate(board.Bounds, options);
@@ -1829,12 +1841,18 @@ internal static class Program
         return 0;
     }
 
-    private static LevelOptions LevelOptionsFrom(string[] args) => new()
+    /// <summary>Saved settings as the defaults, with a flag able to override any of them for one run.</summary>
+    private static LevelOptions LevelOptionsFrom(string[] args)
     {
-        SegmentMm = Number(args, "--segment", 1),
-        SubdivideBelowMm = Number(args, "--below", 0.5),
-        MaxOutsideMm = Number(args, "--outside", 3),
-    };
+        var saved = AppSettings.LoadOrDefault().Level;
+
+        return new LevelOptions
+        {
+            SegmentMm = Number(args, "--segment", saved.SegmentMm),
+            SubdivideBelowMm = Number(args, "--below", saved.SubdivideBelowMm),
+            MaxOutsideMm = Number(args, "--outside", saved.MaxOutsideMm),
+        };
+    }
 
     /// <summary>
     /// A block of the operator's own G-code, from a file or given inline.

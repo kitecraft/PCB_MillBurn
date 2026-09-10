@@ -694,6 +694,26 @@ Still to come in this phase:
 **Done when:** Use Case 1 and Use Case 2 both run end-to-end with ≤ 50 µm registration measured
 on a test coupon.
 
+### Settings, and a constant that should never have been one
+
+`Edit ▸ Settings…` now holds the numbers that describe the machine rather than the board: safe and
+approach height, rapid rate, coordinate decimals, canned cycles, the dry-run height and feed
+handling, the probing grid, and the levelling parameters. Persisted in `AppSettings`, honoured by
+both the app and the CLI so a job exported either way comes out identical.
+
+**The safe height should not have been a constant.** Every travel move in every program crosses the
+board at exactly that height, it defaulted to 2 mm, and until now the only way to raise it was to
+recompile — so anybody with a clamp taller than 2 mm had no way to avoid striking it at rapid. That
+it sat unnoticed among a dozen other hard-coded defaults is the argument for the dialog: a constant
+nobody can see is a constant nobody questions.
+
+Checked rather than clamped, and Save is refused on a contradiction — an approach height above the
+safe height has nothing to descend through, and a dry run held below the job's own travel proves
+less than the job does. Silently correcting either would leave the operator believing the machine is
+set up one way while it is set up another, which is the failure this whole app is arranged against.
+Everything else is a note: canned cycles on, a safe height under 2 mm, a probing run over twenty
+minutes.
+
 ### A bug that shipped: every hole drilled with the first bit
 
 Found while sizing the drilling companion above, which is the only reason it was found at all.
@@ -838,7 +858,6 @@ standalone program now turns every backplot layer on: over nothing, there is not
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
-- Panelisation.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - Solder-paste stencil generation.
 - Machine-profile sharing.
@@ -938,7 +957,16 @@ a different reader, not new research.
    the one target-specific thing in the export, and the shipped layer preset should match it.
 4. **Is there a touch probe on the mill?** It changes the default alignment recommendation from
    microscope-crosshair to probe, and it makes the generated probe routines worth building early.
-5. ~~**Single board or panels?**~~ **Asked about, not yet needed.** Panelisation stays in Phase 6.
+5. ~~**Single board or panels?**~~ **Settled: we do not panelise.** A panel made in the EDA tool
+   is cut correctly and always has been — every closed profile in `Edge_Cuts`, inner pieces before
+   the frame around them. Building an array *here* is dropped, not deferred.
+
+   Panelising properly means understanding the design rather than the geometry: which copies share
+   a net, whether a mouse-bite crosses a track, what the clearances are. By the time a board reaches
+   this app it is a set of Gerbers — shapes on layers, with the design gone. A CAM-side array could
+   copy shapes faithfully and could not tell you it had perforated a trace, and a tool that
+   panelises badly is worse than one that does not offer to. KiKit already does this properly for
+   KiCad, against the netlist and the design rules, and the other EDA tools have their own.
    The geometry layer already makes the array half cheap — copies are a transform over geometry
    that is already realised — and mouse-bites are close to the outline tabs that exist. What is
    genuinely not free is per-instance identity in the UI, height mapping (across 200 mm the stock's

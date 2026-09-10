@@ -345,6 +345,13 @@ public partial class MainWindow : Window
             _captureInstead = window;
         }
 
+        if (args.Contains("--settings", StringComparer.OrdinalIgnoreCase))
+        {
+            var editor = new SettingsWindow(vm.Settings) { RequestedThemeVariant = ActualThemeVariant };
+            editor.Show(this);
+            _captureInstead = editor;
+        }
+
         if (args.Contains("--framing", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new FramingWindow(vm.Framing) { RequestedThemeVariant = ActualThemeVariant };
@@ -814,6 +821,19 @@ public partial class MainWindow : Window
         else if (colour is { } picked)
         {
             vm.SetColour(row, picked);
+        }
+    }
+
+    private async void OnSettingsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (await SettingsWindow.AskAsync(this, vm.Settings) is { } chosen)
+        {
+            vm.SaveMachineSettings(chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level);
         }
     }
 

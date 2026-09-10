@@ -80,7 +80,8 @@ public static class ExportPlanner
         OutputKind? only = null,
         MachineProfile? machine = null,
         RouteEffort effort = RouteEffort.Balanced,
-        ProgramFraming? framing = null)
+        ProgramFraming? framing = null,
+        MachineSettings? machineSettings = null)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(settings);
@@ -117,7 +118,8 @@ public static class ExportPlanner
 
             var item = setting.Output == OutputKind.Svg
                 ? PlanSvg(board, layer, setting, operation, page)
-                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort, framing);
+                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort,
+                    framing, machineSettings ?? new MachineSettings());
 
             if (item is null)
             {
@@ -243,7 +245,8 @@ public static class ExportPlanner
         long boardThicknessNm,
         MachineProfile? machine,
         RouteEffort effort,
-        ProgramFraming? framing)
+        ProgramFraming? framing,
+        MachineSettings machineSettings)
     {
         var tool = ResolveTool(setting, operation, library);
         var warnings = new List<string>();
@@ -363,8 +366,14 @@ public static class ExportPlanner
             Notes = notes,
         };
 
-        var (text, stats) = GcodeEmitter.Emit(
-            job, new GcodeOptions { Framing = framing ?? ProgramFraming.None });
+        var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions
+        {
+            Framing = framing ?? ProgramFraming.None,
+            SafeZNm = Nm.FromMillimetres(machineSettings.SafeZMm),
+            ApproachZNm = Nm.FromMillimetres(machineSettings.ApproachZMm),
+            Decimals = machineSettings.Decimals,
+            CannedCycles = machineSettings.CannedCycles,
+        });
 
         // Checked against the program it is going into rather than only when it was typed: a block
         // that was fine in the editor is still worth refusing here if it would end the file early,

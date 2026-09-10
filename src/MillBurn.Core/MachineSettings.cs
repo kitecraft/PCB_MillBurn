@@ -1,0 +1,252 @@
+using System.Globalization;
+using System.Text.Json.Serialization;
+
+namespace MillBurn.Core;
+
+/// <summary>
+/// How this machine moves, and how its files are written.
+///
+/// Facts about the machine rather than about the board, so they live with the settings and not with
+/// the project: a taller clamp does not become a shorter one because a different board was opened.
+/// </summary>
+public sealed record MachineSettings
+{
+    /// <summary>
+    /// Height for rapid moves between cuts, above work zero.
+    ///
+    /// Two millimetres clears a bare board and nothing else. It is the number to raise if anything
+    /// stands proud of the stock — clamps, hold-downs, tape, a probe clip — because **every travel
+    /// move in every program crosses the board at exactly this height**, and a clamp taller than it
+    /// is struck at rapid.
+    /// </summary>
+    public double SafeZMm { get; init; } = 2.0;
+
+    /// <summary>
+    /// Height to drop to at rapid before switching to the plunge feed.
+    ///
+    /// The gap between this and the surface is travelled slowly, so lowering it saves time and
+    /// leaves less room for a surface that is higher than expected. It must stay below the safe
+    /// height, or the "rapid down, then feed" sequence has nothing to descend through.
+    /// </summary>
+    public double ApproachZMm { get; init; } = 0.5;
+
+    /// <summary>
+    /// How fast the machine traverses, for the time estimates and for the dry run when programmed
+    /// feeds are turned off. Not emitted: <c>G0</c> carries no feed word.
+    /// </summary>
+    public double RapidMmPerMin { get; init; } = 2000;
+
+    /// <summary>Decimals on coordinates. Three is one micron, past every machine this targets.</summary>
+    public int Decimals { get; init; } = 3;
+
+    /// <summary>
+    /// Emit <c>G81</c>/<c>G83</c> canned cycles for drilling.
+    ///
+    /// Off, because **GRBL does not implement them** and silently ignores what it cannot parse —
+    /// which on a drill file means the spindle travels the whole pattern without ever going down,
+    /// and the board comes out with no holes and no error. Turn it on only for LinuxCNC or Mach3.
+    /// </summary>
+    public bool CannedCycles { get; init; }
+}
+
+/// <summary>What a dry run does, when one is asked for.</summary>
+public sealed record DryRunSettings
+{
+    /// <summary>
+    /// How far above work zero to hold the tool.
+    ///
+    /// High enough to see daylight under it from across a workshop, which is the whole point: a
+    /// clearance you have to crouch to confirm is not one you will check.
+    /// </summary>
+    public double HeightMm { get; init; } = 5;
+
+    /// <summary>
+    /// Keep the programmed feeds, so the run takes as long as the real one.
+    ///
+    /// On, because half of what a dry run answers is "how long am I committing to". Turning it off
+    /// runs everything at the rapid rate: quicker to watch, and no longer tells you the time.
+    /// </summary>
+    public bool KeepFeeds { get; init; } = true;
+}
+
+/// <summary>The probing grid, and how it is touched off.</summary>
+public sealed record ProbeSettings
+{
+    /// <summary>
+    /// How far apart to space the touches.
+    ///
+    /// The bow of a clamped board is a long smooth shape, so the surface between two points 10 mm
+    /// apart is very well predicted by the two points. Halving this quadruples the probing time.
+    /// </summary>
+    public double SpacingMm { get; init; } = 10;
+
+    /// <summary>Probing feed. Slow: the accuracy of the whole map rests on it.</summary>
+    public double FeedMmPerMin { get; init; } = 30;
+
+    /// <summary>How far below work zero a touch may search before giving up.</summary>
+    public double MaxDepthMm { get; init; } = 2;
+
+    /// <summary>How far inside the board to keep the touches. A probe half over the edge reads the table.</summary>
+    public double MarginMm { get; init; } = 1;
+
+    /// <summary>The most touches to ask for. Roughly four seconds each, so 200 is thirteen minutes.</summary>
+    public int MaxPoints { get; init; } = 200;
+}
+
+/// <summary>How closely a levelled program follows the measured surface.</summary>
+public sealed record LevelSettings
+{
+    /// <summary>The longest a cutting move may be before it is broken up to follow the surface.</summary>
+    public double SegmentMm { get; init; } = 1;
+
+    /// <summary>Moves at or below this height get broken up; higher ones only have their ends corrected.</summary>
+    public double SubdivideBelowMm { get; init; } = 0.5;
+
+    /// <summary>
+    /// How far outside the probed area a job may stray before levelling is refused.
+    ///
+    /// Outside the measurements the map holds its edge value, which is a good answer a millimetre
+    /// out and a guess a centimetre out.
+    /// </summary>
+    public double MaxOutsideMm { get; init; } = 3;
+
+    /// <summary>
+    /// How far to relax the fit, 0 (through every sample) to about 1 (barely more than a plane).
+    ///
+    /// A touch probe repeats to a few microns, and a surface forced exactly through noise that size
+    /// ripples between the samples in a way the board does not.
+    /// </summary>
+    public double Smoothing { get; init; }
+}
+
+/// <summary>
+/// Whether a set of settings is self-consistent, and what to say if not.
+/// </summary>
+public static class SettingsCheck
+{
+    /// <summary>
+    /// Everything wrong with the current settings, worst first. Empty when they are fine.
+    /// </summary>
+    /// <remarks>
+    /// Checked rather than clamped. Silently correcting somebody's number leaves them believing the
+    /// machine is set up one way while it is set up another, which is the failure this whole app is
+    /// arranged to avoid.
+    /// </remarks>
+    public static IReadOnlyList<string> Problems(
+        MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+        ArgumentNullException.ThrowIfNull(dryRun);
+        ArgumentNullException.ThrowIfNull(probe);
+        ArgumentNullException.ThrowIfNull(level);
+
+        var problems = new List<string>();
+
+        if (machine.SafeZMm <= 0)
+        {
+            problems.Add("Safe height must be above work zero, or travel moves cross the board at "
+                + "or below the surface.");
+        }
+
+        if (machine.ApproachZMm <= 0)
+        {
+            problems.Add("Approach height must be above work zero.");
+        }
+
+        if (machine.ApproachZMm >= machine.SafeZMm)
+        {
+            var approach = Invariant($"{machine.ApproachZMm:F2} mm");
+            var safe = Invariant($"{machine.SafeZMm:F2} mm");
+
+            problems.Add($"Approach height ({approach}) must be below the safe height ({safe}) — "
+                + "the tool rapids down to it before feeding.");
+        }
+
+        // The dry run is meant to be visibly clear of everything the real job clears. Held lower
+        // than the job's own travel height it proves less than the job does, which is backwards.
+        if (dryRun.HeightMm < machine.SafeZMm)
+        {
+            var held = Invariant($"{dryRun.HeightMm:F2} mm");
+            var safe = Invariant($"{machine.SafeZMm:F2} mm");
+
+            problems.Add($"Dry-run height ({held}) is below the safe height ({safe}). A dry run "
+                + "should clear at least as much as the real job does.");
+        }
+
+        if (probe.MaxDepthMm <= 0)
+        {
+            problems.Add("Probe search depth must be greater than zero, or the probe never descends.");
+        }
+
+        if (probe.FeedMmPerMin <= 0)
+        {
+            problems.Add("Probe feed must be greater than zero.");
+        }
+
+        if (probe.SpacingMm <= 0)
+        {
+            problems.Add("Probe spacing must be greater than zero.");
+        }
+
+        if (probe.MaxPoints < 4)
+        {
+            problems.Add("A probing grid needs at least four touches to describe a surface.");
+        }
+
+        if (level.SegmentMm <= 0)
+        {
+            problems.Add("Levelling segment length must be greater than zero.");
+        }
+
+        if (level.Smoothing is < 0 or > 1)
+        {
+            problems.Add("Smoothing runs from 0 (through every probe point) to 1 (nearly a plane).");
+        }
+
+        if (machine.Decimals is < 2 or > 5)
+        {
+            problems.Add("Coordinate decimals should be between 2 and 5. Three is one micron.");
+        }
+
+        return problems;
+    }
+
+    /// <summary>Things worth saying that are not wrong, only unusual.</summary>
+    public static IReadOnlyList<string> Notes(MachineSettings machine, ProbeSettings probe)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+        ArgumentNullException.ThrowIfNull(probe);
+
+        var notes = new List<string>();
+
+        if (machine.CannedCycles)
+        {
+            notes.Add("Canned cycles are on. GRBL does not implement them and ignores what it "
+                + "cannot parse, so a drill file would travel the whole pattern without drilling "
+                + "anything. Only turn this on for LinuxCNC or Mach3.");
+        }
+
+        if (machine.SafeZMm < 2)
+        {
+            var safe = Invariant($"{machine.SafeZMm:F2} mm");
+
+            notes.Add($"A {safe} safe height clears a bare board and very little else. Every "
+                + "travel move crosses the stock at that height.");
+        }
+
+        // Four seconds a touch, near enough.
+        var minutes = probe.MaxPoints * 4 / 60.0;
+
+        if (minutes > 20)
+        {
+            var about = Invariant($"{minutes:F0}");
+
+            notes.Add($"{probe.MaxPoints} probe points is up to about {about} minutes of standing "
+                + "and watching.");
+        }
+
+        return notes;
+    }
+
+    private static string Invariant(FormattableString text) => FormattableString.Invariant(text);
+}

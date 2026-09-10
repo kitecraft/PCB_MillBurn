@@ -138,6 +138,36 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     public ProgramFraming Framing => _project.Settings.Framing.Over(Settings.Framing);
 
+    /// <summary>
+    /// Keeps the machine's numbers, and rebuilds anything already on screen from them.
+    ///
+    /// The preview is emitted G-code, so a changed safe height or decimal count changes it — and a
+    /// preview that still shows the old numbers after the settings were saved is the kind of thing
+    /// somebody would only notice at the machine.
+    /// </summary>
+    public void SaveMachineSettings(
+        MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+
+        SaveSettings(Settings with
+        {
+            Machine = machine,
+            DryRun = dryRun,
+            Probe = probe,
+            Level = level,
+        });
+
+        if (Gcode is not null && !HasProgram)
+        {
+            Preview();
+        }
+
+        StatusMessage = string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"Settings saved. Safe height {machine.SafeZMm:F2} mm, dry run held at {dryRun.HeightMm:F2} mm.");
+    }
+
     public void SaveFraming(ProgramFraming framing)
     {
         ArgumentNullException.ThrowIfNull(framing);
@@ -403,7 +433,15 @@ public sealed partial class MainViewModel : ViewModelBase
 
         try
         {
-            var (text, report) = ProbeRoutine.Generate(_board.Bounds);
+            var (text, report) = ProbeRoutine.Generate(_board.Bounds, new ProbeRoutineOptions
+            {
+                SpacingMm = Settings.Probe.SpacingMm,
+                FeedMmPerMin = Settings.Probe.FeedMmPerMin,
+                MaxDepthMm = Settings.Probe.MaxDepthMm,
+                MarginMm = Settings.Probe.MarginMm,
+                MaxPoints = Settings.Probe.MaxPoints,
+                SafeHeightMm = Settings.Machine.SafeZMm > 5 ? Settings.Machine.SafeZMm : 5,
+            });
             File.WriteAllText(path, text);
 
             var minutes = report.EstimatedSeconds / 60;
@@ -439,7 +477,8 @@ public sealed partial class MainViewModel : ViewModelBase
             return false;
         }
 
-        var (map, log) = ProbeLog.Read(text);
+        var (map, log) = ProbeLog.Read(
+            text, new HeightMapOptions { Smoothing = Settings.Level.Smoothing });
 
         if (map is null)
         {
@@ -544,7 +583,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         return ExportPlanner.Plan(
             _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter,
-            framing: Framing);
+            framing: Framing, machineSettings: Settings.Machine);
     }
 
     /// <summary>
@@ -581,7 +620,12 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
                 {
-                    var (text, report) = Leveller.Apply(item.Content, surface);
+                    var (text, report) = Leveller.Apply(item.Content, surface, new LevelOptions
+                    {
+                        SegmentMm = Settings.Level.SegmentMm,
+                        SubdivideBelowMm = Settings.Level.SubdivideBelowMm,
+                        MaxOutsideMm = Settings.Level.MaxOutsideMm,
+                    });
 
                     if (report.Refusal is not null)
                     {
@@ -601,7 +645,12 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
                 {
-                    var (text, report) = DryRun.Rewrite(item.Content);
+                    var (text, report) = DryRun.Rewrite(item.Content, new DryRunOptions
+                    {
+                        HeightMm = Settings.DryRun.HeightMm,
+                        KeepFeeds = Settings.DryRun.KeepFeeds,
+                        RapidMmPerMin = Settings.Machine.RapidMmPerMin,
+                    });
 
                     // A refusal is not a failure of the export: the real program is written and
                     // correct. It only means this one could not be traced in the air, and saying

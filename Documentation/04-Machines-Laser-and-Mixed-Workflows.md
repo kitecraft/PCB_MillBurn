@@ -271,7 +271,8 @@ than making them wonder. Half of good workflow software is telling people what *
 - Laser-only (mask, etch, and outline scored + snapped by hand).
 - Double-sided: top ops, flip, bottom ops — a flip is just a Setup change with a mirror in its
   frame.
-- Panelised boards: an array transform on the Setup frame.
+- Panelised boards: cut as they arrive. The panel is made in the EDA tool — see
+  [06](06-Roadmap-and-Risks.md) — so there is no array transform here to apply.
 - Solder-paste stencil cutting on the laser from the paste Gerber.
 
 ## 4. Board re-alignment — the hard problem
