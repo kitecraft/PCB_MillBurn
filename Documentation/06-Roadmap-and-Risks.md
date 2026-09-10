@@ -586,26 +586,31 @@ LightBurn layer preset, DXF, and the calibration generators.
 
 ### First physical result
 
-**The SVG path has produced a real board.** `GridStripConnector_Panelized` — the 66-up panel, 165 x
-107 mm, 11,414 objects, 198 copper islands — exported as front-copper SVG, burned as a resist and
-etched. Reported as "as best as I can tell, it's perfect".
+**The SVG path has marked a real board.** `GridStripConnector_Panelized` — the 66-up panel, 165 x
+107 mm, 11,414 objects, 198 copper islands — exported as front-copper SVG and **laser-engraved onto
+copper-clad**. Reported as "as best as I can tell, it's perfect". The acid etch was not done, so
+what is proven is the pattern on the board, not a finished circuit.
 
-Worth recording precisely, because it is the first time anything this project has made has been
-made *physically*, and because the chain it exercises had no other verification at all: Gerber
-parse, geometry realisation, the neutral artwork model, the SVG writer, an import into laser
-software, and the etch. Everything before this was checked by rendering it.
+That is the right boundary anyway: everything up to the mark on the copper is this project's, and
+the chemistry after it is not. The chain now verified is Gerber parse, geometry realisation, the
+neutral artwork model, the SVG writer, an import into laser software, and the burn. All of it was
+previously checked only by rendering.
 
 It also happens to be the hardest artwork in the corpus rather than the easiest, which is a better
 first result than a small board would have been.
 
-**Not yet measured, and the two numbers that would settle it:**
+**Not yet measured, and two numbers that would settle it:**
 
 - **Scale.** A uniform scale error is the silent failure of any SVG hand-off — it looks entirely
   correct until a part does not fit. Measured across the panel's 165 mm rather than across one pad,
-  a 1% error is 1.65 mm and unmissable.
-- **Etch bias.** How much narrower or wider the etched traces are than designed. That is not a pass
-  or fail, it is the calibration input for the kerf and etch-bias compensation still outstanding in
-  Phase 4 — one measurement turns that feature from a guess into a correction.
+  a 1% error is 1.65 mm and unmissable. This is fully answerable from the engraved board as it is.
+- **Laser kerf.** How much wider or narrower an engraved line is than the width it was drawn at.
+  Measurable *now*, in isolation, precisely because the etch has not happened — which is a cleaner
+  calibration than measuring it after the acid has had its own go at the edges.
+
+Etch bias — the undercut the acid adds on top of the kerf — is a separate number for later. Both
+are signed offsets on the same geometry, which is why Phase 4 treats them together, but they are
+measured at different stages and should not be conflated.
 
 The mill half remains physically unverified.
 
