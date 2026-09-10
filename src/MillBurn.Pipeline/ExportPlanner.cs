@@ -293,7 +293,7 @@ public static class ExportPlanner
         IReadOnlyList<Toolpath> toolpaths = operation switch
         {
             OperationKind.Isolation => Only(BuildIsolation(layer, setting, tool, summary, warnings)),
-            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary),
+            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary, warnings),
             OperationKind.Outline => Only(BuildOutline(layer, setting, tool, boardThicknessNm, summary, warnings)),
             OperationKind.Engrave => Only(BuildEngrave(layer, setting, tool, summary)),
             OperationKind.Pocket => Only(BuildPocket(layer, setting, tool, summary, warnings)),
@@ -548,7 +548,12 @@ public static class ExportPlanner
     }
 
     private static IReadOnlyList<Toolpath> BuildDrilling(
-        BoardLayer layer, LayerOutputSettings setting, Tool tool, long thicknessNm, List<string> summary)
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        Tool tool,
+        long thicknessNm,
+        List<string> summary,
+        List<string> warnings)
     {
         if (layer.Drill is null)
         {
@@ -563,7 +568,10 @@ public static class ExportPlanner
 
         var depth = Nm.ToMillimetreString(options.DepthNm, 2);
         var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
-        var sizes = layer.Drill.Tools.Count == 1 ? "1 size" : Invariant($"{layer.Drill.Tools.Count} sizes");
+        // Sizes the *holes* come in, not tools in the file. A slot's width is a tool too, and
+        // counting it here claimed a size that no hole is drilled at.
+        var drilled = layer.Drill.Hits.Select(h => h.Tool).Distinct().Count();
+        var sizes = drilled == 1 ? "1 size" : Invariant($"{drilled} sizes");
 
         var built = DrillOperation.Build(layer.Drill, options, tool);
         var repeats = layer.Drill.Hits.Count - built.Sum(p => p.Drills.Count);
@@ -572,6 +580,27 @@ public static class ExportPlanner
             : Invariant($"{layer.Drill.Hits.Count} holes in {sizes}");
 
         summary.Add(Invariant($"{holes} · {depth} mm deep ({through} mm through the back)"));
+
+        // Slots are in the file, are drawn, and are not made. A slot is a routed feature, not a
+        // plunge, and nothing here routes one yet — so the operator is told, rather than handed a
+        // program that quietly leaves the oval holes out of a board that needs them. Silence here
+        // is the whole failure: the picture on screen shows the slots, so there is nothing to
+        // notice until the connector will not fit.
+        if (layer.Drill.Slots.Count > 0)
+        {
+            var widths = layer.Drill.Slots
+                .Select(s => layer.Drill.Tools.TryGetValue(s.Tool, out var t) ? t.DiameterNm : 0)
+                .Where(w => w > 0)
+                .Distinct()
+                .Order()
+                .Select(w => Nm.ToMillimetreString(w, 2) + " mm")
+                .ToList();
+
+            var count = layer.Drill.Slots.Count == 1 ? "1 slot" : Invariant($"{layer.Drill.Slots.Count} slots");
+
+            summary.Add(Invariant($"{count} — not in this program"));
+            warnings.Add(Invariant($"{count} in this layer ({string.Join(", ", widths)} wide) are NOT drilled or routed by this program. They are drawn on screen but nothing here makes them; cut them yourself, or the parts that need them will not fit."));
+        }
 
         // One file per layer, and the sizes inside it become tool changes rather than more files.
         // Returned as separate toolpaths because each carries its own bit: merging them into one

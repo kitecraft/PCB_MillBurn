@@ -36,6 +36,22 @@ public static class RealBoards
     /// </summary>
     public const string PogoTest1AllLayers = "PogoTest1-AllLayers";
 
+    /// <summary>
+    /// An Arduino Uno R3, recreated in KiCad 8 by somebody else and published under the WTFPL.
+    ///
+    /// The board that found the slot bug: seven plated slots written as strokes rather than
+    /// flashes, discarded by the drill reader while the viewer drew them perfectly. It is also the
+    /// only board here whose drill files are Gerbers rather than Excellon, the only one with more
+    /// than two drill sizes in a program, and the only one with spaces in its filenames.
+    /// </summary>
+    public const string ArduinoUno = "Arduino_Uno";
+
+    /// <summary>
+    /// The same, at twice the size: 10,007 objects and 63 % copper coverage, six drill sizes, seven
+    /// outline profiles. The densest board in the corpus, kept as the stress case.
+    /// </summary>
+    public const string ArduinoMega = "Arduino_Mega_2560";
+
     private static readonly Lazy<string> RootValue = new(Locate);
 
     /// <summary>Directory holding the board folders.</summary>

@@ -786,6 +786,65 @@ available if you are willing to drill them all the same size.
 each diameter named with its own hole count, and no hole lost in the split. Plus that the biggest
 bit goes first, which was right all along and is worth pinning.
 
+### A second silent omission: slots
+
+Found the same way as the first one, by running a full export on a board that had just arrived --
+two Arduino designs, Uno and Mega, from a KiCad recreation project. It took about ten minutes.
+
+Seven plated **slots** on each board were not in the drilling program, and nothing said so.
+
+A slot is an oval or routed hole, and KiCad writes it into a drill file as a **stroke**: the drill
+dragged from one point to the other with a round aperture the width of the hole. `GerberDrills.From`
+read `FlashObject`s only and hard-coded `Slots = []`, so a stroke was discarded before the drill
+model existed. The layer was still realised through the ordinary Gerber path, which is why the
+picture was completely correct -- the slots were drawn, counted in the object total, and included in
+the layer's area -- while the program that gets run left them out.
+
+That is the same shape as the mirrored backplot: **the display was right, so there was nothing to
+notice.** The first symptom available to anybody is a connector that will not fit a finished board.
+
+The compounding detail is that this was not Gerber-specific. `ExcellonFile.Slots` has existed since
+the Excellon parser was written, `BoardLoader` realises slots into area, and `ProjectFile` persists
+them -- but a search for `.Slots` across `MillBurn.Cam` and `ExportPlanner` returns nothing at all.
+**No slot from any drill file, in any format, has ever been machined.** Only the Gerber path also
+threw the data away on the floor.
+
+Two changes, and deliberately not three:
+
+*The file is read whole.* Strokes with a circular aperture become `DrillSlot`s, sharing the tool
+table with the holes, and the drill extent grows to cover them. An arc-shaped slot is left out
+rather than straightened, because recording it as the chord between its ends would put a straight
+cut where a curved one belongs -- a worse answer than admitting the feature is not handled.
+
+*The program says what it is not making.* The summary gains "7 slots -- not in this program" and the
+warnings gain a sentence saying they are drawn but not made, and that the parts needing them will
+not fit. **Routing them is not built**, and pretending otherwise would be the actual danger; what
+was unacceptable was the silence.
+
+It also corrected a smaller lie found on the way. A slot's width is a tool but it is not a hole
+size, and the summary counted `Tools.Count` -- so the Mega reported "258 holes in 7 sizes" while
+drilling six.
+
+**Routing slots properly is a real feature and it is not a drilling feature.** That is the part
+worth writing down, because the file it appears in makes it look like one. A drill cannot make a
+slot at all -- a twist drill cuts on its point and will not move sideways -- so a slot needs an end
+mill, and that pulls the whole thing out of the drilling operation:
+
+- **A different tool class.** The drilling program's tool changes are all drills, sized by hole. A
+  slot needs an end mill no larger than the slot's width, and the library has to be searched for one
+  rather than told.
+- **A different motion.** Plunge to depth and traverse, or ramp along the slot in passes. Neither is
+  a peck cycle, and both want the isolation feed rather than the plunge feed.
+- **So probably a different program.** Putting a 0.6 mm end mill in the middle of a drill file means
+  a tool change the drilling companion page cannot describe honestly, and an operator swapping
+  between drills and cutters in one run. A `Board-PTH.slots.nc` beside the drill file, with its own
+  entry in the export list, is the likelier shape.
+- **And a refusal.** When the widest usable end mill is still wider than the narrowest slot, there
+  is no correct program to write, and the answer is to say so rather than to cut an oversized slot.
+
+None of that is built. What is built is the export saying, in the summary and in a warning, that
+these features exist in the file and are not being made.
+
 ### The layer panel, rearranged — and the bug that fell out of it
 
 All of this came from using the app rather than from the plan, and it is recorded because the last

@@ -34,6 +34,21 @@ public static class GerberDrills
         var tools = new Dictionary<int, DrillTool>();
         var byDiameter = new Dictionary<long, int>();
         var hits = new List<DrillHit>();
+        var slots = new List<DrillSlot>();
+
+        // Numbered by size in first-seen order, which is what an Excellon file would have done;
+        // the numbers are only ever used to group hits and slots by tool.
+        int ToolFor(Aperture aperture, long diameter)
+        {
+            if (!byDiameter.TryGetValue(diameter, out var number))
+            {
+                number = byDiameter.Count + 1;
+                byDiameter[diameter] = number;
+                tools[number] = new DrillTool(number, diameter, aperture.Function);
+            }
+
+            return number;
+        }
 
         foreach (var flash in image.Objects.OfType<FlashObject>())
         {
@@ -51,37 +66,68 @@ public static class GerberDrills
                 continue;
             }
 
-            if (!byDiameter.TryGetValue(diameter, out var number))
-            {
-                // Numbered by size in first-seen order, which is what an Excellon file would have
-                // done; the numbers are only ever used to group hits by tool.
-                number = byDiameter.Count + 1;
-                byDiameter[diameter] = number;
-                tools[number] = new DrillTool(number, diameter, flash.Aperture.Function);
-            }
-
-            hits.Add(new DrillHit(number, flash.At));
+            hits.Add(new DrillHit(ToolFor(flash.Aperture, diameter), flash.At));
         }
 
-        if (hits.Count == 0)
+        // A slot is a stroke, not a flash: the drill dragged from one point to the other with a
+        // round aperture the width of the hole. KiCad writes every oval and routed hole this way,
+        // so a file read for flashes alone loses them — and it loses them *quietly*, because the
+        // same file realises into a perfectly good picture of slots that nothing then makes.
+        foreach (var draw in image.Objects.OfType<DrawObject>())
+        {
+            if (draw.Aperture.Kind != ApertureKind.Circle)
+            {
+                continue;
+            }
+
+            var width = draw.Aperture.NominalWidthNm;
+            if (width <= 0)
+            {
+                continue;
+            }
+
+            foreach (var segment in draw.Segments)
+            {
+                // An arc-shaped slot is a real thing and this is not it. Recording it as the chord
+                // between its ends would put a straight cut where a curved one belongs, which is
+                // worse than the file saying it could not be handled.
+                if (segment.IsArc)
+                {
+                    continue;
+                }
+
+                slots.Add(new DrillSlot(ToolFor(draw.Aperture, width), segment.From, segment.To));
+            }
+        }
+
+        if (hits.Count == 0 && slots.Count == 0)
         {
             return null;
         }
 
         var bounds = Bounds.Empty;
+
+        void Grow(Point2 at, long radius) => bounds = bounds
+            .Include(new Point2(at.X - radius, at.Y - radius))
+            .Include(new Point2(at.X + radius, at.Y + radius));
+
         foreach (var hit in hits)
         {
-            var radius = tools[hit.Tool].DiameterNm / 2;
-            bounds = bounds
-                .Include(new Point2(hit.At.X - radius, hit.At.Y - radius))
-                .Include(new Point2(hit.At.X + radius, hit.At.Y + radius));
+            Grow(hit.At, tools[hit.Tool].DiameterNm / 2);
+        }
+
+        foreach (var slot in slots)
+        {
+            var radius = tools[slot.Tool].DiameterNm / 2;
+            Grow(slot.From, radius);
+            Grow(slot.To, radius);
         }
 
         return new ExcellonFile
         {
             Tools = tools,
             Hits = hits,
-            Slots = [],
+            Slots = slots,
 
             // The coordinates are already in nanometres by the time they leave the Gerber parser,
             // so the unit is only carried for anyone re-reading the file's own numbers.

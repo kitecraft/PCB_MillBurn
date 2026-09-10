@@ -47,6 +47,20 @@ transliterated into this repository.
 | `pcb2gcode/` | The original C++ tool | GPL-3.0 |
 | `Universal-G-Code-Sender/` | UGS, the G-code sender whose visualizer informed ours | GPL-3.0 |
 
+## Committed test data
+
+Two of the boards in [`tests/boards/`](tests/boards/README.md) are somebody else's work, committed
+here as test fixtures rather than as product code.
+
+| Path | What it is | Licence |
+|---|---|---|
+| `tests/boards/Arduino_Uno/`, `tests/boards/Arduino_Mega_2560/` | Gerber and drill exports of Arduino Uno R3 and Mega 2560 designs recreated in KiCad by Camilo Sabogal — [KiCad-Arduino-Boards](https://github.com/sabogalc/KiCad-Arduino-Boards) | WTFPL |
+
+The WTFPL places no condition on use or redistribution, so these carry nothing into this repository
+and change its licensing answer not at all. They are listed because attribution is the right thing
+to do, not because it is required. Every other board in that directory is the repository owner's own
+work under this project's MIT licence.
+
 This distinction is the reason PCB_MillBurn can be MIT at all, and it is not a formality: copying
 so much as a translated function from either would make the whole application GPL-3.0. Ideas are
 not copyrightable and their expression is, so where a design from those projects is genuinely the

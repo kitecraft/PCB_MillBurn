@@ -87,18 +87,116 @@ public sealed class GerberDrillTests
         Assert.Contains(drill.Hits, h => h.At == new Point2(Nm.FromMillimetres(5), Nm.FromMillimetres(1)));
     }
 
+    /// <summary>
+    /// Nothing circular means nothing drillable. This used to say "no flashes", which was the
+    /// rule until slots existed — a stroke with a round aperture is a slot, and a file holding only
+    /// slots is a real, if unusual, drill file.
+    /// </summary>
     [Fact]
-    public void AGerberWithNoFlashesIsNotADrillFile()
+    public void AGerberWithNothingRoundInItIsNotADrillFile()
     {
         Assert.Null(GerberDrills.From(Parse("""
             %FSLAX46Y46*%
             %MOMM*%
-            %ADD10C,0.100000*%
+            %ADD10R,1.000000X2.000000*%
             D10*
             X0Y0D02*
             X1000000Y0D01*
+            X2000000Y0D03*
             M02*
             """), HolePlating.Plated));
+    }
+
+    // ------------------------------------------------------------------ the slots
+
+    /// <summary>
+    /// An oval or routed hole is a <em>stroke</em>, not a flash: the drill dragged from one point
+    /// to the other with a round aperture the width of the hole. Every KiCad board with a slotted
+    /// pad writes them this way.
+    ///
+    /// This was found on a real Arduino Mega export, where seven plated slots were read as nothing
+    /// at all. They were parsed, realised, drawn, and counted in the layer's object total — so the
+    /// picture on screen was completely correct — and then left out of the drilling program with
+    /// nothing said. There is no way to notice that until the connector will not fit.
+    /// </summary>
+    private const string SlottedDrillGerber = """
+        %TF.FileFunction,Plated,1,2,PTH,Drill*%
+        %FSLAX46Y46*%
+        %MOMM*%
+        %LPD*%
+        G01*
+        %ADD10C,1.000000*%
+        %ADD11C,0.600000*%
+        D10*
+        X1000000Y1000000D03*
+        D11*
+        X3000000Y1000000D02*
+        X4100000Y1000000D01*
+        M02*
+        """;
+
+    [Fact]
+    public void ASlotIsReadAsASlotRatherThanDiscarded()
+    {
+        var drill = GerberDrills.From(Parse(SlottedDrillGerber), HolePlating.Plated)!;
+
+        Assert.Single(drill.Hits);
+        Assert.Single(drill.Slots);
+
+        var slot = drill.Slots[0];
+
+        Assert.Equal(new Point2(Nm.FromMillimetres(3.0), Nm.FromMillimetres(1)), slot.From);
+        Assert.Equal(new Point2(Nm.FromMillimetres(4.1), Nm.FromMillimetres(1)), slot.To);
+        Assert.Equal(Nm.FromMillimetres(0.6), drill.Tools[slot.Tool].DiameterNm);
+    }
+
+    /// <summary>
+    /// A slot's width is a tool, but it is not a hole size, and the two must not be confused: the
+    /// summary said "in 7 sizes" on a board that drills six.
+    /// </summary>
+    [Fact]
+    public void ASlotWidthIsNotCountedAsAHoleSize()
+    {
+        var drill = GerberDrills.From(Parse(SlottedDrillGerber), HolePlating.Plated)!;
+
+        Assert.Equal(2, drill.Tools.Count);
+        Assert.Single(drill.Hits.Select(h => h.Tool).Distinct());
+    }
+
+    /// <summary>The extent has to cover the slot, or a board fitted to it is cut short.</summary>
+    [Fact]
+    public void TheExtentCoversTheSlotAndNotJustTheHoles()
+    {
+        var drill = GerberDrills.From(Parse(SlottedDrillGerber), HolePlating.Plated)!;
+
+        // The slot ends at 4.1 mm and is 0.6 mm wide, so its right edge is at 4.4 mm.
+        Assert.Equal(Nm.FromMillimetres(4.4), drill.Bounds.MaxX);
+    }
+
+    /// <summary>
+    /// An arc-shaped slot is left out rather than straightened. Recording it as the chord between
+    /// its ends would put a straight cut where a curved one belongs, which is a worse answer than
+    /// the file admitting it could not handle the feature.
+    /// </summary>
+    [Fact]
+    public void AnArcSlotIsLeftOutRatherThanStraightened()
+    {
+        var drill = GerberDrills.From(Parse("""
+            %TF.FileFunction,Plated,1,2,PTH,Drill*%
+            %FSLAX46Y46*%
+            %MOMM*%
+            %ADD10C,1.000000*%
+            D10*
+            X1000000Y1000000D03*
+            D10*
+            X3000000Y1000000D02*
+            G03*
+            X5000000Y1000000I1000000J0D01*
+            M02*
+            """), HolePlating.Plated)!;
+
+        Assert.Single(drill.Hits);
+        Assert.Empty(drill.Slots);
     }
 
     // ------------------------------------------------------------------ what it is not

@@ -1,8 +1,17 @@
 # Test boards
 
-Real KiCad 10 exports, committed as project content and used by `MillBurn.Tests` and
-`MillBurn.GoldenTests`. They are contributed by the repository owner under the project's
-[MIT licence](../../LICENSE).
+Real KiCad exports, committed as project content and used by `MillBurn.Tests` and
+`MillBurn.GoldenTests`.
+
+Two provenances, and the difference matters:
+
+- The `GridStripConnector*` and `PogoTest1*` boards are **contributed by the repository owner**
+  under the project's [MIT licence](../../LICENSE).
+- The `Arduino_*` boards come from [KiCad-Arduino-Boards](https://github.com/sabogalc/KiCad-Arduino-Boards)
+  by Camilo Sabogal, released under the **WTFPL**, which places no condition on redistribution at
+  all. They are third-party work, they are attributed here and in
+  [THIRD-PARTY-NOTICES](../../THIRD-PARTY-NOTICES.md), and they carry no copyleft into this
+  repository — which is the test any board has to pass to be committed (see the section below).
 
 **Why real boards are committed at all.** Hand-written fixtures prove the parser handles the
 *specification*; these prove it handles what an EDA tool actually *writes*, which is a different
@@ -25,9 +34,12 @@ files catch and synthetic ones do not.
 | `GridStripConnector/` | A small panelised board with tabs. `RoundRect` aperture macro with `$1+$1` expressions, four outline arcs kept as arcs, six SMD pads across three named nets, X2 attributes throughout. |
 | `PogoTest1/` | Two copper layers with pours (regions), PTH (16 holes, 2 tools) and NPTH (2 holes) with plating and tool functions, front and back silk, soldermask. The PTH count and the `ComponentPad` flash count on `B_Cu` cross-check each other. |
 | `PogoTest1-AllLayers/` | The same design at a **later revision**, exported with every layer KiCad offers: 18 plated holes against 16, and two more copper objects. The only board here with **paste** layers (empty, which is its own case — an empty layer must produce no file rather than an empty one) or a **user** layer, which has to come through as an unrecognised role rather than being guessed at. Kept alongside the shorter export rather than replacing it: together they are a real before-and-after of one design, which is what the refresh and fingerprint machinery exists to tell apart. |
+| `Arduino_Uno/` | An Arduino Uno R3 recreated in KiCad 8. **The board that found the slot bug**: seven plated slots written as strokes rather than flashes, which the drill reader discarded while the viewer drew them perfectly. Also the first board here with **drill files written as Gerber** rather than Excellon, **five drill sizes in one program** — four tool changes, where the rest of the corpus tops out at two sizes and one change, **five outline profiles** with interior mounting holes cut before the frame around them, and **spaces in every filename**, which nothing else here tests. 6,674 objects. |
+| `Arduino_Mega_2560/` | The same design language at twice the size: 10,007 objects, 63 % copper coverage, **six drill sizes and five tool changes**, seven outline profiles, seven slots. The densest routing in the corpus and the one that most exercises the isolation gap check — it reports one unreachable gap on the bottom and eight on the top, which are real features of the design rather than a defect. The stress case; `Arduino_Uno` covers the same ground faster. |
 | `GridStripConnector_Panelized/` | **66 boards** (6 x 11) and a frame in one 165 x 107 mm panel: 11,414 objects, 198 copper islands. The board that found the outline bug — taking only the largest ring cut the frame and left every board attached, which nothing smaller reproduces, because on a single board the largest ring is the right answer. Note that its `Edge_Cuts` is a shared lattice with tab gaps, not 66 separate outlines, so it realises to 51 ring regions: a count of profiles is not a count of boards. It is also the optimizer's main benchmark. |
 
-All are KiCad 10 exports carrying `%TF%` attribute blocks. The optional pcb2gcode corpus
+The `GridStripConnector*` and `PogoTest1*` boards are KiCad 10 exports; the `Arduino_*` boards are
+KiCad 8. All carry `%TF%` attribute blocks. The optional pcb2gcode corpus
 (see `MillBurn.Tests/GerberCorpus.cs`) is KiCad 9 and older, and uses the `G04 #@!` comment
 encoding instead — between them the parser is exercised on both forms.
 
@@ -68,9 +80,12 @@ provenance we know and whose licence is ours to state.
 Copy it in as its own directory and reference it by name through `RealBoards`. Two things to check
 first, because a commit is forever:
 
-1. **It is yours to publish.** Anything under client NDA or covering someone else's design does not
-   belong here. Keep that in a scratch folder beside the repository instead — `MyGerbers/` and
-   `MyGerbers2/` are git-ignored for exactly this purpose, and `MILLBURN_BOARDS` points the
-   fixtures elsewhere if you want to run against something private.
-2. **It earns its place.** A board that exercises nothing the existing two already cover is
+1. **It is yours to publish, or its licence lets you.** Anything under client NDA or covering
+   someone else's design does not belong here. Third-party boards are fine when the licence is
+   permissive and the attribution is recorded — the `Arduino_*` boards are WTFPL, which is why
+   they could come in and why pcb2gcode's GPL-3.0 fixtures could not. Anything else goes in a
+   scratch folder beside the repository instead: `WorkingFolder/` is git-ignored for exactly this
+   purpose, and `MILLBURN_BOARDS` points the fixtures elsewhere if you want to run against
+   something private.
+2. **It earns its place.** A board that exercises nothing the others already cover is
    maintenance with no return. Say in the table above what it adds.
