@@ -212,11 +212,12 @@ separate layers are the point, so the two are alternatives rather than defaults.
 prints the element and group count either way, because that is the number which decides what the
 laser program will do and there is no way to tell by looking at the picture.
 
-**Metadata.** Embed the project name, the source Gerber, the compensations applied, the generation
-timestamp, and the PCB_MillBurn version in `<metadata>` / `<desc>`, so a burn can be traced back to
-the settings that made it. The compensation figures in particular should be readable from the file
-— *"outlines shrunk 0.055 mm = 0.045 kerf + 0.010 etch bias"* — because that is the number someone
-will want six months later when a board comes out 40 µm narrow.
+**Metadata.** Embed the project name, the source Gerber, the generation timestamp, and the
+PCB_MillBurn version in `<metadata>` / `<desc>`, so a burn can be traced back to what made it. No
+compensation figures: the geometry is the design's own, and any kerf offset is applied downstream by
+the laser software ([04 §2.2](04-Machines-Laser-and-Mixed-Workflows.md)). What the file should be
+able to tell somebody six months later is *which design and which version*, not what we did to it,
+because we do nothing to it.
 
 **Deterministic and diffable.** Stable ordering, fixed decimal precision, no randomness, invariant
 formatting. Two runs of the same project produce byte-identical SVG — which is what makes it a

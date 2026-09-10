@@ -12,7 +12,9 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 > **Two outputs, one per machine: G-code for the mill, SVG for the laser.** Laser software already
 > owns power, speed, passes and fill strategy against a calibrated material library, and much laser
 > hardware does not take G-code at all. What it cannot do is read a Gerber — so our half is the
-> geometry: pad selection, copper inversion, kerf and etch-bias compensation, layer assignment.
+> geometry: pad selection, copper inversion, layer assignment, and an SVG true to the design at
+> 1:1. Kerf and etch-bias compensation stay with the laser software, which owns the beam and
+> material settings they depend on — see [04 §2.2](04-Machines-Laser-and-Mixed-Workflows.md).
 > See [04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats).
 
 ## Documents
@@ -22,7 +24,7 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 | 01 | [Architecture](01-Architecture.md) | Solution layout, project graph, the scope boundary, incremental pipeline, licensing |
 | 02 | [Gerber & Geometry Pipeline](02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 + Excellon parsing, Clipper2/NTS geometry, isolation, pocketing, DRC |
 | 03 | [Toolpath Optimization](03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, the GTSP model, cost model, constraints, arc fitting |
-| 04 | [Machines, Laser & Mixed Workflows](04-Machines-Laser-and-Mixed-Workflows.md) | **Mill takes G-code, laser takes SVG**; machine profiles, kerf/etch compensation, the Job/Operation/Setup model, **board re-alignment** |
+| 04 | [Machines, Laser & Mixed Workflows](04-Machines-Laser-and-Mixed-Workflows.md) | **Mill takes G-code, laser takes SVG**; machine profiles, why kerf compensation is *not* ours, the Job/Operation/Setup model, **board re-alignment** |
 | 05 | [Viewer & Export](05-Viewer-and-Export.md) | Real-time backplot viewer (UGS-informed), and the **SVG writer that is the entire laser output path** |
 | 06 | [Roadmap & Risks](06-Roadmap-and-Risks.md) | Phased milestones, acceptance metrics, open questions |
 | 07 | [UI Framework Decision](07-UI-Framework-Decision.md) | MAUI vs. Avalonia vs. WPF for this app, and why it's a cheap decision |
@@ -47,8 +49,8 @@ pcb2gcode does the hard geometry well but treats G-code as a dumb text dump: no 
 travel ordering that ignores half the available freedom, debug-grade SVG, no preview, and no
 concept of a *job* that spans two machines. PCB_MillBurn keeps the good geometry ideas, rebuilds
 them on Clipper2 + NetTopologySuite in .NET, and adds the three things that actually matter for
-the target workflows: **a real travel optimizer**, **laser output as production-grade SVG with
-kerf and etch-bias compensation**, and **a Job model that automatically plants registration marks
+the target workflows: **a real travel optimizer**, **laser output as production-grade SVG, true to
+the design at 1:1**, and **a Job model that automatically plants registration marks
 and re-registers the work when the board moves between the laser and the mill**. A live SkiaSharp
 backplot viewer makes all of it verifiable before a single chip is cut. It stays a converter
 throughout — files in, files out, and someone else's software runs them.

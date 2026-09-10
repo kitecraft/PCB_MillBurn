@@ -56,8 +56,10 @@ zero firmware-compatibility surface.
 **The same reasoning, applied to lasers, decides the output format: SVG, not G-code.** Laser
 software already owns power, speed, passes, fill strategy, overscan and the user's calibrated
 material library — and much laser hardware does not take G-code at all. What it cannot do is read
-a Gerber, so our half is geometry: pad selection from X2 attributes, copper inversion, kerf and
-etch-bias compensation, layer assignment. See
+a Gerber, so our half is geometry: pad selection from X2 attributes, copper inversion, layer
+assignment — and an SVG true to the design at 1:1. Kerf and etch-bias compensation are
+deliberately *not* ours; they depend on beam and chemistry parameters that live in the laser
+software. See
 [04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats). This removes
 an entire subsystem — laser dialect, scanline generator, power model — from the project.
 

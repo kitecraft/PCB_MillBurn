@@ -553,16 +553,13 @@ overscan, no power model. What is left is geometry and packaging.
 - Silkscreen → SVG: centrelines straight from the parsed strokes. Needs no geometry realisation
   at all, so it lands first.
 - Pad selection from X2 attributes; copper inversion against the outline; mask-open regions.
-- Kerf and etch-bias compensation as signed Clipper2 offsets, reported numerically on export.
-  **Blocked on a measurement, deliberately** — see "First physical result": engraved output
-  is already dimensionally correct to caliper resolution, so the comb below has to come first
-  and give a real number, or this corrects nothing by an amount nobody checked.
 - LightBurn palette mapping and a shipped layer preset; DXF as a second flavour.
 - One page origin and size shared by every export in a Job, asserted in the golden tests.
-- Calibration generators: kerf comb, registration repeatability.
+- Calibration generators: registration repeatability.
 
 **Done when:** an exported mask job imports into LightBurn on the right layers at 1:1 scale, and
-the etched result is dimensionally within one etch-bias unit of nominal.
+the burned result is dimensionally true to the design. **Met for scale and geometry** — see "First
+physical result" — on a 66-up panel, measured true to within 0.1 mm.
 
 **Progress — pulled forward, because the SVG decision made it cheap.** The neutral artwork model
 (`MillBurn.Core.Artwork`), the SVG writer and the silkscreen operation are built and tested:
@@ -584,8 +581,8 @@ the etched result is dimensionally within one etch-bias unit of nominal.
 Copper inversion has since landed too — an inverted SVG is everything inside the board edge
 *except* the layer, which is what burning a resist mask off a painted board wants.
 
-Still to come in this phase: pad selection from X2 attributes, kerf and etch-bias offsets, the
-LightBurn layer preset, DXF, and the calibration generators.
+Still to come in this phase: pad selection from X2 attributes, the LightBurn layer preset, DXF,
+and the registration repeatability generator.
 
 ### First physical result
 
@@ -610,23 +607,21 @@ scale error is the silent failure of an SVG hand-off, the one that looks entirel
 part will not fit. The `width="165mm" viewBox=...` contract in [05 §3](05-Viewer-and-Export.md)
 holds on real hardware, which is the single most valuable thing this measurement could have told us.
 
-**Kerf is bounded, not measured — and that changes what to build.** A caliper good to 0.1 mm cannot
-resolve kerf on a 0.25 mm trace to better than ±40% of the trace's own width. What the measurement
-establishes is that laser kerf on this setup is *below the threshold where it matters*, not what it
-is.
+**And it settled the scope question underneath.** Kerf and etch-bias compensation are **dropped
+from this project** — see [04 §2.2](04-Machines-Laser-and-Mixed-Workflows.md). Not deferred, not
+blocked on a measurement: out.
 
-So **kerf compensation is not currently justified**, and building it now would mean applying a
-correction nobody can measure to output that is already dimensionally right. Two things would change
-that:
+The measurement is what made the answer obvious. A caliper good to 0.1 mm cannot resolve kerf on a
+0.25 mm trace to better than ±40% of the trace's own width, so this result bounds kerf below the
+threshold where it matters rather than measuring it — and output that is already dimensionally right
+does not want a correction applied to it. Underneath that, kerf is a function of power, speed,
+focus, lens and material, all of which live in the laser software beside a calibrated material
+library. A number held here would go stale the moment any of them changed, with nothing to say so,
+and two tools each applying an offset is a doubly compensated board that looks wrong in neither.
 
-1. **The acid undercut**, which is a genuinely separate and probably larger number, and is unmeasured
-   because no board has been through the tank.
-2. **A different laser**, with a beam wide enough to matter.
-
-Either way the prerequisite is the **kerf comb** already listed in Phase 4's calibration generators —
-a burn of known widths and gaps that turns a sub-caliper effect into a countable one. Build the comb
-before the compensation, or neither. A compensation calibrated by guesswork is worse than none,
-because it moves every edge on the board by a number nobody checked.
+What stays ours is what the measurement actually validated: an SVG true to the design, in real
+millimetres, at 1:1. That is a claim this project can verify and keep verifying. Kerf is a claim
+about somebody else's beam.
 
 **The mill half remains physically unverified**, and is now the larger unknown of the two.
 

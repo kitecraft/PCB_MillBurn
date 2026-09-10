@@ -28,7 +28,7 @@ the laser takes SVG** — see [04 §1](Documentation/04-Machines-Laser-and-Mixed
 > measured surface — which is what makes 0.05 mm isolation and 0.035 mm mask relief work on stock
 > that is 0.15 mm out of flat.
 >
-> Still open: fiducial fitting and fixture generators (Phase 5), kerf compensation and DXF
+> Still open: fiducial fitting and fixture generators (Phase 5), pad selection and DXF
 > (Phase 4). Panelising is deliberately **not** on the list: make the panel in your EDA tool —
 > KiKit for KiCad — and this cuts it.
 

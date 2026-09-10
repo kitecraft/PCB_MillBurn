@@ -78,7 +78,6 @@ Much smaller, because it describes the *beam* and the *hand-off*, not a controll
 ```csharp
 sealed record LaserProfile(
     string Name,
-    long SpotSizeNm,                // measured with the kerf comb (2.4); drives kerf compensation
     long BedWidthNm, long BedHeightNm,
     SvgFlavour Flavour,             // LightBurn | Inkscape | Generic
     LayerPalette Palette,           // geometry role -> stroke colour, so the target auto-assigns
@@ -107,26 +106,40 @@ program can do for you:
 Being able to say "pads only, excluding vias, excluding U3" precisely — because we kept the X2
 attributes — is what makes Use Case 1 practical instead of fiddly.
 
-### 2.2 Compensations — the part that has to be right
+### 2.2 Compensations — decided: not ours
 
-Two compensations that no laser program applies, because none of them knows it is looking at a
-PCB. Both are Clipper2 offsets applied to the geometry **before** it reaches the SVG, so what the
-operator imports is already correct and they never have to think about it again.
+Two real effects sit between the geometry and the finished copper:
 
-- **Kerf compensation.** The beam has a finite spot (typically 0.06–0.15 mm on a diode laser).
-  Removing mask along a boundary widens the removed region by one spot radius on each side.
-  Offset the removal geometry **inward by the spot radius** so the resulting feature lands on
-  nominal. Calibrate the spot size with a generated test pattern (§2.4).
+- **Kerf.** The beam has a finite spot, typically 0.06–0.15 mm on a diode laser, so removing mask
+  along a boundary widens the removed region by about one spot radius on each side.
 - **Etch bias.** Ferric chloride and persulphate undercut the resist; a 0.2 mm trace comes out
-  0.16 mm. Apply a per-process bias (default 0.02 mm per edge, calibrated) that **shrinks the
-  removal region** so the finished copper lands on nominal. Expose it per-recipe, because it
-  depends on etchant, temperature, and agitation.
+  nearer 0.16 mm.
 
-LightBurn does have a kerf-offset field, but it applies one global number per layer with no
-knowledge of which side is material — and it cannot express etch bias at all. Doing it here, as
-signed polygon offsets against real board geometry, is both more correct and invisible to the
-user. **Show the applied compensation in the export dialog** (*"outlines shrunk 0.055 mm =
-0.045 kerf + 0.010 etch bias"*) so the number is auditable rather than magic.
+**We correct for neither. We export geometry true to the design, and the laser software applies any
+offset it needs.** This reverses what this section originally argued.
+
+That original case was not a bad one: LightBurn's kerf-offset field applies one global number per
+layer with no knowledge of which side is material, and cannot express etch bias at all, so doing it
+here as signed polygon offsets against real board geometry would in principle be more correct. It is
+outweighed:
+
+- **The correction depends on parameters we never see.** Kerf is a function of power, speed, focus,
+  lens and material. All of those live in the laser software, next to a calibrated material library.
+  A number held here would be stale the moment any of them changed, and nothing would say so.
+- **Two places applying a correction is worse than one applying it badly.** If both offset the
+  geometry the board comes out doubly compensated, and the second correction is invisible in both
+  tools. There is no safe way to make that mistake impossible from this side.
+- **The measurement says it is not needed.** A 66-up panel engraved from our SVG measured true in
+  traces, pads and outer dimensions to within 0.1 mm — see [06](06-Roadmap-and-Risks.md), "First
+  physical result". Output that is already dimensionally right does not want a correction applied
+  to it.
+
+What remains ours is the thing the measurement actually validated: **an SVG that is true to the
+design, in real millimetres, at 1:1.** That is a claim we can verify and keep verifying. Kerf is a
+claim about somebody else's beam.
+
+The consequences follow below: the laser profile carries no `SpotSizeNm`, and the calibration
+generators include no kerf comb. There is nothing for either to feed.
 
 ### 2.3 Fill versus line, and why the SVG must say which
 
@@ -160,8 +173,6 @@ Two rules the SVG writer must obey or fills silently misbehave:
 
 Generated as SVG, so they travel the same path as a real job:
 
-- **Spot-size / kerf comb** — parallel lines at descending gaps; the narrowest gap that stays open
-  gives the kerf, which feeds straight back into `LaserProfile.SpotSizeNm`.
 - **Registration repeatability test** — burn the marks, re-home, burn them again; the doubling
   shows the repeatability the machine actually has, which bounds everything in §4.
 
@@ -239,7 +250,7 @@ it to the user to notice.
 | # | Step | Setup | Notes |
 |---|---|---|---|
 | 1 | Laser: burn **fiducials** | A (laser) | Auto-inserted. Marks must survive etching → see §4.2 |
-| 2 | Laser: burn mask over **non-copper** | A | Kerf + etch-bias compensated |
+| 2 | Laser: burn mask over **non-copper** | A | Geometry true to the design; kerf is the laser software's (§2.2) |
 | 3 | *Manual: etch, rinse, strip, re-mask* | — | Checklist with timer |
 | 4 | Laser: **re-align to fiducials** | A′ | Board was removed; A′ is a new frame |
 | 5 | Laser: burn mask over **pads only** | A′ | From X2 pad attributes |
