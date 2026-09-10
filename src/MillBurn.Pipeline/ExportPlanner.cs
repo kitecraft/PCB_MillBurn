@@ -27,6 +27,15 @@ public sealed record ExportItem
 
     public required string Content { get; init; }
 
+    /// <summary>
+    /// Whether the geometry was flipped left-to-right before it was written.
+    ///
+    /// Carried on the item because a mirrored program cannot be placed on the board without it:
+    /// its coordinates describe the *flipped* stock, so drawing them straight puts a bottom-side
+    /// job on the wrong half of the board — correct file, mirror-image picture.
+    /// </summary>
+    public bool Mirrored { get; init; }
+
     /// <summary>Facts worth seeing before writing it — sizes, counts, distances.</summary>
     public IReadOnlyList<string> Summary { get; init; } = [];
 
@@ -453,6 +462,7 @@ public static class ExportPlanner
             Output = OutputKind.Gcode,
             TargetName = target,
             Content = text,
+            Mirrored = mirrored,
             Summary = summary,
             Warnings = warnings,
             Companion = operation == OperationKind.Drilling && setting.WriteDrillGuide

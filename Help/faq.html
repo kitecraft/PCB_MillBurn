@@ -42,6 +42,7 @@
     <li><a href="#viewer">Looking at a G-code file</a></li>
     <li><a href="#settings">Settings: safe height, and the rest of the machine</a></li>
     <li><a href="#framing">My machine needs its own lines at the start</a></li>
+    <li><a href="#panel">The layer drawer: what is drawn, and what gets cut</a></li>
     <li><a href="#colours">I cannot see a layer</a></li>
   </ul>
 </div>
@@ -1004,6 +1005,91 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <code>millburn export &lt;folder&gt; --start-gcode &lt;file or text&gt; --end-gcode &lt;&hellip;&gt;</code>.
 </p>
 
+<h2 id="panel">The layer drawer: what is drawn, and what gets cut</h2>
+
+<p>
+  Each layer gets one row, and the row carries three separate things. They are separate because they
+  answer different questions, and every attempt to fold them into one control ends up answering the
+  wrong one.
+</p>
+
+<ul>
+  <li>
+    <strong>The checkbox draws the artwork</strong> &mdash; the copper, the mask, the legend, as the
+    Gerber describes it.
+  </li>
+  <li>
+    <strong>The zig-zag beside it draws the toolpath</strong> &mdash; the program that layer becomes,
+    parsed back out of the emitted G-code after a <strong>Preview</strong>. A layer that makes no
+    program shows a dash instead.
+  </li>
+  <li>
+    <strong>The pill on the right says what it becomes</strong> &mdash; <em>G-code</em>, <em>SVG</em>,
+    or nothing at all. It is on the collapsed row on purpose: which layers are being exported is the
+    thing you most want to know at a glance, and it used to take opening every one of them to find
+    out.
+  </li>
+</ul>
+
+<p>
+  The artwork and the toolpath are two toggles rather than one because <strong>the artwork hides the
+  cuts</strong>. A trace is a filled shape and its isolation path runs around the outside of it; with
+  the copper drawn, the line you are trying to look at is a hair against a solid colour. Turning the
+  copper off and its path on is the gesture that makes a toolpath readable, and it needs both halves.
+</p>
+
+<p>
+  <em>Right-click any layer</em> for the two things that are tedious one row at a time:
+  <strong>Show only this toolpath</strong>, and <strong>Export only this layer</strong>. Both are
+  undoable &mdash; <em>Show all toolpaths</em> is also in the View menu, and <strong>Restore
+  exports</strong> puts back exactly what every layer was set to before, rather than guessing at
+  defaults.
+</p>
+
+<h3>Why the list is in that order</h3>
+
+<p>
+  Grouped by which part of the board a layer belongs to: <strong>top side</strong> first, then any
+  <strong>inner layers</strong>, then the <strong>bottom side</strong>, then <strong>holes and
+  outline</strong>, which belong to neither side. Inside each group the copper comes first, because
+  the copper is what gets cut.
+</p>
+
+<p>
+  It is deliberately <em>not</em> the order the layers are painted in. Paint order is back-to-front,
+  which is right for the renderer and wrong for reading: it opens with the bottom silkscreen, sets
+  the two soldermasks four rows apart with nothing but their labels to tell them apart, and buries
+  the side you are working on in the middle. Each group heading also says how many of its layers are
+  being exported, so a fully collapsed drawer still tells you which parts of the board the job
+  covers.
+</p>
+
+<h3>A mirrored layer&rsquo;s toolpath</h3>
+
+<p>
+  A bottom-side program is written <strong>mirrored</strong>, because you turn the stock over before
+  you cut it. Its coordinates describe the flipped board, not the one on screen &mdash; so the
+  drawing flips them back, and the path is shown where it will actually land on <em>this</em> board,
+  sitting on the copper it isolates. It is still the emitted file being drawn; only the frame it is
+  drawn in has been chosen to match the picture. The warning about which way to flip the stock is
+  unaffected, and so is the file.
+</p>
+
+<h3>Toolpath moves</h3>
+
+<p>
+  Under the list, after a <strong>Preview</strong>: <strong>Cutting moves</strong>, <strong>Travel
+  moves</strong>, <strong>Long rapids</strong>, <strong>RAPID AT DEPTH</strong> if there is one, and
+  the <strong>Substrate</strong>. These are not layers &mdash; no file makes one and none can be
+  exported &mdash; so they are a filter across the whole drawing rather than rows pretending to be
+  files. A path is drawn when <em>its layer&rsquo;s</em> zig-zag is on <em>and</em> its kind of move
+  is ticked here.
+</p>
+
+<p>
+  Click the coloured dot on any of them to change its colour, the same way a layer swatch works.
+</p>
+
 <h2 id="colours">I cannot see a layer</h2>
 
 <p>
@@ -1015,18 +1101,21 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  This includes the layers the app draws itself rather than reading from a file: the
-  <strong>Substrate</strong>, and — after a <strong>Preview</strong> — <strong>Cutting
-  moves</strong>, <strong>Travel moves</strong>, <strong>Long rapids</strong> and <strong>RAPID AT
-  DEPTH</strong>. Those are often the ones that most need changing. The backplot palette
-  deliberately picks hues the board does not use, so a program is never invisible against the copper
-  it was made from — but which hues those are depends on which layers you have showing.
+  This includes the things the app draws itself rather than reading from a file. They are not in the
+  layer list &mdash; they are the <a href="#panel"><strong>Toolpath moves</strong></a> row of chips
+  underneath it: the <strong>Substrate</strong>, and, after a <strong>Preview</strong>,
+  <strong>Cutting moves</strong>, <strong>Travel moves</strong>, <strong>Long rapids</strong> and
+  <strong>RAPID AT DEPTH</strong>. Click the coloured dot on a chip to change it. Those are often
+  the ones that most need changing. The backplot palette deliberately picks hues the board does not
+  use, so a program is never invisible against the copper it was made from — but which hues those
+  are depends on which layers you have showing.
 </p>
 
 <p>
-  The checkbox beside each layer controls only whether it is <em>drawn</em>. It has nothing to do
-  with whether it is exported — that is the dropdown. Keeping them separate is deliberate: you
-  routinely want the soldermask on screen to check a pad against while cutting only the copper.
+  The checkbox beside each layer controls only whether its artwork is <em>drawn</em>. It has nothing
+  to do with whether it is exported — that is the dropdown, and the pill on the right of the row
+  says what the answer currently is. Keeping them separate is deliberate: you routinely want the
+  soldermask on screen to check a pad against while cutting only the copper.
 </p>
 
 <footer>

@@ -45,6 +45,35 @@ board outline was the whole of it, which is the dividend of having always drawn 
 It is also the only way to look at the files that are not the job: the `.dryrun.nc`, the
 `.levelled.nc` and the `.probe.nc`.
 
+#### 2.1.1 Where a program is drawn, and the bug that hid there
+
+A program is written in **work coordinates** — origin at the board's lower-left corner — so drawing
+it over the board is a translation. That was the whole of the placement rule, and it was wrong for
+one case.
+
+A bottom-side program is emitted **mirrored**, because the stock is turned over before it is cut.
+Its coordinates describe the flipped board. Translated straight onto the unflipped board on screen,
+its cuts landed on the mirror image of the traces they isolate: a correct file, drawn in the wrong
+frame. It had been that way since the backplot existed, and nothing found it, because until the
+panel could show *one* layer's artwork against *that layer's* toolpath there was never a picture in
+which the two could be seen to disagree.
+
+`BackplotBuilder.Placement` now carries the mirror axis alongside the offset, and `ExportItem`
+records which programs were flipped. A mirrored program is unflipped for the drawing, so the path
+is shown where it will actually land on this board.
+
+That is still the emitted file being drawn — only the frame it is drawn in has been chosen to match
+the picture, which is the same choice already being made by translating out of work coordinates at
+all. The question a backplot over artwork is being asked is *where do these cuts land on my board*,
+and after the stock is flipped, the answer is: on the bottom copper, exactly as drawn.
+
+**The first regression test for it passed while the bug was present.** It compared bounding boxes,
+and PogoTest1's bottom copper reaches within 60 µm of the same distance from each board edge — so
+its extent is very nearly symmetrical about the centreline and a mirrored copy of it has *the same
+bounding box*. The artwork inside is not symmetrical at all. The test now compares centroids: 1.644
+mm out uncorrected, 0.150 mm corrected. Anyone writing the next mirroring test will reach for bounds
+too, so the file says why not.
+
 ### 2.2 Rendering: SkiaSharp
 
 A custom Avalonia `Control` drawing through `ICustomDrawOperation` + `ISkiaSharpApiLeaseFeature`,
@@ -110,6 +139,23 @@ Adopting UGS's renderable decomposition:
 | Fiducials & fixture | Marks, dowel pins, plate outline, current alignment transform |
 | Machine bounds & grid | Work envelope, origin, axis indicator |
 | Tool position | Animated during simulation |
+
+**Built, and not as one list.** The rows above conflate two questions that turned out to be
+independent: *which layer* a path came from, and *what kind of move* it is. The backplot is built
+per source program, so a layer row governs its own paths and a chip governs a kind of move across
+all of them; a path is drawn when both say so.
+
+Each layer therefore carries **two toggles, deliberately unalike** — a checkbox for the artwork and
+a path glyph for the toolpath. Two identical checkboxes side by side is a coin toss every time, and
+these control genuinely different things. They have to be separate because **the artwork hides the
+cuts**: a trace is a filled shape and its isolation path runs around the outside of it, so with the
+copper drawn, the line you are trying to look at is a hair against a solid colour. Turning the
+copper off and its path on is the gesture that makes a toolpath readable, and it needs both halves.
+
+The kinds of move — cutting, travel, long rapids, rapid-at-depth — and the substrate were rows in
+the layer list, which is what they are not: no file makes one, none can be exported, and every
+setting a layer row offers is meaningless for them. They are now chips under the list, which is what
+they always were: a filter across the whole drawing.
 
 ### 2.4 Simulation and scrubbing
 

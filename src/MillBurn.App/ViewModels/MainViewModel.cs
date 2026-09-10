@@ -78,13 +78,29 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial double BoardThicknessMm { get; set; } = 1.6;
 
-    /// <summary>What Export will write: everything, or only one kind.</summary>
-    [ObservableProperty]
-    public partial string SelectedExportFilter { get; set; } = "Both";
-
-    public IReadOnlyList<string> ExportFilters { get; } = ["Both", "SVG only", "G-code only"];
-
     public ObservableCollection<LayerRow> Layers { get; } = [];
+
+    /// <summary>
+    /// Kinds of move, and the substrate — a filter across the whole drawing rather than a list of
+    /// layers, which is what these were pretending to be while they sat among the real ones.
+    /// </summary>
+    public ObservableCollection<MoveKindRow> MoveKinds { get; } = [];
+
+    /// <summary>
+    /// Which kinds of move are showing, held across rebuilds.
+    ///
+    /// The chips are rebuilt from the backplot every time a program is emitted, and without this
+    /// they would come back on their defaults — so turning travel off and pressing Preview once
+    /// more would turn it back on, which is exactly when you least want it.
+    /// </summary>
+    private readonly Dictionary<string, bool> _kindVisible = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The same rows as <see cref="Layers"/>, bucketed by which part of the board they belong to.
+    /// This is what the panel lists; <see cref="Layers"/> stays flat for everything that has to
+    /// walk every row regardless of where it sits.
+    /// </summary>
+    public ObservableCollection<LayerGroup> LayerGroups { get; } = [];
 
     public ObservableCollection<string> Warnings { get; } = [];
 
@@ -575,18 +591,15 @@ public sealed partial class MainViewModel : ViewModelBase
 
     // ------------------------------------------------------------------ export
 
-    public OutputKind? CurrentFilter => SelectedExportFilter switch
-    {
-        "SVG only" => OutputKind.Svg,
-        "G-code only" => OutputKind.Gcode,
-        _ => null,
-    };
-
     /// <summary>
     /// Works out every file this export would write, without writing any of them.
     ///
     /// Planning and writing stay separate because the check is the point: which layer became which
     /// file, what tool it assumes, and whether anything about the combination is wrong.
+    ///
+    /// <paramref name="filter"/> is for Preview, which only ever wants the G-code. An export takes
+    /// no filter: what each layer produces is that layer's own setting, said on its own row, and a
+    /// second control that could disagree with six rows at once is one answer too many.
     /// </summary>
     public ExportPlan? PlanExport(OutputKind? filter = null)
     {
@@ -601,7 +614,7 @@ public sealed partial class MainViewModel : ViewModelBase
             o => o.FileName, o => o, StringComparer.Ordinal);
 
         return ExportPlanner.Plan(
-            _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter ?? CurrentFilter,
+            _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter,
             framing: Framing, machineSettings: Settings.Machine);
     }
 
@@ -724,7 +737,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         var shift = new Point2(_board.Bounds.MinX, _board.Bounds.MinY);
-        var moves = new List<BackplotMove>();
+        var programs = new List<BackplotBuilder.Program>();
         var cut = 0.0;
         var travel = 0.0;
         var plunges = 0;
@@ -735,7 +748,12 @@ public sealed partial class MainViewModel : ViewModelBase
             var classified = GcodeBackplot.Classify(GcodeParser.Parse(item.Content));
             var measured = GcodeBackplot.Measure(classified);
 
-            moves.AddRange(classified);
+            // Kept apart by source layer rather than poured into one list. Merged, the viewer can
+            // only ever show every program's cuts at once — and looking at one layer's toolpath is
+            // the reason to open a backplot at all.
+            programs.Add(new BackplotBuilder.Program(
+                item.LayerFileName, item.LayerLabel, classified, item.Mirrored));
+
             cut += measured.CutMm;
             travel += measured.TravelMm;
             plunges += measured.PlungeCount;
@@ -743,7 +761,11 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         Gcode = string.Join("\n", plan.Items.Select(i => i.Content));
-        _backplot = BackplotBuilder.Build(moves, shift);
+        // A mirrored program is written for the flipped stock, so it is flipped back for the
+        // drawing: what the picture is being asked is where the cuts land on *this* board, and a
+        // bottom-copper path drawn straight lands on the mirror image of the traces it isolates.
+        _backplot = BackplotBuilder.BuildPerProgram(
+            programs, shift, mirrorSumXNm: _board.Bounds.MinX + _board.Bounds.MaxX);
 
         GcodeSummary = string.Create(
             CultureInfo.InvariantCulture,
@@ -901,6 +923,33 @@ public sealed partial class MainViewModel : ViewModelBase
         StatusMessage = "Layer colours reset.";
     }
 
+    /// <summary>
+    /// The same three operations for a move-kind chip. These carry no role — there is no file
+    /// behind a rapid — so they are identified by the colour key the palette already saves under.
+    /// </summary>
+    public void SetColour(MoveKindRow kind, Color colour)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+
+        SaveSettings(Settings.WithSceneColour(kind.Id, $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}"));
+        Rebuild(TimeSpan.Zero);
+    }
+
+    public void ResetColour(MoveKindRow kind)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+
+        SaveSettings(Settings.WithoutSceneColour(kind.Id));
+        Rebuild(TimeSpan.Zero);
+    }
+
+    public static Color ColourOf(MoveKindRow kind)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+
+        return kind.Swatch is SolidColorBrush brush ? brush.Color : Colors.Gray;
+    }
+
     public Color ColourOf(LayerRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -941,7 +990,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private IReadOnlyList<BackplotLayer> Recoloured(IReadOnlyList<BackplotLayer> layers) =>
         Settings.SceneColours.IsEmpty
             ? layers
-            : [.. layers.Select(l => l with { Style = SceneStyle(l.Id, l.Style) })];
+            : [.. layers.Select(l => l with { Style = SceneStyle(l.Palette, l.Style) })];
 
     public void ReloadLibrary()
     {
@@ -1009,6 +1058,11 @@ public sealed partial class MainViewModel : ViewModelBase
                     layer.Visible = true;
                 }
 
+                foreach (var key in _backplot.Select(b => b.Palette).Append(BoardSceneBuilder.SubstrateId))
+                {
+                    _kindVisible[key] = true;
+                }
+
                 previous?.Dispose();
                 BuildRows(null, Scene);
                 Facts.Clear();
@@ -1019,6 +1073,9 @@ public sealed partial class MainViewModel : ViewModelBase
             Scene = null;
             previous?.Dispose();
             Layers.Clear();
+            BuildGroups();
+            MoveKinds.Clear();
+            HasMoveKinds = false;
             Warnings.Clear();
             Facts.Clear();
             _backplot = [];
@@ -1083,42 +1140,276 @@ public sealed partial class MainViewModel : ViewModelBase
         var byName = board is null
             ? new Dictionary<string, BoardLayer>(StringComparer.Ordinal)
             : board.Layers.ToDictionary(l => l.FileName, StringComparer.Ordinal);
-        var backplotRuns = _backplot.ToDictionary(b => b.Id, b => b.Runs.Count, StringComparer.Ordinal);
+
+        // Which scene layer belongs to which program, and to which kind of move. The backplot is
+        // built per program now, so both questions have answers and the panel can ask them
+        // separately: a row governs *its* layer's paths, a chip governs *a kind* across all of them.
+        var bySource = _backplot
+            .Where(b => b.Source.Length > 0)
+            .GroupBy(b => b.Source, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<BoardSceneLayer>)[.. g.Select(b => scene.Layer(b.Id)).OfType<BoardSceneLayer>()],
+                StringComparer.Ordinal);
 
         _suspendOutputChanges = true;
         Layers.Clear();
 
+        // A snapshot of the previous board's exports would restore names that no longer exist.
+        _mutedExports = null;
+        OnPropertyChanged(nameof(CanRestoreExports));
+
         foreach (var layer in scene.Layers)
         {
-            if (byName.TryGetValue(layer.Id, out var source))
+            if (!byName.TryGetValue(layer.Id, out var source))
             {
-                // The project is the only place these live. Keeping a second copy in the view would
-                // mean two answers to "what does this layer become", and the one that got saved
-                // would be whichever was updated last.
-                var settings = _project.Settings.OutputFor(layer.Id)
-                    ?? new LayerOutputSettings
-                    {
-                        FileName = layer.Id,
-                        Output = LayerOperations.DefaultFor(source.Role, Settings.Import),
-                    };
+                continue;
+            }
 
-                Layers.Add(new LayerRow(
-                    source, layer, settings, Library.Tools, OnLayerVisibilityChanged, OnOutputChanged));
-            }
-            else if (backplotRuns.TryGetValue(layer.Id, out var runs))
+            // The project is the only place these live. Keeping a second copy in the view would
+            // mean two answers to "what does this layer become", and the one that got saved
+            // would be whichever was updated last.
+            var settings = _project.Settings.OutputFor(layer.Id)
+                ?? new LayerOutputSettings
+                {
+                    FileName = layer.Id,
+                    Output = LayerOperations.DefaultFor(source.Role, Settings.Import),
+                };
+
+            var row = new LayerRow(
+                source, layer, settings, Library.Tools, OnLayerVisibilityChanged, OnOutputChanged);
+
+            if (bySource.TryGetValue(layer.Id, out var paths))
             {
-                var detail = string.Create(
-                    CultureInfo.InvariantCulture, $"From the emitted G-code · {runs:N0} runs");
-                Layers.Add(new LayerRow(layer, detail, OnLayerVisibilityChanged));
+                row.AttachToolpath(paths);
             }
-            else
+
+            Layers.Add(row);
+        }
+
+        BuildMoveKinds(scene);
+        ApplyToolpathVisibility();
+        BuildGroups();
+
+        _suspendOutputChanges = false;
+    }
+
+    /// <summary>
+    /// Re-buckets the rows by which part of the board they belong to. The flat list stays the one
+    /// everything else works from; this is a view of it, so there is still only one row object per
+    /// layer and no way for the two to disagree.
+    /// </summary>
+    private void BuildGroups()
+    {
+        foreach (var group in LayerGroups)
+        {
+            group.Detach();
+        }
+
+        LayerGroups.Clear();
+
+        foreach (var group in LayerGroup.Build(Layers))
+        {
+            LayerGroups.Add(group);
+        }
+
+        HasLayerRows = Layers.Count > 0;
+        HasMoveKinds = MoveKinds.Count > 0;
+    }
+
+    /// <summary>Whether there is a layer list to show at all — a lone .nc file has none.</summary>
+    [ObservableProperty]
+    public partial bool HasLayerRows { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMoveKinds { get; set; }
+
+    /// <summary>
+    /// The chips: one per kind of move, plus the substrate.
+    ///
+    /// Built from the scene rather than from a fixed list, so a kind that this job never produced —
+    /// a gouge, usually — does not sit there as a control for nothing.
+    /// </summary>
+    private void BuildMoveKinds(BoardScene scene)
+    {
+        MoveKinds.Clear();
+
+        // Not filtered to per-layer programs: a .nc opened on its own has no layer behind it at
+        // all, and the chips are then the only control it has.
+        foreach (var group in _backplot.GroupBy(b => b.Palette, StringComparer.Ordinal))
+        {
+            var layers = group
+                .Select(b => scene.Layer(b.Id))
+                .OfType<BoardSceneLayer>()
+                .ToList();
+
+            if (layers.Count == 0)
             {
-                Layers.Add(new LayerRow(
-                    layer, "The board material, drawn under everything", OnLayerVisibilityChanged));
+                continue;
+            }
+
+            var first = group.First();
+
+            MoveKinds.Add(new MoveKindRow(
+                group.Key,
+                // "Top copper · Cutting moves" carries the layer's name, which a chip must not.
+                first.Label[(first.Label.LastIndexOf('·') + 1)..].Trim(),
+                layers,
+                LayerRow.ToBrush(SceneStyle(group.Key, first.Style).Fill),
+                _kindVisible.TryGetValue(group.Key, out var showing) ? showing : first.VisibleByDefault,
+                OnToolpathFilterChanged));
+        }
+
+        // The substrate is not a move, but it is the same kind of thing as these: a drawing-wide
+        // switch with no file behind it and nothing to export.
+        if (scene.Layer(BoardSceneBuilder.SubstrateId) is { } substrate)
+        {
+            MoveKinds.Add(new MoveKindRow(
+                BoardSceneBuilder.SubstrateId,
+                "Substrate",
+                [substrate],
+                LayerRow.ToBrush(substrate.Style.Fill),
+                _kindVisible.TryGetValue(BoardSceneBuilder.SubstrateId, out var on) ? on : substrate.Visible,
+                OnToolpathFilterChanged));
+        }
+
+        RememberKinds();
+    }
+
+    private void RememberKinds()
+    {
+        foreach (var kind in MoveKinds)
+        {
+            _kindVisible[kind.Id] = kind.IsVisible;
+        }
+    }
+
+    /// <summary>
+    /// Combines the two axes onto the scene.
+    ///
+    /// A toolpath layer is drawn when its own layer's paths are on **and** its kind of move is on.
+    /// Neither axis alone is enough, which is exactly why they are two controls and not one.
+    /// </summary>
+    private void ApplyToolpathVisibility()
+    {
+        // Which row owns which drawn path. The substrate has no owner, and neither does a program
+        // opened on its own — both are governed by their chip alone, which is the same rule with
+        // one of the two terms missing rather than a second rule.
+        var owner = new Dictionary<string, LayerRow>(StringComparer.Ordinal);
+
+        foreach (var row in Layers)
+        {
+            foreach (var layer in row.ToolpathLayers)
+            {
+                owner[layer.Id] = row;
             }
         }
 
-        _suspendOutputChanges = false;
+        foreach (var kind in MoveKinds)
+        {
+            foreach (var layer in kind.Layers)
+            {
+                layer.Visible = kind.IsVisible
+                    && (!owner.TryGetValue(layer.Id, out var row) || row.ShowToolpath);
+            }
+        }
+    }
+
+    private void OnToolpathFilterChanged()
+    {
+        RememberKinds();
+        ApplyToolpathVisibility();
+        RedrawRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Turns every layer's paths on or off at once.</summary>
+    public void ShowAllToolpaths(bool visible)
+    {
+        foreach (var row in Layers)
+        {
+            row.ShowToolpath = visible;
+        }
+    }
+
+    /// <summary>
+    /// Shows one layer's paths and nobody else's — the gesture behind "let me look at this cut".
+    /// </summary>
+    public void OnlyToolpath(LayerRow only)
+    {
+        ArgumentNullException.ThrowIfNull(only);
+
+        foreach (var row in Layers)
+        {
+            row.ShowToolpath = ReferenceEquals(row, only);
+        }
+    }
+
+    // ------------------------------------------------------------------ isolating one export
+
+    /// <summary>
+    /// What every layer was exporting before the last "only this one", so it can be put back.
+    ///
+    /// Null when nothing has been muted. Held rather than recomputed because the point of the
+    /// gesture is that it is undoable: cutting one layer to check it, and then having to remember
+    /// and re-set five dropdowns by hand, is the cumbersome thing it exists to avoid.
+    /// </summary>
+    private Dictionary<string, OutputKind>? _mutedExports;
+
+    public bool CanRestoreExports => _mutedExports is not null;
+
+    /// <summary>
+    /// Exports one layer and nothing else. A layer that was not being exported starts exporting
+    /// what its role would export by default, because "only this one" that produces no files at
+    /// all would be a strange thing to have asked for.
+    /// </summary>
+    public void MuteOtherExports(LayerRow only)
+    {
+        ArgumentNullException.ThrowIfNull(only);
+
+        // Only the first of consecutive calls records, so isolating one layer and then another
+        // still restores to what was set before either.
+        _mutedExports ??= Layers.ToDictionary(r => r.Id, r => r.Output, StringComparer.Ordinal);
+
+        var suspended = _suspendOutputChanges;
+        _suspendOutputChanges = true;
+
+        foreach (var row in Layers)
+        {
+            row.SetOutput(!ReferenceEquals(row, only)
+                ? OutputKind.None
+                : row.Output != OutputKind.None
+                    ? row.Output
+                    : LayerOperations.DefaultFor(row.Role ?? LayerRole.Unknown, Settings.Import));
+        }
+
+        _suspendOutputChanges = suspended;
+        OnPropertyChanged(nameof(CanRestoreExports));
+        OnOutputChanged();
+        StatusMessage =
+            $"Exporting {only.Label} only — right-click a layer and choose Restore exports to put the rest back.";
+    }
+
+    /// <summary>Puts back what every layer was exporting before the last isolation.</summary>
+    public void RestoreExports()
+    {
+        if (_mutedExports is not { } before)
+        {
+            return;
+        }
+
+        var suspended = _suspendOutputChanges;
+        _suspendOutputChanges = true;
+
+        foreach (var row in Layers.Where(r => before.ContainsKey(r.Id)))
+        {
+            row.SetOutput(before[row.Id]);
+        }
+
+        _mutedExports = null;
+        _suspendOutputChanges = suspended;
+        OnPropertyChanged(nameof(CanRestoreExports));
+        OnOutputChanged();
+        StatusMessage = "Exports restored.";
     }
 
     private void RefreshFacts(Board board)
@@ -1157,6 +1448,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     private void OnLayerVisibilityChanged()
     {
+        ApplyToolpathVisibility();
         _project.ViewState = CaptureViewState();
         RedrawRequested?.Invoke(this, EventArgs.Empty);
     }
@@ -1211,12 +1503,6 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         SaveSettings(Settings with { BoardThicknessMm = value });
         OnOutputChanged();
-    }
-
-    partial void OnSelectedExportFilterChanged(string value)
-    {
-        _ = value;
-        OnPropertyChanged(nameof(CurrentFilter));
     }
 
     private ProjectViewState CaptureViewState() => new()

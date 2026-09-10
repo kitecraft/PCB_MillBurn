@@ -18,6 +18,30 @@ namespace MillBurn.Pipeline;
 public static class BackplotBuilder
 {
     /// <summary>
+    /// Where a program's coordinates land on the board.
+    ///
+    /// A program is written in work coordinates, so putting it back on the board is a translation —
+    /// except for a mirrored one. A bottom-side job is flipped left-to-right before it is written,
+    /// because the stock gets turned over before it is cut; its coordinates describe the flipped
+    /// board. Translating those straight onto the unflipped board draws the cuts as a mirror image
+    /// of the copper they belong to, which looks exactly like a bug in a file that is correct.
+    ///
+    /// Undoing the flip here puts the path where it will actually land on the board — which is the
+    /// question a backplot over the artwork is being asked. It is still the emitted file being
+    /// drawn; only the frame it is drawn in has been chosen to match the picture.
+    /// </summary>
+    /// <param name="Offset">Added to every point, to undo the shift to the board's corner.</param>
+    /// <param name="MirrorSumXNm">
+    /// <c>MinX + MaxX</c> of the board for a mirrored program, or zero for one that is not.
+    /// </param>
+    public readonly record struct Placement(Point2 Offset, long MirrorSumXNm = 0)
+    {
+        public Point2 Apply(Point2 point) => MirrorSumXNm == 0
+            ? point + Offset
+            : new Point2(MirrorSumXNm - Offset.X - point.X, point.Y + Offset.Y);
+    }
+
+    /// <summary>
     /// Groups classified moves into drawable runs.
     ///
     /// <paramref name="offset"/> is added to every point, to put a job that was referenced to the
@@ -26,7 +50,12 @@ public static class BackplotBuilder
     /// screen, which looks exactly like one that was never generated.
     /// </summary>
     public static IReadOnlyList<BackplotLayer> Build(
-        IReadOnlyList<BackplotMove> moves, Point2 offset = default, long sagittaNm = 0)
+        IReadOnlyList<BackplotMove> moves, Point2 offset = default, long sagittaNm = 0) =>
+        Build(moves, new Placement(offset), sagittaNm);
+
+    /// <inheritdoc cref="Build(IReadOnlyList{BackplotMove}, Point2, long)"/>
+    public static IReadOnlyList<BackplotLayer> Build(
+        IReadOnlyList<BackplotMove> moves, Placement placement, long sagittaNm = 0)
     {
         ArgumentNullException.ThrowIfNull(moves);
 
@@ -62,7 +91,7 @@ public static class BackplotBuilder
             // Compare in the same frame the points are stored in. Comparing an offset point against
             // a raw one never matches, so every move starts its own run — 2,978 of them instead of
             // 15, which still draws correctly and makes the count meaningless.
-            var from = move.From + offset;
+            var from = placement.Apply(move.From);
 
             if (currentRole != role || current.Count == 0 || current[^1] != from)
             {
@@ -73,11 +102,11 @@ public static class BackplotBuilder
 
             if (move.IsArc)
             {
-                AppendArc(current, move, offset, sagittaNm);
+                AppendArc(current, move, placement, sagittaNm);
             }
             else
             {
-                current.Add(move.To + offset);
+                current.Add(placement.Apply(move.To));
             }
         }
 
@@ -101,7 +130,62 @@ public static class BackplotBuilder
         return layers;
     }
 
-    private static void AppendArc(List<Point2> into, GcodeMove move, Point2 offset, long sagittaNm)
+    /// <summary>One program's moves, and which layer they came from.</summary>
+    /// <param name="Source">The layer's file name — the id the panel knows it by.</param>
+    /// <param name="Label">The layer's own name, for the scene.</param>
+    /// <param name="Moves">Its classified moves.</param>
+    /// <param name="Mirrored">
+    /// Whether this program was flipped left-to-right on the way out, so the drawing can flip it
+    /// back and put it where it lands on the board.
+    /// </param>
+    public readonly record struct Program(
+        string Source, string Label, IReadOnlyList<BackplotMove> Moves, bool Mirrored = false);
+
+    /// <summary>
+    /// Builds a backplot that can be filtered by which program a move came from.
+    ///
+    /// Merging every program into one set of role layers means the viewer can only ever show all
+    /// the cuts at once — and looking at one layer's toolpath is the reason anybody opens a
+    /// backplot. Each program gets its own layers, with ids that carry the source and colour keys
+    /// that carry the role, so the two axes stay independent: *which layer* and *what kind of move*.
+    /// </summary>
+    /// <param name="programs">The classified programs, one per source layer.</param>
+    /// <param name="offset">Added to every point, to undo the shift to the board's corner.</param>
+    /// <param name="sagittaNm">Flattening tolerance for arcs, or zero for the default.</param>
+    /// <param name="mirrorSumXNm">
+    /// <c>MinX + MaxX</c> of the board, used to unflip the programs that were mirrored. Zero draws
+    /// every program straight, which is right only when there is no board to place them on.
+    /// </param>
+    public static IReadOnlyList<BackplotLayer> BuildPerProgram(
+        IReadOnlyList<Program> programs,
+        Point2 offset = default,
+        long sagittaNm = 0,
+        long mirrorSumXNm = 0)
+    {
+        ArgumentNullException.ThrowIfNull(programs);
+
+        var layers = new List<BackplotLayer>();
+
+        foreach (var program in programs)
+        {
+            var placement = new Placement(offset, program.Mirrored ? mirrorSumXNm : 0);
+
+            foreach (var layer in Build(program.Moves, placement, sagittaNm))
+            {
+                layers.Add(layer with
+                {
+                    Id = layer.Id + ":" + program.Source,
+                    Label = program.Label + " · " + layer.Label,
+                    ColourKey = layer.Id,
+                    Source = program.Source,
+                });
+            }
+        }
+
+        return layers;
+    }
+
+    private static void AppendArc(List<Point2> into, GcodeMove move, Placement placement, long sagittaNm)
     {
         var segment = new ArtSegment(
             move.Kind == MoveKind.ArcClockwise ? ArtSweep.Clockwise : ArtSweep.CounterClockwise,
@@ -120,11 +204,11 @@ public static class BackplotBuilder
         for (var i = 1; i < steps; i++)
         {
             var angle = start + (direction * swept * i / steps);
-            into.Add(new Point2(
+            into.Add(placement.Apply(new Point2(
                 move.Centre.X + (long)Math.Round(radius * Math.Cos(angle), MidpointRounding.AwayFromZero),
-                move.Centre.Y + (long)Math.Round(radius * Math.Sin(angle), MidpointRounding.AwayFromZero)) + offset);
+                move.Centre.Y + (long)Math.Round(radius * Math.Sin(angle), MidpointRounding.AwayFromZero))));
         }
 
-        into.Add(move.To + offset);
+        into.Add(placement.Apply(move.To));
     }
 }

@@ -378,8 +378,8 @@ public partial class MainWindow : Window
         // theme resources, so "does it render at all" is a real question rather than a formality.
         if (args.Contains("--colour", StringComparer.OrdinalIgnoreCase) && vm.Layers.Count > 0)
         {
-            // The last layer, so a --preview --colour run opens on a backplot layer: those are the
-            // ones whose colour most often needs changing, and the ones that could not be changed.
+            // The last layer in the list. The backplot's own colours are no longer rows at all —
+            // they are the move-kind chips, and their picker is opened by their dot.
             var row = vm.Layers[^1];
             var picker = new ColourWindow(row.Label, vm.ColourOf(row))
             {
@@ -388,6 +388,46 @@ public partial class MainWindow : Window
 
             picker.Show(this);
             _captureInstead = picker;
+        }
+
+        // The gesture the two toggles exist for: every artwork off, one layer's toolpath on. It is
+        // the one arrangement a screenshot cannot reach by loading a file, and the one where a
+        // mistake in combining the two axes shows up as an empty viewport.
+        if (Argument(args, "--isolate") is { } isolate
+            && vm.Layers.FirstOrDefault(r =>
+                r.Label.Contains(isolate, StringComparison.OrdinalIgnoreCase)) is { } soloed)
+        {
+            foreach (var row in vm.Layers)
+            {
+                row.IsVisible = false;
+            }
+
+            vm.OnlyToolpath(soloed);
+        }
+
+        // One layer's artwork and one layer's toolpath, and nothing else — the arrangement that
+        // shows whether a program actually lands on the copper it was made from. It is how the
+        // mirrored bottom-side backplot was caught sitting on the mirror image of its own traces.
+        if (Argument(args, "--overlay") is { } overlay
+            && vm.Layers.FirstOrDefault(r =>
+                r.Label.Contains(overlay, StringComparison.OrdinalIgnoreCase)) is { } both)
+        {
+            foreach (var row in vm.Layers)
+            {
+                row.IsVisible = ReferenceEquals(row, both);
+            }
+
+            vm.OnlyToolpath(both);
+        }
+
+        // The other isolating gesture: everything muted but one. What a screenshot is checking here
+        // is the badges and the group headings, which are the whole point of it — the panel has to
+        // say what changed without any row being opened.
+        if (Argument(args, "--export-only") is { } muted
+            && vm.Layers.FirstOrDefault(r =>
+                r.Label.Contains(muted, StringComparison.OrdinalIgnoreCase)) is { } kept)
+        {
+            vm.MuteOtherExports(kept);
         }
 
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
@@ -839,6 +879,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnKindSwatchClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm
+            || sender is not Control { DataContext: MoveKindRow kind })
+        {
+            return;
+        }
+
+        var (colour, reset) = await ColourWindow.AskAsync(this, kind.Label, MainViewModel.ColourOf(kind));
+
+        if (reset)
+        {
+            vm.ResetColour(kind);
+        }
+        else if (colour is { } picked)
+        {
+            vm.SetColour(kind, picked);
+        }
+    }
+
     private async void OnSettingsClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)
@@ -875,6 +935,35 @@ public partial class MainWindow : Window
         (DataContext as MainViewModel)?.ResetColours();
 
     private void OnShowAllLayersClicked(object? sender, RoutedEventArgs e) => SetAllLayers(true);
+
+    private void OnShowAllToolpathsClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.ShowAllToolpaths(true);
+
+    private void OnHideAllToolpathsClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.ShowAllToolpaths(false);
+
+    /// <summary>The row a context-menu item was opened over.</summary>
+    private static LayerRow? RowOf(object? sender) =>
+        (sender as Control)?.DataContext as LayerRow;
+
+    private void OnOnlyToolpathClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && RowOf(sender) is { } row)
+        {
+            vm.OnlyToolpath(row);
+        }
+    }
+
+    private void OnOnlyExportClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && RowOf(sender) is { } row)
+        {
+            vm.MuteOtherExports(row);
+        }
+    }
+
+    private void OnRestoreExportsClicked(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainViewModel)?.RestoreExports();
 
     private void OnExpandLayersClicked(object? sender, RoutedEventArgs e) => ExpandLayers(true);
 

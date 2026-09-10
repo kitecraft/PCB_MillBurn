@@ -85,6 +85,49 @@ public static class LayerRoleInfo
         _ => 12,
     };
 
+    /// <summary>
+    /// Which part of the board a layer belongs to, and where that part sits in a list. Lower is
+    /// higher up.
+    ///
+    /// Deliberately not <see cref="DrawOrder"/>. Paint order is back-to-front, which puts the
+    /// bottom silkscreen at the top of the list and sets the two sides' soldermasks four rows
+    /// apart with nothing to tell them apart but their labels. Reading order starts at the side
+    /// most work happens on and never interleaves the two.
+    /// </summary>
+    public static (int Order, string Title) PanelGroup(LayerRole role) => role switch
+    {
+        LayerRole.TopCopper or LayerRole.TopMask or LayerRole.TopPaste or LayerRole.TopSilk
+            => (0, "Top side"),
+
+        LayerRole.InnerCopper => (1, "Inner layers"),
+
+        LayerRole.BottomCopper or LayerRole.BottomMask or LayerRole.BottomPaste or LayerRole.BottomSilk
+            => (2, "Bottom side"),
+
+        LayerRole.PlatedDrill or LayerRole.NonPlatedDrill or LayerRole.Outline
+            => (3, "Holes and outline"),
+
+        _ => (4, "Other files"),
+    };
+
+    /// <summary>
+    /// Where a layer sits within its group: the copper first, then what is printed on top of it.
+    /// The copper is what gets cut, so it is what the pointer should land on.
+    /// </summary>
+    public static int PanelOrder(LayerRole role) => role switch
+    {
+        LayerRole.TopCopper or LayerRole.InnerCopper or LayerRole.BottomCopper => 0,
+        LayerRole.TopMask or LayerRole.BottomMask => 1,
+        LayerRole.TopPaste or LayerRole.BottomPaste => 2,
+        LayerRole.TopSilk or LayerRole.BottomSilk => 3,
+
+        LayerRole.PlatedDrill => 0,
+        LayerRole.NonPlatedDrill => 1,
+        LayerRole.Outline => 2,
+
+        _ => 9,
+    };
+
     public static string Label(LayerRole role) => role switch
     {
         LayerRole.TopCopper => "Top copper",

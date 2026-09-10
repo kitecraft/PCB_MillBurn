@@ -786,9 +786,64 @@ available if you are willing to drill them all the same size.
 each diameter named with its own hole count, and no hole lost in the split. Plus that the biggest
 bit goes first, which was right all along and is worth pinning.
 
-### Requested, not yet scheduled
+### The layer panel, rearranged — and the bug that fell out of it
 
-Five ideas from the workshop, recorded here so they keep their reasoning. All five are done.
+All of this came from using the app rather than from the plan, and it is recorded because the last
+step of it found a defect that five hundred tests had not.
+
+**Two toggles per layer, deliberately unalike.** A checkbox draws the artwork; a path glyph draws
+the toolpath that layer becomes. They had to be separated because *the artwork hides the cuts* — a
+trace is a filled shape and its isolation path runs around the outside of it, so with the copper
+drawn, the line you are trying to look at is a hair against a solid colour. The two controls are
+given different shapes on purpose: two identical checkboxes side by side is a coin toss every time.
+The first mockup drew exactly those two checkboxes, which is the argument for drawing mockups.
+
+**The kinds of move stopped pretending to be layers.** Cutting, travel, long rapids, rapid-at-depth
+and the substrate were rows in the layer list. No file makes one, none can be exported, and every
+setting a layer row offers is meaningless for them. They are chips under the list now — a filter
+across the whole drawing, which is what they always were. This needed the backplot to be built **per
+source program** rather than merged, so that *which layer* and *what kind of move* could be asked
+separately. Merged, the viewer could only ever show every program's cuts at once, which is the
+opposite of the reason anyone opens a backplot.
+
+**Grouped by part of the board, not by paint order.** Top side, inner layers, bottom side, holes and
+outline. Paint order is back-to-front — right for the renderer, wrong for a person: it opens with
+the bottom silkscreen, sets the two soldermasks four rows apart with nothing but their labels to
+tell them apart, and buries the side you are working on in the middle. `LayerRoleInfo.PanelGroup`
+and `PanelOrder` sit beside `DrawOrder` in Core, so the two orders are visibly different answers to
+different questions and both are testable without a UI.
+
+**The collapsed row says what it becomes.** A pill on the right — `G-code`, `SVG`, or nothing — and
+a count on each group heading, so a fully shut drawer still answers *which parts of this board are
+being cut*. Before, that took opening every row in turn.
+
+**And the two tedious gestures got names.** Right-click a layer for *Show only this toolpath* and
+*Export only this layer*. The second snapshots what every layer was set to and *Restore exports*
+puts that back — the point of the gesture is that it is undoable, and re-setting six dropdowns by
+hand afterwards is the tedium it exists to remove.
+
+**Preview and Export moved to the header, and the export filter was deleted.** They had lived at the
+bottom of the left panel, under a heading, behind a "Both / SVG only / G-code only" dropdown. Once
+every row says what it produces, a second control that can disagree with six rows at once is one
+answer too many. `PlanExport` still takes a filter, because Preview genuinely only ever wants the
+G-code; an export takes none.
+
+**Then the bug.** With one layer's artwork and that layer's toolpath showing and nothing else — an
+arrangement the panel could not previously produce — the bottom copper's isolation paths were
+visibly sitting on the mirror image of the traces they isolate. A bottom-side program is emitted
+mirrored, because the stock is turned over before it is cut, and the backplot placed it on the board
+by translation alone. Correct file, wrong frame, since the backplot existed. The reasoning and the
+fix are in [05 §2.1.1](05-Viewer-and-Export.md#211-where-a-program-is-drawn-and-the-bug-that-hid-there),
+including why its first regression test passed while the bug was still there.
+
+Two headless flags exist now because of it: `--isolate <layer>` and `--overlay <layer>`. That
+arrangement is unreachable by loading a file, and it is the one in which this class of defect is
+visible at all.
+
+### Requested from the workshop — all five built
+
+Five ideas that arrived from using the app at the machine, recorded here so they keep their
+reasoning. All five are done.
 
 **An app icon.** Done. `art/millburn-logo.png` is the source; `art/make-icons.py` cuts the mark out
 of it — the wordmark is dropped, because at 16 px "PCB_MillBurn" set across a taskbar tile is a grey
@@ -925,9 +980,10 @@ centreline** — that is the axis the app mirrors about, so the board only drops
 pins if they straddle it — and both **off** the horizontal centreline, so the board cannot also go
 back rotated 180°, which looks identical and is not.
 
-Anything not built is labelled as such on the page rather than described as if it worked. The
-missing dry-run generator is called out on the landing page, because until it exists the first run
-of any program is into copper.
+Anything not built is labelled as such on the page rather than described as if it worked — the
+`not built yet` marker is a class in the stylesheet, not a habit. The pages have since grown
+sections on dry runs, probing and levelling, the drilling companion, custom start and end G-code,
+the standalone G-code viewer, the machine settings, and the layer drawer, all of which now exist.
 
 **`Help/` is not `Documentation/`.** This directory is design documentation — why the code is
 shaped the way it is, written for whoever maintains it. User help is a different audience, a

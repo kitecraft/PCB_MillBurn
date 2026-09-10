@@ -186,6 +186,18 @@ public sealed partial class LayerRow : ObservableObject
 
     public OutputKind Output => SelectedOutput.Kind;
 
+    /// <summary>
+    /// Sets the output by kind, ignoring one this layer cannot produce — a bulk action walks every
+    /// row, and a drill file has no SVG to offer.
+    /// </summary>
+    public void SetOutput(OutputKind kind)
+    {
+        if (Outputs.FirstOrDefault(o => o.Kind == kind) is { } choice)
+        {
+            SelectedOutput = choice;
+        }
+    }
+
     [ObservableProperty]
     public partial Tool Tool { get; set; }
 
@@ -202,6 +214,67 @@ public sealed partial class LayerRow : ObservableObject
     /// <summary>Drilling only: write the page that explains how to run the program.</summary>
     [ObservableProperty]
     public partial bool DrillGuide { get; set; } = true;
+
+    /// <summary>
+    /// Whether this layer's own toolpath is drawn.
+    ///
+    /// Separate from <see cref="IsVisible"/>, which is the copper. They have to be separate: the
+    /// artwork sits under the toolpath and hides it, so "show me this layer's cuts" means turning
+    /// one off and the other on.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowToolpath { get; set; } = true;
+
+    /// <summary>
+    /// The scene layers carrying this layer's program — one per kind of move.
+    ///
+    /// A row owns several, because *which layer* and *what kind of move* are independent axes and
+    /// the scene has one layer per combination.
+    /// </summary>
+    private IReadOnlyList<BoardSceneLayer> _toolpath = [];
+
+    /// <summary>True once a preview exists and this layer produced a program.</summary>
+    public bool HasToolpath => _toolpath.Count > 0;
+
+    /// <summary>Attaches the scene layers this row's toolpath toggle governs.</summary>
+    public void AttachToolpath(IReadOnlyList<BoardSceneLayer> layers)
+    {
+        _toolpath = layers;
+        OnPropertyChanged(nameof(HasToolpath));
+    }
+
+    /// <summary>Every scene layer this row's toolpath toggle governs.</summary>
+    public IReadOnlyList<BoardSceneLayer> ToolpathLayers => _toolpath;
+
+    partial void OnShowToolpathChanged(bool value)
+    {
+        _ = value;
+        _visibilityChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// What this layer becomes, in two or three words, for the collapsed row.
+    ///
+    /// The row previously said nothing at all about export unless it was expanded — while the
+    /// checkbox that *was* visible controlled something else entirely, and had to carry a tooltip
+    /// denying it.
+    /// </summary>
+    public string ExportBadge => Output switch
+    {
+        OutputKind.Gcode => "G-code",
+        OutputKind.Svg => "SVG",
+        _ => string.Empty,
+    };
+
+    public bool HasExportBadge => Output != OutputKind.None;
+
+    /// <summary>Which of the two badge styles to use, as a class name the XAML can select on.</summary>
+    public string BadgeClass => Output switch
+    {
+        OutputKind.Gcode => "gcode",
+        OutputKind.Svg => "svg",
+        _ => "none",
+    };
 
     /// <summary>Isolation only: how many offsets out from the copper.</summary>
     [ObservableProperty]
@@ -360,6 +433,7 @@ public sealed partial class LayerRow : ObservableObject
             nameof(NeedsDepth), nameof(NeedsTabs), nameof(NeedsPasses), nameof(NeedsMirror),
             nameof(NeedsDrillGuide),
             nameof(NeedsInvert), nameof(Tools), nameof(Detail), nameof(TargetName),
+            nameof(ExportBadge), nameof(HasExportBadge), nameof(BadgeClass),
         })
         {
             OnPropertyChanged(name);
@@ -456,6 +530,6 @@ public sealed partial class LayerRow : ObservableObject
         return candidates.Count > 0 ? candidates[0] : Tool.DefaultVBit;
     }
 
-    private static SolidColorBrush ToBrush(SkiaSharp.SKColor c) =>
+    internal static SolidColorBrush ToBrush(SkiaSharp.SKColor c) =>
         new SolidColorBrush(Color.FromArgb(0xFF, c.Red, c.Green, c.Blue));
 }

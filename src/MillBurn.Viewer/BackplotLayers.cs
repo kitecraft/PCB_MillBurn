@@ -4,12 +4,30 @@ using SkiaSharp;
 namespace MillBurn.Viewer;
 
 /// <summary>One backplot layer, ready to hand to the scene builder alongside the board.</summary>
+/// <param name="Id">Unique in the scene. Carries the source program, so one layer's cuts can be
+/// shown without the others'.</param>
+/// <param name="ColourKey">
+/// What this is coloured by, which is the *role* rather than the source: every program's cutting
+/// moves are one colour. Kept apart from <paramref name="Id"/> so that splitting the backplot per
+/// program did not silently orphan every colour anybody had already chosen.
+/// </param>
+/// <param name="Label">What the panel and the scene call it.</param>
+/// <param name="Style">Stroke colour and width.</param>
+/// <param name="Runs">Polylines, already flattened and in board coordinates.</param>
+/// <param name="VisibleByDefault">Whether it is drawn before anybody touches anything.</param>
+/// <param name="Source">The layer file this came from, or empty when it came from everything.</param>
 public readonly record struct BackplotLayer(
     string Id,
     string Label,
     BoardLayerStyle Style,
     IReadOnlyList<IReadOnlyList<Point2>> Runs,
-    bool VisibleByDefault);
+    bool VisibleByDefault,
+    string ColourKey = "",
+    string Source = "")
+{
+    /// <summary>The colour key if one was given, else the id — which is what it used to be.</summary>
+    public string Palette => ColourKey.Length > 0 ? ColourKey : Id;
+}
 
 /// <summary>
 /// Colours and defaults for drawing a program over the board it was made from.

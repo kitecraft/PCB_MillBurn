@@ -58,6 +58,9 @@
 
             <!-- Interactive -->
             <SolidColorBrush x:Key="InteractivePrimary" Color="#2D5BD7" />
+
+            <!-- Text on the accent. Dark theme's accent is light, so this flips with it. -->
+            <SolidColorBrush x:Key="OnInteractivePrimary" Color="#FFFFFF" />
             <SolidColorBrush x:Key="InteractiveSecondary" Color="#6B4FC4" />
             <SolidColorBrush x:Key="InteractiveOn" Color="#FFFFFF" />
 
@@ -70,10 +73,23 @@
             <SolidColorBrush x:Key="PathLaser" Color="#C2410C" />
             <SolidColorBrush x:Key="PathFiducial" Color="#0B5FA5" />
             <SolidColorBrush x:Key="PathTravel" Color="#9AA1A9" />
+            <SolidColorBrush x:Key="PathCut" Color="#B08000" />
             <SolidColorBrush x:Key="PathRapidLong" Color="#E06C00" />
             <SolidColorBrush x:Key="PathPending" Color="#CDD2D8" />
             <SolidColorBrush x:Key="DrcViolation" Color="#D32F2F" />
             <SolidColorBrush x:Key="CopperUnderlay" Color="#B87333" />
+
+            <!--
+                The "what this becomes" pill on a collapsed layer row. Tinted rather than filled:
+                it appears once per exporting layer, so a saturated chip would be the loudest thing
+                in a panel whose loudest thing should be the board.
+            -->
+            <SolidColorBrush x:Key="BadgeGcodeFill" Color="#FBF0D8" />
+            <SolidColorBrush x:Key="BadgeGcodeEdge" Color="#DFC384" />
+            <SolidColorBrush x:Key="BadgeGcodeText" Color="#6B5008" />
+            <SolidColorBrush x:Key="BadgeSvgFill" Color="#E4F0FA" />
+            <SolidColorBrush x:Key="BadgeSvgEdge" Color="#9FC4E0" />
+            <SolidColorBrush x:Key="BadgeSvgText" Color="#0F4C75" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
@@ -103,6 +119,7 @@
 
             <!-- Interactive -->
             <SolidColorBrush x:Key="InteractivePrimary" Color="#6E9BFF" />
+            <SolidColorBrush x:Key="OnInteractivePrimary" Color="#0A1526" />
             <SolidColorBrush x:Key="InteractiveSecondary" Color="#A98BFF" />
             <SolidColorBrush x:Key="InteractiveOn" Color="#0F1214" />
 
@@ -114,10 +131,18 @@
             <SolidColorBrush x:Key="PathLaser" Color="#FF8A4C" />
             <SolidColorBrush x:Key="PathFiducial" Color="#7FD4FF" />
             <SolidColorBrush x:Key="PathTravel" Color="#5B646D" />
+            <SolidColorBrush x:Key="PathCut" Color="#FFD740" />
             <SolidColorBrush x:Key="PathRapidLong" Color="#FFA53D" />
             <SolidColorBrush x:Key="PathPending" Color="#2E343A" />
             <SolidColorBrush x:Key="DrcViolation" Color="#FF5252" />
             <SolidColorBrush x:Key="CopperUnderlay" Color="#8A5A2B" />
+
+            <SolidColorBrush x:Key="BadgeGcodeFill" Color="#3A2C12" />
+            <SolidColorBrush x:Key="BadgeGcodeEdge" Color="#6B5326" />
+            <SolidColorBrush x:Key="BadgeGcodeText" Color="#FFD08A" />
+            <SolidColorBrush x:Key="BadgeSvgFill" Color="#14293C" />
+            <SolidColorBrush x:Key="BadgeSvgEdge" Color="#2A5378" />
+            <SolidColorBrush x:Key="BadgeSvgText" Color="#9FD5FF" />
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

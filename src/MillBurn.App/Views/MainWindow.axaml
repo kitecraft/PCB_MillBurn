@@ -30,6 +30,28 @@
             press, so a bound Background stops showing the layer's colour at exactly the moment
             someone is trying to click it.
         -->
+        <!--
+            The one action the whole app leads to. Fluent repaints a button's background from theme
+            brushes on hover and press, so the accent has to be restated for those states or it
+            reverts to a grey button at exactly the moment it is being clicked.
+        -->
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource InteractivePrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InteractivePrimary}" />
+            <Setter Property="Foreground" Value="{DynamicResource OnInteractivePrimary}" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource InteractivePrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InteractivePrimary}" />
+            <Setter Property="TextBlock.Foreground" Value="{DynamicResource OnInteractivePrimary}" />
+        </Style>
+        <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource InteractivePrimary}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource InteractivePrimary}" />
+            <Setter Property="TextBlock.Foreground" Value="{DynamicResource OnInteractivePrimary}" />
+            <Setter Property="Opacity" Value="0.85" />
+        </Style>
+
         <Style Selector="Button.swatch">
             <Setter Property="Padding" Value="0" />
             <Setter Property="MinWidth" Value="0" />
@@ -51,6 +73,48 @@
         </Style>
         <Style Selector="ToggleButton.disclose:checked /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!--
+            The toolpath toggle. Deliberately not a checkbox: it sits next to one that means
+            something else, and two identical boxes side by side is a guess every time. Lit in the
+            cutting colour when on, and nearly invisible when off.
+        -->
+        <Style Selector="ToggleButton.pathtoggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2,2" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+        </Style>
+        <Style Selector="ToggleButton.pathtoggle:checked">
+            <Setter Property="Foreground" Value="{DynamicResource PathCut}" />
+        </Style>
+        <Style Selector="ToggleButton.pathtoggle:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!-- What a layer becomes, on the collapsed row. -->
+        <Style Selector="Border.badge">
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}" />
+        </Style>
+        <Style Selector="Border.badge.gcode">
+            <Setter Property="Background" Value="{DynamicResource BadgeGcodeFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BadgeGcodeEdge}" />
+        </Style>
+        <Style Selector="Border.badge.gcode TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource BadgeGcodeText}" />
+        </Style>
+        <Style Selector="Border.badge.svg">
+            <Setter Property="Background" Value="{DynamicResource BadgeSvgFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BadgeSvgEdge}" />
+        </Style>
+        <Style Selector="Border.badge.svg TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource BadgeSvgText}" />
         </Style>
 
         <Style Selector="TextBlock.fact">
@@ -108,6 +172,9 @@
                         <MenuItem Header="Show _all layers" Click="OnShowAllLayersClicked" />
                         <MenuItem Header="_Hide all layers" Click="OnHideAllLayersClicked" />
                         <Separator />
+                        <MenuItem Header="Show all _toolpaths" Click="OnShowAllToolpathsClicked" />
+                        <MenuItem Header="Hide all t_oolpaths" Click="OnHideAllToolpathsClicked" />
+                        <Separator />
                         <MenuItem Header="_Expand all layer settings" Click="OnExpandLayersClicked" />
                         <MenuItem Header="_Collapse all layer settings" Click="OnCollapseLayersClicked" />
                         <Separator />
@@ -142,7 +209,23 @@
                            TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TextSecondary}" />
 
+                <!--
+                    The two ends of the job first, then the three conveniences. Preview and Export
+                    lived at the bottom of the left panel, under a heading, behind a filter that
+                    duplicated what every layer row now says for itself. They are what the app is
+                    for; they belong where they can be reached without reading anything.
+                -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="0,2">
+                    <Button Content="Preview" Click="OnPreviewClicked"
+                            IsEnabled="{Binding HasBoard}"
+                            ToolTip.Tip="Draw the emitted G-code back over the board (F5)" />
+                    <Button Classes="primary" Content="Export…" Click="OnExportClicked"
+                            IsEnabled="{Binding HasBoard}"
+                            ToolTip.Tip="Review every file, then choose where they go (Ctrl+E)" />
+
+                    <Border Width="1" Margin="5,4"
+                            Background="{DynamicResource BorderSubtle}" />
+
                     <Button Content="Save" Click="OnSaveClicked"
                             ToolTip.Tip="Save the project (Ctrl+S)" />
                     <Button Content="Fit" Click="OnFitClicked"
@@ -165,7 +248,7 @@
                     Background="{DynamicResource Surface}"
                     BorderBrush="{DynamicResource BorderSubtle}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="*,Auto,Auto,Auto" Margin="10,10,10,0">
+                <Grid RowDefinitions="*,Auto,Auto" Margin="10,10,10,0">
 
                     <!--
                         Project info and Layers share one scroller, and Export is pinned under it.
@@ -236,13 +319,56 @@
                             </Expander>
 
                             <!-- LAYERS -->
-                            <Expander Header="Layers" IsExpanded="True" IsVisible="{Binding !ShowingNothing}">
-                                <ItemsControl ItemsSource="{Binding Layers}" Margin="0,4,6,4">
+                            <!--
+                                Grouped by which part of the board a layer belongs to, not by paint
+                                order. Paint order is right for the renderer and wrong here: it puts
+                                bottom silk at the top of the list and interleaves the two sides
+                                where they are hardest to tell apart.
+                            -->
+                            <Expander Header="Layers" IsExpanded="True" IsVisible="{Binding HasLayerRows}">
+                                <ItemsControl ItemsSource="{Binding LayerGroups}" Margin="0,4,6,4">
                                     <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LayerGroup">
+                                            <StackPanel Margin="0,0,0,9">
+                                                <Grid ColumnDefinitions="*,Auto" Margin="2,5,2,3">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Title}"
+                                                               FontSize="10.5"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextSecondary}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Summary}"
+                                                               FontSize="10.5"
+                                                               Foreground="{DynamicResource TextDisabled}" />
+                                                </Grid>
+
+                                                <ItemsControl ItemsSource="{Binding Rows}">
+                                                    <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LayerRow">
                                             <Border Padding="4,3" Margin="0,1" CornerRadius="4"
                                                     BorderBrush="{DynamicResource BorderSubtle}"
                                                     BorderThickness="0,0,0,1">
+                                                <!--
+                                                    Isolating gestures live here rather than in a
+                                                    menu because both of them need to know *which*
+                                                    layer, and a menu would then need a selected
+                                                    row — a third piece of state the list does not
+                                                    otherwise have.
+                                                -->
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="Show only this toolpath"
+                                                                  Click="OnOnlyToolpathClicked"
+                                                                  IsEnabled="{Binding HasToolpath}" />
+                                                        <MenuItem Header="Show all toolpaths"
+                                                                  Click="OnShowAllToolpathsClicked" />
+                                                        <Separator />
+                                                        <MenuItem Header="Export only this layer"
+                                                                  Click="OnOnlyExportClicked" />
+                                                        <MenuItem Header="Restore exports"
+                                                                  Click="OnRestoreExportsClicked" />
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
                                                 <!--
                                                     The header is one row and the settings are a
                                                     sibling underneath it, not a child of its third
@@ -252,12 +378,48 @@
                                                     the empty gutter that made.
                                                 -->
                                                 <StackPanel>
-                                                    <Grid ColumnDefinitions="Auto,Auto,*">
+                                                    <!--
+                                                        Two toggles, deliberately unalike. The
+                                                        artwork is a checkbox and the toolpath is a
+                                                        path glyph, because two identical
+                                                        checkboxes side by side is a coin toss
+                                                        every time — and these control genuinely
+                                                        different things: the copper underneath
+                                                        hides the cuts drawn over it, so isolating
+                                                        a toolpath means turning one off and the
+                                                        other on.
+                                                    -->
+                                                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
                                                         <CheckBox Grid.Column="0"
                                                                   IsChecked="{Binding IsVisible, Mode=TwoWay}"
                                                                   VerticalAlignment="Center"
-                                                                  ToolTip.Tip="Show this layer in the viewport. Has nothing to do with what gets exported." />
-                                                        <Button Grid.Column="1"
+                                                                  ToolTip.Tip="Draw this layer's artwork. Nothing to do with what gets exported." />
+
+                                                        <ToggleButton Grid.Column="1"
+                                                                      Classes="pathtoggle"
+                                                                      IsChecked="{Binding ShowToolpath, Mode=TwoWay}"
+                                                                      IsVisible="{Binding HasToolpath}"
+                                                                      VerticalAlignment="Center"
+                                                                      Margin="2,0,4,0"
+                                                                      ToolTip.Tip="Draw this layer's toolpath. Turn the artwork off to see it clearly.">
+                                                            <Path Data="M1,10 L5,4 L9,8 L15,2"
+                                                                  Stroke="{Binding $parent[ToggleButton].Foreground}"
+                                                                  StrokeThickness="1.8"
+                                                                  StrokeLineCap="Round"
+                                                                  Width="16" Height="12" />
+                                                        </ToggleButton>
+
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="–"
+                                                                   IsVisible="{Binding !HasToolpath}"
+                                                                   Width="20"
+                                                                   Margin="2,0,4,0"
+                                                                   TextAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource TextDisabled}"
+                                                                   ToolTip.Tip="This layer makes no program." />
+
+                                                        <Button Grid.Column="2"
                                                                 Classes="swatch"
                                                                 Width="16" Height="16"
                                                                 Margin="0,0,8,0"
@@ -265,10 +427,12 @@
                                                                 Click="OnSwatchClicked"
                                                                 ToolTip.Tip="Change this layer colour">
                                                             <Border Background="{Binding Swatch}"
+                                                                    BorderBrush="{DynamicResource BorderSubtle}"
+                                                                    BorderThickness="1"
                                                                     CornerRadius="2" />
                                                         </Button>
 
-                                                        <ToggleButton Grid.Column="2"
+                                                        <ToggleButton Grid.Column="3"
                                                                       Classes="disclose"
                                                                       IsChecked="{Binding IsExpanded, Mode=TwoWay}"
                                                                       HorizontalAlignment="Stretch"
@@ -277,6 +441,7 @@
                                                             <Grid ColumnDefinitions="*,Auto">
                                                                 <TextBlock Grid.Column="0"
                                                                            Text="{Binding Label}"
+                                                                           TextTrimming="CharacterEllipsis"
                                                                            VerticalAlignment="Center"
                                                                            Foreground="{DynamicResource TextPrimary}" />
                                                                 <TextBlock Grid.Column="1"
@@ -287,6 +452,23 @@
                                                                            Foreground="{DynamicResource TextPrimary}" />
                                                             </Grid>
                                                         </ToggleButton>
+
+                                                        <!--
+                                                            What this layer becomes, on the
+                                                            collapsed row. Without it the row said
+                                                            nothing at all about export unless it
+                                                            was opened.
+                                                        -->
+                                                        <Border Grid.Column="4"
+                                                                Classes.gcode="{Binding IsGcode}"
+                                                                Classes.svg="{Binding IsSvg}"
+                                                                Classes="badge"
+                                                                IsVisible="{Binding HasExportBadge}"
+                                                                VerticalAlignment="Center"
+                                                                Margin="4,0,2,0">
+                                                            <TextBlock Text="{Binding ExportBadge}"
+                                                                       FontSize="10.5" />
+                                                        </Border>
                                                     </Grid>
 
                                                     <StackPanel Spacing="3"
@@ -393,41 +575,81 @@
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </Expander>
+
+                            <!--
+                                Kinds of move, and the substrate. These were rows in the layer list,
+                                which is what they are not: no file makes one, none can be exported,
+                                and every setting a layer row offers is meaningless for them. What
+                                they are is a filter across the whole drawing.
+                            -->
+                            <Border IsVisible="{Binding HasMoveKinds}"
+                                    Margin="0,6,6,0" Padding="8,7"
+                                    CornerRadius="6"
+                                    Background="{DynamicResource SurfaceVariant}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Toolpath moves"
+                                               FontSize="10.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondary}" />
+                                    <ItemsControl ItemsSource="{Binding MoveKinds}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:MoveKindRow">
+                                                <!--
+                                                    The dot is a button in its own right, and sits
+                                                    outside the checkbox rather than inside its
+                                                    content: these are the colours most likely to
+                                                    need changing — a program drawn over the copper
+                                                    it was made from — and nesting a button inside
+                                                    a checkbox makes one click mean two things.
+                                                -->
+                                                <StackPanel Orientation="Horizontal" Spacing="5"
+                                                            Margin="0,0,14,0">
+                                                    <Button Classes="swatch"
+                                                            Width="10" Height="10"
+                                                            VerticalAlignment="Center"
+                                                            Click="OnKindSwatchClicked"
+                                                            ToolTip.Tip="Change this colour">
+                                                        <Border CornerRadius="5"
+                                                                BorderBrush="{DynamicResource BorderSubtle}"
+                                                                BorderThickness="1"
+                                                                Background="{Binding Swatch}" />
+                                                    </Button>
+                                                    <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                              MinHeight="0">
+                                                        <TextBlock Text="{Binding Label}" FontSize="11.5"
+                                                                   VerticalAlignment="Center" />
+                                                    </CheckBox>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
-
-                    <!-- EXPORT -->
-                    <Expander Grid.Row="1" Header="Export" IsExpanded="True" IsVisible="{Binding HasBoard}">
-                                <StackPanel Spacing="6" Margin="0,4">
-                                    <ComboBox ItemsSource="{Binding ExportFilters}"
-                                              SelectedItem="{Binding SelectedExportFilter, Mode=TwoWay}"
-                                              HorizontalAlignment="Stretch"
-                                              ToolTip.Tip="Write everything, or only what one machine needs. One file per layer either way." />
-                                    <Grid ColumnDefinitions="*,6,*">
-                                        <Button Grid.Column="0" Content="Preview" Click="OnPreviewClicked"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Center"
-                                                ToolTip.Tip="Draw the emitted G-code back over the board (F5)" />
-                                        <Button Grid.Column="2" Content="Export…" Click="OnExportClicked"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Center"
-                                                ToolTip.Tip="Review every file, then choose where they go (Ctrl+E)" />
-                                    </Grid>
-                                </StackPanel>
-                    </Expander>
 
                     <!--
                         Refresh review. Nothing is applied until it has been seen: a CAM tool that
                         swaps geometry underneath you without saying what changed is how a board
                         gets scrapped.
                     -->
-                    <Border Grid.Row="2"
+                    <Border Grid.Row="1"
                             IsVisible="{Binding RefreshSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"
+                            Margin="0,10,0,0"
                             Padding="12,10">
                         <StackPanel Spacing="8">
                             <TextBlock Text="REFRESH FROM SOURCE"
@@ -465,10 +687,11 @@
                     </Border>
 
                     <!-- Anything worth checking before trusting what is on screen. -->
-                    <Border Grid.Row="3"
+                    <Border Grid.Row="2"
                             IsVisible="{Binding Warnings.Count}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,1,0,0"
+                            Margin="0,10,0,0"
                             Padding="12,8">
                         <StackPanel>
                             <TextBlock Text="CHECK"
