@@ -122,6 +122,13 @@ public partial class MainWindow : Window
             Height = Math.Max(bounds.Height, 480),
             Maximised = WindowState is WindowState.Maximized or WindowState.FullScreen,
         });
+
+        // Saved from the column rather than from the Border inside it, because the splitter moves
+        // the column and the Border only follows.
+        if (Split.ColumnDefinitions.Count > 0)
+        {
+            vm.SavePanelWidth(Split.ColumnDefinitions[0].ActualWidth);
+        }
     }
 
     /// <summary>
@@ -284,6 +291,14 @@ public partial class MainWindow : Window
         if (!_transientSize && vm.Settings.Window is { } placement)
         {
             RestorePlacement(placement);
+        }
+
+        // Clamped, so a panel dragged shut in a previous session does not come back invisible with
+        // no obvious way to get it open again.
+        if (Split.ColumnDefinitions.Count > 0)
+        {
+            Split.ColumnDefinitions[0].Width =
+                new GridLength(Math.Clamp(vm.Settings.PanelWidth, 240, 900));
         }
 
         // A screenshot only shows what fits, so a panel that runs past the bottom of a 800px window
@@ -833,7 +848,7 @@ public partial class MainWindow : Window
 
         if (await SettingsWindow.AskAsync(this, vm.Settings) is { } chosen)
         {
-            vm.SaveMachineSettings(chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level);
+            vm.SaveMachineSettings(chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level, chosen.Import);
         }
     }
 

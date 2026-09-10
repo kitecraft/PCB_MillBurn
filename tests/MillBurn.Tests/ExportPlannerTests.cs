@@ -81,6 +81,52 @@ public sealed class ExportPlannerTests
         Assert.Equal(OutputKind.None, LayerOperations.DefaultFor(LayerRole.BottomSilk));
     }
 
+    /// <summary>
+    /// Both sides of the copper get the same answer.
+    ///
+    /// They did not: top copper defaulted to G-code and bottom copper to nothing, so a double-sided
+    /// board arrived with one side silently not exporting. Nothing about that was a decision — and
+    /// it costs nothing on a single-sided board, because a layer with nothing to cut is skipped.
+    /// </summary>
+    [Fact]
+    public void BothSidesOfTheCopperAgree()
+    {
+        Assert.Equal(
+            LayerOperations.DefaultFor(LayerRole.TopCopper),
+            LayerOperations.DefaultFor(LayerRole.BottomCopper));
+    }
+
+    /// <summary>A cutter cannot reach a layer inside the board, whatever the settings say.</summary>
+    [Fact]
+    public void InnerCopperIsNeverExported()
+    {
+        Assert.Equal(OutputKind.None, LayerOperations.DefaultFor(LayerRole.InnerCopper));
+
+        foreach (var preset in (ImportDefaults[])
+            [ImportDefaults.Milling, ImportDefaults.LaserEtching, ImportDefaults.Nothing])
+        {
+            Assert.Equal(OutputKind.None, preset.For(LayerRole.InnerCopper));
+        }
+    }
+
+    /// <summary>The defaults are the operator's, so a different set produces a different plan.</summary>
+    [Fact]
+    public void TheImportDefaultsDecideWhatALayerBecomes()
+    {
+        Assert.Equal(
+            OutputKind.Svg,
+            LayerOperations.DefaultFor(LayerRole.TopCopper, ImportDefaults.LaserEtching));
+
+        Assert.Equal(
+            OutputKind.None,
+            LayerOperations.DefaultFor(LayerRole.TopCopper, ImportDefaults.Nothing));
+
+        // The holes and the profile are still milled for a laser job: what changes is the copper.
+        Assert.Equal(
+            OutputKind.Gcode,
+            LayerOperations.DefaultFor(LayerRole.Outline, ImportDefaults.LaserEtching));
+    }
+
     // ------------------------------------------------------------------ the plan
 
     [Fact]
@@ -89,9 +135,11 @@ public sealed class ExportPlannerTests
         var board = Board();
         var plan = Plan(board, Defaults(board));
 
-        Assert.Equal(4, plan.Count);
+        // Both coppers, both drill files and the profile.
+        Assert.Equal(5, plan.Count);
         Assert.Equal(plan.Count, plan.Items.Select(i => i.TargetName).Distinct(StringComparer.Ordinal).Count());
 
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-B_Cu.nc");
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-F_Cu.nc");
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-PTH.nc");
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-NPTH.nc");
@@ -145,7 +193,7 @@ public sealed class ExportPlannerTests
 
         Assert.All(Plan(board, settings, OutputKind.Svg).Items, i => Assert.Equal(OutputKind.Svg, i.Output));
         Assert.All(Plan(board, settings, OutputKind.Gcode).Items, i => Assert.Equal(OutputKind.Gcode, i.Output));
-        Assert.Equal(5, Plan(board, settings).Count);
+        Assert.Equal(6, Plan(board, settings).Count);
     }
 
     /// <summary>A mill job and a laser job out of one board, which is what this exists for.</summary>
@@ -224,7 +272,7 @@ public sealed class ExportPlannerTests
         var board = Board();
         var plan = Plan(board, Defaults(board));
 
-        var isolation = plan.Items.Single(i => i.Operation == OperationKind.Isolation);
+        var isolation = plan.Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
         Assert.Contains(isolation.Summary, s => s.Contains("0.127 mm wide", StringComparison.Ordinal));
 
         var drill = plan.Items.First(i => i.Operation == OperationKind.Drilling);
@@ -375,7 +423,7 @@ public sealed class ExportPlannerTests
     public void ATopSideProgramIsNotMirroredAndSaysNothingAboutFlipping()
     {
         var board = Board();
-        var top = Plan(board, Defaults(board)).Items.Single(i => i.Operation == OperationKind.Isolation);
+        var top = Plan(board, Defaults(board)).Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
 
         Assert.DoesNotContain("BOTTOM SIDE", top.Content, StringComparison.Ordinal);
         Assert.DoesNotContain(top.Warnings, w => w.Contains("flipped", StringComparison.Ordinal));
@@ -567,10 +615,10 @@ public sealed class ExportPlannerTests
         var board = Board();
         var settings = Defaults(board);
 
-        var plain = Plan(board, settings).Items.Single(i => i.Operation == OperationKind.Isolation);
+        var plain = Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
 
         settings["PogoTest1-F_Cu.gbr"] = settings["PogoTest1-F_Cu.gbr"] with { Invert = true };
-        var inverted = Plan(board, settings).Items.Single(i => i.Operation == OperationKind.Isolation);
+        var inverted = Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
 
         Assert.Equal(plain.Content, inverted.Content, StringComparer.Ordinal);
     }

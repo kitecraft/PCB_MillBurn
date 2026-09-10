@@ -12,8 +12,10 @@ namespace MillBurn.App.Views;
 /// <param name="DryRun">What a dry run does.</param>
 /// <param name="Probe">The probing grid.</param>
 /// <param name="Level">How closely a levelled program follows the surface.</param>
+/// <param name="Import">What each kind of layer becomes when a folder is imported.</param>
 public sealed record SettingsChoice(
-    MachineSettings Machine, DryRunSettings DryRun, ProbeSettings Probe, LevelSettings Level);
+    MachineSettings Machine, DryRunSettings DryRun, ProbeSettings Probe, LevelSettings Level,
+    ImportDefaults Import);
 
 /// <summary>
 /// The numbers that describe the machine rather than the board.
@@ -29,6 +31,7 @@ public sealed class SettingsWindow : Window
 {
     private readonly Dictionary<string, NumericUpDown> _numbers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckBox> _flags = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ComboBox> _outputs = new(StringComparer.Ordinal);
     private readonly StackPanel _problems = new() { Spacing = 2, Margin = new Thickness(0, 8, 0, 0) };
     private readonly Button _save;
 
@@ -110,6 +113,45 @@ public sealed class SettingsWindow : Window
             "How far inside the board to keep the touches. A probe half over the edge reads the table.");
         Number(body, "maxPoints", "Most touches", "", settings.Probe.MaxPoints, 4, 2000, 20,
             "The spacing opens up rather than the grid being cropped. Roughly four seconds each.");
+
+        Section(body, "When a folder is imported");
+        body.Children.Add(Muted(
+            "What each kind of layer becomes before you change anything. Layers with nothing in "
+            + "them are skipped either way, so turning a family on costs nothing on a board that "
+            + "does not use it.", 11, new Thickness(0, 0, 0, 8)));
+
+        Output(body, "copper", "Copper", settings.Import.Copper,
+            "Both sides. Mill routes the isolation; SVG gives you the artwork to burn a resist with.");
+        Output(body, "drills", "Drill files", settings.Import.Drills, null);
+        Output(body, "outline", "Board outline", settings.Import.Outline, null);
+        Output(body, "mask", "Soldermask", settings.Import.Mask,
+            "Mill clears the cured mask off the pads — the operation that most needs a height map. "
+            + "SVG burns the openings.");
+        Output(body, "silk", "Silkscreen", settings.Import.Silk, null);
+        Output(body, "paste", "Solder paste", settings.Import.Paste, null);
+
+        body.Children.Add(Muted(
+            "Inner copper is never exported: a cutter cannot reach a layer inside the board. It is "
+            + "still read, drawn and listed.", 11, new Thickness(0, 4, 0, 6)));
+
+        var presets = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(0, 2, 0, 10),
+        };
+
+        foreach (var (name, preset) in ((string, ImportDefaults)[])
+            [("Milling", ImportDefaults.Milling),
+             ("Laser etching", ImportDefaults.LaserEtching),
+             ("Nothing", ImportDefaults.Nothing)])
+        {
+            var button = new Button { Content = name, FontSize = 11 };
+            button.Click += (_, _) => ApplyPreset(preset);
+            presets.Children.Add(button);
+        }
+
+        body.Children.Add(presets);
 
         Section(body, "Levelling");
         Number(body, "segment", "Segment length", "mm", settings.Level.SegmentMm, 0.1, 20, 0.1,
@@ -205,6 +247,62 @@ public sealed class SettingsWindow : Window
         into.Children.Add(Indented(help));
     }
 
+    /// <summary>One layer family and what it becomes on import.</summary>
+    private void Output(Panel into, string key, string label, OutputKind value, string? help)
+    {
+        var box = new ComboBox
+        {
+            ItemsSource = new[] { "Not exported", "SVG (laser)", "G-code (mill)" },
+            SelectedIndex = value switch
+            {
+                OutputKind.Svg => 1,
+                OutputKind.Gcode => 2,
+                _ => 0,
+            },
+            Width = 150,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        _outputs[key] = box;
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("170,Auto,*") };
+        var name = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(box, 1);
+        row.Children.Add(name);
+        row.Children.Add(box);
+
+        into.Children.Add(row);
+        into.Children.Add(help is null
+            ? new TextBlock { Height = 6 }
+            : Indented(help));
+    }
+
+    private void ApplyPreset(ImportDefaults preset)
+    {
+        static int Index(OutputKind kind) => kind switch
+        {
+            OutputKind.Svg => 1,
+            OutputKind.Gcode => 2,
+            _ => 0,
+        };
+
+        _outputs["copper"].SelectedIndex = Index(preset.Copper);
+        _outputs["drills"].SelectedIndex = Index(preset.Drills);
+        _outputs["outline"].SelectedIndex = Index(preset.Outline);
+        _outputs["mask"].SelectedIndex = Index(preset.Mask);
+        _outputs["silk"].SelectedIndex = Index(preset.Silk);
+        _outputs["paste"].SelectedIndex = Index(preset.Paste);
+    }
+
+    private OutputKind Chosen(string key) => _outputs[key].SelectedIndex switch
+    {
+        1 => OutputKind.Svg,
+        2 => OutputKind.Gcode,
+        _ => OutputKind.None,
+    };
+
     private void Flag(Panel into, string key, string label, bool value, string help)
     {
         var box = new CheckBox { Content = label, IsChecked = value, MinHeight = 0 };
@@ -261,6 +359,15 @@ public sealed class SettingsWindow : Window
             SubdivideBelowMm = Value("below"),
             MaxOutsideMm = Value("outside"),
             Smoothing = Value("smoothing"),
+        },
+        new ImportDefaults
+        {
+            Copper = Chosen("copper"),
+            Drills = Chosen("drills"),
+            Outline = Chosen("outline"),
+            Mask = Chosen("mask"),
+            Silk = Chosen("silk"),
+            Paste = Chosen("paste"),
         });
 
     /// <summary>
@@ -318,6 +425,8 @@ public sealed class SettingsWindow : Window
         _numbers["below"].Value = (decimal)level.SubdivideBelowMm;
         _numbers["outside"].Value = (decimal)level.MaxOutsideMm;
         _numbers["smoothing"].Value = (decimal)level.Smoothing;
+
+        ApplyPreset(new ImportDefaults());
     }
 
     /// <summary>

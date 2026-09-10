@@ -1,6 +1,31 @@
 PogoTest1
 =========
 
+PogoTest1-B_Cu.nc
+  operation Isolation routing
+  layer     Bottom copper
+  lines     524
+  sha256    4171c8f4121b9f12
+  summary   0.127 mm wide at 0.050 mm deep · 1 pass
+  summary   Mirrored · flip the stock left-to-right
+  summary   531 mm cutting, 96 mm travel
+  summary   3m 15s – 3m 26s · 523 lines
+  summary   Simplified: 3,592 → 402 moves, 92 arcs (89 % fewer)
+  summary   Ordering: 131 mm rapid → 96 mm (27 % less)
+  warning   Mirrored: the stock must be flipped left-to-right about its vertical centreline, and re-registered. Flipping it the other way cuts a mirror image.
+  comment   ( PCB_MillBurn - PogoTest1-B_Cu — Isolation routing )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
+  comment   ( BOTTOM SIDE. Flip the stock left-to-right about its vertical centreline, then re-register. Coordinates below are already mirrored for that flip. )
+  comment   ( Bottom copper )
+  comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
+  comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
+  control   M3 S12000 · M5 · M30
+  depths    -0.050
+  moves     87 rapid, 331 feed, 92 arc
+  distance  531.42 mm cutting, 95.86 mm travel
+  plunges   42
+  extent    0.000 .. 20.428 x 0.000 .. 36.418 mm
+
 PogoTest1-Edge_Cuts.nc
   operation Cut out
   layer     Board outline

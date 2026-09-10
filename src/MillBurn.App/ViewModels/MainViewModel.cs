@@ -133,6 +133,22 @@ public sealed partial class MainViewModel : ViewModelBase
     public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
 
     /// <summary>
+    /// Remembers how wide the left panel was left.
+    ///
+    /// Only when it has actually changed: this runs on every close, and rewriting the settings file
+    /// to store the number it already held is work for nothing.
+    /// </summary>
+    public void SavePanelWidth(double width)
+    {
+        if (width < 100 || Math.Abs(width - Settings.PanelWidth) < 1)
+        {
+            return;
+        }
+
+        SaveSettings(Settings with { PanelWidth = width });
+    }
+
+    /// <summary>
     /// The lines that top and tail every program: the project's where it has them, the machine's
     /// otherwise.
     /// </summary>
@@ -146,9 +162,11 @@ public sealed partial class MainViewModel : ViewModelBase
     /// somebody would only notice at the machine.
     /// </summary>
     public void SaveMachineSettings(
-        MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level)
+        MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level,
+        ImportDefaults import)
     {
         ArgumentNullException.ThrowIfNull(machine);
+        ArgumentNullException.ThrowIfNull(import);
 
         SaveSettings(Settings with
         {
@@ -156,6 +174,7 @@ public sealed partial class MainViewModel : ViewModelBase
             DryRun = dryRun,
             Probe = probe,
             Level = level,
+            Import = import,
         });
 
         if (Gcode is not null && !HasProgram)
@@ -1080,7 +1099,7 @@ public sealed partial class MainViewModel : ViewModelBase
                     ?? new LayerOutputSettings
                     {
                         FileName = layer.Id,
-                        Output = LayerOperations.DefaultFor(source.Role),
+                        Output = LayerOperations.DefaultFor(source.Role, Settings.Import),
                     };
 
                 Layers.Add(new LayerRow(

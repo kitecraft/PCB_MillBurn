@@ -154,7 +154,12 @@
         </Border>
 
         <!-- Panel | viewport -->
-        <Grid Grid.Row="1" ColumnDefinitions="330,4,*">
+        <!--
+            The first column's width is restored from settings on open and saved on close, the same
+            as the window's own placement. Resizing the same panel at every start is a small
+            irritation that never stops being one.
+        -->
+        <Grid Grid.Row="1" ColumnDefinitions="380,4,*" x:Name="Split">
 
             <Border Grid.Column="0"
                     Background="{DynamicResource Surface}"

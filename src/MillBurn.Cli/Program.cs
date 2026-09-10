@@ -1440,6 +1440,8 @@ internal static class Program
             return 1;
         }
 
+        var app = AppSettings.LoadOrDefault();
+
         // A project's own settings first, then defaults per role for anything it never recorded.
         //
         // Defaulting everything when a project was given would export a different job from the one
@@ -1450,7 +1452,7 @@ internal static class Program
                 ?? new LayerOutputSettings
                 {
                     FileName = l.FileName,
-                    Output = LayerOperations.DefaultFor(l.Role),
+                    Output = LayerOperations.DefaultFor(l.Role, app.Import),
                 },
             StringComparer.Ordinal);
 
@@ -1507,7 +1509,6 @@ internal static class Program
         // The same machine settings the app uses, so a job exported from the command line comes out
         // identical to one exported from the window. A safe height that only applied to one of them
         // would be worse than none.
-        var app = AppSettings.LoadOrDefault();
         var framing = (project?.Settings.Framing ?? ProgramFraming.None).Over(app.Framing);
 
         if (Argument(args, "--start-gcode") is { } startPath)

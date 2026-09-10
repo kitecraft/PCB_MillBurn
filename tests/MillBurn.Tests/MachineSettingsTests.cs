@@ -243,6 +243,44 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public void TheImportDefaultsAndPanelWidthSurviveSaveAndLoad()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "millburn-import-" + Guid.NewGuid().ToString("N") + ".json");
+
+        try
+        {
+            new AppSettings
+            {
+                Import = ImportDefaults.LaserEtching,
+                PanelWidth = 512,
+            }.Save(path);
+
+            var back = AppSettings.LoadOrDefault(path);
+
+            Assert.Equal(OutputKind.Svg, back.Import.Copper);
+            Assert.Equal(OutputKind.Gcode, back.Import.Outline);
+            Assert.Equal(512, back.PanelWidth);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// A preset is recognised when it comes back, so the dialog can say which one is in force
+    /// rather than only showing six dropdowns.
+    /// </summary>
+    [Fact]
+    public void APresetIsStillItselfAfterARoundTrip()
+    {
+        Assert.Equal("Milling", ImportDefaults.Milling.PresetName);
+        Assert.Equal("Laser etching", ImportDefaults.LaserEtching.PresetName);
+        Assert.Equal("Nothing", ImportDefaults.Nothing.PresetName);
+        Assert.Null((ImportDefaults.Milling with { Silk = OutputKind.Svg }).PresetName);
+    }
+
     /// <summary>A settings file written before these existed loads with the old hard-coded numbers.</summary>
     [Fact]
     public void ASettingsFileFromBeforeTheseExistedStillLoads()
@@ -260,6 +298,8 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
             Assert.Equal(2.0, back.Machine.SafeZMm);
             Assert.Equal(5, back.DryRun.HeightMm);
             Assert.Equal("Dark", back.Theme);
+            Assert.Equal(OutputKind.Gcode, back.Import.Copper);
+            Assert.Equal(380, back.PanelWidth);
         }
         finally
         {

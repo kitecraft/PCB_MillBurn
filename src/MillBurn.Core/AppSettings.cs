@@ -82,6 +82,18 @@ public sealed record AppSettings
     /// </summary>
     public ProgramFraming Framing { get; init; } = ProgramFraming.None;
 
+    /// <summary>What each kind of layer becomes when a folder is first imported.</summary>
+    public ImportDefaults Import { get; init; } = new();
+
+    /// <summary>
+    /// Width of the left panel, in pixels.
+    ///
+    /// Remembered for the same reason the window's own size is: resizing the same thing at every
+    /// start is a small irritation that never stops being one. Wider than it was, because the
+    /// layer rows now carry two toggles and an export badge.
+    /// </summary>
+    public double PanelWidth { get; init; } = 380;
+
     /// <summary>How this machine moves, and how its files are written.</summary>
     public MachineSettings Machine { get; init; } = new();
 

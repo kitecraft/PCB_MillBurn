@@ -2,19 +2,6 @@ using MillBurn.Core;
 
 namespace MillBurn.Pipeline;
 
-/// <summary>What a layer is turned into, if anything.</summary>
-public enum OutputKind
-{
-    /// <summary>Shown, but not cut or exported.</summary>
-    None,
-
-    /// <summary>Vectors for a laser program.</summary>
-    Svg,
-
-    /// <summary>A program for the mill.</summary>
-    Gcode,
-}
-
 /// <summary>What a layer actually becomes once its output kind is known.</summary>
 public enum OperationKind
 {
@@ -178,13 +165,15 @@ public static class LayerOperations
     };
 
     /// <summary>The output a layer gets by default, which is what most boards want.</summary>
-    public static OutputKind DefaultFor(LayerRole role) => role switch
-    {
-        LayerRole.TopCopper => OutputKind.Gcode,
-        LayerRole.PlatedDrill or LayerRole.NonPlatedDrill => OutputKind.Gcode,
-        LayerRole.Outline => OutputKind.Gcode,
-        _ => OutputKind.None,
-    };
+    /// <summary>
+    /// What a layer becomes on import, when nobody has said otherwise.
+    ///
+    /// Delegates to <see cref="ImportDefaults"/> so the answer is the operator's rather than ours.
+    /// The parameterless form keeps the shipped defaults, which is what tests and the CLI want when
+    /// no settings file is in play.
+    /// </summary>
+    public static OutputKind DefaultFor(LayerRole role, ImportDefaults? defaults = null) =>
+        (defaults ?? ImportDefaults.Milling).For(role);
 
     /// <summary>
     /// Whether a layer is reflected unless the user says otherwise.
