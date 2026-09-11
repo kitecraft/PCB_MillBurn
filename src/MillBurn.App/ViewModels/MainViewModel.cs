@@ -1154,6 +1154,21 @@ public sealed partial class MainViewModel : ViewModelBase
                 g => (IReadOnlyList<BoardSceneLayer>)[.. g.Select(b => scene.Layer(b.Id)).OfType<BoardSceneLayer>()],
                 StringComparer.Ordinal);
 
+        // What the panel looked like, before the rows themselves cease to exist.
+        //
+        // Every rebuild builds new LayerRow objects, so anything held on a row and not in the
+        // project is lost — and Preview rebuilds. Opening three layers, pressing Preview and
+        // watching all three shut is a small thing that happens on every single iteration of the
+        // loop this app is used in. Which toolpaths were showing goes the same way, and for the
+        // same reason: you isolate one layer's cuts, change something, press Preview to look at
+        // the change, and the thing you were looking at is gone.
+        var expanded = Layers.Where(r => r.IsExpanded).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+
+        // Held as the rows that were *off*, so a layer appearing for the first time is on. The same
+        // reasoning as the hidden-layer set: the default has to survive, and only the departures
+        // from it are worth carrying.
+        var pathsOff = Layers.Where(r => !r.ShowToolpath).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+
         _suspendOutputChanges = true;
         Layers.Clear();
 
@@ -1186,6 +1201,9 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 row.AttachToolpath(paths);
             }
+
+            row.IsExpanded = expanded.Contains(layer.Id);
+            row.ShowToolpath = !pathsOff.Contains(layer.Id);
 
             Layers.Add(row);
         }

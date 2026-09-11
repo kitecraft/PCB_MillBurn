@@ -332,6 +332,16 @@ public partial class MainWindow : Window
             _captureInstead = editor;
         }
 
+        // Opens every layer's settings, so a screenshot can show the expanded row rather than only
+        // the shut one. The rows are the part most likely to lay out wrongly.
+        //
+        // Deliberately before the preview: a rebuild throws every row away and makes new ones, so
+        // "expand, then preview, and see them still open" is the regression this ordering checks.
+        if (args.Contains("--expand", StringComparer.OrdinalIgnoreCase))
+        {
+            ExpandLayers(true);
+        }
+
         if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase)
             || args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
         {
@@ -428,13 +438,6 @@ public partial class MainWindow : Window
                 r.Label.Contains(muted, StringComparison.OrdinalIgnoreCase)) is { } kept)
         {
             vm.MuteOtherExports(kept);
-        }
-
-        // Opens every layer's settings, so a screenshot can show the expanded row rather than only
-        // the shut one. The rows are the part most likely to lay out wrongly.
-        if (args.Contains("--expand", StringComparer.OrdinalIgnoreCase))
-        {
-            ExpandLayers(true);
         }
 
         var shot = ShotPath(args);
