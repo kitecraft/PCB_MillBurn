@@ -32,11 +32,25 @@ public static class RouteOptimizer
     /// <summary>How many neighbours each node considers. Ten is the usual sweet spot.</summary>
     public const int CandidateCount = 10;
 
-    public static TimeSpan BudgetFor(RouteEffort effort) => effort switch
+    /// <summary>
+    /// How much local search one group of nodes is allowed, counted in moves examined.
+    ///
+    /// Counted rather than timed, because
+    /// [06 §2](../../Documentation/06-Roadmap-and-Risks.md#2-cross-cutting-acceptance-criteria)
+    /// requires the same input to produce byte-identical output on every machine, and a wall clock
+    /// does not. It used to be 500 ms, and that held only while every search converged well inside
+    /// it: the first job that did not — a panel's fifty routed channels — came out with a different
+    /// route, and a different travel distance, on every run of the same build.
+    ///
+    /// A search that is working converges in a couple of passes over its nodes; the panel's copper,
+    /// 594 nodes, settles in 690 moves. The budget is three orders of magnitude above that because
+    /// it is a backstop for a search that is not working, not a target.
+    /// </summary>
+    public static long BudgetFor(RouteEffort effort, int nodes) => effort switch
     {
-        RouteEffort.Fast => TimeSpan.Zero,
-        RouteEffort.Thorough => TimeSpan.FromSeconds(10),
-        _ => TimeSpan.FromMilliseconds(500),
+        RouteEffort.Fast => 0,
+        RouteEffort.Thorough => 20_000L * nodes,
+        _ => 1_000L * nodes,
     };
 
     /// <summary>
@@ -70,7 +84,6 @@ public static class RouteOptimizer
         }
 
         var watch = Stopwatch.StartNew();
-        var budget = BudgetFor(effort);
 
         // Groups are a hard partition, so each is solved on its own and the results concatenated.
         // A move that could cross a boundary would be able to trade away a precedence constraint
@@ -100,7 +113,7 @@ public static class RouteOptimizer
 
             if (effort != RouteEffort.Fast)
             {
-                improvements += solver.Improve(watch, budget);
+                improvements += solver.Improve(BudgetFor(effort, members.Count));
             }
 
             steps.AddRange(solver.Steps());
@@ -307,7 +320,7 @@ public static class RouteOptimizer
         /// Don't-look bits are what keep this affordable: a node is only re-examined once something
         /// next to it has actually moved, so a settled region of the route costs nothing to skip.
         /// </summary>
-        public int Improve(Stopwatch watch, TimeSpan budget)
+        public int Improve(long budget)
         {
             if (_order.Length < 3)
             {
@@ -319,10 +332,11 @@ public static class RouteOptimizer
 
             var improvements = 0;
             var queue = new Queue<int>(Enumerable.Range(0, _order.Length));
+            var steps = 0L;
 
             while (queue.Count > 0)
             {
-                if (watch.Elapsed > budget)
+                if (++steps > budget)
                 {
                     break;
                 }

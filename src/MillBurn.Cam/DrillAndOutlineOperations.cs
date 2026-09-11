@@ -174,7 +174,9 @@ public static class OutlineOperation
         // own boundary — and its own side.
         var contours = new Paths64();
         var depths = new List<int>();
+        var closed = new List<bool>();
         var voids = 0;
+        var centrelines = 0;
 
         for (var p = 0; p < outline.Count; p++)
         {
@@ -200,10 +202,23 @@ public static class OutlineOperation
 
             var depth = nesting.GetValueOrDefault(p);
 
-            foreach (var contour in grown)
+            // A channel about as wide as the cutter is one pass down its middle, not a lap around
+            // the sliver left when it is offset inward. Only when the middle demonstrably covers
+            // what the lap would have: VoidCentreline checks and hands back null if it does not.
+            var middle = pieces[p]
+                ? null
+                : VoidCentreline.For(grown, options.Tool.DiameterNm, options.SagittaNm);
+
+            if (middle is not null)
+            {
+                centrelines++;
+            }
+
+            foreach (var contour in middle ?? grown)
             {
                 contours.Add(contour);
                 depths.Add(depth);
+                closed.Add(middle is null);
             }
         }
 
@@ -246,7 +261,7 @@ public static class OutlineOperation
         for (var c = 0; c < contours.Count; c++)
         {
             var contour = contours[c];
-            if (contour.Count < 3)
+            if (contour.Count < (closed[c] ? 3 : 2))
             {
                 continue;
             }
@@ -264,16 +279,29 @@ public static class OutlineOperation
             // that has to be cut apart by hand.
             var outermost = depths[c] == 0;
 
+            // An open run is cut in alternate directions as it goes deeper.
+            //
+            // A closed contour ends where it began, so the next pass down starts where the last one
+            // finished and costs nothing to repeat. An open one ends at the far end of itself, and
+            // taking it the same way round every time means travelling its whole length back first
+            // — 7 m of it across this panel. Turning round instead is free, and a slot is cut at
+            // full engagement on both sides anyway, so there is no climb-or-conventional to lose.
+            var forward = closed[c] ? IsolationOperation.ToSegments(contour) : Along(contour);
+            var backward = closed[c] ? forward : Along(Reversed(contour));
+            var turn = false;
+
             foreach (var depth in outermost ? shallowDepths : allDepths)
             {
                 passes.Add(new ToolpathPass
                 {
-                    Path = IsolationOperation.ToSegments(contour),
+                    Path = turn ? backward : forward,
                     DepthNm = depth,
-                    Closed = true,
+                    Closed = closed[c],
                     Group = group,
                     Stack = c,
                 });
+
+                turn = !closed[c] && !turn;
             }
 
             // The tabbed passes go depth by depth, all runs at one depth before the next.
@@ -283,7 +311,7 @@ public static class OutlineOperation
             // depth means travelling its whole length back first. Going round the profile instead
             // costs only the tab gap between one run and the next, and the last run's end is
             // already next to the first run's start.
-            var runs = !outermost || tabbedDepths.Count == 0
+            var runs = !outermost || !closed[c] || tabbedDepths.Count == 0
                 ? []
                 : SplitForTabs(contour, options).ToList();
 
@@ -306,6 +334,12 @@ public static class OutlineOperation
         var perPass = Nm.ToMillimetreString(options.DepthPerPassNm, 2);
         var total = Nm.ToMillimetreString(options.TotalDepthNm, 2);
         notes.Add(Invariant($"{steps} passes of {perPass} mm to {total} mm."));
+
+        if (centrelines > 0)
+        {
+            notes.Add(Invariant(
+                $"{centrelines} of those are no wider than the cutter, so each is one pass down its middle rather than a lap around both of its sides."));
+        }
 
         if (voids > 0)
         {
@@ -461,6 +495,28 @@ public static class OutlineOperation
         // A hundredth of a square millimetre, to ignore the slivers an offset leaves behind. Both
         // real cases are orders of magnitude away from it, in opposite directions.
         return shared > 0.01 * Nm.PerMillimetre * Nm.PerMillimetre;
+    }
+
+    private static Path64 Reversed(Path64 path)
+    {
+        var back = new Path64(path);
+        back.Reverse();
+
+        return back;
+    }
+
+    /// <summary>An open path's segments, with no closing move back to the start.</summary>
+    private static ArtSegment[] Along(Path64 path)
+    {
+        var segments = new ArtSegment[path.Count - 1];
+
+        for (var i = 0; i < segments.Length; i++)
+        {
+            segments[i] = ArtSegment.Line(
+                new Point2(path[i].X, path[i].Y), new Point2(path[i + 1].X, path[i + 1].Y));
+        }
+
+        return segments;
     }
 
     /// <summary>

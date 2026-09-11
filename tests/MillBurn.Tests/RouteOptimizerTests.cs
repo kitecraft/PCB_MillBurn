@@ -90,6 +90,29 @@ public sealed class RouteOptimizerTests
             second.Steps.Select(s => (s.Reference, s.Option)));
     }
 
+    /// <summary>
+    /// The local search is bounded by work done, not by a clock.
+    ///
+    /// This is the hole the test above could not see. Two runs in one process on one machine agree
+    /// under a time budget too — what does not agree is the same build on a different machine, or
+    /// the same machine under different load, and that is exactly what
+    /// [06 §2](../../Documentation/06-Roadmap-and-Risks.md#2-cross-cutting-acceptance-criteria)
+    /// promises will not happen. A panel with fifty routed channels found it: the search there does
+    /// not settle, so the 500 ms cut-off landed in a different place every run and the emitted
+    /// travel came out 1709, 1831 or 1926 mm from identical input.
+    /// </summary>
+    [Fact]
+    public void TheBudgetIsCountedInWorkRatherThanTime()
+    {
+        Assert.Equal(0, RouteOptimizer.BudgetFor(RouteEffort.Fast, 500));
+        Assert.Equal(500_000, RouteOptimizer.BudgetFor(RouteEffort.Balanced, 500));
+
+        Assert.True(
+            RouteOptimizer.BudgetFor(RouteEffort.Thorough, 500)
+            > RouteOptimizer.BudgetFor(RouteEffort.Balanced, 500),
+            "thorough must be allowed to look harder than balanced");
+    }
+
     // ------------------------------------------------------------------ it is actually better
 
     /// <summary>

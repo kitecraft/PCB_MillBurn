@@ -1292,10 +1292,83 @@ The panel's outline program went from 8,577 lines to 5,828 and from 20,996 mm of
 `OutlineSideTests` pins the side for a channel, a hand-cut frame, an empty window, a pour that runs
 to the edge, and the no-evidence case.
 
-**Still redundant:** a 1 mm channel offset inward by a 0.5 mm radius collapses to a 0.1 mm-wide
-loop, and the cutter runs down one side of it and back up the other 0.1 mm away. It removes the
-right material and the return pass is nearly all air. Collapsing a degenerate void to its medial
-axis would take roughly another 40 % off this program and is not done.
+### One pass down the middle
+
+The fix above left the cut in the right place and still going round it twice. A 1.1 mm channel
+offset inward by a 0.5 mm radius collapses to a ribbon a sixth of a millimetre across, and running
+round *that* sends the cutter out along one side and back along the other a hair away. The return
+pass is air.
+
+**Halving the loop does not work**, because a channel lattice branches. The boundary of a thin
+branching ribbon is a depth-first walk of it — out and back along every arm — so there is no "other
+side" to drop. What the cutter wants is the channel's centreline as a *graph*, and then a walk of
+that graph, which covers every arm once except for the backtracking a tree cannot avoid. For a
+plus-shaped panel cell, 70.8 mm becomes 44.2 mm.
+
+Folding the ribbon onto its own middle turned out to need one idea and three corrections, each
+found by rendering the result and looking at it.
+
+**The idea.** Resample the ribbon's boundary at three times its own width, then pair each point with
+the point *opposite* it — which is simply the nearest one that is not an immediate neighbour, since
+across the ribbon is by construction three times shorter a hop than along it. Two points that pair
+with each other produce the same midpoint to the nanometre, so the two sides land exactly on one
+another rather than near.
+
+**Order the branches by distance to the far end, not from the near one.** The walk should finish at
+the end of the longest path through the tree, so that the longest arm is the one never retraced.
+Sorting a node's children by their distance from the *start* is very nearly the same number for each
+of them and therefore no ordering at all; it also dropped an arm entirely, which the render showed
+at once as a channel with nothing in it.
+
+**Extend every loose end to the end of the ribbon.** A cap is narrower than the resampling step, so
+the last pair of facing points sits back from it and 0.43 mm of each arm went uncut — four times per
+cell, invisible in a preview and obvious on the stock.
+
+**A junction is one place.** Where arms cross, a disc of the cutter's radius fits diagonally as well
+as along, so the ribbon swells into a small diamond and folding it gives two forks a step apart. The
+cutter then rounds the corner between two arms instead of passing through the middle, leaving a
+0.29 mm² wedge standing exactly where four boards meet. Moving both forks onto the average of the
+arms around them — not onto their own midpoint, which is off to one side for the same reason they
+are — puts the crossing where it belongs.
+
+**Nothing is trusted.** The centreline is computed and then checked: sweep the cutter along it and
+see whether any of the ribbon is left. The ribbon is the void offset inward by the radius, which is
+to say exactly the places the cutter was meant to visit, so a gap there is a channel not severed.
+Anything left sends the whole profile back to the loop. Notably the check is *not* "does it remove
+everything the lap would have" — the lap hugs the boundary and so also takes out the corner of every
+junction and the half pen width the profile overhangs by, and measured against that a centreline is
+rejected for doing less damage.
+
+Then the passes needed to alternate direction as they go deeper. A closed contour ends where it
+began, so the next pass down starts where the last finished; an open one ends at the far end of
+itself, and taking it the same way round every time meant 7 m of driving back. Turning round instead
+is free, and a slot is cut at full engagement on both sides anyway.
+
+The panel's outline program, across both fixes: **20,996 mm of cutting to 13,222 mm, and 1h 21m to
+56m**.
+
+### The optimizer's budget was a wall clock
+
+Exposed by the change above rather than caused by it, and worth more than the line it takes to fix.
+
+`RouteOptimizer.Improve` ran local search until it converged *or 500 ms elapsed*. That held only
+while every search converged well inside the budget, which every job in the corpus did — until the
+panel's fifty channels became fifty open runs. That search does not settle at all: 360,000 moves
+examined and 299,000 of them "improvements", on fifty nodes. So the cut-off landed somewhere
+different every run, and the same build on the same machine emitted 1709, 1831 or 1926 mm of travel
+from identical input.
+
+The budget is now counted in moves examined — 1,000 per node, against the 1.2 per node a search that
+is working actually uses — which restores
+[§2](#2-cross-cutting-acceptance-criteria)'s byte-identical-output promise. `TheSameInputGivesTheSameRouteEveryTime`
+did not catch this and could not: two runs in one process on one machine agree under a time budget
+too. What does not agree is another machine, or the same one under load.
+
+**The local search cycling on open runs is not fixed**, only bounded. Three hundred thousand
+accepted improvements on fifty nodes means a move's computed delta disagrees with the cost it
+actually produces, somewhere in the two-opt or or-opt neighbourhood when a node's entry and exit
+differ. It costs half a second an export and no correctness, and it is written down here rather than
+guessed at.
 
 <a id="phase-55"></a>
 
