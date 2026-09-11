@@ -734,7 +734,8 @@ Still to come in this phase:
   a header rather than a coordinate per point — not guessed at without a real file to check
   against, since a parser written from memory of a format is worse than none.
 - **Corner-stop fixture generator** — the recommended default
-  ([04 §4.1.1](04-Machines-Laser-and-Mixed-Workflows.md#411-the-corner-stop--the-recommended-default)).
+  ([04 §4.1.1](04-Machines-Laser-and-Mixed-Workflows.md#411-the-corner-stop--the-recommended-default)),
+  and the stop that [Phase 5.6](#phase-56) locates a generated blank against.
   3-2-1 pad placement sized from the stock, relieved inside corners, stop height derived from
   stock thickness, engraved with its own datum, and a mirrored twin for double-sided work. The
   datum needs no calibration step at all: we emit the program that cuts it, so we know where it
@@ -1167,6 +1168,163 @@ Two things this phase does **not** do. It does not put an end mill into the midd
 program: a run that alternates drills and cutters is a tool change the drilling companion page
 cannot describe honestly, so slots get their own file (`Board-PTH.slots.nc`) and their own line in
 the export list. And it does not guess a cutter you have not entered into the library.
+
+<a id="phase-56"></a>
+
+### Phase 5.6 — The blank — **scheduled, not started**
+
+The app cuts you a piece of stock, and the edges of that piece are the datum for every machine and
+every step after it.
+
+Numbered beside Phase 5 because it changes what that phase recommends, not because it was scheduled
+then. It arrived from the workshop, the day after the first dry run ran on the machine.
+
+#### 5.6.1 What it is
+
+Home-made boards start with somebody cutting a small rectangle out of a larger sheet of copper-clad.
+That cut is currently done by hand, is nobody's business but the operator's, and is thrown away as a
+step with no value. It is in fact the most valuable cut in the whole job, because **the mill can make
+it, and a piece the mill made is a piece whose dimensions the app knows exactly.**
+
+So: the app generates a **blank** — a rectangle a declared distance larger than the board — and emits
+the program that cuts it. The board is then built on that blank, and every subsequent operation, on
+either machine, is referenced to the blank's corner rather than to the board's. A physical corner
+stop at each machine locates the blank, and because the blank is the same known rectangle everywhere,
+the two machines never have to agree with each other about anything except how to hold a rectangle
+against a corner.
+
+#### 5.6.2 Why this beats what §4 currently plans
+
+[04 §4.1.1](04-Machines-Laser-and-Mixed-Workflows.md#411-the-corner-stop--the-recommended-default)
+already generates a corner stop for the mill, and
+[§4.3](04-Machines-Laser-and-Mixed-Workflows.md#43-registering-on-the-laser--placement-not-coordinates)
+already generates a jig for the laser. What neither has is a **known workpiece**: the stock is
+described there as "any stock at least as big as the board", so each machine solves registration on
+its own and the two answers have to be reconciled by the operator.
+
+Four things follow from making the stock known instead.
+
+**The datum travels with the work.** Registration stops being a property of two fixtures that must
+agree and becomes a property of the object being carried between them.
+
+**It makes §4.3's most important rule enforceable.** That section says every SVG in a job must share
+one page fixed to "the stock outline plus a documented margin" — and the app has never known what the
+stock outline is. The blank *is* the page: `SvgPage.Frame` becomes the blank's bounds, and the SVG
+origin becomes the same corner the mill uses as work zero. Today it is `ForContent(board.Bounds, 2 mm)`,
+a page fitted to the artwork with an invented margin.
+
+**The datum is a physical edge, so it survives.** [§4.2](04-Machines-Laser-and-Mixed-Workflows.md#42-fiducials--measurement-mill)
+carries a whole table about whether fiducials survive the etchant, the resist strip and the
+soldermask. An FR4 edge does not care about any of them. This is the quiet advantage and it may be
+the largest one.
+
+**It removes a design rule.** The double-sided recipe in the FAQ reaches 20–50 µm and imposes a
+constraint on the operator's own layout: two registration holes, mirror-symmetric about the vertical
+centreline and off the horizontal one. The blank asks nothing of the design at all.
+
+Set against that, honestly: this is **one calibration per machine, ever**, not none. Each corner stop
+has to be square to its machine's axes once. That is still an enormous improvement on one alignment
+per board, but "no calibration" would be the wrong claim, and the laser's stop is never verified by
+anything unless [5.6.5](#565-verification-the-border-is-a-test-coupon) is built with it.
+
+#### 5.6.3 The blank itself
+
+**Always a rectangle**, whatever shape the board is, with **four independent offsets** from the
+board's bounding box. Waste matters: an L-shaped corner stop only needs margin on two edges, so the
+default should be generous on the datum edges and tight on the other two.
+
+- **The minimum border is set by hold-down and cutter clearance, not by the jig.** The outline cutter
+  needs room to run outside the board, and the blank needs somewhere to be taped or clamped that is
+  not the board. A floor of roughly *cutter diameter + 2 mm* with the reason stated, rather than a
+  number that looks arbitrary. A 2 mm sliver of FR4 also flexes and can break away while the board is
+  being released, which is its own argument.
+- **Tabs never on the datum edges.** The blank comes out of the outline operation, which adds tabs;
+  a tab stub on the bottom or left edge stops the blank seating, by a few tenths, silently. Tabs go on
+  the non-datum edges, or the blank is cut tab-free with tape or vacuum. The runbook says to deburr
+  the two datum edges before first use, because a fresh outline cut leaves a burr underneath.
+- **Key it.** A chamfer on one corner, or a shallow notch in one edge, cut while the blank is cut.
+- **Label it.** The engrave operation already exists and the border is waste: put the project name,
+  the date and a mark at the datum corner into it. A blank that says which corner is its datum cannot
+  be loaded wrongly three weeks later, and this costs one extra toolpath on a cut that is already
+  running.
+
+**It is not a layer.** No file produces it, it cannot be exported as itself, and every setting a
+layer row offers is meaningless for it — which is exactly the mistake the panel redesign removed. It
+is a job property, like board thickness, and it belongs in Project info beside it. What it *emits* is
+a generated operation, like the probing routine.
+
+#### 5.6.4 The offset, and the flip that breaks it
+
+The per-layer change is small and the mirroring change is not.
+
+**The origin.** `ExportPlanner` already shifts every program by `-board.Bounds.Min` so that work zero
+is the board's lower-left corner. With a blank it shifts by `-blank.Min` instead. That is nearly the
+whole of it for single-sided work.
+
+**The mirror axis is the part that is currently wrong for this.** Bottom-side geometry is mirrored
+about `board.Bounds.MinX + board.Bounds.MaxX` — the *board's* centreline. Physically, the operator
+flips the blank and pushes it back into the same corner, so the flip is about the **blank's**
+centreline. With a blank in play the existing axis is simply the wrong one, and it is the wrong kind
+of wrong: the file looks entirely correct and the board is scrapped.
+
+**Asymmetric left and right borders survive the flip, but only if that axis is right.** The blank's
+footprint is unchanged by a flip — it is a rectangle either way — but the design maps `x → W − x` in
+blank coordinates. With borders of 20 mm and 2 mm the design lands 18 mm from where naive arithmetic
+puts it. Computable, and easy to get backwards. So: **default `left == right` whenever any layer in
+the job is mirrored**, warn when they differ, and offer to equalise them. Top and bottom can stay
+asymmetric forever, because nothing ever flips about the horizontal axis.
+
+**A symmetric rectangle seats identically whether the flip was right or wrong.** This is a hazard the
+blank *introduces*: today a board flipped the wrong way looks obviously wrong, and a blank flipped the
+wrong way seats perfectly and cuts a mirror image. §4.3 already wants an asymmetric mark for this
+reason; here the keying in 5.6.3 is not a nicety, it is the mitigation, and the export should say
+which corner the key must be in for the side being cut.
+
+#### 5.6.5 Verification: the border is a test coupon
+
+The mill cuts the blank, so on the mill the datum is *defined* and nothing needs checking — the same
+argument §4.1 makes for fixtures. **The laser cuts nothing and verifies nothing.** It trusts that its
+corner stop is where the operator thinks it is, and if that is 0.5 mm out then every laser step is
+0.5 mm out and no artefact in the process says so.
+
+The border is waste material sitting exactly where the answer is. On the first laser job of a blank,
+burn into the border either a short registration mark at a stated coordinate, or a light trace of
+where the app believes the blank's edge to be. One measurement with a caliper against the real edge
+gives the laser stop's offset, once, for good — and a trace that lands visibly off the edge catches a
+gross error before anything that matters is burned.
+
+This is the same reasoning as [§4.4](04-Machines-Laser-and-Mixed-Workflows.md#44-verification-before-committing):
+never let the first confirmation that alignment worked be a ruined board.
+
+#### 5.6.6 What it does not do
+
+**It is an X/Y datum only.** After etching and soldermask the surface height has changed; Z is touched
+off at every setup regardless, and the isolation and mask-relief cuts still want a height map. The
+blank does not help with Z and should not be described as if it does.
+
+**A mill-only single-sided board gains nothing from it.** Nothing leaves the machine, so one setup
+does isolation, drilling and cut-out with no registration problem to solve. The blank earns its keep
+exactly when the work travels — which is every mixed and every double-sided job, but the app should
+say so rather than recommend it universally.
+
+**It is looser than the pin recipe.** Mill-only work is excellent, because everything is in one
+coordinate frame. Mill-to-laser is limited by the stop's alignment, the blank's squareness and seating
+repeatability — realistically a tenth or two without 5.6.5, tightening with it. The drill-and-pin
+recipe reaches 20–50 µm. Both belong in the app, and the help has to say plainly which is which: the
+blank is easier and asks nothing of the design; pins are tighter.
+
+**The corner stop still needs its inside corner relieved**, exactly as §4.1.1 already says. A sharp
+blank corner pushed into a radiused inside corner rides up on the fillet and sits several tenths out,
+differently every time. The laser's stop needs the same relief and the same reasoning.
+
+#### Done when
+
+A single-sided mixed job runs end to end from one import: the blank is cut on the mill, the board is
+etched on the laser, and the drilling and the release cut — run after the board has been off the mill
+twice — land on the etched artwork, measured, within a tenth.
+
+Then the same for a double-sided board, with the flip, and with the export refusing to proceed when
+the left and right borders differ.
 
 ### Phase 6 — Polish and reach
 

@@ -286,8 +286,10 @@ the standalone G-code viewer.
 
 Next: **slots, mill-drill and library-aware tool selection** — an end mill moving sideways at
 depth is a slot and is also a hole too big to drill, and neither can pick its own cutter today.
-Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF output, and a
-LightBurn layer preset. Also planned: an **MCP server** over the same libraries, so an assistant can
+Then **the blank** — the app cuts you a piece of stock and its edges become the datum for every
+machine and every step after it, which removes fiducials, dowel pins and the design rule that goes
+with them. Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
+output, and a LightBurn layer preset. Also planned: an **MCP server** over the same libraries, so an assistant can
 load a board, render it, and say what a job would cut — read-only unless you launch it otherwise.
 
 The full picture — including the bugs, and what each one taught — is in

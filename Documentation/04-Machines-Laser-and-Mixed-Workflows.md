@@ -295,6 +295,14 @@ coordinates. Both start from the same place: don't solve the problem twice.
 
 ### 4.1 Primary: a physical fixture, cut on the machine that will use it
 
+> **Since this was written**, a stronger version of the same argument arrived from the workshop:
+> generate the **stock** as well as the fixture, so the workpiece itself is a known rectangle and
+> the two machines' fixtures never have to agree with each other about anything but how to hold it.
+> Everything below still holds — the blank is located by exactly these stops — but the datum stops
+> being a property of the fixtures and becomes a property of the thing carried between them, and it
+> survives the etchant in a way no mark on the board does. See
+> [06 Phase 5.6](06-Roadmap-and-Risks.md#phase-56).
+
 The best alignment problem is one you don't have to solve twice. Three fixtures do that, and they
 all rest on the same trick: **the app generates the G-code that cuts the fixture, so its datum is
 *defined* rather than measured.** Every error in the machine — backlash, squareness, scaling,
