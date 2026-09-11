@@ -661,6 +661,19 @@ and says why. (`G91.1` is arc-centre mode and is not mistaken for it.)
 Feeds are kept by default, so the dry run takes as long as the real one. Half the value of watching
 a job in the air is finding out it is a ninety-minute job.
 
+**The mill half has now moved. `PogoTest1-F_Cu.dryrun.nc` ran on the machine and ran correctly.**
+The whole program traced in the air, spindle off, nothing struck, nothing out of place. That is the
+first thing this project has produced that a mill has actually executed, and it exercises the emitter,
+the post, the ordering, the framing and the dry-run rewrite in one go — everything except the part
+where the tool touches copper.
+
+It also put a number on the time model, which had never been checked against anything: **predicted
+1:57–2:01, actual 1:50.** About 5 % conservative on a two-minute job, with the bracket's low end
+7 seconds out. The trapezoidal profile from [03 §3](03-Toolpath-Optimization.md#3-the-cost-model) is
+doing real work — a naive distance-over-feedrate estimate would have been far further off on a job
+this short, where acceleration is most of it. Being slightly *over* is the right direction to be
+wrong in: an estimate that undersells the wait is the one that gets somebody to walk away.
+
 This also unblocks the travel-at-depth optimisation deferred in Phase 3, whose failure mode was the
 cutter crossing a trace at depth with no way to see it coming.
 
@@ -785,6 +798,46 @@ available if you are willing to drill them all the same size.
 `DrillSizeTests` now checks the three things that were wrong: a stop for every size after the first,
 each diameter named with its own hole count, and no hole lost in the split. Plus that the biggest
 bit goes first, which was right all along and is worth pinning.
+
+### Isolation had no width, only a lap count
+
+Raised from the machine, immediately after that dry run: *we cut only once around the traces, and
+with a V-bit that is not a wide cut.*
+
+Correct, and it had been true since Phase 2. Isolation offered **Passes**, an integer, defaulting to
+one. One lap of a 30° V-bit at 0.05 mm deep clears **0.127 mm**. That separates the nets, which is
+the only thing the app had ever checked, and it is also a gap you cannot see, cannot solder across
+without bridging, and can close by handling the board.
+
+**Passes is the wrong question.** It asks about the machine; how wide the gap is asks about the
+board, and only the second one has an answer the operator actually holds an opinion about. Worse, to
+convert between them you need the effective cut width — which is itself derived from the tool and
+the depth, and which this project already refuses to let anybody type for exactly that reason. Asking
+for laps means doing that arithmetic in your head, with a number you were deliberately not given.
+
+So the width is typed and the passes are derived, and the sum is printed under the control that
+drives it: *4 passes of 0.127 mm clears 0.450 mm*. Change the bit or the depth and the pass count
+moves on its own, because it is a consequence and not a setting.
+
+Three details worth keeping:
+
+*Whole laps, so what you get is what you asked for rounded up.* Never down — rounding an isolation
+moat down is a short. 0.40 mm asked for gives **0.450 mm** in four passes, and the export reports
+that rather than repeating the number that was typed.
+
+*Zero means one lap.* Which is what every project saved before this existed asked for, so opening an
+old board and re-exporting it produces the file it produced before. A setting that silently widened
+the isolation on a board somebody had already cut once would be the wrong kind of improvement.
+
+*It costs what it costs, and the export says that too.* PogoTest1's front copper goes from 319 mm of
+cutting to 1,239 mm — about four times, and measurably less than four, because once a narrow field is
+fully cleared its contours stop being produced at all. On the Arduino Mega the top copper goes from
+roughly an hour to roughly four. That is a real trade and it belongs in front of the operator before
+the job starts, which is where the time bracket already is.
+
+The default for a freshly imported board is **0.4 mm**, in `Edit ▸ Settings ▸ Milling`. A constant
+nobody can see is a constant nobody questions, and this one had been 0.127 mm by omission rather than
+by choice for the whole life of the project.
 
 ### A second silent omission: slots
 

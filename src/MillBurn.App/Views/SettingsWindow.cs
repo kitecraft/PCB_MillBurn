@@ -13,9 +13,10 @@ namespace MillBurn.App.Views;
 /// <param name="Probe">The probing grid.</param>
 /// <param name="Level">How closely a levelled program follows the surface.</param>
 /// <param name="Import">What each kind of layer becomes when a folder is imported.</param>
+/// <param name="Milling">What a freshly imported layer starts out cutting.</param>
 public sealed record SettingsChoice(
     MachineSettings Machine, DryRunSettings DryRun, ProbeSettings Probe, LevelSettings Level,
-    ImportDefaults Import);
+    ImportDefaults Import, MillingDefaults Milling);
 
 /// <summary>
 /// The numbers that describe the machine rather than the board.
@@ -92,6 +93,13 @@ public sealed class SettingsWindow : Window
         Flag(body, "canned", "Emit canned drilling cycles (G81/G83)", settings.Machine.CannedCycles,
             "GRBL does not implement these and ignores what it cannot parse, so a drill file would "
             + "travel the whole pattern without drilling anything. LinuxCNC and Mach3 do support them.");
+
+        Section(body, "Milling");
+        Number(body, "isolation", "Isolation width", "mm", settings.Milling.IsolationWidthMm, 0, 5, 0.05,
+            "How wide a gap to clear either side of every trace, on a layer that has just been "
+            + "imported. One lap of a 30° V-bit at 0.05 mm deep is 0.127 mm — enough to separate "
+            + "the nets and too narrow to see, solder across, or survive handling. Each layer can "
+            + "be changed afterwards; this is only where it starts. Zero means one lap.");
 
         Section(body, "Dry run");
         Number(body, "dryHeight", "Held at", "mm", settings.DryRun.HeightMm, 1, 50, 0.5,
@@ -368,7 +376,8 @@ public sealed class SettingsWindow : Window
             Mask = Chosen("mask"),
             Silk = Chosen("silk"),
             Paste = Chosen("paste"),
-        });
+        },
+        new MillingDefaults { IsolationWidthMm = Value("isolation") });
 
     /// <summary>
     /// Re-runs the checks and blocks saving on anything inconsistent.
@@ -379,7 +388,8 @@ public sealed class SettingsWindow : Window
     private void Recheck()
     {
         var chosen = Chosen();
-        var problems = SettingsCheck.Problems(chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level);
+        var problems = SettingsCheck.Problems(
+            chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level, chosen.Milling);
         var notes = SettingsCheck.Notes(chosen.Machine, chosen.Probe);
 
         _problems.Children.Clear();
@@ -411,6 +421,8 @@ public sealed class SettingsWindow : Window
         _numbers["rapid"].Value = (decimal)machine.RapidMmPerMin;
         _numbers["decimals"].Value = machine.Decimals;
         _flags["canned"].IsChecked = machine.CannedCycles;
+
+        _numbers["isolation"].Value = (decimal)new MillingDefaults().IsolationWidthMm;
 
         _numbers["dryHeight"].Value = (decimal)dryRun.HeightMm;
         _flags["keepFeeds"].IsChecked = dryRun.KeepFeeds;

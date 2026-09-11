@@ -133,9 +133,15 @@ the condition a workshop is usually in.
 Run order on the machine: **isolate, drill, cut out.** Work zero is the board's lower-left corner,
 shared by every file in the export.
 
-Per layer you can set the tool, cut depth, number of passes, break-through past the underside, and
-tab count. Pick tools from your saved library (`Edit ▸ Tool library…`) — diameter, tip and included
-angle for V-bits, feeds, plunge rate, RPM, max depth, stepdown, flutes.
+Per layer you can set the tool, cut depth, **isolation width**, break-through past the underside,
+and tab count. Pick tools from your saved library (`Edit ▸ Tool library…`) — diameter, tip and
+included angle for V-bits, feeds, plunge rate, RPM, max depth, stepdown, flutes.
+
+**Isolation width is a width, not a lap count.** You say how wide a moat you want around every
+trace — 0.4 mm by default — and the app works out how many passes that takes with your bit at your
+depth, and shows the sum: *4 passes of 0.127 mm clears 0.450 mm*. One lap of a 30° V-bit is 0.127 mm,
+which separates the nets and is also a gap you cannot see, cannot solder across without bridging, and
+can close by handling the board.
 
 ### Burn a board
 
@@ -211,7 +217,7 @@ millburn export <folder> --set F_Cu.gbr=gcode --set F_Mask.gbr=svg- --write   # 
 millburn export <folder> --only gcode --write
 millburn export <folder> --dry-run --write            # + a .dryrun.nc beside each program
 millburn export <folder> --start-gcode preamble.nc --end-gcode shutdown.nc
-millburn mill   <folder> --isolation-tool "30°" --outline-tool "1.0 mm" --png cut.png
+millburn mill   <folder> --isolation-width 0.4 --isolation-tool "30°" --png cut.png
 millburn svg    <silkscreen.gbr> --flavour lightburn --spot 0.1
 ```
 
@@ -263,16 +269,20 @@ not the easiest — was exported as front-copper SVG and laser-engraved onto cop
 pads and outer dimensions all measure true to within the ~0.1 mm the caliper is good for, which
 bounds any scale error across 165 mm at **0.061%**.
 
-**The mill half is not physically verified yet**, and that is the honest headline. Everything is
-built and tested — isolation, drilling, outline, mask relief, dry runs, height mapping, the
-optimizer — and 617 tests pass with zero warnings under `TreatWarningsAsErrors`. But the cut width,
-the drilling run and the levelled surface have not yet been measured on real copper. That work is
-in progress; until it is done, the mill path is "believed correct", not "proven".
+**The mill half has started moving.** A generated dry run has been executed on a real CNC and ran
+correctly — the whole program traced in the air, spindle off, nothing struck. That exercises the
+emitter, the post, the ordering and the dry-run rewrite in one go, and it put the first number on
+the time model: **predicted 1:57–2:01, actual 1:50**, about 5 % conservative.
+
+**What has not happened yet is the tool touching copper.** The cut width, the drilling run and the
+levelled surface have not been measured on a real board. 658 tests pass with zero warnings under
+`TreatWarningsAsErrors`, but until there is a board on the bench, the cutting path is "believed
+correct", not "proven".
 
 Done: reading and drawing boards, projects, toolpaths and G-code, the travel optimizer,
 simplification and arc fitting (a panel's isolation goes from 301,097 lines to 15,191, within a
-2 µm bound), dry runs, height mapping, machine settings, custom start/end G-code, the standalone
-G-code viewer.
+2 µm bound), isolation width, dry runs, height mapping, machine settings, custom start/end G-code,
+the standalone G-code viewer.
 
 Next: **slots, mill-drill and library-aware tool selection** — an end mill moving sideways at
 depth is a slot and is also a hole too big to drill, and neither can pick its own cutter today.

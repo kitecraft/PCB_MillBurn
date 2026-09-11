@@ -273,7 +273,7 @@ public sealed class ExportPlannerTests
         var plan = Plan(board, Defaults(board));
 
         var isolation = plan.Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
-        Assert.Contains(isolation.Summary, s => s.Contains("0.127 mm wide", StringComparison.Ordinal));
+        Assert.Contains(isolation.Summary, s => s.Contains("0.127 mm isolated", StringComparison.Ordinal));
 
         var drill = plan.Items.First(i => i.Operation == OperationKind.Drilling);
         Assert.Contains(drill.Summary, s => s.Contains("through the back", StringComparison.Ordinal));

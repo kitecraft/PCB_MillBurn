@@ -15,8 +15,25 @@ public sealed record IsolationOptions
     /// </summary>
     public long DepthNm { get; init; } = Nm.FromMillimetres(0.05);
 
-    /// <summary>Cuts around each island. More passes widen the cleared gap either side of a trace.</summary>
+    /// <summary>
+    /// Cuts around each island, when the caller is counting laps rather than asking for a width.
+    ///
+    /// Ignored whenever <see cref="WidthNm"/> is set, which is the normal case — the number of
+    /// passes is a consequence of how wide a moat you asked for and how much the bit cuts, in the
+    /// same way that the cut width is a consequence of the depth. It stays because a project saved
+    /// before widths existed has a pass count and nothing else.
+    /// </summary>
     public int Passes { get; init; } = 1;
+
+    /// <summary>
+    /// How wide a moat to clear either side of the copper, measured from the copper's edge. Zero
+    /// falls back to <see cref="Passes"/>.
+    ///
+    /// This is the number the operator actually cares about. One pass of a 30° V-bit at 0.05 mm
+    /// deep isolates 0.127 mm — electrically fine, and a hairline you cannot see, cannot solder
+    /// across without bridging, and can close by handling the board.
+    /// </summary>
+    public long WidthNm { get; init; }
 
     /// <summary>
     /// How much each pass overlaps the last, as a fraction of the cut width. Zero would leave
@@ -31,6 +48,60 @@ public sealed record IsolationOptions
 
     /// <summary>The width this tool actually cuts at this depth.</summary>
     public long EffectiveWidthNm => Tool.WidthAtDepth(DepthNm);
+
+    /// <summary>
+    /// How far apart consecutive passes are. Less than a full cut width, so the passes overlap:
+    /// stepping by the whole width would leave a hairline ridge between them wherever the machine
+    /// is a few microns out, and a ridge of copper in an isolation moat is a short.
+    /// </summary>
+    public long StepNm => StepFor(EffectiveWidthNm, Overlap);
+
+    /// <summary>
+    /// How many passes this actually runs — derived from <see cref="WidthNm"/> when one is asked
+    /// for, and taken from <see cref="Passes"/> when it is not.
+    /// </summary>
+    public int PassCount => WidthNm <= 0
+        ? Math.Max(1, Passes)
+        : PassesFor(WidthNm, EffectiveWidthNm, Overlap, BiasNm);
+
+    /// <summary>
+    /// The moat those passes really clear, which is at least what was asked for and usually a
+    /// little more — passes come in whole numbers. Reported rather than assumed, because "you asked
+    /// for 0.40 and you are getting 0.45" is the kind of thing an operator wants to be told once
+    /// rather than measure later.
+    /// </summary>
+    public long AchievedWidthNm => ClearedBy(PassCount, EffectiveWidthNm, Overlap, BiasNm);
+
+    /// <summary>Ceiling on how many passes a width may ask for. A backstop, not a design limit.</summary>
+    public const int MaxPasses = 64;
+
+    private static long StepFor(long cutNm, double overlap) =>
+        Math.Max(1, (long)Math.Round(cutNm * (1.0 - Math.Clamp(overlap, 0, 0.9))));
+
+    /// <summary>What a given number of passes clears, measured from the copper's edge outward.</summary>
+    public static long ClearedBy(int passes, long cutNm, double overlap, long biasNm) =>
+        cutNm <= 0 ? 0 : cutNm + biasNm + ((Math.Max(1, passes) - 1) * StepFor(cutNm, overlap));
+
+    /// <summary>
+    /// Passes needed to clear <paramref name="widthNm"/>. Always at least one, so asking for less
+    /// than the bit cuts gives you the one pass you were going to get anyway.
+    /// </summary>
+    public static int PassesFor(long widthNm, long cutNm, double overlap, long biasNm)
+    {
+        if (cutNm <= 0)
+        {
+            return 1;
+        }
+
+        var remaining = widthNm - cutNm - biasNm;
+        if (remaining <= 0)
+        {
+            return 1;
+        }
+
+        var step = StepFor(cutNm, overlap);
+        return (int)Math.Min(MaxPasses, 1 + ((remaining + step - 1) / step));
+    }
 }
 
 /// <summary>
@@ -63,9 +134,10 @@ public static class IsolationOperation
             return Empty(options, label, notes);
         }
 
-        var step = Math.Max(1, (long)Math.Round(width * (1.0 - Math.Clamp(options.Overlap, 0, 0.9))));
+        var step = options.StepNm;
+        var count = options.PassCount;
 
-        for (var pass = 0; pass < Math.Max(1, options.Passes); pass++)
+        for (var pass = 0; pass < count; pass++)
         {
             // Centreline of pass n: half a width clear of the copper, then one step per extra pass.
             var offset = (width / 2) + options.BiasNm + (pass * step);
@@ -97,6 +169,21 @@ public static class IsolationOperation
         var depthMm = Nm.ToMillimetreString(options.DepthNm, 3);
         var widthMm = Nm.ToMillimetreString(width, 3);
         notes.Add(Invariant($"{options.Tool.Name} at {depthMm} mm deep cuts {widthMm} mm wide."));
+
+        if (options.WidthNm > 0)
+        {
+            var asked = Nm.ToMillimetreString(options.WidthNm, 3);
+            var got = Nm.ToMillimetreString(options.AchievedWidthNm, 3);
+            var laps = count == 1 ? "1 pass" : Invariant($"{count} passes");
+
+            notes.Add(Invariant($"{asked} mm of isolation asked for; {laps} clears {got} mm."));
+
+            if (count >= IsolationOptions.MaxPasses)
+            {
+                notes.Add(Invariant(
+                    $"Capped at {IsolationOptions.MaxPasses} passes. Reaching {asked} mm with a {widthMm} mm cut needs more than that; use a wider tool or a deeper cut."));
+            }
+        }
 
         if (options.Tool.WidthPerDepth > 0)
         {

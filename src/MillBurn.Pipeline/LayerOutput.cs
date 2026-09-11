@@ -62,8 +62,25 @@ public sealed record LayerOutputSettings
     public long DepthFor(OperationKind operation) =>
         DepthNm ?? LayerOperations.DefaultDepthNm(operation);
 
-    /// <summary>Isolation only.</summary>
+    /// <summary>
+    /// Isolation only, and only for a project saved before widths existed.
+    ///
+    /// Kept so such a project still exports what it exported, rather than quietly widening every
+    /// moat on a board somebody had already cut once. Ignored whenever
+    /// <see cref="IsolationWidthNm"/> is set.
+    /// </summary>
     public int Passes { get; init; } = 1;
+
+    /// <summary>
+    /// Isolation only: how wide a moat to clear either side of the copper, in nanometres.
+    ///
+    /// Passes are a consequence of this and of what the bit cuts at its depth, in the same way that
+    /// the cut width is a consequence of the depth. Asking for laps is asking about the machine;
+    /// asking for a width is asking about the board, which is the question that has an answer.
+    ///
+    /// Zero falls back to <see cref="Passes"/>.
+    /// </summary>
+    public long IsolationWidthNm { get; init; }
 
     /// <summary>Outline only. Zero cuts the board fully free.</summary>
     public int TabCount { get; init; } = 4;

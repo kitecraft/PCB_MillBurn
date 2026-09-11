@@ -85,6 +85,9 @@ public sealed record AppSettings
     /// <summary>What each kind of layer becomes when a folder is first imported.</summary>
     public ImportDefaults Import { get; init; } = new();
 
+    /// <summary>What a freshly imported layer starts out cutting.</summary>
+    public MillingDefaults Milling { get; init; } = new();
+
     /// <summary>
     /// Width of the left panel, in pixels.
     ///

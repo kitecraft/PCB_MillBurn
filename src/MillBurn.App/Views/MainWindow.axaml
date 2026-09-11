@@ -507,16 +507,28 @@
                                                                        ToolTip.Tip="How deep the cut runs. For a V-bit this is the same choice as how wide it cuts." />
                                                     </Grid>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
-                                                          IsVisible="{Binding NeedsPasses}">
-                                                        <TextBlock Grid.Column="0" Classes="caption" Width="78"
-                                                                   VerticalAlignment="Center" Text="Passes" />
-                                                        <NumericUpDown Grid.Column="1"
-                                                                       Minimum="1" Maximum="8" Increment="1"
-                                                                       FormatString="0"
-                                                                       Value="{Binding Passes, Mode=TwoWay}"
-                                                                       ToolTip.Tip="How many offsets out from the copper. More passes clear more of the field." />
-                                                    </Grid>
+                                                    <!--
+                                                        The moat, not the lap count. How many laps
+                                                        it takes depends on what the bit cuts at
+                                                        this depth, which is itself derived — so
+                                                        asking for passes means doing that sum in
+                                                        your head. The sum is printed underneath
+                                                        instead.
+                                                    -->
+                                                    <StackPanel IsVisible="{Binding NeedsPasses}">
+                                                        <Grid ColumnDefinitions="Auto,*" Margin="0">
+                                                            <TextBlock Grid.Column="0" Classes="caption" Width="78"
+                                                                       VerticalAlignment="Center" Text="Isolate (mm)" />
+                                                            <NumericUpDown Grid.Column="1"
+                                                                           Minimum="0" Maximum="5" Increment="0.05"
+                                                                           FormatString="0.00"
+                                                                           Value="{Binding IsolationWidthMm, Mode=TwoWay}"
+                                                                           ToolTip.Tip="How wide a gap to clear either side of every trace. Zero cuts one lap, whatever the bit happens to be." />
+                                                        </Grid>
+                                                        <TextBlock Classes="caption"
+                                                                   Margin="78,2,0,0"
+                                                                   Text="{Binding IsolationExplanation}" />
+                                                    </StackPanel>
 
                                                     <Grid ColumnDefinitions="Auto,*" Margin="0"
                                                           IsVisible="{Binding NeedsBreakThrough}">

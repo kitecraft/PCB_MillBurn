@@ -94,6 +94,30 @@ public sealed record ProbeSettings
 }
 
 /// <summary>How closely a levelled program follows the measured surface.</summary>
+/// <summary>
+/// What a cutting job starts out doing, as opposed to what the machine is.
+///
+/// These are per-layer settings underneath — a board can isolate its two sides differently — so
+/// what lives here is only the value a freshly imported layer begins with.
+/// </summary>
+public sealed record MillingDefaults
+{
+    /// <summary>
+    /// How wide a moat to clear either side of every trace, in millimetres.
+    ///
+    /// The number that decides what an isolated board looks like, and until now it was not a number
+    /// at all: isolation cut one lap and stopped, which with a 30° V-bit at 0.05 mm deep is a
+    /// 0.127 mm hairline. Electrically that separates the nets. Physically it is a gap you cannot
+    /// see, cannot solder across without bridging, and can close by handling the board.
+    ///
+    /// Zero means one pass, whatever the tool happens to cut — the old behaviour, kept reachable.
+    /// </summary>
+    public double IsolationWidthMm { get; init; } = 0.4;
+
+    [JsonIgnore]
+    public long IsolationWidthNm => Nm.FromMillimetres(IsolationWidthMm);
+}
+
 public sealed record LevelSettings
 {
     /// <summary>The longest a cutting move may be before it is broken up to follow the surface.</summary>
@@ -133,7 +157,11 @@ public static class SettingsCheck
     /// arranged to avoid.
     /// </remarks>
     public static IReadOnlyList<string> Problems(
-        MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level)
+        MachineSettings machine,
+        DryRunSettings dryRun,
+        ProbeSettings probe,
+        LevelSettings level,
+        MillingDefaults? milling = null)
     {
         ArgumentNullException.ThrowIfNull(machine);
         ArgumentNullException.ThrowIfNull(dryRun);
@@ -141,6 +169,22 @@ public static class SettingsCheck
         ArgumentNullException.ThrowIfNull(level);
 
         var problems = new List<string>();
+
+        if (milling is { } mill)
+        {
+            if (mill.IsolationWidthMm < 0)
+            {
+                problems.Add("Isolation width cannot be negative. Zero means a single pass.");
+            }
+
+            // Not a hard limit on what the geometry can do — it is a limit on what anybody means.
+            // A 5 mm moat around every trace is a board with almost no copper left on it, and it
+            // is much more likely to be millimetres typed where microns were meant.
+            if (mill.IsolationWidthMm > 5)
+            {
+                problems.Add("Isolation width above 5 mm would clear most of the copper off the board.");
+            }
+        }
 
         if (machine.SafeZMm <= 0)
         {

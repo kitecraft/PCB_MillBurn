@@ -525,12 +525,26 @@ public static class ExportPlanner
             Tool = tool,
             DepthNm = setting.DepthFor(OperationKind.Isolation),
             Passes = setting.Passes,
+            WidthNm = setting.IsolationWidthNm,
         };
 
         var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
         var depth = Nm.ToMillimetreString(options.DepthNm, 3);
-        var passLabel = setting.Passes == 1 ? "1 pass" : Invariant($"{setting.Passes} passes");
-        summary.Add(Invariant($"{width} mm wide at {depth} mm deep · {passLabel}"));
+        var count = options.PassCount;
+        var moat = Nm.ToMillimetreString(options.AchievedWidthNm, 3);
+
+        // The moat leads, because it is what the board ends up looking like; the cut width and the
+        // pass count follow as the arithmetic that got there. On a single lap the two numbers are
+        // the same one, so it is not said twice.
+        summary.Add(count == 1
+            ? Invariant($"{moat} mm isolated · 1 pass at {depth} mm deep")
+            : Invariant($"{moat} mm isolated · {count} passes of {width} mm at {depth} mm deep"));
+
+        if (options.WidthNm > 0 && count >= IsolationOptions.MaxPasses)
+        {
+            warnings.Add(Invariant(
+                $"Isolation is capped at {IsolationOptions.MaxPasses} passes and reaches only {Nm.ToMillimetreString(options.AchievedWidthNm, 3)} mm of the {Nm.ToMillimetreString(options.WidthNm, 3)} mm asked for. Use a wider tool, or cut deeper."));
+        }
 
         var unreachable = IsolationOperation.UnreachableGaps(layer.Area, options);
         if (unreachable > 0)

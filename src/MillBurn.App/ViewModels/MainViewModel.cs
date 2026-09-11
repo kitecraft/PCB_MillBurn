@@ -179,10 +179,11 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     public void SaveMachineSettings(
         MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level,
-        ImportDefaults import)
+        ImportDefaults import, MillingDefaults milling)
     {
         ArgumentNullException.ThrowIfNull(machine);
         ArgumentNullException.ThrowIfNull(import);
+        ArgumentNullException.ThrowIfNull(milling);
 
         SaveSettings(Settings with
         {
@@ -191,6 +192,7 @@ public sealed partial class MainViewModel : ViewModelBase
             Probe = probe,
             Level = level,
             Import = import,
+            Milling = milling,
         });
 
         if (Gcode is not null && !HasProgram)
@@ -1174,6 +1176,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 {
                     FileName = layer.Id,
                     Output = LayerOperations.DefaultFor(source.Role, Settings.Import),
+                    IsolationWidthNm = Settings.Milling.IsolationWidthNm,
                 };
 
             var row = new LayerRow(

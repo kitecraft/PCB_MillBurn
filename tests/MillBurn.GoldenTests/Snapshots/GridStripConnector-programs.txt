@@ -27,7 +27,7 @@ GridStripConnector-F_Cu.nc
   layer     Top copper
   lines     116
   sha256    93c6bb859e50812a
-  summary   0.127 mm wide at 0.050 mm deep · 1 pass
+  summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   172 mm cutting, 14 mm travel
   summary   0m 56s – 0m 58s · 115 lines
   summary   Simplified: 1,148 → 85 moves, 40 arcs (93 % fewer)

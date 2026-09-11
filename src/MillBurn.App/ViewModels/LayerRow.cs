@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
@@ -86,6 +87,7 @@ public sealed partial class LayerRow : ObservableObject
         TabCount = settings.TabCount;
         DrillGuide = settings.WriteDrillGuide;
         Passes = settings.Passes;
+        IsolationWidthMm = Nm.ToMillimetres(settings.IsolationWidthNm);
         Mirrored = settings.MirrorFor(layer.Role);
         Invert = settings.Invert;
 
@@ -276,9 +278,43 @@ public sealed partial class LayerRow : ObservableObject
         _ => "none",
     };
 
-    /// <summary>Isolation only: how many offsets out from the copper.</summary>
+    /// <summary>
+    /// Isolation only, and only where a project saved before widths existed set one. Not shown.
+    /// </summary>
+    public int Passes { get; private set; } = 1;
+
+    /// <summary>
+    /// Isolation only: how wide a moat to clear either side of the copper, in millimetres.
+    ///
+    /// The control, because it is the thing the board ends up having. How many laps that takes is
+    /// arithmetic — see <see cref="IsolationPasses"/> — and typing a lap count means doing that
+    /// arithmetic in your head with a number (the bit's cut width) that is itself derived.
+    /// </summary>
     [ObservableProperty]
-    public partial int Passes { get; set; } = 1;
+    public partial double IsolationWidthMm { get; set; }
+
+    /// <summary>What that width costs, in passes, with this tool at this depth.</summary>
+    public int IsolationPasses => IsolationWidthMm <= 0
+        ? Math.Max(1, Passes)
+        : IsolationOptions.PassesFor(
+            Nm.FromMillimetres(IsolationWidthMm),
+            Tool.WidthAtDepth(Nm.FromMillimetres(DepthMm)),
+            new IsolationOptions().Overlap,
+            0);
+
+    /// <summary>What those passes really clear, which is the width rounded up to a whole lap.</summary>
+    public double IsolationAchievedMm => Nm.ToMillimetres(IsolationOptions.ClearedBy(
+        IsolationPasses,
+        Tool.WidthAtDepth(Nm.FromMillimetres(DepthMm)),
+        new IsolationOptions().Overlap,
+        0));
+
+    /// <summary>The arithmetic, said out loud under the control that drives it.</summary>
+    public string IsolationExplanation => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{IsolationPasses} pass{(IsolationPasses == 1 ? string.Empty : "es")} of "
+        + $"{Nm.ToMillimetreString(Tool.WidthAtDepth(Nm.FromMillimetres(DepthMm)), 3)} mm "
+        + $"clears {IsolationAchievedMm:F3} mm");
 
     /// <summary>
     /// Reflect this layer for work done on a flipped board.
@@ -367,7 +403,10 @@ public sealed partial class LayerRow : ObservableObject
     partial void OnToolChanged(Tool value)
     {
         _ = value;
-        OnPropertyChanged(nameof(Detail));
+
+        // A different bit cuts a different width, so the same moat takes a different number of
+        // passes. Nothing the operator typed has changed and the answer has.
+        RefreshIsolation();
         _outputChanged?.Invoke();
     }
 
@@ -387,7 +426,8 @@ public sealed partial class LayerRow : ObservableObject
             _depthDefaultedFor = null;
         }
 
-        OnPropertyChanged(nameof(Detail));
+        // For a V-bit the depth *is* the cut width, so it moves the pass count too.
+        RefreshIsolation();
         _outputChanged?.Invoke();
     }
 
@@ -404,11 +444,23 @@ public sealed partial class LayerRow : ObservableObject
         _outputChanged?.Invoke();
     }
 
-    partial void OnPassesChanged(int value)
+    partial void OnIsolationWidthMmChanged(double value)
     {
         _ = value;
-        OnPropertyChanged(nameof(Detail));
+        RefreshIsolation();
         _outputChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Everything derived from the width, the depth and the tool. Called from all three, because
+    /// changing any of them changes how many passes the same moat takes.
+    /// </summary>
+    private void RefreshIsolation()
+    {
+        OnPropertyChanged(nameof(IsolationPasses));
+        OnPropertyChanged(nameof(IsolationAchievedMm));
+        OnPropertyChanged(nameof(IsolationExplanation));
+        OnPropertyChanged(nameof(Detail));
     }
 
     partial void OnMirroredChanged(bool value)
@@ -479,9 +531,9 @@ public sealed partial class LayerRow : ObservableObject
                 ? "1 size"
                 : string.Create(CultureInfo.InvariantCulture, $"{sizeCount} sizes");
             var cutter = Nm.ToMillimetreString(Tool.DiameterNm, 2);
-            var passes = Passes == 1
+            var passes = IsolationPasses == 1
                 ? "1 pass"
-                : string.Create(CultureInfo.InvariantCulture, $"{Passes} passes");
+                : string.Create(CultureInfo.InvariantCulture, $"{IsolationPasses} passes");
 
             return Operation switch
             {
@@ -489,7 +541,7 @@ public sealed partial class LayerRow : ObservableObject
 
                 OperationKind.Isolation => string.Create(
                     CultureInfo.InvariantCulture,
-                    $"Cuts {cutWidth} mm wide at {DepthMm:F3} mm deep · {passes}{flip}"),
+                    $"Isolates {IsolationAchievedMm:F3} mm · {passes} of {cutWidth} mm at {DepthMm:F3} mm deep{flip}"),
 
                 OperationKind.Engrave when IsGcode => $"Traces the legend {cutWidth} mm wide{flip}",
 
@@ -520,6 +572,7 @@ public sealed partial class LayerRow : ObservableObject
         TabCount = TabCount,
         WriteDrillGuide = DrillGuide,
         Passes = Passes,
+        IsolationWidthNm = Nm.FromMillimetres(IsolationWidthMm),
         Mirrored = Mirrored,
         Invert = Invert,
     };

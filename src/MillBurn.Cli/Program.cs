@@ -40,6 +40,7 @@ internal static class Program
             Console.WriteLine("  tools [list|add|remove|path]   Manage the saved tool library");
             Console.WriteLine("  mill <folder-or-project>       Gerber to G-code: isolate, drill, cut out");
             Console.WriteLine("                                 --isolation-tool <name> --outline-tool <name> pick from the library");
+            Console.WriteLine("                                 --isolation-width <mm> how wide a moat to clear around each trace");
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
@@ -1047,10 +1048,12 @@ internal static class Program
     /// </summary>
     private static int Mill(string[] args)
     {
+        var app = AppSettings.LoadOrDefault();
         var input = args[1];
         var output = Argument(args, "-o") ?? Argument(args, "--out");
         var depthMm = 0.05;
         var passes = 1;
+        var isolationWidthMm = -1.0;
         var angle = 30.0;
         var tipMm = 0.1;
         var toolMm = 1.0;
@@ -1072,6 +1075,16 @@ internal static class Program
 
                 case "--depth" when value is not null:
                     if (!TryMm(value, out depthMm)) { return Bad(flag); }
+                    i++;
+                    break;
+
+                case "--isolation-width" when value is not null:
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out isolationWidthMm)
+                        || isolationWidthMm < 0)
+                    {
+                        return Bad(flag);
+                    }
+
                     i++;
                     break;
 
@@ -1187,6 +1200,13 @@ internal static class Program
         outlineTool ??= Tool.DefaultOutlineMill with { DiameterNm = Nm.FromMillimetres(toolMm) };
 
         var tool = isolationTool;
+        // --passes is still honoured when it is the only thing given, so a script written against
+        // the old flag keeps working. Asking for a width is the better question and wins when both
+        // are present.
+        var isolationWidth = isolationWidthMm >= 0
+            ? Nm.FromMillimetres(isolationWidthMm)
+            : passes > 1 ? 0 : app.Milling.IsolationWidthNm;
+
 
         var options = new MillOptions
         {
@@ -1199,8 +1219,10 @@ internal static class Program
             },
             Isolation = new IsolationOptions
             {
+                Tool = isolationTool,
                 DepthNm = Nm.FromMillimetres(depthMm),
                 Passes = passes,
+                WidthNm = isolationWidth,
             },
             Drill = new DrillOptions { BoardThicknessNm = Nm.FromMillimetres(thicknessMm) },
             Outline = new OutlineOptions
@@ -1230,6 +1252,8 @@ internal static class Program
         Line($"  isolation   {tool}");
         Line($"  outline     {outlineTool}");
         Line($"  effective   {Nm.ToMillimetreString(effective, 3)} mm wide at {depthMm:F3} mm deep");
+        var moat = options.Isolation with { Tool = isolationTool };
+        Line($"  isolates    {Nm.ToMillimetreString(moat.AchievedWidthNm, 3)} mm in {moat.PassCount} pass(es)");
         Line($"  built in    {elapsed.TotalMilliseconds:F0} ms");
         Console.WriteLine();
 
@@ -1453,6 +1477,7 @@ internal static class Program
                 {
                     FileName = l.FileName,
                     Output = LayerOperations.DefaultFor(l.Role, app.Import),
+                    IsolationWidthNm = app.Milling.IsolationWidthNm,
                 },
             StringComparer.Ordinal);
 

@@ -6,7 +6,7 @@ PogoTest1-B_Cu.nc
   layer     Bottom copper
   lines     524
   sha256    4171c8f4121b9f12
-  summary   0.127 mm wide at 0.050 mm deep · 1 pass
+  summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   Mirrored · flip the stock left-to-right
   summary   531 mm cutting, 96 mm travel
   summary   3m 15s – 3m 26s · 523 lines
@@ -52,7 +52,7 @@ PogoTest1-F_Cu.nc
   layer     Top copper
   lines     159
   sha256    86dea96c2b38ccec
-  summary   0.127 mm wide at 0.050 mm deep · 1 pass
+  summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   319 mm cutting, 88 mm travel
   summary   1m 57s – 2m 1s · 158 lines
   summary   Simplified: 2,721 → 83 moves, 39 arcs (97 % fewer)

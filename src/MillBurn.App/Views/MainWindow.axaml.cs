@@ -908,7 +908,8 @@ public partial class MainWindow : Window
 
         if (await SettingsWindow.AskAsync(this, vm.Settings) is { } chosen)
         {
-            vm.SaveMachineSettings(chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level, chosen.Import);
+            vm.SaveMachineSettings(
+                chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level, chosen.Import, chosen.Milling);
         }
     }
 
