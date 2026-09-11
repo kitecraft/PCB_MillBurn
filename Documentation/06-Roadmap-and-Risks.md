@@ -1245,6 +1245,58 @@ looked unfitted, and measuring the rendered pixels showed the fit was correct an
 the copper. Opened on its own, the first dry run drew two dashed lines and looked broken. A
 standalone program now turns every backplot layer on: over nothing, there is nothing to declutter.
 
+### Every channel on a panel cut on the wrong side
+
+Reported from the workshop, off the screen, before anything was cut: *"the cut lines are on the
+wrong side for these internal edge cuts."* They were.
+
+A panelised KiCad board draws the routed channels between its boards as closed loops in
+`Edge_Cuts` — a 1 mm-wide lattice, with the mouse-bite tabs drawn as excursions in the loop. The
+exporter had one rule for every profile it found, and the rule was *offset outward by the cutter
+radius*, which is right for the boundary between the job and the stock and exactly wrong for a void
+inside it. On the 66-up panel, measured in the emitted program: the channel runs from Y97.05 to
+Y98.05, and the passes were at **Y96.500 and Y98.600** — a groove through the board on each side of
+the channel, and the 1 mm channel itself left standing. Every board a cutter-radius undersize on
+that edge, and a panel that never comes apart.
+
+Nothing in the output said so. The program was the right length, the profile count was right, the
+tabs were right, and 716 tests passed.
+
+**The rule is that the cutter goes on the waste side: outside a piece, inside a void.** Nesting
+finds the candidates — a profile enclosed by another is usually waste — but nesting on its own
+cannot decide it, and that is the part worth writing down. A hand-panelised file draws the stock as
+one rectangle and each board as another rectangle inside it. Those nest exactly as a channel does,
+and cutting them on the inside would take a cutter diameter off every board. The two cases are
+geometrically identical and want opposite answers.
+
+What separates them is whether the profile has any of the board inside it. Two attempts at asking
+that were wrong in the same place:
+
+- **Is a vertex of any artwork inside the profile?** A ground pour runs right to the board edge, so
+  the copper ring beside a channel begins a micron inside it. Nine rings per channel.
+- **Is more than 1 % of the profile covered by artwork?** Same cause, one step along: the profile
+  is the *outside* of the pen the outline was drawn with, so it overhangs the true edge by half a
+  pen width, and the pour sitting in that overhang came to 0.49 mm² against a 0.39 mm² threshold.
+
+Both were measuring the edge, and the edge is where every board's copper ends. The question that
+works is the machining one: **would a cut inside this profile destroy any of the board?** A cutter
+run inside sweeps a band one diameter wide in from the boundary; whatever lies further in than that
+is what such a cut would spare. A 1 mm channel has nothing left at all. A board inside a frame still
+has almost all of itself. No threshold in the middle for either case to fall foul of.
+
+With no artwork to test against, nothing is flipped and the cut stays where it has always been.
+Silence is not evidence, and guessing between a channel and a board destroys a panel in one
+direction or the other.
+
+The panel's outline program went from 8,577 lines to 5,828 and from 20,996 mm of cutting to 19,039.
+`OutlineSideTests` pins the side for a channel, a hand-cut frame, an empty window, a pour that runs
+to the edge, and the no-evidence case.
+
+**Still redundant:** a 1 mm channel offset inward by a 0.5 mm radius collapses to a 0.1 mm-wide
+loop, and the cutter runs down one side of it and back up the other 0.1 mm away. It removes the
+right material and the return pass is nearly all air. Collapsing a degenerate void to its medial
+axis would take roughly another 40 % off this program and is not done.
+
 <a id="phase-55"></a>
 
 ### Phase 5.5 — Drilling, finished — **scheduled, not started**

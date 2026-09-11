@@ -48,6 +48,22 @@ public sealed record OutlineOptions
     /// <summary>Cut outside the profile line, so the finished board is nominal size.</summary>
     public bool CutOutside { get; init; } = true;
 
+    /// <summary>
+    /// The board's own artwork, which is how a piece is told from a void.
+    ///
+    /// A profile nested inside another is nearly always waste — a slot, a window, the routed
+    /// channel between the boards of a panel — and the cutter has to run *inside* it. The exception
+    /// is a hand-panelised file, where the stock is one rectangle and each board is another
+    /// rectangle inside it: those are nested too, and they are still pieces. What separates the two
+    /// is whether there is anything on the board inside the profile. Empty means waste.
+    ///
+    /// Null or empty means there is no evidence either way, and then every profile is cut on the
+    /// <see cref="CutOutside"/> side. Nesting alone must not decide it: a slot and a board inside a
+    /// hand-cut panel frame are nested identically, and guessing between them is how a panel gets
+    /// quietly destroyed in one direction or the other.
+    /// </summary>
+    public Paths64? Keep { get; init; }
+
     public long SagittaNm { get; init; } = Tessellate.DefaultSagittaNm;
 
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
@@ -131,10 +147,11 @@ public static class OutlineOperation
     /// The profile, offset by the cutter radius and stepped down in depth, with gaps left where the
     /// tabs go.
     ///
-    /// Two things decide whether this works. The offset must be **outside** the profile, or the
-    /// board comes out a cutter-width small on every edge. And the last pass must not be the first
-    /// time the board is free: without tabs, the cut-out piece lifts on the cutter somewhere near
-    /// the end and is thrown, usually taking the cutter with it.
+    /// Two things decide whether this works. The offset must be on the waste side of every profile
+    /// — outside a piece, inside a void — or the board comes out a cutter-width small on every
+    /// edge it got wrong. And the last pass must not be the first time the board is free: without
+    /// tabs, the cut-out piece lifts on the cutter somewhere near the end and is thrown, usually
+    /// taking the cutter with it.
     /// </summary>
     public static Toolpath Build(Paths64 outline, OutlineOptions options, string label = "Outline")
     {
@@ -142,23 +159,52 @@ public static class OutlineOperation
         ArgumentNullException.ThrowIfNull(options);
 
         var radius = options.Tool.DiameterNm / 2;
-        var offset = options.CutOutside ? radius : -radius;
+
+        // Nesting is worked out on the profiles as drawn, before any offsetting, because the offset
+        // now depends on it. It used to be derived from the offset contours, which was harmless
+        // only while every profile moved the same way.
+        var nesting = NestingOf(outline);
+        var pieces = PiecesAmong(outline, options.Keep, options.Tool.DiameterNm);
 
         // Each profile is offset on its own, not as one polygon set.
         //
         // Offsetting them together makes Clipper fill the whole set: a panel frame's own rectangle
         // then covers every board inside it and they disappear, which is a program that cuts the
         // frame out and leaves every board attached to it. Independently, each profile keeps its
-        // own boundary.
+        // own boundary — and its own side.
         var contours = new Paths64();
-        foreach (var profile in outline)
+        var depths = new List<int>();
+        var voids = 0;
+
+        for (var p = 0; p < outline.Count; p++)
         {
-            contours.AddRange(Clipper.InflatePaths(
-                new Paths64 { profile },
-                offset,
+            // Which side of the line the cutter runs on, per profile.
+            //
+            // A piece keeps its size when the cutter passes outside it; a void keeps its size when
+            // the cutter stays inside it. Getting this backwards on a panel's routed channels does
+            // not merely cut in the wrong place — it cuts two grooves through the boards either
+            // side and leaves the channel itself uncut, so the panel never comes apart.
+            var outward = pieces[p] == options.CutOutside;
+
+            if (!pieces[p])
+            {
+                voids++;
+            }
+
+            var grown = Clipper.InflatePaths(
+                new Paths64 { outline[p] },
+                outward ? radius : -radius,
                 JoinType.Round,
                 EndType.Polygon,
-                arcTolerance: options.SagittaNm));
+                arcTolerance: options.SagittaNm);
+
+            var depth = nesting.GetValueOrDefault(p);
+
+            foreach (var contour in grown)
+            {
+                contours.Add(contour);
+                depths.Add(depth);
+            }
         }
 
         var notes = new List<string>();
@@ -181,8 +227,7 @@ public static class OutlineOperation
         // How deeply each profile sits inside the others. On a panel the boards are one level
         // inside the frame, and they have to be cut first: take the frame out first and everything
         // still attached to it is loose while the cutter is still working.
-        var nesting = NestingOf(contours);
-        var deepest = nesting.Count == 0 ? 0 : nesting.Values.Max();
+        var deepest = depths.Count == 0 ? 0 : depths.Max();
 
         var shallowDepths = new List<long>();
         var tabbedDepths = new List<long>();
@@ -208,7 +253,7 @@ public static class OutlineOperation
 
             // One stack per profile: everything at this place, cut deeper each time, kept together
             // so the tool finishes here before it moves.
-            var group = deepest - nesting.GetValueOrDefault(c);
+            var group = deepest - depths[c];
 
             // Tabs go on the outermost profiles only.
             //
@@ -217,7 +262,7 @@ public static class OutlineOperation
             // held — on a panel the individual boards are joined to each other by the tabs the
             // designer drew, and adding more on all four sides of every one of them leaves a panel
             // that has to be cut apart by hand.
-            var outermost = nesting.GetValueOrDefault(c) == 0;
+            var outermost = depths[c] == 0;
 
             foreach (var depth in outermost ? shallowDepths : allDepths)
             {
@@ -262,18 +307,25 @@ public static class OutlineOperation
         var total = Nm.ToMillimetreString(options.TotalDepthNm, 2);
         notes.Add(Invariant($"{steps} passes of {perPass} mm to {total} mm."));
 
+        if (voids > 0)
+        {
+            // Counted in profiles, not contours: one profile can offset into more than one contour.
+            notes.Add(Invariant(
+                $"Cut on the outside: {pieces.Count(p => p)}. Cut from the inside: {voids}, because they enclose nothing — so the pieces either side of them keep their size."));
+        }
+
         if (options.TabCount > 0)
         {
             var tabWidth = Nm.ToMillimetreString(options.TabWidthNm, 1);
             var tabHeight = Nm.ToMillimetreString(options.TabHeightNm, 2);
-            var outerCount = nesting.Values.Count(v => v == 0);
+            var outerCount = depths.Count(d => d == 0);
 
             notes.Add(Invariant(
                 $"{options.TabCount} tabs, {tabWidth} mm wide, {tabHeight} mm of material left under each."));
 
-            if (nesting.Count > outerCount)
+            if (depths.Count > outerCount)
             {
-                var inner = nesting.Count - outerCount;
+                var inner = depths.Count - outerCount;
                 notes.Add(
                     Invariant($"Tabs on the {outerCount} outer profile(s) only; the {inner} inside ")
                     + "are held by whatever joins them in the design.");
@@ -301,6 +353,116 @@ public static class OutlineOperation
     /// the corners: spacing tabs by index would put most of them on one corner and leave a long
     /// edge unsupported.
     /// </summary>
+    /// <summary>
+    /// Which profiles bound a piece to keep, and which bound a void to cut away.
+    ///
+    /// Two rules, in order.
+    ///
+    /// **An outermost profile is a piece.** Nothing encloses it, so the waste is the stock around
+    /// it, and the cutter belongs outside.
+    ///
+    /// **A nested profile is a void unless it holds something.** A slot, a window, the routed
+    /// channel between the boards of a panel — all of them are enclosed by the profile around them
+    /// and all of them are material to remove. The counter-example is the hand-panelised file where
+    /// the stock is one rectangle and each board is another rectangle inside it; those are nested
+    /// and they are still pieces. The difference that matters is not size or shape, because a
+    /// channel can be wide and a board can be small: it is that a board has artwork on it and a
+    /// channel has nothing. Empty means waste.
+    ///
+    /// With no artwork to test against there is no evidence, so everything is a piece and the cut
+    /// stays where it has always been. Nesting on its own is not enough to flip a profile: a slot
+    /// and a board inside a hand-cut frame nest identically, and the two want opposite sides.
+    ///
+    /// Public because the export review has to say which way round it went before anybody presses
+    /// go, and a claim about the cut that is computed from the same rule that made it is better
+    /// than a claim written by hand beside it.
+    /// </summary>
+    /// <param name="outline">The profiles, as drawn.</param>
+    /// <param name="keep">The board's artwork. Null or empty means no evidence.</param>
+    /// <param name="reachNm">
+    /// The cutter's diameter — the band a cut inside a profile sweeps in from its boundary.
+    /// </param>
+    public static bool[] PiecesAmong(Paths64 outline, Paths64? keep, long reachNm)
+    {
+        ArgumentNullException.ThrowIfNull(outline);
+
+        var pieces = new bool[outline.Count];
+        Array.Fill(pieces, true);
+
+        if (keep is null || keep.Count == 0)
+        {
+            return pieces;
+        }
+
+        var nesting = NestingOf(outline);
+        var artwork = keep.Where(k => k.Count > 2).ToList();
+        var artBounds = artwork.Select(k => Clipper.GetBounds(new Paths64 { k })).ToList();
+
+        for (var i = 0; i < outline.Count; i++)
+        {
+            pieces[i] = nesting.GetValueOrDefault(i) == 0
+                || Holds(outline[i], reachNm, artwork, artBounds);
+        }
+
+        return pieces;
+    }
+
+    /// <summary>
+    /// Whether cutting inside this profile would destroy any of the board.
+    ///
+    /// That is the question, rather than "is there artwork inside it", and the difference is the
+    /// whole of this method. Two earlier attempts got it wrong in the same place. A vertex test
+    /// failed because a ground pour runs right to the board edge, so on a panel the copper ring
+    /// beside a routed channel begins a micron inside it — nine rings per channel on a real 66-up
+    /// panel. An overlapping-area test failed one step along for the same reason: the profile is
+    /// the *outside* of the pen the outline was drawn with, so it overhangs the true edge by half a
+    /// pen width, and the pour sitting in that overhang measured 0.49 mm2 per channel against a
+    /// 0.39 mm2 threshold. Both were measuring the edge, and the edge is where every board's copper
+    /// ends.
+    ///
+    /// So look where the cut would actually go. A cutter run inside a profile sweeps the band from
+    /// its boundary inward by one diameter, and what lies further in than that is what such a cut
+    /// would spare. A routed channel is narrower than the cutter and has nothing left at all; a
+    /// board inside a frame still has almost all of itself.
+    /// </summary>
+    private static bool Holds(Path64 profile, long reachNm, List<Path64> artwork, List<Rect64> artBounds)
+    {
+        if (profile.Count < 3)
+        {
+            return false;
+        }
+
+        var inner = Clipper.InflatePaths(
+            new Paths64 { profile }, -Math.Max(1, reachNm), JoinType.Miter, EndType.Polygon);
+
+        if (inner.Count == 0)
+        {
+            return false;
+        }
+
+        var region = Clipper.GetBounds(inner);
+        var near = new Paths64();
+
+        for (var i = 0; i < artwork.Count; i++)
+        {
+            if (artBounds[i].Intersects(region))
+            {
+                near.Add(artwork[i]);
+            }
+        }
+
+        if (near.Count == 0)
+        {
+            return false;
+        }
+
+        var shared = Math.Abs(Clipper.Area(Clipper.Intersect(near, inner, FillRule.NonZero)));
+
+        // A hundredth of a square millimetre, to ignore the slivers an offset leaves behind. Both
+        // real cases are orders of magnitude away from it, in opposite directions.
+        return shared > 0.01 * Nm.PerMillimetre * Nm.PerMillimetre;
+    }
+
     /// <summary>
     /// How many of the other profiles each profile sits inside.
     ///

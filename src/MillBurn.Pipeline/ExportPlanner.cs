@@ -282,11 +282,6 @@ public static class ExportPlanner
         // press go, and the feed that suited the last bit may not suit this one.
         warnings.AddRange(ToolAdvice.For(tool));
 
-        // What the tool's own numbers say about how it will behave. Shown against the operation
-        // rather than only in the tool editor, because this is the moment somebody is deciding to
-        // press go, and the feed that was fine for the last bit may not be for this one.
-        warnings.AddRange(ToolAdvice.For(tool));
-
         // A list, because drilling is genuinely several toolpaths: one per hole size, each with its
         // own bit. Every other operation is one. Collapsing them into a single toolpath -- which is
         // what this used to do -- silently drilled every hole with whichever bit came first.
@@ -294,7 +289,7 @@ public static class ExportPlanner
         {
             OperationKind.Isolation => Only(BuildIsolation(layer, setting, tool, summary, warnings)),
             OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary, warnings),
-            OperationKind.Outline => Only(BuildOutline(layer, setting, tool, boardThicknessNm, summary, warnings)),
+            OperationKind.Outline => Only(BuildOutline(board, layer, setting, tool, boardThicknessNm, summary, warnings)),
             OperationKind.Engrave => Only(BuildEngrave(layer, setting, tool, summary)),
             OperationKind.Pocket => Only(BuildPocket(layer, setting, tool, summary, warnings)),
             _ => [],
@@ -663,6 +658,7 @@ public static class ExportPlanner
         toolpath is null ? [] : [toolpath];
 
     private static Toolpath BuildOutline(
+        Board board,
         BoardLayer layer,
         LayerOutputSettings setting,
         Tool tool,
@@ -670,6 +666,15 @@ public static class ExportPlanner
         List<string> summary,
         List<string> warnings)
     {
+        // Everything on the board except the outline itself, so the cut knows a piece from a void.
+        //
+        // A profile with none of this inside it encloses nothing worth keeping, which is what a
+        // slot, a window, or the routed channel between the boards of a panel is.
+        var keep = new Paths64(board.Layers
+            .Where(l => l.Role != LayerRole.Outline)
+            .SelectMany(l => l.Area)
+            .Where(r => Clipper.Area(r) > 0));
+
         var options = new OutlineOptions
         {
             Tool = tool,
@@ -677,6 +682,7 @@ public static class ExportPlanner
             BreakThroughNm = setting.BreakThroughNm,
             TabCount = setting.TabCount,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
+            Keep = keep,
         };
 
         var cutter = Nm.ToMillimetreString(tool.DiameterNm, 2);
@@ -718,6 +724,19 @@ public static class ExportPlanner
             // realises to is not the number of boards and must not be reported as though it were.
             summary.Add(Invariant(
                 $"{profiles.Count} profiles · inner pieces cut before the frame around them"));
+        }
+
+        // Which side each profile is cut on, said before anybody presses go.
+        //
+        // This is worth a line of its own because it is the difference between a panel that comes
+        // apart and one that is quietly destroyed: a routed channel cut on the outside takes a
+        // cutter-radius off the boards on both sides and leaves the channel itself standing.
+        var cutInside = OutlineOperation.PiecesAmong(profiles, keep, tool.DiameterNm).Count(p => !p);
+
+        if (cutInside > 0)
+        {
+            summary.Add(Invariant(
+                $"{cutInside} of them enclose nothing and are cut from the inside — slots, windows, or the channels between the boards of a panel"));
         }
 
         return OutlineOperation.Build(profiles, options, layer.Label);
