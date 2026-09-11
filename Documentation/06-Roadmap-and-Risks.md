@@ -1054,9 +1054,23 @@ a count on each group heading, so a fully shut drawer still answers *which parts
 being cut*. Before, that took opening every row in turn.
 
 **And the two tedious gestures got names.** Right-click a layer for *Show only this toolpath* and
-*Export only this layer*. The second snapshots what every layer was set to and *Restore exports*
-puts that back — the point of the gesture is that it is undoable, and re-setting six dropdowns by
-hand afterwards is the tedium it exists to remove.
+*Export only this layer*.
+
+The second was first built as a state change: set every other layer to Not exported, keep a snapshot,
+and offer *Restore exports* to undo it. That was wrong twice over. It shipped with a defect — the
+change rebuilt the rows and the rebuild cleared the snapshot, so restore had nothing to put back —
+and more importantly it was a state machine with edges nobody could see: change a third layer while
+one is isolated, and the snapshot describes a board that no longer exists.
+
+Raised from the workshop, and the answer was in the name: *export only this layer* should open the
+export window with that one file in it. It narrows the **plan** and touches nothing else, so there
+is no snapshot, no staleness, and nothing to restore. The mute, the snapshot, the restore command
+and the flag that drove it are all gone.
+
+*Job ▸ Reset layers to defaults* covers the case the restore was reaching for — every layer back to
+what a fresh import would have given it, the whole record and not just the output kind. It asks
+first, and it leaves board thickness and colours alone: those describe the stock and the operator's
+eyes, not the design.
 
 **Preview and Export moved to the header, and the export filter was deleted.** They had lived at the
 bottom of the left panel, under a heading, behind a "Both / SVG only / G-code only" dropdown. Once

@@ -1239,11 +1239,17 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  <em>Right-click any layer</em> for the two things that are tedious one row at a time:
-  <strong>Show only this toolpath</strong>, and <strong>Export only this layer</strong>. Both are
-  undoable &mdash; <em>Show all toolpaths</em> is also in the View menu, and <strong>Restore
-  exports</strong> puts back exactly what every layer was set to before, rather than guessing at
-  defaults.
+  <em>Right-click any layer</em> for <strong>Show only this toolpath</strong> and <strong>Export
+  only this layer&hellip;</strong>. The second opens the usual export window with just that one
+  file in it &mdash; it changes nothing about your settings, so there is nothing to put back
+  afterwards.
+</p>
+
+<p>
+  And <em>Job &rarr; Reset layers to defaults</em> puts every layer back to what it would have been
+  on a fresh import: what it becomes, its tool, depth, passes, tabs and the rest. Board thickness
+  and colours are left alone, because those describe your stock and your eyes rather than the
+  design. It asks first, and it cannot be undone.
 </p>
 
 <h3>Why the list is in that order</h3>

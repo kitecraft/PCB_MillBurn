@@ -614,7 +614,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// no filter: what each layer produces is that layer's own setting, said on its own row, and a
     /// second control that could disagree with six rows at once is one answer too many.
     /// </summary>
-    public ExportPlan? PlanExport(OutputKind? filter = null)
+    public ExportPlan? PlanExport(OutputKind? filter = null, string? onlyLayer = null)
     {
         if (_board is null)
         {
@@ -626,9 +626,25 @@ public sealed partial class MainViewModel : ViewModelBase
         var settings = _project.Settings.LayerOutputs.ToDictionary(
             o => o.FileName, o => o, StringComparer.Ordinal);
 
-        return ExportPlanner.Plan(
+        var plan = ExportPlanner.Plan(
             _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter,
             framing: Framing, machineSettings: Settings.Machine);
+
+        if (onlyLayer is null)
+        {
+            return plan;
+        }
+
+        // "Export only this layer" narrows the *plan*, not the project. It used to set every other
+        // layer to Not exported and keep a snapshot to undo with, which is a state machine with
+        // edges: change a third layer while one is isolated and the snapshot describes a board that
+        // no longer exists. Filtering one plan has no such state — the settings are untouched, so
+        // there is nothing to put back.
+        return plan with
+        {
+            Items = [.. plan.Items.Where(i => string.Equals(i.LayerFileName, onlyLayer, StringComparison.Ordinal))],
+            Skipped = [],
+        };
     }
 
     /// <summary>
@@ -1051,13 +1067,6 @@ public sealed partial class MainViewModel : ViewModelBase
         // A program made from the previous board is not a program for this one.
         ForgetProgram();
 
-        // Nor is a snapshot of the previous board's exports: it would put back names this board
-        // does not have. Cleared *here* rather than on every rebuild, because "export only this
-        // layer" rebuilds — so clearing it there threw the snapshot away the instant it was taken,
-        // and Restore exports had nothing left to restore.
-        _mutedExports = null;
-        OnPropertyChanged(nameof(CanRestoreExports));
-
         DetachProject(_project);
         _project = project;
         AttachProject(project);
@@ -1398,94 +1407,47 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    // ------------------------------------------------------------------ isolating one export
-
     /// <summary>
-    /// What every layer was exporting before the last "only this one", so it can be put back.
+    /// Puts every layer back to what a freshly imported board starts with.
     ///
-    /// Null when nothing has been muted. Held rather than recomputed because the point of the
-    /// gesture is that it is undoable: cutting one layer to check it, and then having to remember
-    /// and re-set five dropdowns by hand, is the cumbersome thing it exists to avoid.
-    /// </summary>
-    private Dictionary<string, OutputKind>? _mutedExports;
-
-    public bool CanRestoreExports => _mutedExports is not null;
-
-    /// <summary>
-    /// Exports one layer and nothing else. A layer that was not being exported starts exporting
-    /// what its role would export by default, because "only this one" that produces no files at
-    /// all would be a strange thing to have asked for.
-    /// </summary>
-    public void MuteOtherExports(LayerRow only)
-    {
-        ArgumentNullException.ThrowIfNull(only);
-
-        // Only the first of consecutive calls records, so isolating one layer and then another
-        // still restores to what was set before either.
-        _mutedExports ??= Layers.ToDictionary(r => r.Id, r => r.Output, StringComparer.Ordinal);
-
-        var suspended = _suspendOutputChanges;
-        _suspendOutputChanges = true;
-
-        foreach (var row in Layers)
-        {
-            row.SetOutput(!ReferenceEquals(row, only)
-                ? OutputKind.None
-                : row.Output != OutputKind.None
-                    ? row.Output
-                    : LayerOperations.DefaultFor(row.Role ?? LayerRole.Unknown, Settings.Import));
-        }
-
-        _suspendOutputChanges = suspended;
-        OnPropertyChanged(nameof(CanRestoreExports));
-        RepreviewAfterOutputChange();
-        StatusMessage =
-            $"Exporting {only.Label} only — right-click a layer and choose Restore exports to put the rest back.";
-    }
-
-    /// <summary>
-    /// Applies an output change and, if programs were on screen, draws the new ones.
+    /// The whole per-layer record, not merely the output kind: tool, depth, passes, tabs, mirror,
+    /// break-through and the rest all go back to the value the import would have given them, which
+    /// is what "as if I had just opened this folder" has to mean to be worth having.
     ///
-    /// Changing a layer's output normally invalidates the preview and asks for it again, which is
-    /// right when somebody has just edited one dropdown and may be about to edit another. These two
-    /// commands are not that: they change every layer at once, deliberately, and the reason to use
-    /// them is to look at the result. Leaving the viewport empty until the operator finds the
-    /// Preview button makes an action whose whole purpose is visual feel like it failed.
+    /// Board-level choices are deliberately left alone — thickness describes the stock in your hand
+    /// and colours describe your eyes, and neither becomes untrue because the layer settings did.
     /// </summary>
-    private void RepreviewAfterOutputChange()
+    public void ResetLayerSettings()
     {
-        var wasShowing = _backplot.Count > 0;
-
-        OnOutputChanged();
-
-        if (wasShowing && !HasProgram)
+        if (_board is null)
         {
-            Preview();
-        }
-    }
-
-    /// <summary>Puts back what every layer was exporting before the last isolation.</summary>
-    public void RestoreExports()
-    {
-        if (_mutedExports is not { } before)
-        {
-            StatusMessage = "Nothing to restore — no layer's export has been isolated.";
             return;
         }
 
-        var suspended = _suspendOutputChanges;
-        _suspendOutputChanges = true;
+        var settings = _project.Settings;
 
-        foreach (var row in Layers.Where(r => before.ContainsKey(r.Id)))
+        foreach (var layer in _board.Layers)
         {
-            row.SetOutput(before[row.Id]);
+            settings = settings.WithOutput(new LayerOutputSettings
+            {
+                FileName = layer.FileName,
+                Output = LayerOperations.DefaultFor(layer.Role, Settings.Import),
+                IsolationWidthNm = Settings.Milling.IsolationWidthNm,
+            });
         }
 
-        _mutedExports = null;
-        _suspendOutputChanges = suspended;
-        OnPropertyChanged(nameof(CanRestoreExports));
-        RepreviewAfterOutputChange();
-        StatusMessage = "Exports restored.";
+        _project.Settings = settings;
+        _project.Touch();
+
+        // The programs were made from the settings that just changed, so they are no longer a
+        // picture of anything. Cleared rather than left to look current.
+        _backplot = [];
+        Gcode = null;
+        GcodeSummary = string.Empty;
+
+        Rebuild(TimeSpan.Zero);
+
+        StatusMessage = "Every layer is back to what a freshly imported board starts with.";
     }
 
     private void RefreshFacts(Board board)

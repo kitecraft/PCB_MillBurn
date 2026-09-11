@@ -25,7 +25,7 @@ public sealed class ConfirmWindow : Window
 {
     private ConfirmResult _result = ConfirmResult.Cancel;
 
-    private ConfirmWindow(string title, string message, string saveText, string? discardText)
+    private ConfirmWindow(string title, string message, string saveText, string? discardText, bool canCancel)
     {
         Title = title;
         AppIcon.Apply(this);
@@ -49,12 +49,15 @@ public sealed class ConfirmWindow : Window
         };
         discard.Click += (_, _) => Finish(ConfirmResult.Discard);
 
+        // Cancel is its own question. A three-way "save / discard / cancel" needs it, a two-way
+        // "do it / do not" needs it, and only a one-answer notice does not — which is why it is a
+        // parameter rather than an inference from whether there is a discard button.
         var cancel = new Button
         {
             Content = "Cancel",
             IsCancel = true,
             MinWidth = 92,
-            IsVisible = discardText is not null,
+            IsVisible = canCancel,
         };
         cancel.Click += (_, _) => Finish(ConfirmResult.Cancel);
 
@@ -93,11 +96,12 @@ public sealed class ConfirmWindow : Window
         string title,
         string message,
         string saveText = "Save",
-        string? discardText = "Discard")
+        string? discardText = "Discard",
+        bool canCancel = true)
     {
         ArgumentNullException.ThrowIfNull(owner);
 
-        var dialog = new ConfirmWindow(title, message, saveText, discardText)
+        var dialog = new ConfirmWindow(title, message, saveText, discardText, canCancel)
         {
             RequestedThemeVariant = owner.ActualThemeVariant,
         };
@@ -105,7 +109,15 @@ public sealed class ConfirmWindow : Window
         return result ?? dialog._result;
     }
 
+    /// <summary>
+    /// The same dialog, built but not shown, so a screenshot can check the wording of a question
+    /// that is otherwise only reachable by clicking through a menu.
+    /// </summary>
+    internal static Window Preview(
+        string title, string message, string saveText, string? discardText, bool canCancel) =>
+        new ConfirmWindow(title, message, saveText, discardText, canCancel);
+
     /// <summary>Says something and waits for it to be acknowledged. One button, one answer.</summary>
     public static Task NoteAsync(Window owner, string title, string message) =>
-        AskAsync(owner, title, message, "OK", null);
+        AskAsync(owner, title, message, "OK", null, canCancel: false);
 }

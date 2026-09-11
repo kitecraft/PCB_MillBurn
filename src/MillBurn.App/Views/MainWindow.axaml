@@ -187,6 +187,9 @@
                         <MenuItem Header="_Export…" Click="OnExportClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
+                        <MenuItem Header="_Reset layers to defaults…" Click="OnResetLayersClicked"
+                                  IsEnabled="{Binding HasBoard}" />
+                        <Separator />
                         <MenuItem Header="Write _probing routine…" Click="OnWriteProbeClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <MenuItem Header="_Import height map…" Click="OnImportHeightMapClicked" />
@@ -363,20 +366,8 @@
                                                         <MenuItem Header="Show all toolpaths"
                                                                   Click="OnShowAllToolpathsClicked" />
                                                         <Separator />
-                                                        <MenuItem Header="Export only this layer"
+                                                        <MenuItem Header="Export only this layer…"
                                                                   Click="OnOnlyExportClicked" />
-                                                        <!--
-                                                            Deliberately not bound to
-                                                            CanRestoreExports: a context menu is a
-                                                            popup rather than part of the window's
-                                                            visual tree, so reaching the view model
-                                                            from here is fragile. The command says
-                                                            when there is nothing to put back
-                                                            instead, which is honest and cannot
-                                                            silently break.
-                                                        -->
-                                                        <MenuItem Header="Restore exports"
-                                                                  Click="OnRestoreExportsClicked" />
                                                     </ContextMenu>
                                                 </Border.ContextMenu>
                                                 <!--

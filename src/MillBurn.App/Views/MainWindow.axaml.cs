@@ -444,22 +444,39 @@ public partial class MainWindow : Window
             vm.OnlyToolpath(both);
         }
 
-        // The other isolating gesture: everything muted but one. What a screenshot is checking here
-        // is the badges and the group headings, which are the whole point of it — the panel has to
-        // say what changed without any row being opened.
-        if (Argument(args, "--export-only") is { } muted
-            && vm.Layers.FirstOrDefault(r =>
-                r.Label.Contains(muted, StringComparison.OrdinalIgnoreCase)) is { } kept)
+        // The confirmation for the reset, so the wording can be read in a screenshot.
+        if (args.Contains("--reset-prompt", StringComparer.OrdinalIgnoreCase))
         {
-            vm.MuteOtherExports(kept);
+            var prompt = ConfirmWindow.Preview(
+                "Reset layers to defaults", ResetWarning, "Reset", null, canCancel: true);
+
+            prompt.RequestedThemeVariant = ActualThemeVariant;
+            prompt.Show(this);
+            _captureInstead = prompt;
         }
 
-        // Runs straight after --export-only, so the pair that failed can be checked in one shot:
-        // isolating an export used to destroy the snapshot it had just taken, and restoring then
-        // put nothing back.
-        if (args.Contains("--restore-exports", StringComparer.OrdinalIgnoreCase))
+        // Reset, without the confirmation — the question is a UI concern and what needs checking is
+        // that the settings really do go back to what an import would have given them.
+        if (args.Contains("--reset-layers", StringComparer.OrdinalIgnoreCase))
         {
-            vm.RestoreExports();
+            vm.ResetLayerSettings();
+        }
+
+        // The export window for a single layer, which is what "export only this layer" opens.
+        if (Argument(args, "--export-only") is { } one
+            && vm.Layers.FirstOrDefault(r =>
+                r.Label.Contains(one, StringComparison.OrdinalIgnoreCase)) is { } kept
+            && vm.PlanExport(onlyLayer: kept.FileName) is { Count: > 0 } single)
+        {
+            var window = new ExportWindow(
+                single, Environment.CurrentDirectory, vm.Settings.WriteDryRun,
+                vm.Surface, vm.SurfaceProblem)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            window.Show(this);
+            _captureInstead = window;
         }
 
 
@@ -788,21 +805,29 @@ public partial class MainWindow : Window
     /// tool it assumes and how deep it goes are the facts that decide whether the right thing is
     /// about to be cut, and they are invisible once the files are on disk.
     /// </summary>
-    private async void OnExportClicked(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not MainViewModel vm)
-        {
-            return;
-        }
+    private async void OnExportClicked(object? sender, RoutedEventArgs e) =>
+        await ExportAsync(onlyLayer: null);
 
-        if (vm.PlanExport() is not { } plan)
+    /// <summary>
+    /// The export window, for the whole board or for one layer of it.
+    ///
+    /// One layer narrows the *plan* and changes nothing else. The alternative — setting every other
+    /// layer to Not exported and keeping a snapshot to undo with — is a state machine with edges:
+    /// change a third layer while one is isolated and the snapshot describes a board that no longer
+    /// exists. There is nothing to put back if nothing was taken away.
+    /// </summary>
+    private async Task ExportAsync(string? onlyLayer)
+    {
+        if (DataContext is not MainViewModel vm || vm.PlanExport(onlyLayer: onlyLayer) is not { } plan)
         {
             return;
         }
 
         if (plan.Count == 0)
         {
-            vm.StatusMessage = "Nothing to export: no layer is set to produce a file.";
+            vm.StatusMessage = onlyLayer is null
+                ? "Nothing to export: no layer is set to produce a file."
+                : $"Nothing to export: {onlyLayer} is set to Not exported.";
             return;
         }
 
@@ -981,16 +1006,35 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnOnlyExportClicked(object? sender, RoutedEventArgs e)
+    private async void OnOnlyExportClicked(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is MainViewModel vm && RowOf(sender) is { } row)
+        if (RowOf(sender) is { } row)
         {
-            vm.MuteOtherExports(row);
+            await ExportAsync(row.FileName);
         }
     }
 
-    private void OnRestoreExportsClicked(object? sender, RoutedEventArgs e) =>
-        (DataContext as MainViewModel)?.RestoreExports();
+    private const string ResetWarning =
+        "Every layer goes back to what it would have been on a fresh import: what it becomes, its "
+        + "tool, depth, passes, tabs and the rest. Board thickness and colours are left alone. "
+        + "This cannot be undone.";
+
+    /// <summary>Puts every layer back to what a freshly imported board starts with.</summary>
+    private async void OnResetLayersClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !vm.HasBoard)
+        {
+            return;
+        }
+
+        var answer = await ConfirmWindow.AskAsync(
+            this, "Reset layers to defaults", ResetWarning, saveText: "Reset", discardText: null);
+
+        if (answer == ConfirmResult.Save)
+        {
+            vm.ResetLayerSettings();
+        }
+    }
 
     private void OnExpandLayersClicked(object? sender, RoutedEventArgs e) => ExpandLayers(true);
 
