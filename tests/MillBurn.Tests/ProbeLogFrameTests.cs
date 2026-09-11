@@ -296,6 +296,50 @@ public sealed class ProbeLogFrameTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ end to end
 
     /// <summary>
+    /// A gentle bow across a large panel is ordinary and must not be flagged, or the note that
+    /// matters gets lost among notes that do not. Deflection grows with the square of the span, so
+    /// the same millimetres mean different things at different sizes.
+    /// </summary>
+    [Fact]
+    public void AGentleBowAcrossALargePanelIsNotFlagged()
+    {
+        var samples = new List<ProbeSample>();
+
+        for (var x = 0; x <= 160; x += 40)
+        {
+            for (var y = 0; y <= 100; y += 25)
+            {
+                // 0.12 mm of sag over a 189 mm diagonal: about one part in 1,600.
+                var bow = 0.12 * Math.Sin(Math.PI * x / 160.0) * Math.Sin(Math.PI * y / 100.0);
+
+                samples.Add(new ProbeSample(
+                    new Point2(Nm.FromMillimetres(x), Nm.FromMillimetres(y)),
+                    Nm.FromMillimetres(bow)));
+            }
+        }
+
+        var map = HeightMap.Build(samples);
+
+        output.WriteLine($"{map.RangeMm:F3} mm over the panel");
+        Assert.DoesNotContain(map.Notes, n => n.Contains("held down", StringComparison.Ordinal));
+    }
+
+    /// <summary>And a board flat to within probe repeatability says nothing at all.</summary>
+    [Fact]
+    public void AFlatBoardIsNotFlagged()
+    {
+        var map = HeightMap.Build(
+        [
+            new ProbeSample(Point2.Origin, 0),
+            new ProbeSample(new Point2(Nm.FromMillimetres(20), 0), Nm.FromMillimetres(0.01)),
+            new ProbeSample(new Point2(0, Nm.FromMillimetres(20)), Nm.FromMillimetres(0.02)),
+            new ProbeSample(new Point2(Nm.FromMillimetres(20), Nm.FromMillimetres(20)), Nm.FromMillimetres(0.015)),
+        ]);
+
+        Assert.DoesNotContain(map.Notes, n => n.Contains("held down", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// The surface the real log actually describes. Recorded because it is the number that says
     /// why this feature exists: the stock is 0.139 mm out of flat and the isolation cut is
     /// 0.05 mm deep.
@@ -310,6 +354,10 @@ public sealed class ProbeLogFrameTests(ITestOutputHelper output)
 
         Assert.Equal(8, map.PointCount);
         Assert.Equal(0.139, map.RangeMm, 3);
+
+        // And the map says so, because bow this steep across a piece this small is far more often
+        // a hold-down that is not holding than stock that is genuinely that bad.
+        Assert.Contains(map.Notes, n => n.Contains("held down across its whole area", StringComparison.Ordinal));
 
         // And the board it was probed for is inside it, which is the check that was failing.
         Assert.Equal(0, map.OutsideByMm(new Point2(Nm.FromMillimetres(10), Nm.FromMillimetres(18))), 3);

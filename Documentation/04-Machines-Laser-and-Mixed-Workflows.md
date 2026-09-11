@@ -587,6 +587,38 @@ is a correction of *millimetres*, which drives the cutter through the board rath
 Item 1 above — adaptive densification near clamps — is *not* built: it needs to know where the
 clamps are, which needs the fixture model from the same phase.
 
+### 5.1 A map is only true of a board that cannot move
+
+**The probe and the cutter press on the stock with completely different force, and a map is only
+worth anything if the board is the same shape for both.**
+
+The usual PCB probe is a continuity touch — a clip on the bit, the copper as the other contact —
+and it triggers the instant the circuit closes, at effectively zero force. A cutter is not being
+gentle: it is pushing into the material hard enough to remove it. Stock held only at its edges
+therefore presents one shape to the probe, which floats over an unsupported middle and records it
+where it lies, and a different shape to the cutter, which presses and pushes it away.
+
+The correction is then applied, confidently and precisely, to a surface that is no longer there.
+This is a worse failure than not levelling at all, because the file *looks* levelled and the result
+has no visible cause — the same objection that makes a wrong dry run worse than none.
+
+So the advice is **stick the whole underside down** — double-sided tape across the full area, or a
+vacuum bed — and it is advice the app is in a position to give, because it can see when the numbers
+look like this has happened. Bow grows with the square of the unsupported span, so a lot of
+deflection across a small piece is much more likely to be a hold-down that is not holding than stock
+that is genuinely that bad. `HeightMap` notes it when the measured range exceeds about one part in
+five hundred of the probed diagonal.
+
+A note and not a refusal: a genuinely warped offcut is a real thing, and the operator is the one who
+knows which they have. What they cannot do is notice the difference from the file.
+
+This is also the reason the deliberately-badly-held test board is a good instrument for checking
+that levelling *works* and a bad one for measuring what a cut actually *is*. Exaggerating the bow
+makes the levelled and unlevelled results obviously different, which is what you want when proving
+the arithmetic. It also contaminates any measurement of cut width with deflection under the cutter,
+which is what you do not want when the width is the thing being measured. Two experiments, two
+hold-downs.
+
 See [06](06-Roadmap-and-Risks.md) for what the implementation turned up. Visualise the surface as a
 colour-mapped mesh in the viewport; users immediately see that their stock is bowed, which is
 educational in itself.

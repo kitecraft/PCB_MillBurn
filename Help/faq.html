@@ -392,9 +392,60 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  GRBL reports those positions in <em>machine</em> coordinates, tens of millimetres from zero. That
-  is handled: work zero is the board's own corner, sitting on the surface, so the surface height
-  there is zero by definition and the whole map is shifted to match. The shift applied is reported.
+  GRBL reports those positions in <em>machine</em> coordinates, tens of millimetres from zero in all
+  three axes, while the probing routine was written in <em>work</em> coordinates like every other
+  file here. Both halves of that are handled and both are reported.
+</p>
+
+<ul>
+  <li><strong>Height</strong> is re-datumed to the board's own corner, which sits on the surface, so
+    the height there is zero by definition.</li>
+  <li><strong>Position</strong> is recovered from the log itself. Most senders echo the commands
+    they send, so the file contains the <code>G0&nbsp;X&hellip;&nbsp;Y&hellip;</code> moves in work
+    coordinates alongside the replies; the difference between the two sets is your work offset, and
+    every point is moved by it.</li>
+</ul>
+
+<p>
+  If your log holds only the <code>[PRB:]</code> replies and none of the commands, nothing in it
+  records where work zero was, and the import says so rather than guessing. Log the commands as well
+  as the replies &mdash; most senders do by default.
+</p>
+
+<h3>Hold the board down everywhere, not just at the edges</h3>
+
+<p>
+  This is the one that catches people, and it is worth understanding rather than just obeying.
+</p>
+
+<p>
+  <strong>A probe and a cutter press on the board with completely different force.</strong> The
+  usual PCB probe is a continuity touch &mdash; a clip on the bit, the copper as the other contact
+  &mdash; and it triggers the instant the circuit closes, at essentially <em>no</em> force at all.
+  A cutter is not being gentle: it is pushing down into the material hard enough to remove it.
+</p>
+
+<p>
+  So if the board is only taped at the edges, the map you measured and the board you cut are
+  <strong>two different shapes</strong>. The probe floats over an unsupported middle and records it
+  where it lies; the cutter arrives at the same spot, presses, and the board moves away from it. The
+  correction is then applied confidently to a surface that is no longer there &mdash; and because
+  the file <em>looks</em> levelled, the result is a board that is wrong for a reason nothing shows
+  you.
+</p>
+
+<p>
+  <strong>Stick the whole underside down.</strong> Double-sided tape across the full area, or a
+  vacuum bed. Not tape at the corners, not clamps at two edges. The point of a height map is to
+  measure a shape that will still be that shape when the cutter gets there, and only a board that
+  cannot move satisfies that.
+</p>
+
+<p>
+  The app says something when the numbers look like this has happened: a lot of bow across a small
+  piece is much more often a hold-down that is not holding than stock that is genuinely that bad,
+  because sag grows with the square of the unsupported span. It is a note, not a refusal &mdash; you
+  might have a genuinely warped offcut &mdash; but it is worth reading before you cut.
 </p>
 
 <h3>What it does between the touches</h3>

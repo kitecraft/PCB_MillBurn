@@ -184,6 +184,7 @@ public sealed class HeightMap
         }
 
         var map = Solve(merged, options, notes);
+        Steepness(map, notes);
 
         if (options.ZeroAt is not { } zeroAt)
         {
@@ -219,6 +220,47 @@ public sealed class HeightMap
         return new HeightMap(
             moved._points, moved._weights, moved._a0, moved._ax, moved._ay, moved._hull,
             moved.Fit, moved.Bounds, moved.MinZNm, moved.MaxZNm, offset, notes);
+    }
+
+    /// <summary>
+    /// Says so when the stock is bowed steeply for its size.
+    ///
+    /// Judged against the probed span rather than against a fixed number of millimetres, because
+    /// the same 0.15 mm is unremarkable across a 200 mm panel and a great deal across a 40 mm
+    /// coupon. Deflection goes as the square of the span for a given curvature, so a small piece
+    /// that is bowed at all is usually being *held* badly rather than being badly made.
+    ///
+    /// The reason it is worth a sentence: a map is the shape of the stock **as it was probed**. If
+    /// only the edges are stuck down, what the map records is partly the sag of an unsupported
+    /// middle — and the cutter, which pushes where the probe did not, meets a different shape. The
+    /// correction is then applied to a board that is no longer there.
+    /// </summary>
+    private static void Steepness(HeightMap map, List<string> notes)
+    {
+        var range = map.MaxZNm - map.MinZNm;
+
+        // Below this the reading is probe repeatability as much as it is the board.
+        if (range < Nm.FromMillimetres(0.05))
+        {
+            return;
+        }
+
+        var span = Math.Sqrt(
+            ((double)map.Bounds.Width * map.Bounds.Width) + ((double)map.Bounds.Height * map.Bounds.Height));
+
+        if (span <= 0 || range / span < 1.0 / 500)
+        {
+            return;
+        }
+
+        var measured = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{range / (double)Nm.PerMillimetre:F3} mm of bow across {span / Nm.PerMillimetre:F0} mm");
+
+        notes.Add(measured
+            + " is steep for a piece this size. Check the stock is held down across its whole area, "
+            + "not just at the edges: a map of a board taped only at the corners is partly a map of "
+            + "the sag between them, and the cutter presses where the probe did not.");
     }
 
     // ------------------------------------------------------------------ fitting
