@@ -1051,6 +1051,13 @@ public sealed partial class MainViewModel : ViewModelBase
         // A program made from the previous board is not a program for this one.
         ForgetProgram();
 
+        // Nor is a snapshot of the previous board's exports: it would put back names this board
+        // does not have. Cleared *here* rather than on every rebuild, because "export only this
+        // layer" rebuilds — so clearing it there threw the snapshot away the instant it was taken,
+        // and Restore exports had nothing left to restore.
+        _mutedExports = null;
+        OnPropertyChanged(nameof(CanRestoreExports));
+
         DetachProject(_project);
         _project = project;
         AttachProject(project);
@@ -1201,10 +1208,6 @@ public sealed partial class MainViewModel : ViewModelBase
 
         _suspendOutputChanges = true;
         Layers.Clear();
-
-        // A snapshot of the previous board's exports would restore names that no longer exist.
-        _mutedExports = null;
-        OnPropertyChanged(nameof(CanRestoreExports));
 
         foreach (var layer in scene.Layers)
         {
@@ -1435,9 +1438,30 @@ public sealed partial class MainViewModel : ViewModelBase
 
         _suspendOutputChanges = suspended;
         OnPropertyChanged(nameof(CanRestoreExports));
-        OnOutputChanged();
+        RepreviewAfterOutputChange();
         StatusMessage =
             $"Exporting {only.Label} only — right-click a layer and choose Restore exports to put the rest back.";
+    }
+
+    /// <summary>
+    /// Applies an output change and, if programs were on screen, draws the new ones.
+    ///
+    /// Changing a layer's output normally invalidates the preview and asks for it again, which is
+    /// right when somebody has just edited one dropdown and may be about to edit another. These two
+    /// commands are not that: they change every layer at once, deliberately, and the reason to use
+    /// them is to look at the result. Leaving the viewport empty until the operator finds the
+    /// Preview button makes an action whose whole purpose is visual feel like it failed.
+    /// </summary>
+    private void RepreviewAfterOutputChange()
+    {
+        var wasShowing = _backplot.Count > 0;
+
+        OnOutputChanged();
+
+        if (wasShowing && !HasProgram)
+        {
+            Preview();
+        }
     }
 
     /// <summary>Puts back what every layer was exporting before the last isolation.</summary>
@@ -1445,6 +1469,7 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         if (_mutedExports is not { } before)
         {
+            StatusMessage = "Nothing to restore — no layer's export has been isolated.";
             return;
         }
 
@@ -1459,7 +1484,7 @@ public sealed partial class MainViewModel : ViewModelBase
         _mutedExports = null;
         _suspendOutputChanges = suspended;
         OnPropertyChanged(nameof(CanRestoreExports));
-        OnOutputChanged();
+        RepreviewAfterOutputChange();
         StatusMessage = "Exports restored.";
     }
 

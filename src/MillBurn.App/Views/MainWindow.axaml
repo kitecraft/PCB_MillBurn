@@ -365,6 +365,16 @@
                                                         <Separator />
                                                         <MenuItem Header="Export only this layer"
                                                                   Click="OnOnlyExportClicked" />
+                                                        <!--
+                                                            Deliberately not bound to
+                                                            CanRestoreExports: a context menu is a
+                                                            popup rather than part of the window's
+                                                            visual tree, so reaching the view model
+                                                            from here is fragile. The command says
+                                                            when there is nothing to put back
+                                                            instead, which is honest and cannot
+                                                            silently break.
+                                                        -->
                                                         <MenuItem Header="Restore exports"
                                                                   Click="OnRestoreExportsClicked" />
                                                     </ContextMenu>

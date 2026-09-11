@@ -454,6 +454,15 @@ public partial class MainWindow : Window
             vm.MuteOtherExports(kept);
         }
 
+        // Runs straight after --export-only, so the pair that failed can be checked in one shot:
+        // isolating an export used to destroy the snapshot it had just taken, and restoring then
+        // put nothing back.
+        if (args.Contains("--restore-exports", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.RestoreExports();
+        }
+
+
         var shot = ShotPath(args);
         if (shot is not null)
         {
