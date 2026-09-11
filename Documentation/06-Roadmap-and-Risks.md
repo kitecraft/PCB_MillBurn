@@ -1678,6 +1678,144 @@ narrow to cut — with a render it has actually looked at, and without a single 
 
 Then, with `--allow-write`, the same job comes out byte-for-byte identical to the app's.
 
+<a id="phase-9"></a>
+
+### Phase 9 — Solder paste — **scheduled, not started**
+
+A paste layer becomes a dispensing program: one deposit of the right size on every pad, for a
+syringe on the Z axis instead of a cutter.
+
+Numbered after the MCP server because it is genuinely new capability rather than a new surface, and
+because it depends on two things that are themselves unbuilt. It is not numbered last because it is
+unlikely — the geometry it needs is already parsed, already drawn, and already exported two other
+ways.
+
+#### 9.1 Most of this is already here
+
+`LayerRole.TopPaste` and `LayerRole.BottomPaste` are detected today, from X2's
+`.FileFunction Paste,Top` and from the `GTP`/`GBP` conventions, and a paste layer already draws in
+the viewer and already exports two ways: as SVG (a stencil to cut on the laser) and as
+`OperationKind.Pocket` G-code (soldermask relief, since the paste apertures are exactly where the
+mask must not be).
+
+What is missing is a third thing it can become. That is one new `OperationKind`, a new operation in
+`MillBurn.Cam`, and an emitter in `MillBurn.Gcode` — not a new front half.
+
+#### 9.2 The volume comes free, and this is the whole idea
+
+A paste aperture is not a decoration. It is the hole a stencil would have had, and the deposit a
+stencil leaves is its **area times the foil thickness**. So:
+
+> **volume = aperture area x stencil thickness**
+
+Ask the operator one number — the foil they *would* have ordered, 0.10 to 0.15 mm on most hand-built
+boards — and every pad on the board has a target volume, computed from geometry Clipper already
+gives us exactly.
+
+The part worth dwelling on is that the **proportions** need no calibration at all. The EDA tool
+already decided that this 0402 gets a twentieth of what that QFN thermal pad gets, and already
+applied whatever aperture reduction the library called for. Those ratios are right by construction.
+The only thing a calibration has to supply is the single scale factor between "a cubic millimetre"
+and "what this machine does when told to dispense".
+
+Report the total both ways: mm³, and grams via a density the operator enters. Paste density varies
+with alloy and metal load and is printed on the jar; it is not a constant to hardcode.
+
+#### 9.3 The scale factor must be measured, so it is refused until it is
+
+Two families of dispenser, and the app has to know which one it is writing for.
+
+| | How it is commanded | mm³ converts via |
+|---|---|---|
+| **Volumetric** — auger, screw, or a plunger on a stepper | An `E` axis. `M83` relative, then `G1 E<mm> F<mm/min>` beside the move | Syringe bore, or a mm³-per-revolution figure. One constant |
+| **Pneumatic** — time and pressure | A valve line (`M62`/`M42`/`M106`, or spindle-on) and `G4 P<seconds>` | **Nothing.** It depends on pressure, needle bore, paste rheology, temperature, and how long the syringe has been open |
+
+The second row is the important one. There is no formula, no table, and no honest default, so
+**nothing ships with one** and a paste layer will not export until a measured figure exists. It is
+the rule every emitted file here already follows — the leveller refuses an incremental program
+rather than assuming what a Z word meant, the drilling program refuses a hole no bit in the library
+can make — and paste is a case where the guess is easy to make and expensive to discover.
+
+**A calibration routine, exactly like the test cuts.** `Job > Paste calibration...` writes a program
+that lays a row of deposits at stepped commanded amounts onto a scrap, and an HTML page on reading
+them: weigh the row on a jeweller's scale, divide by the count and the density, or measure a
+deposit's diameter against the table on the page. Enter the answer as mm³ per E-mm or mm³ per
+second. The dialog, the report type and the guide builder from
+[test cuts](#test-cuts-checking-the-library-against-a-caliper) are the right shape for this and
+should be reused rather than re-invented.
+
+#### 9.4 Deposits, not outlines
+
+Paste is *put down*, not *drawn*. The operation is a list of points with a volume each, never a
+toolpath around an aperture — a ring of paste round a large thermal pad leaves a void in the middle
+and the part floats on it.
+
+- **Small pad** — inscribed circle under one deposit's footprint: a single deposit at the centroid.
+- **Elongated pad** — an SOIC or SOT lead: deposits along the medial axis, spaced to merge,
+  `ceil(volume / max deposit)` of them. The Voronoi machinery from Phase 3 already computes the
+  skeleton this needs.
+- **Large area** — a QFN or D-PAK thermal pad: a grid, at the coverage the aperture already implies.
+  Stencils window-pane these for the same reason, so matching that convention is both correct and
+  familiar.
+
+#### 9.5 The parameters that decide whether it actually works
+
+Dispensing fails in ways milling does not, and every one of them is a named setting rather than a
+constant buried in an emitter.
+
+| Parameter | Why it exists |
+|---|---|
+| **Standoff** | The needle hovers; it does not touch. Roughly half the needle's inner diameter |
+| **Dwell before** | Pressure has to build before the deposit starts |
+| **Dwell after** | Without it the deposit trails as the needle leaves |
+| **Suck-back** | A small negative `E` to break the string. The single biggest cause of bridging |
+| **Lift height and lift feed** | Slow off the deposit, then rapid. A fast lift pulls a tail |
+| **Travel height** | Just clear of the tallest deposit, not the usual safe Z — this program travels a lot |
+| **Purge** | A dab off the board at the start, because the first deposit is never the right size |
+
+Needle bore belongs in the tool library as a new `ToolKind.Needle`, carrying gauge, inner diameter,
+and the measured calibration — because that number belongs to *this* needle with *this* paste at
+*this* pressure, not to the job or the board. Common gauges run from about 0.84 mm (18G) down to
+about 0.25 mm (25G), but they vary by maker, so the library is the authority and nothing is
+hardcoded.
+
+#### 9.6 Two dependencies, named honestly
+
+**Levelling stops being optional.** A 0.2 mm standoff and 0.15 mm of bow are the same size. Every
+argument in [04 §5](04-Machines-Laser-and-Mixed-Workflows.md#5-height-mapping-autolevelling) applies
+harder here than it does to milling, and the machinery already exists — the export review should
+treat an unlevelled paste program on a board with a map loaded as something worth saying out loud.
+
+**The board has to be found again.** Paste goes on after etching, drilling and cut-out, so the work
+has been off the table and back. That is [Phase 5.6](#phase-56)'s
+problem and Phase 5.6's answer; dispensing is one of the clearest reasons to build it.
+
+#### 9.7 What it is not
+
+- **Not pick and place.** It puts paste down. Nothing here places a component.
+- **Not reflow.** No profile, no oven, no hotplate.
+- **Still files, not machines.** The `E` moves and the valve lines are written into the program;
+  the app does not open a port and push them. [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines)
+  is unchanged by a syringe being in the spindle mount.
+- **Not a substitute for a stencil below about 0.5 mm pitch.** Dispensing gets hard exactly where
+  stencils get cheap, and the app should say so when it sees apertures that close rather than
+  cheerfully emitting a program that will bridge.
+
+#### 9.8 Where it lives
+
+`src/MillBurn.Cam/DispenseOperation.cs` turns apertures into placed deposits;
+`src/MillBurn.Gcode/DispenseProgram.cs` turns deposits into a program for one of the two dispenser
+families. `OperationKind.Dispense` joins the enum, and a paste layer set to G-code offers *mask
+relief* or *dispense paste*. A companion HTML sits beside the program like the drilling guide does:
+deposits by size, totals in mm³ and grams, the calibration and needle used, and the fine-pitch
+warning if it applies.
+
+#### Done when
+
+A board with an `F_Paste` layer, a needle calibrated on the machine, and a levelled program produce
+a deposit on every pad in the right proportion — checked by weighing the board before and after and
+comparing against the total the export review predicted.
+
 ## 2. Cross-cutting acceptance criteria
 
 | Metric | Target |

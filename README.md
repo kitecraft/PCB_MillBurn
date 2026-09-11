@@ -299,6 +299,9 @@ machine and every step after it, which removes fiducials, dowel pins and the des
 with them. Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
 output, and a LightBurn layer preset. Also planned: an **MCP server** over the same libraries, so an assistant can
 load a board, render it, and say what a job would cut — read-only unless you launch it otherwise.
+And **solder paste** — the paste layer is already read and drawn, and a paste aperture is a
+stencil's hole, so the deposit it wants is its area times the foil thickness. That makes every pad's
+volume fall straight out of the Gerber, in the right proportions, for a syringe on the Z axis.
 
 The full picture — including the bugs, and what each one taught — is in
 [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
