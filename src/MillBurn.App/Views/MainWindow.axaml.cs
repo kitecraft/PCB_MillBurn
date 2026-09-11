@@ -9,6 +9,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using MillBurn.Align;
 using MillBurn.App.ViewModels;
 using MillBurn.Core;
 using MillBurn.Gcode;
@@ -459,7 +460,14 @@ public partial class MainWindow : Window
         // The test-cut dialog, so its numbers and its live summary can be checked in a screenshot.
         if (args.Contains("--test-cuts", StringComparer.OrdinalIgnoreCase))
         {
-            var cuts = new TestCutWindow(vm.Library, vm.Settings.Machine)
+            var surface = Argument(args, "--test-cuts") switch
+            {
+                "probe" => TestCutLevelling.WriteProbe,
+                "log" => TestCutLevelling.FromLog,
+                _ => TestCutLevelling.None,
+            };
+
+            var cuts = new TestCutWindow(vm.Library, vm.Settings.Machine, preferred: null, surface)
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -896,12 +904,15 @@ public partial class MainWindow : Window
         }
 
         var (text, report) = TestCut.Generate(chosen.Options);
+        var probeOnly = chosen.Levelling == TestCutLevelling.WriteProbe;
 
-        var suggested = chosen.Options.Kind == TestCutKind.Depth ? "depth-test" : "feed-test";
+        var suggested = probeOnly
+            ? "coupon-probe"
+            : chosen.Options.Kind == TestCutKind.Depth ? "depth-test" : "feed-test";
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Write test cut",
+            Title = probeOnly ? "Write the coupon's probing routine" : "Write test cut",
             SuggestedFileName = suggested,
             DefaultExtension = "nc",
             FileTypeChoices = [GcodeFileType],
@@ -914,43 +925,106 @@ public partial class MainWindow : Window
 
         try
         {
+            // A probing routine sized to this coupon, and nothing else. The test cut cannot be
+            // levelled in the same breath — the routine has to be run and its log kept first — so
+            // writing one here would produce a file that could not benefit from the probe beside
+            // it, which is a trap dressed as a convenience.
+            if (probeOnly)
+            {
+                File.WriteAllText(path, CouponProbe(vm, report));
+
+                vm.StatusMessage = FormattableString.Invariant(
+                    $"Wrote {Path.GetFileName(path)}. Run it, keep your sender's log, then come back and choose “Level to a probe log”.");
+
+                return;
+            }
+
+            var written = 2;
+            var levelled = string.Empty;
+
+            if (chosen.LogPath is { } log)
+            {
+                var (map, _) = ProbeLog.Read(
+                    File.ReadAllText(log),
+                    new HeightMapOptions { Smoothing = vm.Settings.Level.Smoothing });
+
+                if (map is null)
+                {
+                    vm.StatusMessage = $"No probe points in {Path.GetFileName(log)}; wrote the test cut unlevelled.";
+                }
+                else
+                {
+                    var (bent, applied) = Leveller.Apply(text, map, new LevelOptions
+                    {
+                        SegmentMm = vm.Settings.Level.SegmentMm,
+                        SubdivideBelowMm = vm.Settings.Level.SubdivideBelowMm,
+                        MaxOutsideMm = vm.Settings.Level.MaxOutsideMm,
+                    });
+
+                    if (applied.Refusal is { } why)
+                    {
+                        vm.StatusMessage = $"Not levelled — {why} Wrote the test cut as it was.";
+                    }
+                    else
+                    {
+                        text = bent;
+                        levelled = FormattableString.Invariant(
+                            $" Levelled to {map.PointCount} probe points, {map.RangeMm:F3} mm out of flat — which describes whatever stock was on the table when that log ran.");
+                    }
+                }
+            }
+
             File.WriteAllText(path, text);
 
             var guide = Path.ChangeExtension(path, null) + ".html";
-            File.WriteAllText(guide, TestCutGuide.Build(chosen.Options, report, Path.GetFileName(path)));
+            File.WriteAllText(
+                guide,
+                TestCutGuide.Build(
+                    chosen.Options,
+                    report,
+                    Path.GetFileName(path),
+                    levelled.Length > 0 ? Path.GetFileName(chosen.LogPath!) : null));
 
-            var written = 2;
-
-            // The coupon's own surface, never the board's. A map describes one piece of stock as it
-            // was clamped, and this is a different piece in a different place.
-            if (chosen.WithProbe)
+            if (levelled.Length == 0 || chosen.LogPath is null)
             {
-                var region = new Bounds(
-                    0,
-                    0,
-                    Nm.FromMillimetres(report.StockWidthMm),
-                    Nm.FromMillimetres(report.StockHeightMm));
-
-                var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
-                {
-                    SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
-                    SafeHeightMm = vm.Settings.Machine.SafeZMm,
-                    MaxDepthMm = vm.Settings.Probe.MaxDepthMm,
-                    FeedMmPerMin = vm.Settings.Probe.FeedMmPerMin,
-                    MarginMm = 1,
-                });
-
-                File.WriteAllText(Path.ChangeExtension(path, null) + ".probe.nc", probe);
-                written++;
+                vm.StatusMessage = FormattableString.Invariant(
+                    $"Wrote {written} file(s). The test needs {report.StockWidthMm:F0} x {report.StockHeightMm:F0} mm of scrap copper-clad; read the page beside it before you run it.")
+                    + levelled;
             }
-
-            vm.StatusMessage = FormattableString.Invariant(
-                $"Wrote {written} file(s). The test needs {report.StockWidthMm:F0} x {report.StockHeightMm:F0} mm of scrap copper-clad; read the page beside it before you run it.");
+            else
+            {
+                vm.StatusMessage = FormattableString.Invariant(
+                    $"Wrote {written} file(s) for {report.StockWidthMm:F0} x {report.StockHeightMm:F0} mm of scrap.")
+                    + levelled;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             vm.StatusMessage = $"Could not write the test cut: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// A probing routine covering exactly the area the test uses.
+    ///
+    /// Its own, never the board's height map: a map describes one piece of stock in the position it
+    /// was clamped in, and a coupon is a different piece in a different place.
+    /// </summary>
+    private static string CouponProbe(MainViewModel vm, TestCutReport report)
+    {
+        var region = new Bounds(
+            0, 0, Nm.FromMillimetres(report.StockWidthMm), Nm.FromMillimetres(report.StockHeightMm));
+
+        var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
+        {
+            SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+            SafeHeightMm = vm.Settings.Machine.SafeZMm,
+            MaxDepthMm = vm.Settings.Probe.MaxDepthMm,
+            FeedMmPerMin = vm.Settings.Probe.FeedMmPerMin,
+            MarginMm = 1,
+        });
+
+        return probe;
     }
 
     private async void OnWriteProbeClicked(object? sender, RoutedEventArgs e)

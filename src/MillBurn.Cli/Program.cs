@@ -37,6 +37,7 @@ internal static class Program
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
+            Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -1835,6 +1836,35 @@ internal static class Program
         };
 
         var (text, report) = TestCut.Generate(options);
+        var levelled = string.Empty;
+
+        // The coupon's own log, never the board's map. Two passes: write the probe, run it, then
+        // come back with --level. A test cut written alongside an unrun probe cannot use it.
+        if (Argument(args, "--level") is { } logPath)
+        {
+            if (!File.Exists(logPath))
+            {
+                Console.Error.WriteLine($"No such probe log: {logPath}");
+                return 1;
+            }
+
+            if (ReadMap(File.ReadAllText(logPath), args) is not { } map)
+            {
+                return 1;
+            }
+
+            var (bent, applied) = Leveller.Apply(text, map, LevelOptionsFrom(args));
+
+            if (applied.Refusal is { } why)
+            {
+                Console.Error.WriteLine($"Not levelled: {why}");
+                return 1;
+            }
+
+            text = bent;
+            levelled = FormattableString.Invariant(
+                $"{map.PointCount} probe points, {map.RangeMm:F3} mm out of flat");
+        }
 
         var output = Argument(args, "-o") ?? Argument(args, "--out")
             ?? Path.Combine(
@@ -1844,7 +1874,13 @@ internal static class Program
         File.WriteAllText(output, text);
 
         var guide = Path.ChangeExtension(output, null) + ".html";
-        File.WriteAllText(guide, TestCutGuide.Build(options, report, Path.GetFileName(output)));
+        File.WriteAllText(
+            guide,
+            TestCutGuide.Build(
+                options,
+                report,
+                Path.GetFileName(output),
+                levelled.Length > 0 ? Path.GetFileName(Argument(args, "--level")!) : null));
 
         Console.WriteLine(output);
         Line($"  tool        {tool.Name}");
@@ -1852,6 +1888,13 @@ internal static class Program
         Line($"  stock       {report.StockWidthMm:F1} x {report.StockHeightMm:F1} mm of bare copper");
         Line($"  time        about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds");
         Line($"  guide       {Path.GetFileName(guide)}");
+
+        if (levelled.Length > 0)
+        {
+            Line($"  levelled    {levelled}");
+            Line($"              that log describes whatever stock was on the table when it ran.");
+            Line($"              If that was not this coupon, the correction is confident and wrong.");
+        }
 
         // The coupon is a different piece of stock from the board, so the board's height map does
         // not describe it. A test that matters to a hundredth deserves its own few touches.

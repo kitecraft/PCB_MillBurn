@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
@@ -10,14 +11,30 @@ using static System.FormattableString;
 
 namespace MillBurn.App.Views;
 
-/// <summary>What the operator asked for, and whether the coupon gets a probing routine too.</summary>
+/// <summary>What to do about the coupon not being flat.</summary>
+public enum TestCutLevelling
+{
+    /// <summary>Cut it as it lies. Right whenever the stock is properly held down, which is most of the time.</summary>
+    None,
+
+    /// <summary>
+    /// Write only the probing routine, sized to this coupon.
+    ///
+    /// Its own routine, never the board's height map: a map describes one piece of stock as it was
+    /// clamped, and a coupon is a different piece in a different place.
+    /// </summary>
+    WriteProbe,
+
+    /// <summary>Cut it, levelled to a log from the routine above.</summary>
+    FromLog,
+}
+
+/// <summary>What the operator asked for.</summary>
 /// <param name="Options">The test itself.</param>
-/// <param name="WithProbe">
-/// Whether to write a probing routine sized to this coupon. Deliberately separate from the board's
-/// height map: a map describes one piece of stock as it was clamped, and a test coupon is a
-/// different piece in a different place.
-/// </param>
-public sealed record TestCutChoice(TestCutOptions Options, bool WithProbe);
+/// <param name="Levelling">Whether the coupon is being probed, levelled, or neither.</param>
+/// <param name="LogPath">The probe log to level against, when there is one.</param>
+public sealed record TestCutChoice(
+    TestCutOptions Options, TestCutLevelling Levelling, string? LogPath);
 
 /// <summary>
 /// Test cuts for dialling a bit in on scrap.
@@ -38,7 +55,21 @@ public sealed class TestCutWindow : Window
     private readonly TextBlock _effect = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly MachineSettings _machine;
 
-    public TestCutWindow(ToolLibrary library, MachineSettings machine, Tool? preferred = null)
+    private readonly RadioButton _asItLies = new() { Content = "Cut it as it lies", IsChecked = true, FontSize = 12, GroupName = "surface" };
+    private readonly RadioButton _probeFirst = new() { Content = "Probe the coupon first, and come back", FontSize = 12, GroupName = "surface" };
+    private readonly RadioButton _fromLog = new() { Content = "Level to a probe log", FontSize = 12, GroupName = "surface" };
+
+    private readonly TextBlock _logName = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly Button _chooseLog = new() { Content = "Choose…", FontSize = 11, Padding = new Thickness(8, 2) };
+    private readonly Button _write = new() { Content = "Write files…", IsDefault = true };
+
+    private string? _logPath;
+
+    public TestCutWindow(
+        ToolLibrary library,
+        MachineSettings machine,
+        Tool? preferred = null,
+        TestCutLevelling surface = TestCutLevelling.None)
     {
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(machine);
@@ -70,6 +101,10 @@ public sealed class TestCutWindow : Window
         };
 
         _tool.SelectionChanged += (_, _) => Refresh();
+
+        _probeFirst.IsChecked = surface == TestCutLevelling.WriteProbe;
+        _fromLog.IsChecked = surface == TestCutLevelling.FromLog;
+        _asItLies.IsChecked = surface == TestCutLevelling.None;
 
         ShowRowsForKind();
         Refresh();
@@ -130,13 +165,7 @@ public sealed class TestCutWindow : Window
             + "do not, the stock is tilted or Z moved, and nothing else on it can be trusted.",
             true));
 
-        body.Children.Add(Flag(
-            "probe",
-            "Also write a probing routine for the coupon",
-            "Sized to this test's own area. Use it only if the scrap will not sit flat — and never "
-            + "level a test cut with the board's height map, which describes a different piece of "
-            + "stock in a different place.",
-            false));
+        body.Children.Add(Surface());
 
         var panel = new Border
         {
@@ -152,10 +181,9 @@ public sealed class TestCutWindow : Window
         var cancel = new Button { Content = "Cancel", IsCancel = true };
         cancel.Click += (_, _) => Close();
 
-        var write = new Button { Content = "Write files…", IsDefault = true };
-        write.Click += (_, _) =>
+        _write.Click += (_, _) =>
         {
-            Result = new TestCutChoice(Read(), _flags["probe"].IsChecked == true);
+            Result = new TestCutChoice(Read(), Levelling, _logPath);
             Close();
         };
 
@@ -165,10 +193,96 @@ public sealed class TestCutWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
             Margin = new Thickness(0, 16, 0, 0),
-            Children = { cancel, write },
+            Children = { cancel, _write },
         });
 
         return body;
+    }
+
+    /// <summary>
+    /// What to do about the coupon's own flatness — and the reason this is three choices rather
+    /// than a checkbox.
+    ///
+    /// Probing and levelling cannot happen in one pass: the routine has to be run and its log kept
+    /// before there is anything to level against. Writing both files at once produced a test cut
+    /// that could not benefit from the probe sitting beside it, which is a trap dressed as a
+    /// convenience. So it is two visits — write the probe, run it, come back with the log.
+    /// </summary>
+    private StackPanel Surface()
+    {
+        var picked = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Margin = new Thickness(26, 2, 0, 0),
+            Children = { _chooseLog, _logName },
+        };
+
+        _logName.VerticalAlignment = VerticalAlignment.Center;
+        _logName[!ForegroundProperty] = new DynamicResourceExtension("TextSecondary");
+
+        _chooseLog.Click += async (_, _) => await ChooseLogAsync();
+
+        foreach (var option in new[] { _asItLies, _probeFirst, _fromLog })
+        {
+            option.IsCheckedChanged += (_, _) =>
+            {
+                picked.IsVisible = _fromLog.IsChecked == true;
+                Refresh();
+            };
+        }
+
+        picked.IsVisible = false;
+        _logName.Text = "no log chosen";
+
+        return new StackPanel
+        {
+            Margin = new Thickness(0, 12, 0, 0),
+            Children =
+            {
+                new TextBlock { Text = "The coupon's surface", FontSize = 12, FontWeight = FontWeight.SemiBold },
+                new TextBlock
+                {
+                    Text = "Hold the scrap down across its whole area and the first option is right. "
+                        + "The others are for stock that will not sit flat — and never for the board's "
+                        + "height map, which describes a different piece in a different place.",
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 11,
+                    Margin = new Thickness(0, 1, 0, 6),
+                    [!ForegroundProperty] = new DynamicResourceExtension("TextSecondary"),
+                },
+                _asItLies,
+                _probeFirst,
+                _fromLog,
+                picked,
+            },
+        };
+    }
+
+    private TestCutLevelling Levelling => _probeFirst.IsChecked == true
+        ? TestCutLevelling.WriteProbe
+        : _fromLog.IsChecked == true ? TestCutLevelling.FromLog : TestCutLevelling.None;
+
+    private async Task ChooseLogAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Probe log for this coupon",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Probe log") { Patterns = ["*.log", "*.txt", "*.csv", "*.nc"] },
+                FilePickerFileTypes.All,
+            ],
+        });
+
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+        {
+            _logPath = path;
+            _logName.Text = Path.GetFileName(path);
+        }
+
+        Refresh();
     }
 
     private static Border Gap() => new() { Height = 10 };
@@ -295,11 +409,26 @@ public sealed class TestCutWindow : Window
             + Invariant($"Needs {report.StockWidthMm:F0} × {report.StockHeightMm:F0} mm of bare copper, ")
             + Invariant($"about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds.");
 
+        text += Levelling switch
+        {
+            TestCutLevelling.WriteProbe =>
+                "\n\nWrites the probing routine only. Run it, keep your sender's log, then come "
+                + "back here and choose \u201cLevel to a probe log\u201d.",
+            TestCutLevelling.FromLog when _logPath is null =>
+                "\n\nChoose the probe log for this coupon.",
+            TestCutLevelling.FromLog =>
+                "\n\nEvery Z will follow the surface in " + Path.GetFileName(_logPath) + ".",
+            _ => string.Empty,
+        };
+
         foreach (var warning in report.Warnings)
         {
             text += "\n\n" + warning;
         }
 
         _effect.Text = text;
+
+        // Nothing to write until there is a log to write against.
+        _write.IsEnabled = Levelling != TestCutLevelling.FromLog || _logPath is not null;
     }
 }
