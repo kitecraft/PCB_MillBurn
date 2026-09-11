@@ -235,7 +235,7 @@ public static class LayerOperations
     /// <summary>
     /// The bit a layer is cut with when nobody has picked one — from the library first.
     ///
-    /// One rule, called by both the planner and the layer drawer, so a board exported from the
+    /// One rule, called by both the planner and the board panel, so a board exported from the
     /// window and the same board exported from the command line are cut with the same tool. They
     /// used to disagree: the planner fell straight through to a hard-coded bit whenever a layer
     /// named none, which is every layer of a folder the window has never opened, while the drawer

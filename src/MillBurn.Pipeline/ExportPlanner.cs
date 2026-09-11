@@ -820,7 +820,7 @@ public static class ExportPlanner
             return chosen;
         }
 
-        // The same rule the layer drawer uses when it fills in a tool nobody has picked, so the two
+        // The same rule the board panel uses when it fills in a tool nobody has picked, so the two
         // agree by construction rather than by both happening to be written the same way.
         return LayerOperations.DefaultToolFor(operation, library.Tools);
     }

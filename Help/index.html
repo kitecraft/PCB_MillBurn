@@ -37,7 +37,7 @@
 <ol>
   <li><strong>Import a Gerber folder</strong> &mdash; everything your EDA tool exported, drill files
     included. Roles are read from the files themselves; anything guessed is labelled.</li>
-  <li><strong>Set each layer&rsquo;s output</strong> in the Layers drawer &mdash; grouped by top
+  <li><strong>Set each layer&rsquo;s output</strong> in the board panel &mdash; grouped by top
     side, inner layers, bottom side, and holes and outline. G-code for the mill, SVG for the laser,
     or nothing. Each one becomes its own file.</li>
   <li><strong>Preview</strong> (F5) draws the emitted programs back over the board &mdash; parsed
@@ -121,7 +121,7 @@
     in it, so it is the only one where the file alone does not tell you what to do.
   </li>
   <li>
-    <strong><a href="faq.html#panel">The layer drawer has two toggles per layer, not one.</a></strong>
+    <strong><a href="faq.html#panel">The board panel has two toggles per layer, not one.</a></strong>
     The checkbox draws the artwork; the zig-zag beside it draws the toolpath that layer becomes. They
     are separate because the copper hides the cuts &mdash; turning one off and the other on is how a
     toolpath becomes readable. The pill on the right says what the layer is being exported as, so a
