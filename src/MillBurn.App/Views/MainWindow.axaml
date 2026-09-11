@@ -781,24 +781,43 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"
                 Padding="14,7">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+            <!--
+                The message wins. An Auto column is sized to its content before the star column
+                gets anything, and three of them full of summaries left the message a 54 px slot
+                showing "No ..." — which is how a refused height-map import came to look exactly
+                like a successful one. The summaries now trim; the sentence does not.
+            -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="340" />
+                    <ColumnDefinition Width="Auto" MaxWidth="280" />
+                    <ColumnDefinition Width="Auto" MaxWidth="200" />
+                    <ColumnDefinition Width="Auto" MaxWidth="240" />
+                </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0"
                            Text="{Binding StatusMessage}"
+                           ToolTip.Tip="{Binding StatusMessage}"
                            TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            Text="{Binding GcodeSummary}"
+                           ToolTip.Tip="{Binding GcodeSummary}"
+                           TextTrimming="CharacterEllipsis"
                            Margin="16,0"
                            Foreground="{DynamicResource StatusInfo}"
                            VerticalAlignment="Center" />
                 <TextBlock Grid.Column="2"
                            Text="{Binding BoardSummary}"
+                           ToolTip.Tip="{Binding BoardSummary}"
+                           TextTrimming="CharacterEllipsis"
                            Margin="16,0"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
                 <TextBlock Grid.Column="3"
                            Text="{Binding FrameSummary}"
+                           ToolTip.Tip="{Binding FrameSummary}"
+                           TextTrimming="CharacterEllipsis"
                            FontFamily="Consolas,monospace"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />

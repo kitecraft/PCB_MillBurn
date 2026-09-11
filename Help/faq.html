@@ -415,7 +415,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <li>
     <strong>Save your sender's log</strong>, then <strong>Job &rsaquo; Import height map&hellip;</strong>
     The status bar tells you how far out of flat the stock turned out to be, which is worth knowing
-    on its own.
+    on its own. If the file is not a probe log, a dialog says so and says why &mdash; an import
+    never fails quietly, because a failed import changes nothing on screen and would otherwise look
+    exactly like a successful one.
   </li>
   <li>
     <strong>Export</strong> with <em>Level to the imported height map</em> ticked. Each program gets
@@ -480,6 +482,32 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   If your log holds only the <code>[PRB:]</code> replies and none of the commands, nothing in it
   records where work zero was, and the import says so rather than guessing. Log the commands as well
   as the replies &mdash; most senders do by default.
+</p>
+
+<h3>What it refuses, and why it tells you</h3>
+
+<p>
+  The reader is forgiving on purpose, and forgiveness has a cost: hand it something that is not a
+  log at all and it would once have found nothing and said nothing. The import is checked, and a
+  file that fails is refused with the reason, out loud.
+</p>
+
+<ul>
+  <li><strong>Nothing in it is probe data.</strong> No <code>[PRB:]</code> report and no line of
+    three numbers. This is what you get from a G-code program, a Gerber, or a page of notes.</li>
+  <li><strong>Mostly unreadable.</strong> A header row or a stray comment is normal; a file where
+    more lines failed than parsed is a file that happens to contain a few numbers.</li>
+  <li><strong>Every probe failed.</strong> All the reports carry <code>:0</code>. Nothing was
+    measured &mdash; check the clip is on the copper and the probe on the tool.</li>
+  <li><strong>The probe never moved.</strong> Every point at the same X and Y. That is a repeatability
+    test, not a surface.</li>
+  <li><strong>Z values spanning more than 10&nbsp;mm.</strong> No board is that far out of flat. It
+    is the wrong file, or probes that ran to the end of their travel.</li>
+</ul>
+
+<p>
+  A refused import leaves whatever map you had before exactly where it was, and says so &mdash;
+  otherwise <em>Forget height map</em> staying enabled would read as the new file having loaded.
 </p>
 
 <div class="warn">

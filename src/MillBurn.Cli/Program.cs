@@ -2080,9 +2080,7 @@ internal static class Program
 
         if (map is null)
         {
-            Console.Error.WriteLine(
-                "No probe points found in that log. Expected GRBL [PRB:] reports, or three "
-                + "numbers a line.");
+            Console.Error.WriteLine(log.Rejection ?? "Nothing in that file is probe data.");
             return null;
         }
 

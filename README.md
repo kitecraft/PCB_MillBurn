@@ -450,7 +450,7 @@ fit. ·
 [**CommunityToolkit.Mvvm**](https://github.com/CommunityToolkit/dotnet) ·
 [**Scriban**](https://github.com/scriban/scriban) ·
 [**xUnit**](https://github.com/xunit/xunit) and [**Verify**](https://github.com/VerifyTests/Verify)
-— 617 tests' worth. ·
+— 716 tests' worth. ·
 And **.NET** itself, which is why the build instructions are two lines long.
 
 ### And to the people who made the inputs make sense
@@ -462,6 +462,23 @@ the source of every real board in the test suite. · **[KiKit](https://github.co
 which panelises so much better than this ever would that panelising is deliberately not here. ·
 And the **gSender**, **Candle**, **LinuxCNC** and **LightBurn** communities, who make the machines
 actually run — this app only writes the files.
+
+---
+
+## How this was built
+
+**Claude AI was used extensively in the creation of this application** — architecture, the great
+majority of the code, the tests, and this documentation. It was not used as an autocomplete; it was
+used as the thing doing the writing, over many long sessions, under direction.
+
+That direction mattered more than it might sound. Every decision about what the app should *do*
+came from the person whose mill and laser this was built for, and most of the bugs worth finding
+were found the same way: by cutting a board, measuring it, and coming back with the measurement.
+An AI will happily produce a G-code file that passes every test and ruins a piece of copper-clad.
+The corrective is a real machine, and a person watching it.
+
+So: written with Claude, driven by a human, and checked against metal. Read the code before you
+trust it with a spindle — which is good advice whoever wrote it.
 
 ---
 

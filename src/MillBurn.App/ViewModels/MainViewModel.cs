@@ -530,10 +530,25 @@ public sealed partial class MainViewModel : ViewModelBase
 
         if (map is null)
         {
-            StatusMessage = "No probe points in that file. Expected GRBL [PRB:] reports, "
-                + "or three numbers a line.";
+            // Why it failed, and — just as important — what the app is still holding. A refused
+            // import leaves the previous surface in place, so "Forget height map" stays enabled
+            // and the export dialog still offers levelling. Without this sentence that reads as
+            // the import having worked.
+            ImportProblem = log.Rejection ?? "Nothing in that file is probe data.";
+
+            if (Surface is { } kept)
+            {
+                ImportProblem += string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $" The map you imported before is still loaded — {kept.PointCount} points, "
+                    + $"{kept.RangeMm:F3} mm out of flat — and exports will still use it.");
+            }
+
+            StatusMessage = ImportProblem;
             return false;
         }
+
+        ImportProblem = null;
 
         Surface = map;
         OnPropertyChanged(nameof(Surface));
@@ -553,6 +568,15 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     public bool HasSurface => Surface is not null;
+
+    /// <summary>
+    /// Why the last import was refused, or null when the last one worked.
+    ///
+    /// Held on the view model rather than raised from the import itself so that the headless
+    /// startup path and the menu item both end up with the same sentence, and so a test can read
+    /// it without a dialog being on screen.
+    /// </summary>
+    public string? ImportProblem { get; private set; }
 
     /// <summary>
     /// Why the imported surface cannot be used for this board, or null when it can.
@@ -595,6 +619,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public void ForgetHeightMap()
     {
         Surface = null;
+        ImportProblem = null;
         OnPropertyChanged(nameof(Surface));
         OnPropertyChanged(nameof(HasSurface));
         OnPropertyChanged(nameof(SurfaceSummary));

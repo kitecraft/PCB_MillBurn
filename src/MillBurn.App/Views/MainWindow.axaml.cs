@@ -352,9 +352,18 @@ public partial class MainWindow : Window
 
         // Loads a probe log at startup, so the export dialog's levelling row can be checked with a
         // surface actually imported rather than only in its disabled state.
-        if (Argument(args, "--map") is { } probeLog)
+        if (Argument(args, "--map") is { } probeLog && !vm.ImportHeightMap(probeLog))
         {
-            vm.ImportHeightMap(probeLog);
+            Console.Error.WriteLine(vm.ImportProblem);
+
+            // Shown, not just printed, so the refusal an operator actually sees is checkable from
+            // a screenshot like every other dialog here.
+            var note = ConfirmWindow.Preview(
+                $"{Path.GetFileName(probeLog)} is not a probe log", vm.ImportProblem!, "OK", null, false);
+
+            note.RequestedThemeVariant = ActualThemeVariant;
+            note.Show(this);
+            _captureInstead = note;
         }
 
         // Writes the export for real, twice: once with the map taken as top-up and once as flipped.
@@ -944,13 +953,23 @@ public partial class MainWindow : Window
 
             if (chosen.LogPath is { } log)
             {
-                var (map, _) = ProbeLog.Read(
+                var (map, read) = ProbeLog.Read(
                     File.ReadAllText(log),
                     new HeightMapOptions { Smoothing = vm.Settings.Level.Smoothing });
 
                 if (map is null)
                 {
-                    vm.StatusMessage = $"No probe points in {Path.GetFileName(log)}; wrote the test cut unlevelled.";
+                    // The operator asked for a levelled cut. Writing an unlevelled one under the
+                    // name they chose, with only a line in the status bar to say so, is the worst
+                    // of the available outcomes — so nothing gets written.
+                    await ConfirmWindow.NoteAsync(
+                        this,
+                        $"{Path.GetFileName(log)} is not a probe log",
+                        (read.Rejection ?? "Nothing in that file is probe data.")
+                        + " No files were written. Pick a different log, or choose “Cut it as it "
+                        + "lies”.");
+
+                    return;
                 }
                 else
                 {
@@ -1062,9 +1081,14 @@ public partial class MainWindow : Window
             FileTypeFilter = [ProbeLogFileType],
         });
 
-        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path
+            && !vm.ImportHeightMap(path)
+            && vm.ImportProblem is { } why)
         {
-            vm.ImportHeightMap(path);
+            // A dialog, not a line in the status bar. A refused import changes nothing on screen —
+            // the same board, the same layers, the same menu items — so a message that can be
+            // missed is a message that says the import worked.
+            await ConfirmWindow.NoteAsync(this, $"{Path.GetFileName(path)} is not a probe log", why);
         }
     }
 

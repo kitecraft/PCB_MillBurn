@@ -54,6 +54,19 @@ public sealed record ProbeLogResult
     /// </summary>
     public string? Controller { get; init; }
 
+    /// <summary>
+    /// Why this file is not a probe log at all, or null when it is one.
+    ///
+    /// Separate from <see cref="Notes"/>, which are remarks about a log that was read. This is the
+    /// verdict: the file was opened, and nothing usable came out of it. Every caller that imports a
+    /// map has to say something when this is set, because the alternative — carrying on quietly
+    /// with no surface — looks exactly like success from the outside.
+    /// </summary>
+    public string? Rejection { get; init; }
+
+    /// <summary>Non-blank, non-comment lines the reader actually looked at.</summary>
+    public int LinesRead { get; init; }
+
     public IReadOnlyList<string> Notes { get; init; } = [];
 
     public bool IsEmpty => Samples.Count == 0;
@@ -108,6 +121,8 @@ public static class ProbeLog
         long? lastX = null;
         long? lastY = null;
 
+        var considered = 0;
+
         foreach (var raw in lines)
         {
             var line = raw.Trim();
@@ -116,6 +131,8 @@ public static class ProbeLog
             {
                 continue;
             }
+
+            considered++;
 
             if (Tidy(line).StartsWith("$I", StringComparison.OrdinalIgnoreCase))
             {
@@ -255,7 +272,72 @@ public static class ProbeLog
             FrameOffset = offset,
             CommandedPoints = commanded,
             Controller = identity.Count > 0 ? string.Join(" · ", identity) : controller,
+            LinesRead = considered,
+            Rejection = Unusable(samples, considered, unreadable, failed, sawProbeReport),
         };
+    }
+
+    /// <summary>
+    /// Whether what came out of the file can honestly be called a probe log, and if not, why not.
+    ///
+    /// The reader is deliberately forgiving — it will take three numbers a line from a file
+    /// somebody typed by hand — and forgiveness has a cost: hand it a shopping list and it finds
+    /// nothing, hand it a G-code program and it finds nothing, and "nothing" used to travel
+    /// onwards as a quiet <c>null</c> that every caller then had to notice. These are the four
+    /// shapes of nothing, each with the sentence that says which one happened.
+    ///
+    /// Thresholds are set where a real log could never fall foul of them. A board is never ten
+    /// millimetres out of flat; a probing run never visits one spot twenty times. Anything less
+    /// clear-cut belongs in <see cref="ProbeLogResult.Notes"/>, where it informs rather than
+    /// refuses.
+    /// </summary>
+    private static string? Unusable(
+        List<ProbeSample> samples, int considered, int unreadable, int failed, bool sawProbeReport)
+    {
+        if (samples.Count == 0)
+        {
+            if (failed > 0)
+            {
+                return $"Every probe in this file failed to touch the surface — {failed} of them. "
+                    + "Nothing was measured. Check the probe is clipped to the tool and the stock, "
+                    + "and that the bit starts within reach of the copper.";
+            }
+
+            return sawProbeReport
+                ? "This file has [PRB:] reports in it, but none of them carried three coordinates."
+                : $"Nothing in this file is probe data: {considered} line(s) read, none of them a "
+                    + "[PRB:] report and none of them three numbers. Expected your sender's log "
+                    + "from the probing routine, or a plain list of X Y Z.";
+        }
+
+        // More rubbish than data. A log with a header row or a stray note is normal; a file that is
+        // mostly unreadable is a file that happens to contain a few numbers.
+        if (unreadable > samples.Count)
+        {
+            return $"Only {samples.Count} of {considered} line(s) read as coordinates. This does "
+                + "not look like a probe log — check it is the file your sender wrote.";
+        }
+
+        var bounds = samples.Aggregate(Bounds.Empty, (b, s) => b.Include(s.At));
+
+        if (samples.Count > 1 && bounds.Width == 0 && bounds.Height == 0)
+        {
+            return $"All {samples.Count} points in this file are at the same X and Y. A height map "
+                + "needs the probe to have moved.";
+        }
+
+        var rangeMm = (samples.Max(s => s.ZNm) - samples.Min(s => s.ZNm)) / (double)Nm.PerMillimetre;
+
+        if (rangeMm > 10)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"The Z values in this file span {rangeMm:F1} mm. That is not the surface of a "
+                + $"board — it is either the wrong file, or probes that ran to the end of their "
+                + $"travel without touching anything.");
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -443,7 +525,9 @@ public static class ProbeLog
     {
         var log = Parse(text, inches);
 
-        return log.IsEmpty
+        // One gate, so no caller can accidentally accept a map built out of a file that was never a
+        // probe log. Read() is what the app and the CLI both go through.
+        return log.Rejection is not null
             ? (null, log)
             : (HeightMap.Build(log.Samples, options), log);
     }
