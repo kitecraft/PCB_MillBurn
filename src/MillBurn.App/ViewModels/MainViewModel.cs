@@ -626,7 +626,12 @@ public sealed partial class MainViewModel : ViewModelBase
     /// The dry runs are built from the emitted text, not from the toolpaths, so what you watch in
     /// the air is the file you are about to run — the same reasoning as the backplot.
     /// </summary>
-    public bool WriteExport(ExportPlan plan, string folder, bool dryRun = false, bool level = false)
+    public bool WriteExport(
+        ExportPlan plan,
+        string folder,
+        bool dryRun = false,
+        bool level = false,
+        bool levelFlipped = false)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(folder);
@@ -657,7 +662,7 @@ public sealed partial class MainViewModel : ViewModelBase
                     // A map measured before the stock was turned over describes the other face, in
                     // coordinates that have since been mirrored. One export cannot level both
                     // sides from one map, and the side it cannot level is the flipped one.
-                    if (Leveller.WhyNotLevel(item.Mirrored) is { } why)
+                    if (Leveller.WhyNotLevel(item.Mirrored, levelFlipped) is { } why)
                     {
                         refusals.Add($"Not levelled — {item.TargetName}: {why}");
                         continue;

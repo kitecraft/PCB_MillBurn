@@ -33,6 +33,7 @@ internal static class Program
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
+            Console.WriteLine("                                 --level-side top|bottom which face the map was probed on");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -1680,7 +1681,7 @@ internal static class Program
             }
 
             if (map is not null && item.Output == OutputKind.Gcode
-                && Leveller.WhyNotLevel(item.Mirrored) is { } flipped)
+                && Leveller.WhyNotLevel(item.Mirrored, LevelFlipped(args)) is { } flipped)
             {
                 // One export cannot level both sides from one map, and the side it cannot level is
                 // the flipped one: the map describes the face that is about to go face down.
@@ -1956,6 +1957,15 @@ internal static class Program
     }
 
     /// <summary><c>Board-F_Cu.nc</c> becomes <c>Board-F_Cu.levelled.nc</c>.</summary>
+    /// <summary>
+    /// <c>--level-side bottom</c>: the map was probed with the stock flipped, so it belongs to the
+    /// mirrored programs and not to the rest. Top-up is the default because it is what almost
+    /// everyone does, and because being wrong about it is loud rather than silent — the export
+    /// names every file it refused and why.
+    /// </summary>
+    private static bool LevelFlipped(string[] args) =>
+        string.Equals(Argument(args, "--level-side"), "bottom", StringComparison.OrdinalIgnoreCase);
+
     private static string LevelledName(string target) =>
         Path.Combine(
             Path.GetDirectoryName(Path.GetFullPath(target))!,

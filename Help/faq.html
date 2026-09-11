@@ -439,17 +439,30 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <h3>A map is for one side of one board, as it is clamped right now</h3>
 
 <p>
-  <strong>A bottom-side program is never levelled from a map probed before the flip</strong>, and the
-  export refuses to write one rather than writing a file that cannot be right. Turning the stock over
-  presents the <em>other face</em>, in coordinates that have since been mirrored, so the correction
-  would land on the wrong point of the wrong surface &mdash; wrong twice, and confidently.
+  A map measures <strong>one face of the stock, as it was clamped at the time</strong>. The export
+  asks which face &mdash; <em>the board was top-up / flipped when you probed it</em> &mdash; because
+  nothing in the log says, and only you know. Programs cut on that side are levelled; programs cut
+  on the other side are refused, by name, with the reason.
 </p>
 
 <p>
-  There is no arithmetic that fixes it, because the board is also re-clamped when you turn it over.
-  If you want the bottom side levelled: cut the top, flip and re-register, probe again, then level
-  that one file on its own. From the command line that is
-  <code>millburn level Board-B_Cu.nc --map second-probe.log</code>.
+  <strong>Top-up is the usual answer</strong>, and it covers more than the top copper: drilling and
+  the board outline are cut with the board that way up too, so they are levelled alongside it. The
+  only file left out is the mirrored one. The window lists them both ways round before you write
+  anything.
+</p>
+
+<p>
+  Applied across the flip the correction would land on the wrong point &mdash; the coordinates have
+  been mirrored &mdash; of the wrong surface. Wrong twice, and confidently. No arithmetic rescues
+  it, because the board is re-clamped when you turn it over.
+</p>
+
+<p>
+  So to level both sides you probe twice. Cut the top, flip and re-register, probe again, import the
+  new map, and export the bottom with <em>flipped</em> chosen. Or level that one file on its own:
+  <code>millburn level Board-B_Cu.nc --map second-probe.log</code>. On the command line the export
+  takes <code>--level-side top|bottom</code>, and defaults to top.
 </p>
 
 <p>

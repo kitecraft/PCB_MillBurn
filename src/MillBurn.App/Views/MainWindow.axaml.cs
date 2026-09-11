@@ -361,7 +361,8 @@ public partial class MainWindow : Window
         {
             var window = new ExportWindow(
                 plan, Environment.CurrentDirectory, vm.Settings.WriteDryRun,
-                vm.Surface, vm.SurfaceProblem)
+                vm.Surface, vm.SurfaceProblem,
+                probedFlipped: args.Contains("--probed-flipped", StringComparer.OrdinalIgnoreCase))
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -792,7 +793,7 @@ public partial class MainWindow : Window
 
         if (chosen is not null)
         {
-            vm.WriteExport(plan, chosen.Folder, chosen.DryRun, chosen.Level);
+            vm.WriteExport(plan, chosen.Folder, chosen.DryRun, chosen.Level, chosen.LevelFlipped);
         }
     }
 

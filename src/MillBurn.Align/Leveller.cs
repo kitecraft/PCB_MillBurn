@@ -84,29 +84,39 @@ public static class Leveller
     /// later lines. Getting either wrong drills or mills straight through the board.
     /// </remarks>
     /// <summary>
-    /// Why a height map must not be applied to this program at all, or null when it may be.
+    /// Why a height map must not be applied to this program, or null when it may be.
     ///
-    /// **A mirrored program is the case, and it is not a subtle one.** Bottom-side geometry is
-    /// flipped left-to-right because the operator turns the stock over before cutting it. A map
-    /// measured before that flip describes the face that is now underneath, in coordinates that
-    /// have since been mirrored — so the correction would be applied to the wrong point of the
-    /// wrong surface. Wrong twice, and confidently.
+    /// **A map describes one face of the stock as it was clamped at the time.** Bottom-side
+    /// geometry is mirrored because the operator turns the board over before cutting it, so a
+    /// program and a map either belong to the same side or they do not. Applied across the flip,
+    /// the correction lands on the wrong point — the coordinates have been mirrored — of the wrong
+    /// surface. Wrong twice, and confidently.
     ///
-    /// It cannot be fixed by inverting anything, either. The stock is re-clamped when it is turned
-    /// over, and a height map belongs to the piece of stock as it is currently held: that is why it
-    /// is never saved into a project. The only correct answer is to probe again after the flip.
+    /// Nothing can be inverted to rescue it. The stock is re-clamped when it is turned over, and a
+    /// map belongs to a piece of stock in the position it is currently held; that is why it is never
+    /// saved into a project. The only correct answer is to probe the side about to be cut.
     ///
-    /// Refused rather than warned about, because an export produces both sides from one map and at
-    /// most one of them can be right. A file that carries "every Z follows a measured surface" and
-    /// "flip the stock left-to-right" in the same header is telling the operator two things that
-    /// cannot both be true.
+    /// Refused rather than warned about, because one export produces both sides from one map and at
+    /// most one of them can be right. A file carrying "every Z follows a measured surface" above
+    /// "flip the stock left-to-right" is telling the operator two things that cannot both be true.
     /// </summary>
-    public static string? WhyNotLevel(bool mirrored) => mirrored
-        ? "This program is mirrored for work on the flipped stock, and the map was measured before "
-            + "the flip. Turning the board over presents the other face and mirrors the map's X as "
-            + "well, so the correction would land on the wrong point of the wrong surface. Cut this "
-            + "side unlevelled, or re-probe after the flip and level this one file on its own."
-        : null;
+    /// <param name="programMirrored">Whether this program is cut on the flipped stock.</param>
+    /// <param name="mapOfFlippedStock">Whether the map was probed with the stock flipped.</param>
+    public static string? WhyNotLevel(bool programMirrored, bool mapOfFlippedStock = false)
+    {
+        if (programMirrored == mapOfFlippedStock)
+        {
+            return null;
+        }
+
+        var program = programMirrored ? "on the flipped stock" : "with the board top-up";
+        var map = mapOfFlippedStock ? "with the stock flipped" : "with the board top-up";
+
+        return $"This program is cut {program} and the map was probed {map}. Turning the board over "
+            + "presents the other face and mirrors the coordinates as well, so the correction would "
+            + "land on the wrong point of the wrong surface. Cut this one unlevelled, or probe the "
+            + "side you are about to cut and level this file on its own.";
+    }
 
     public static (string Text, LevelReport Report) Apply(
         string program, HeightMap map, LevelOptions? options = null)

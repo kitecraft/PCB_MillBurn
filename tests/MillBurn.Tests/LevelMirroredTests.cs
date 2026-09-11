@@ -19,20 +19,48 @@ namespace MillBurn.Tests;
 /// </summary>
 public sealed class LevelMirroredTests(ITestOutputHelper output)
 {
-    [Fact]
-    public void AMirroredProgramIsRefused()
+    /// <summary>
+    /// The rule in full: a program and a map either belong to the same side of the stock or they do
+    /// not, and only the operator knows which side was probed.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, true)]   // top program, top map
+    [InlineData(true, true, true)]     // bottom program, bottom map
+    [InlineData(true, false, false)]   // bottom program, top map — the one that shipped
+    [InlineData(false, true, false)]   // top program, bottom map
+    public void AProgramAndAMapMustBeForTheSameSide(bool mirrored, bool flippedMap, bool allowed)
     {
-        var why = Leveller.WhyNotLevel(mirrored: true);
+        var why = Leveller.WhyNotLevel(mirrored, flippedMap);
 
-        output.WriteLine(why);
+        output.WriteLine($"program {(mirrored ? "bottom" : "top")}, map {(flippedMap ? "bottom" : "top")} -> {why ?? "allowed"}");
 
-        Assert.NotNull(why);
-        Assert.Contains("re-probe after the flip", why, StringComparison.Ordinal);
+        Assert.Equal(allowed, why is null);
     }
 
+    /// <summary>The refusal says which way round each of them is, not merely that they disagree.</summary>
     [Fact]
-    public void AnUnmirroredProgramIsNot() =>
-        Assert.Null(Leveller.WhyNotLevel(mirrored: false));
+    public void TheRefusalSaysWhichWayRoundBothAre()
+    {
+        var bottomProgram = Leveller.WhyNotLevel(true, false);
+        var bottomMap = Leveller.WhyNotLevel(false, true);
+
+        output.WriteLine(bottomProgram);
+        output.WriteLine(bottomMap);
+
+        Assert.Contains("cut on the flipped stock", bottomProgram, StringComparison.Ordinal);
+        Assert.Contains("probed with the board top-up", bottomProgram, StringComparison.Ordinal);
+
+        Assert.Contains("cut with the board top-up", bottomMap, StringComparison.Ordinal);
+        Assert.Contains("probed with the stock flipped", bottomMap, StringComparison.Ordinal);
+    }
+
+    /// <summary>Top-up is the default, because it is what almost everybody does.</summary>
+    [Fact]
+    public void TheDefaultAssumesTheBoardWasProbedTheWayUpItWasImported()
+    {
+        Assert.Null(Leveller.WhyNotLevel(programMirrored: false));
+        Assert.NotNull(Leveller.WhyNotLevel(programMirrored: true));
+    }
 
     /// <summary>
     /// And the planner still says which items are mirrored, which is what the refusal keys on. If
@@ -63,5 +91,9 @@ public sealed class LevelMirroredTests(ITestOutputHelper output)
 
         Assert.NotNull(Leveller.WhyNotLevel(bottom.Mirrored));
         Assert.Null(Leveller.WhyNotLevel(top.Mirrored));
+
+        // And the other way round when the operator says they probed the flipped stock.
+        Assert.Null(Leveller.WhyNotLevel(bottom.Mirrored, mapOfFlippedStock: true));
+        Assert.NotNull(Leveller.WhyNotLevel(top.Mirrored, mapOfFlippedStock: true));
     }
 }

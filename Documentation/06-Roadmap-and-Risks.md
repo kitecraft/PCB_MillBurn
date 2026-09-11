@@ -847,10 +847,26 @@ measured on the face that is about to go underneath, in coordinates that have si
 so the correction would land on the wrong point of the wrong surface. Wrong twice.
 
 It is refused now rather than warned about, because one export produces both sides from one map and
-at most one of them can be right. The refusal names the file, says why, and says what to do instead:
-cut that side unlevelled, or re-probe after the flip and level that one file on its own with
-`millburn level`. `Leveller.WhyNotLevel` holds the reasoning so the app and the CLI refuse
-identically.
+at most one of them can be right. The refusal names the file, says why, and says what to do instead.
+`Leveller.WhyNotLevel` holds the reasoning so the app and the CLI refuse identically.
+
+**The first version of that refusal assumed the map was always of the top**, which is the common
+case and not a rule. Raised immediately from the workshop: the operator is the one who knows which
+face was pointing up, so ask. The export window now carries *the board was top-up / flipped when you
+probed it*, and the rule generalises to the thing it always was — **a program and a map either
+belong to the same side of the stock or they do not**. `--level-side top|bottom` on the CLI, top by
+default.
+
+Asking also made it possible to say what the answer does, which a static note could not. The window
+names the files it will level and the files it will not, and updates both lists as the radio moves:
+*Levels PogoTest1-F_Cu.nc, PogoTest1-PTH-drl.nc, PogoTest1-NPTH-drl.nc, PogoTest1-Edge_Cuts.nc. Not
+PogoTest1-B_Cu.nc — cut on the other side.* Drilling and the outline are top-side programs, which is
+not obvious and is exactly the sort of thing an operator should not have to infer.
+
+One bug came with it and was caught by looking: levelling had been counted as one extra file per
+program, which stopped being true the moment some programs were refused. The heading now counts the
+files it will actually write, and follows the radio as well as the checkbox — a window whose whole
+job is to say what lands on disk cannot be approximate about it.
 
 Worth noting how it was found: by reading the files from a real export before running them. The
 suite had nothing to say, because every levelling test levels a program nobody flips.
