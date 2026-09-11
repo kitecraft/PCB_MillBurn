@@ -1233,6 +1233,113 @@ timestamp trap, the Falcon layer explosion, the V-bit effective-diameter model a
 error budget are all already written down here. The user manual is a rewrite of these documents for
 a different reader, not new research.
 
+<a id="phase-8"></a>
+
+### Phase 8 — An MCP server — **scheduled, not started**
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server over the same libraries the app
+and the CLI drive, so an assistant can load a board, look at it, and say what a job would do.
+
+It depends on nothing unbuilt and can be taken at any point. It is numbered last because it is a new
+*surface*, not a new capability: everything it would expose already exists and is already tested.
+
+#### 8.1 Why this and not just the CLI
+
+The CLI already makes the pipeline scriptable, and a shell tool is a perfectly good thing for an
+assistant to call. Two things are genuinely different.
+
+**It can look at the board.** MCP returns images, and this project's own working method — the one
+that found the mirrored backplot, the drill-guide label bug and the panel layout problems — is
+*render it and look*. A tool that hands back a PNG of the board, or of the emitted programs drawn
+over the copper, gives a model the same check a person gets. Parsing `board`'s text output does not.
+
+**The answers are structured.** `plan_export` returning one object per file, each with its summary
+lines and its warnings, is a different thing from scraping a console report that exists to be read
+by a human and is free to change wording. The export plan is already a model — `ExportItem` has
+carried `Summary`, `Warnings` and `Companion` since Phase 2 — and it has never had a consumer that
+wanted it as data.
+
+#### 8.2 What it must not become
+
+**The scope boundary is unchanged.** No serial port, no jogging, no streaming. See
+[01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).
+An MCP server makes it easier to ask for a file; it does not make it acceptable to drive a spindle.
+
+**The export review cannot be quietly removed.** The app's central safety property is that *nothing
+is written until you have seen a list of exactly what is about to be written* — every file, what it
+will do, how long it takes, and anything worth checking. A tool call skips that window. The operator
+approving `write_export` in a chat client sees the tool's name and its arguments; they do not see
+"one of these seven files is mirrored and needs the stock flipped."
+
+So:
+
+- **Read-only by default.** The server starts with no ability to write anything. `plan_export`
+  answers every question an export answers, without producing a file.
+- **Writing is opt-in at launch**, `--allow-write <directory>`, and confined to that directory. A
+  server launched without it cannot be talked into writing, because the capability is not there to
+  be talked into.
+- **`write_export` returns the plan it wrote**, file by file, with the warnings repeated. If the
+  human reads one thing after the fact, it should be the same list they would have read before.
+- **Host approval is not a substitute.** It is a fine second lock and a poor first one: it asks
+  about the call, not about the consequence.
+
+**Board files are untrusted input.** Layer labels, file names, net names and X2 attributes come out
+of somebody's Gerber export and flow straight into tool results. They are data. Nothing read out of
+a board may be treated as an instruction, and the server should not be built in a way that invites
+it — no "notes" field that gets concatenated into a prompt, no passing a layer's own text back as
+anything but a quoted value.
+
+#### 8.3 The surface
+
+Reading, in rough order of how often it would be called:
+
+| Tool | Returns |
+|---|---|
+| `describe_board` | Layers with roles, which were guessed, extents, hole count and sizes, copper coverage |
+| `inspect_files` | The parse report: what was understood, what was not, and on which line |
+| `render_board` | A PNG, through the same `BoardSceneBuilder` and renderer the app uses. Layer selection, theme, size |
+| `plan_export` | Every file the export would write: target name, operation, summary lines, warnings, byte count, time bracket. **Writes nothing** |
+| `render_toolpaths` | A PNG of the emitted programs drawn back over the board — the backplot, as an image |
+| `list_tools` | The saved tool library, with each tool's effective cut width at a given depth |
+| `probe_routine` | The G38.2 grid as text, plus the point count and the estimated standing-around time |
+
+Writing, only when `--allow-write` was given:
+
+| Tool | Does |
+|---|---|
+| `write_export` | Writes the plan to the allowed directory and returns exactly what it wrote |
+| `write_probe_routine`, `write_dry_run`, `write_levelled` | The same three files the CLI writes, same code path |
+
+**Nothing is reimplemented.** Every one of these goes through `ExportPlanner`, `BoardLoader` and the
+existing renderers. A job exported through the server must be byte-identical to the same job
+exported from the app or the CLI, and the golden tests already pin that property — they would simply
+gain a third caller.
+
+#### 8.4 Where it lives, and what it costs
+
+`src/MillBurn.Mcp`, a thin driver beside `MillBurn.Cli`. Both are entry points over the same
+libraries; nothing references either. That keeps
+[01 §2](01-Architecture.md#2-solution-layout)'s rule intact: every algorithm in a UI-free `net10.0`
+library, and the drivers hold no logic.
+
+**One dependency question decides the shape.** The official C# MCP SDK is the obvious way to build
+this, and its licence has to be checked and recorded in
+[THIRD-PARTY-NOTICES](../THIRD-PARTY-NOTICES.md) *before* it is added — this repository has no
+copyleft anywhere in its graph and that is a claim worth keeping true rather than assuming. If it
+turns out not to be permissive, the fallback is not bad: MCP over stdio is JSON-RPC 2.0 with a small
+fixed set of methods, and writing it directly costs a day and no dependency at all.
+
+Transport is **stdio** first, because that is what desktop hosts launch. HTTP only if something
+actually needs it.
+
+#### Done when
+
+An assistant pointed at a Gerber folder can answer *"what will this cut, and is anything wrong with
+it?"* — naming the files, the isolation width, the tool changes, the mirrored layer and the gaps too
+narrow to cut — with a render it has actually looked at, and without a single file being written.
+
+Then, with `--allow-write`, the same job comes out byte-for-byte identical to the app's.
+
 ## 2. Cross-cutting acceptance criteria
 
 | Metric | Target |

@@ -79,16 +79,22 @@ PCB_MillBurn.slnx
 │   ├── MillBurn.Align           net10.0   Fiducial fits, transforms, height maps + levelling
 │   ├── MillBurn.Viewer          net10.0   Toolpath scene, LOD, spatial culling, Skia renderer
 │   ├── MillBurn.Pipeline        net10.0   The cached, cancellable stage graph tying it together
-│   ├── MillBurn.App             net10.0-windows   Shell ONLY: MVVM, docking, Skia viewport
-│   └── MillBurn.Cli             net10.0   Headless batch driver
+│   ├── MillBurn.App             net10.0   Shell ONLY: MVVM, docking, Skia viewport
+│   ├── MillBurn.Cli             net10.0   Headless batch driver
+│   └── MillBurn.Mcp             net10.0   MCP server over the same libraries (Phase 8, not built)
 └── tests/
     ├── MillBurn.Tests           xUnit unit + property tests
     ├── MillBurn.GoldenTests     Golden-file and determinism regression
-    └── boards/                  Two real KiCad 10 exports, committed as fixtures
+    └── boards/                  Six real KiCad exports, committed as fixtures
 ```
 
 Dependency direction is strictly downward. `MillBurn.App` references everything; nothing
-references `MillBurn.App`.
+references `MillBurn.App`. `MillBurn.Cli` and `MillBurn.Mcp` are peers of it — entry points holding
+no logic of their own, so that a job comes out the same however it was asked for.
+
+`MillBurn.App` targets plain `net10.0`, not `net10.0-windows`: Avalonia supplies the X11 backend and
+SkiaSharp the native renderer, and the Linux build is published and run. Nothing in the codebase
+touches a Windows-only API.
 
 `MillBurn.Align` references `MillBurn.Gcode`, because the height-map *leveller* is a rewrite of an
 emitted program and belongs beside the map it applies. The alternative — putting the leveller in
