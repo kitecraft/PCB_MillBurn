@@ -221,6 +221,33 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <h2 id="vbit">Why does the isolation depth change the cut width?</h2>
 
+<div class="warn">
+  <p>
+    <strong>Tip width is in millimetres here, and most listings quote it in inches.</strong> A
+    typical engraving-bit specification reads <em>Shank Diameter: 1/8 inch, Overall Length: 1-1/2
+    inch, Tip Width: 0.005</em> &mdash; and that last one is inches too, even though it does not say
+    so. <strong>0.005 in is 0.127 mm.</strong>
+  </p>
+  <p>
+    Typed straight in as 0.005 mm, it describes a bit twenty-five times finer than the one in your
+    hand, and nothing about the result looks wrong: the cut width is computed correctly from the
+    tip, the passes are counted correctly from the cut width, and the first pass is placed half a
+    cut-width clear of the copper. The real cutter, being wider than the app believes, then takes
+    that margin out of the <em>trace</em> instead of out of the gap beside it &mdash; so every trace
+    comes out narrower than you drew it, and a thin one can be cut through.
+  </p>
+  <p>
+    The tool editor says something when a tip looks too fine to be real. It is a notice, not a
+    refusal &mdash; fine bits do exist &mdash; but it is worth reading.
+  </p>
+  <p>
+    <strong>You can measure it.</strong> Cut one straight line at a known depth, measure its width,
+    and work backwards: <code>tip = width &minus; 2 &times; depth &times; tan(angle&nbsp;/&nbsp;2)</code>.
+    Do it on stock held down across its whole area, because at this sensitivity a few hundredths of
+    depth error moves the answer.
+  </p>
+</div>
+
 <p>
   Because a V-bit is a cone. The deeper it goes, the wider it cuts:
 </p>

@@ -231,10 +231,18 @@ public sealed class ToolLibraryWindow : Window
             var at10 = Nm.ToMillimetreString(tool.WidthAtDepth(Nm.FromMillimetres(0.10)), 3);
             var per = Nm.ToMillimetreString((long)(tool.WidthPerDepth * Nm.FromMillimetres(0.01)), 4);
 
-            _effect.Text = string.Create(
+            var effect = string.Create(
                 CultureInfo.InvariantCulture,
                 $"Cuts {at5} mm wide at 0.05 mm deep, {at10} mm at 0.10 mm.\n" +
                 $"Every 0.01 mm of depth error changes that by {per} mm — which is what decides whether this board needs height mapping.");
+
+            // Said here, beside the number that caused it, rather than only in an export somewhere
+            // later. This panel already updates as the fields are typed, so the notice arrives at
+            // the moment the tip is entered — which is the moment it can still be a typo.
+            _effect.Text = ToolAdvice.TipLooksTooFine(tool) is { } tip
+                ? effect + "\n\n" + tip
+                : effect;
+
             return;
         }
 

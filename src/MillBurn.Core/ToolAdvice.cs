@@ -39,11 +39,62 @@ public static class ToolAdvice
     /// <summary>
     /// Everything worth saying about this tool's numbers, or nothing at all.
     /// </summary>
+    /// <summary>
+    /// Below this, a V-bit tip is finer than anything sold for cutting copper.
+    ///
+    /// Not a hard limit on what the geometry can express — the arithmetic is happy with any number
+    /// — but a limit on what anybody owns. Real engraving bits run from about 0.05 mm to 0.2 mm.
+    /// </summary>
+    public const long ImplausibleTipNm = 20_000;
+
+    /// <summary>
+    /// A gentle word when a V-bit's tip is too fine to be a real tool, or null when it is fine.
+    ///
+    /// The reason this is worth a sentence rather than nothing: product listings quote tip width in
+    /// **inches**, usually without saying so, in a specification where every other dimension is
+    /// also inches. "Tip Width: 0.005" is 0.127 mm, and typed straight into a millimetre field it
+    /// is a tool twenty-five times finer than the one in your hand.
+    ///
+    /// Nothing about the resulting file looks wrong. The cut width is computed faithfully from the
+    /// tip, the isolation passes are counted faithfully from the cut width, and the first pass is
+    /// placed half a cut-width clear of the copper — so the real cutter, being wider than the app
+    /// believes, takes that margin out of the trace instead of out of the gap beside it. Traces
+    /// come out narrower than drawn, and a thin one can be cut through.
+    ///
+    /// A notice, never a refusal. Fine bits exist, and the operator is the one holding it.
+    /// </summary>
+    public static string? TipLooksTooFine(Tool tool)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+
+        if (tool.Kind != ToolKind.VBit || tool.TipNm <= 0 || tool.TipNm >= ImplausibleTipNm)
+        {
+            return null;
+        }
+
+        var typed = Nm.ToMillimetreString(tool.TipNm, 3);
+        var asInches = (long)Math.Round(tool.TipNm * 25.4);
+
+        // Only offer the inch reading when it lands somewhere a real bit could be. Suggesting that
+        // 0.0001 mm might be 0.0025 mm helps nobody.
+        return asInches is > 20_000 and < 1_000_000
+            ? $"A {typed} mm tip is very fine for a carbide bit — worth a second look at the units. "
+                + $"Tool listings usually quote this in inches: {typed} in is "
+                + $"{Nm.ToMillimetreString(asInches, 3)} mm. This field is millimetres."
+            : $"A {typed} mm tip is very fine for a carbide bit — worth a second look at the units. "
+                + "This field is millimetres.";
+    }
+
     public static IReadOnlyList<string> For(Tool tool)
     {
         ArgumentNullException.ThrowIfNull(tool);
 
         var advice = new List<string>();
+
+        if (TipLooksTooFine(tool) is { } tip)
+        {
+            advice.Add(tip);
+        }
 
         if (tool.Flutes <= 0)
         {
