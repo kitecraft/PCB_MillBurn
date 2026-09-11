@@ -577,11 +577,11 @@ public sealed partial class LayerRow : ObservableObject
         Invert = Invert,
     };
 
-    private Tool DefaultTool()
-    {
-        var candidates = Tools;
-        return candidates.Count > 0 ? candidates[0] : Tool.DefaultVBit;
-    }
+    /// <summary>
+    /// The bit this layer starts out being cut with. Shared with the planner, so the window and the
+    /// command line never pick different tools for the same untouched layer.
+    /// </summary>
+    private Tool DefaultTool() => LayerOperations.DefaultToolFor(Operation, AllTools);
 
     internal static SolidColorBrush ToBrush(SkiaSharp.SKColor c) =>
         new SolidColorBrush(Color.FromArgb(0xFF, c.Red, c.Green, c.Blue));

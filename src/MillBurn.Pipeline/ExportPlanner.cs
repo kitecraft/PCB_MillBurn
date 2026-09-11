@@ -797,6 +797,22 @@ public static class ExportPlanner
 
     // ------------------------------------------------------------------ helpers
 
+    /// <summary>
+    /// Which bit this layer is cut with: the one it names, else the first suitable one in the
+    /// library, else a built-in.
+    ///
+    /// **The library comes before the built-in, because the library is what the operator owns.**
+    /// It used to fall straight through to a hard-coded tool whenever a layer named none — which is
+    /// every layer of a folder the window has never opened — so the same board exported from the
+    /// CLI and from the app came out cut with different bits. On one real library that was a
+    /// 0.127 mm cut against a 0.032 mm one: four isolation passes against fifteen, an hour against
+    /// three, and a different set of gaps reported as unreachable. Both files looked entirely
+    /// correct.
+    ///
+    /// The built-in stays as the last resort, for a library with nothing of the right kind in it.
+    /// A plan that refused to exist because nobody had entered a drill yet would be worse than one
+    /// that assumes a 1 mm drill and says so.
+    /// </summary>
     private static Tool ResolveTool(LayerOutputSettings setting, OperationKind operation, ToolLibrary library)
     {
         if (setting.ToolId is { } id && library.Tools.FirstOrDefault(t => t.Id == id) is { } chosen)
@@ -804,12 +820,9 @@ public static class ExportPlanner
             return chosen;
         }
 
-        return operation switch
-        {
-            OperationKind.Outline => Tool.DefaultOutlineMill,
-            OperationKind.Drilling => Tool.DefaultDrill,
-            _ => Tool.DefaultVBit,
-        };
+        // The same rule the layer drawer uses when it fills in a tool nobody has picked, so the two
+        // agree by construction rather than by both happening to be written the same way.
+        return LayerOperations.DefaultToolFor(operation, library.Tools);
     }
 
 

@@ -800,6 +800,35 @@ available if you are willing to drill them all the same size.
 each diameter named with its own hole count, and no hole lost in the split. Plus that the biggest
 bit goes first, which was right all along and is worth pinning.
 
+### The window and the command line cut with different bits
+
+Found while checking why the app reported two unreachable gaps on a board where the CLI reported
+ten. Not a defect in the gap check: the two were using **different tools**.
+
+`ExportPlanner.ResolveTool` fell straight through to a hard-coded `Tool.DefaultVBit` whenever a
+layer named no tool of its own — which is every layer of a folder the window has never opened.
+`LayerRow.DefaultTool` took the first suitable tool from the operator's **own library**. On a real
+library whose 30° V-bit had been reground to a 0.005 mm tip, that was a 0.127 mm cut against a
+0.032 mm one: four isolation passes against fifteen, an hour of cutting against three, and a
+genuinely different set of gaps too narrow to reach. Both files looked entirely correct, and the
+README claimed a job exported either way came out identical.
+
+`LayerOperations.DefaultToolFor` is now the single rule, called by both. **The library comes before
+the built-in**, because the library is what the operator owns.
+
+One detail decides whether that is an improvement or a different surprise: **the built-in is
+preferred when the library holds it**, rather than simply taking the first of the right kind.
+Editing a shipped tool keeps its identity, so somebody who reground their 30° bit gets their version
+— but somebody who merely *added* a finer V-bit does not silently have every isolation job re-cut
+with it, and adding a 0.8 mm end mill does not re-cut every outline with a cutter thinner than the
+one that was chosen. First-of-kind is the fallback for a library that no longer holds the shipped
+tool at all, and the built-in is the last resort for one that holds nothing of the kind: a plan that
+refused to exist because nobody had entered a drill yet would be worse than one that assumes a 1 mm
+drill and says so.
+
+The golden snapshots are unchanged, which is the point — `ToolLibrary.Default` holds the built-ins,
+so the shipped behaviour is identical and only a customised library moves.
+
 ### The probing round trip did not close
 
 Reported from the bench the same day: a probing routine was generated, run, the sender's log saved

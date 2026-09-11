@@ -232,6 +232,48 @@ public static class LayerOperations
         _ => null,
     };
 
+    /// <summary>
+    /// The bit a layer is cut with when nobody has picked one — from the library first.
+    ///
+    /// One rule, called by both the planner and the layer drawer, so a board exported from the
+    /// window and the same board exported from the command line are cut with the same tool. They
+    /// used to disagree: the planner fell straight through to a hard-coded bit whenever a layer
+    /// named none, which is every layer of a folder the window has never opened, while the drawer
+    /// took the first suitable one in the operator's own library. On one real library that was a
+    /// 0.127 mm cut against a 0.032 mm one — four isolation passes against fifteen, an hour against
+    /// three — with both files looking entirely correct.
+    ///
+    /// **The built-in is preferred when the library holds it**, rather than simply taking the first
+    /// of the right kind. Editing a shipped tool keeps its identity, so somebody who changed the tip
+    /// on the 30° V-bit gets their version; and somebody who merely added a finer bit does not
+    /// silently have every outline re-cut with whatever happens to sort first.
+    ///
+    /// The built-in is the last resort, for a library with nothing of the right kind in it at all. A
+    /// plan that refused to exist because nobody had entered a drill yet would be worse than one
+    /// that assumes a 1 mm drill and says so.
+    /// </summary>
+    public static Tool DefaultToolFor(OperationKind operation, IReadOnlyList<Tool> library)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+
+        var builtIn = operation switch
+        {
+            OperationKind.Outline => Tool.DefaultOutlineMill,
+            OperationKind.Drilling => Tool.DefaultDrill,
+            _ => Tool.DefaultVBit,
+        };
+
+        if (library.FirstOrDefault(t => t.Id == builtIn.Id) is { } owned)
+        {
+            return owned;
+        }
+
+        return ToolKindFor(operation) is { } kind
+            && library.FirstOrDefault(t => t.Kind == kind) is { } suitable
+                ? suitable
+                : builtIn;
+    }
+
     public static string Label(OperationKind operation) => operation switch
     {
         OperationKind.Isolation => "Isolation routing",
