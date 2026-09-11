@@ -840,6 +840,21 @@ by a number that happens to line up two corners is precisely the quiet, plausibl
 feature exists to prevent. A log with no echoes in it is not guessed at either — it says that
 nothing in the file records where work zero was, and what to do about it.
 
+**A second defect fell out of reading the first real export.** With a map imported, the export
+cheerfully wrote `Board-B_Cu.levelled.nc` — a file whose own header says *every Z follows a measured
+surface* directly above *flip the stock left-to-right*. Those cannot both be true. The map was
+measured on the face that is about to go underneath, in coordinates that have since been mirrored,
+so the correction would land on the wrong point of the wrong surface. Wrong twice.
+
+It is refused now rather than warned about, because one export produces both sides from one map and
+at most one of them can be right. The refusal names the file, says why, and says what to do instead:
+cut that side unlevelled, or re-probe after the flip and level that one file on its own with
+`millburn level`. `Leveller.WhyNotLevel` holds the reasoning so the app and the CLI refuse
+identically.
+
+Worth noting how it was found: by reading the files from a real export before running them. The
+suite had nothing to say, because every levelling test levels a program nobody flips.
+
 **Verified against one controller, and now saying so.** A log's shape is a property of the firmware
 and the sender, not of anything here, and this reader has only ever met GRBL's. `ProbeLog` records
 what the firmware called itself — sniffed loosely from a startup banner or a `$I` reply anywhere in

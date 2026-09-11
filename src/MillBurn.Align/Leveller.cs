@@ -83,6 +83,31 @@ public static class Leveller
     /// and canned drilling cycles, where the depth lives in a modal word that applies to holes on
     /// later lines. Getting either wrong drills or mills straight through the board.
     /// </remarks>
+    /// <summary>
+    /// Why a height map must not be applied to this program at all, or null when it may be.
+    ///
+    /// **A mirrored program is the case, and it is not a subtle one.** Bottom-side geometry is
+    /// flipped left-to-right because the operator turns the stock over before cutting it. A map
+    /// measured before that flip describes the face that is now underneath, in coordinates that
+    /// have since been mirrored — so the correction would be applied to the wrong point of the
+    /// wrong surface. Wrong twice, and confidently.
+    ///
+    /// It cannot be fixed by inverting anything, either. The stock is re-clamped when it is turned
+    /// over, and a height map belongs to the piece of stock as it is currently held: that is why it
+    /// is never saved into a project. The only correct answer is to probe again after the flip.
+    ///
+    /// Refused rather than warned about, because an export produces both sides from one map and at
+    /// most one of them can be right. A file that carries "every Z follows a measured surface" and
+    /// "flip the stock left-to-right" in the same header is telling the operator two things that
+    /// cannot both be true.
+    /// </summary>
+    public static string? WhyNotLevel(bool mirrored) => mirrored
+        ? "This program is mirrored for work on the flipped stock, and the map was measured before "
+            + "the flip. Turning the board over presents the other face and mirrors the map's X as "
+            + "well, so the correction would land on the wrong point of the wrong surface. Cut this "
+            + "side unlevelled, or re-probe after the flip and level this one file on its own."
+        : null;
+
     public static (string Text, LevelReport Report) Apply(
         string program, HeightMap map, LevelOptions? options = null)
     {

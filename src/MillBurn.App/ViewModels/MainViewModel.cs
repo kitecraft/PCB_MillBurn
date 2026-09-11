@@ -648,12 +648,21 @@ public sealed partial class MainViewModel : ViewModelBase
             }
 
             var extra = pages;
-            var refused = 0;
+            var refusals = new List<string>();
 
             if (level && Surface is { } surface)
             {
                 foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
                 {
+                    // A map measured before the stock was turned over describes the other face, in
+                    // coordinates that have since been mirrored. One export cannot level both
+                    // sides from one map, and the side it cannot level is the flipped one.
+                    if (Leveller.WhyNotLevel(item.Mirrored) is { } why)
+                    {
+                        refusals.Add($"Not levelled — {item.TargetName}: {why}");
+                        continue;
+                    }
+
                     var (text, report) = Leveller.Apply(item.Content, surface, new LevelOptions
                     {
                         SegmentMm = Settings.Level.SegmentMm,
@@ -663,7 +672,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
                     if (report.Refusal is not null)
                     {
-                        refused++;
+                        refusals.Add($"Not levelled — {item.TargetName}: {report.Refusal}");
                         continue;
                     }
 
@@ -691,7 +700,7 @@ public sealed partial class MainViewModel : ViewModelBase
                     // so is far better than writing a dry run that might not be one.
                     if (report.Refusal is not null)
                     {
-                        refused++;
+                        refusals.Add($"No dry run for {item.TargetName}: {report.Refusal}");
                         continue;
                     }
 
@@ -705,8 +714,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
             SaveSettings(Settings with { LastExportFolder = folder, WriteDryRun = dryRun });
 
-            StatusMessage = refused > 0
-                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refused} program(s) could not be rewritten."
+            foreach (var refusal in refusals)
+            {
+                Warnings.Add(refusal);
+            }
+
+            StatusMessage = refusals.Count > 0
+                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refusals.Count} thing(s) refused — see the checks."
                 : $"Wrote {plan.Count + extra} file(s) to {folder}.";
 
             return true;

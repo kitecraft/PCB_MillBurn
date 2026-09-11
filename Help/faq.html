@@ -436,6 +436,27 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </p>
 </div>
 
+<h3>A map is for one side of one board, as it is clamped right now</h3>
+
+<p>
+  <strong>A bottom-side program is never levelled from a map probed before the flip</strong>, and the
+  export refuses to write one rather than writing a file that cannot be right. Turning the stock over
+  presents the <em>other face</em>, in coordinates that have since been mirrored, so the correction
+  would land on the wrong point of the wrong surface &mdash; wrong twice, and confidently.
+</p>
+
+<p>
+  There is no arithmetic that fixes it, because the board is also re-clamped when you turn it over.
+  If you want the bottom side levelled: cut the top, flip and re-register, probe again, then level
+  that one file on its own. From the command line that is
+  <code>millburn level Board-B_Cu.nc --map second-probe.log</code>.
+</p>
+
+<p>
+  It is the same reason a map is not saved into your project. It describes the piece of stock on the
+  table in the position it is in, and almost nothing you do to a board leaves that true.
+</p>
+
 <h3>Hold the board down everywhere, not just at the edges</h3>
 
 <p>

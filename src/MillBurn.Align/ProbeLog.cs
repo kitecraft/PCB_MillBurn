@@ -90,6 +90,14 @@ public static class ProbeLog
         var notes = new List<string>();
         var commanded = new List<Point2>();
         string? controller = null;
+
+        // The reply to $I, when the operator ran it. Several lines, and the useful one is often not
+        // the one with a version in it: a real capture from a Monport board answered "Monport",
+        // then "[VER:1.1f.20230316:]", then "[OPT:...]". The vendor name carries no keyword any
+        // list would have contained, so the whole block is kept rather than the first line that
+        // happens to be recognised.
+        var identity = new List<string>();
+        var readingIdentity = false;
         var failed = 0;
         var unreadable = 0;
         var sawProbeReport = false;
@@ -107,6 +115,31 @@ public static class ProbeLog
             if (line.Length == 0 || line.StartsWith('#') || line.StartsWith('(') || line.StartsWith(';'))
             {
                 continue;
+            }
+
+            if (Tidy(line).StartsWith("$I", StringComparison.OrdinalIgnoreCase))
+            {
+                readingIdentity = true;
+                continue;
+            }
+
+            if (readingIdentity)
+            {
+                var said = Tidy(line);
+
+                // "ok" closes the reply. So does anything that is plainly the job starting again.
+                if (said.Length == 0
+                    || said.StartsWith("ok", StringComparison.OrdinalIgnoreCase)
+                    || identity.Count >= 4
+                    || HasMotionWord(line))
+                {
+                    readingIdentity = false;
+                }
+                else
+                {
+                    identity.Add(said);
+                    continue;
+                }
             }
 
             controller ??= FirmwareName(line);
@@ -221,7 +254,7 @@ public static class ProbeLog
             Notes = notes,
             FrameOffset = offset,
             CommandedPoints = commanded,
-            Controller = controller,
+            Controller = identity.Count > 0 ? string.Join(" · ", identity) : controller,
         };
     }
 

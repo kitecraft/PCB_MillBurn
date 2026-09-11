@@ -1679,7 +1679,14 @@ internal static class Program
                 Line($"  {"",-4}{note}");
             }
 
-            if (map is not null && item.Output == OutputKind.Gcode)
+            if (map is not null && item.Output == OutputKind.Gcode
+                && Leveller.WhyNotLevel(item.Mirrored) is { } flipped)
+            {
+                // One export cannot level both sides from one map, and the side it cannot level is
+                // the flipped one: the map describes the face that is about to go face down.
+                Console.Error.WriteLine($"  {"",-4}CHECK not levelled: {flipped}");
+            }
+            else if (map is not null && item.Output == OutputKind.Gcode)
             {
                 var (text, report) = Leveller.Apply(item.Content, map, LevelOptionsFrom(args));
 

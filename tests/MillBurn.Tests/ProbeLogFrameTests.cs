@@ -281,6 +281,39 @@ public sealed class ProbeLogFrameTests(ITestOutputHelper output)
         Assert.NotNull(log.Controller);
     }
 
+    /// <summary>
+    /// The whole reply to <c>$I</c>, not the first line of it that happens to be recognised.
+    ///
+    /// From a real capture: the board answers "Monport" first and then the version and the
+    /// options. The vendor name carries no keyword any list would have held, and it is the most
+    /// useful line in the file for working out why a log will not import.
+    /// </summary>
+    [Fact]
+    public void TheWholeIdentityReplyIsKeptAndNotJustTheVersion()
+    {
+        var log = ProbeLog.Parse(
+            ">>> $I\nMonport\n[VER:1.1f.20230316:]\n[OPT:VMZHL,35,254]\nok\n"
+            + ">>> G0X1.000Y1.000\n>>> G38.2Z-2.000F30\n[PRB:41.470,39.421,-14.748:1]\n");
+
+        output.WriteLine(log.Controller ?? "(nothing)");
+
+        Assert.NotNull(log.Controller);
+        Assert.Contains("Monport", log.Controller, StringComparison.Ordinal);
+        Assert.Contains("1.1f", log.Controller, StringComparison.Ordinal);
+    }
+
+    /// <summary>The reply ends at "ok" and does not swallow the job that follows it.</summary>
+    [Fact]
+    public void TheIdentityReplyStopsAtTheEndOfItself()
+    {
+        var log = ProbeLog.Parse(
+            ">>> $I\nMonport\nok\n"
+            + ">>> G0X1.000Y1.000\n>>> G38.2Z-2.000F30\n[PRB:41.470,39.421,-14.748:1]\n");
+
+        Assert.Equal("Monport", log.Controller);
+        Assert.Single(log.CommandedPoints);
+    }
+
     /// <summary>A log that never says is null rather than guessed at.</summary>
     [Fact]
     public void ALogThatNeverSaysIsNotInvented() =>
