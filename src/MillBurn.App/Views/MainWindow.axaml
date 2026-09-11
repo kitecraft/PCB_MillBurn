@@ -698,7 +698,16 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Anything worth checking before trusting what is on screen. -->
+                    <!--
+                        Anything worth checking before trusting what is on screen.
+
+                        Capped and scrolled. This row is Auto-sized and the layer list above it is
+                        the star-sized one, so without a ceiling a long enough set of checks pushes
+                        the whole list off the window — which is what happened the first time an
+                        export refused five files and explained itself five times. A panel that
+                        grows without limit takes the space from whatever is above it, and here
+                        that is the thing the operator was looking at.
+                    -->
                     <Border Grid.Row="2"
                             IsVisible="{Binding Warnings.Count}"
                             BorderBrush="{DynamicResource BorderSubtle}"
@@ -706,21 +715,29 @@
                             Margin="0,10,0,0"
                             Padding="12,8">
                         <StackPanel>
-                            <TextBlock Text="CHECK"
-                                       FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource DrcViolation}"
-                                       Margin="0,0,0,4" />
-                            <ItemsControl ItemsSource="{Binding Warnings}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="x:String">
-                                        <TextBlock Text="{Binding}"
-                                                   FontSize="11"
-                                                   TextWrapping="Wrap"
-                                                   Margin="0,1"
-                                                   Foreground="{DynamicResource TextSecondary}" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
+                                <TextBlock Grid.Column="0" Text="CHECK"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource DrcViolation}" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding WarningCount}"
+                                           FontSize="11"
+                                           Margin="6,0,0,0"
+                                           Foreground="{DynamicResource TextDisabled}" />
+                            </Grid>
+                            <ScrollViewer MaxHeight="170" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding Warnings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <TextBlock Text="{Binding}"
+                                                       FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,1,6,3"
+                                                       Foreground="{DynamicResource TextSecondary}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                         </StackPanel>
                     </Border>
                 </Grid>

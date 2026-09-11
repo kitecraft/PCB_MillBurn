@@ -102,6 +102,14 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<LayerGroup> LayerGroups { get; } = [];
 
+    /// <summary>
+    /// How many checks there are, for the heading — because the list is capped and scrolled, and a
+    /// panel showing three of nine with nothing saying so is worse than one showing all nine.
+    /// </summary>
+    public string WarningCount => Warnings.Count > 1
+        ? string.Create(CultureInfo.InvariantCulture, $"· {Warnings.Count}")
+        : string.Empty;
+
     public ObservableCollection<string> Warnings { get; } = [];
 
     public ObservableCollection<RefreshItem> RefreshItems { get; } = [];
@@ -139,6 +147,9 @@ public sealed partial class MainViewModel : ViewModelBase
         _suspendOutputChanges = false;
 
         AttachProject(_project);
+
+        // The heading counts the list, so it has to hear about the list changing.
+        Warnings.CollectionChanged += (_, _) => OnPropertyChanged(nameof(WarningCount));
     }
 
     /// <summary>Remembers where the window was, so it opens where it was left.</summary>
@@ -653,7 +664,10 @@ public sealed partial class MainViewModel : ViewModelBase
             }
 
             var extra = pages;
-            var refusals = new List<string>();
+
+            // Collected as a file and a reason rather than as finished sentences, so identical
+            // reasons can be said once with every file that shares them named alongside.
+            var refusals = new List<(string What, string File, string Reason)>();
 
             if (level && Surface is { } surface)
             {
@@ -664,7 +678,7 @@ public sealed partial class MainViewModel : ViewModelBase
                     // sides from one map, and the side it cannot level is the flipped one.
                     if (Leveller.WhyNotLevel(item.Mirrored, levelFlipped) is { } why)
                     {
-                        refusals.Add($"Not levelled — {item.TargetName}: {why}");
+                        refusals.Add(("Not levelled", item.TargetName, why));
                         continue;
                     }
 
@@ -677,7 +691,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
                     if (report.Refusal is not null)
                     {
-                        refusals.Add($"Not levelled — {item.TargetName}: {report.Refusal}");
+                        refusals.Add(("Not levelled", item.TargetName, report.Refusal));
                         continue;
                     }
 
@@ -705,7 +719,7 @@ public sealed partial class MainViewModel : ViewModelBase
                     // so is far better than writing a dry run that might not be one.
                     if (report.Refusal is not null)
                     {
-                        refusals.Add($"No dry run for {item.TargetName}: {report.Refusal}");
+                        refusals.Add(("No dry run", item.TargetName, report.Refusal));
                         continue;
                     }
 
@@ -719,10 +733,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
             SaveSettings(Settings with { LastExportFolder = folder, WriteDryRun = dryRun });
 
-            foreach (var refusal in refusals)
-            {
-                Warnings.Add(refusal);
-            }
+            ReplaceExportWarnings(refusals);
 
             StatusMessage = refusals.Count > 0
                 ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refusals.Count} thing(s) refused — see the checks."
@@ -1518,6 +1529,44 @@ public sealed partial class MainViewModel : ViewModelBase
         GcodeSummary = string.Empty;
         Rebuild(TimeSpan.Zero);
         StatusMessage = "Output changed. Preview again to see the new programs.";
+    }
+
+    /// <summary>
+    /// What the last export put in the checks panel.
+    ///
+    /// Held so the next export can take it back out. Without that, exporting twice leaves both
+    /// sets on screen — and when the two runs disagreed about which side the map was probed on,
+    /// the panel showed each file refused for two opposite reasons at once. Both were true when
+    /// they were written and only one of them still was.
+    /// </summary>
+    private readonly List<string> _exportWarnings = [];
+
+    /// <summary>
+    /// Puts this export's refusals in the checks panel, in place of the last one's.
+    ///
+    /// **Grouped by reason, with the files named.** A refusal explains itself in a paragraph,
+    /// which is right once and unreadable five times: an export that could not level four
+    /// programs used to print the same ninety words four times over, filling the panel and
+    /// pushing the layer list off the screen. The panel earns attention by being short enough to
+    /// read, and a wall of repeated text is how it stops being read at all.
+    /// </summary>
+    private void ReplaceExportWarnings(List<(string What, string File, string Reason)> refusals)
+    {
+        foreach (var stale in _exportWarnings)
+        {
+            Warnings.Remove(stale);
+        }
+
+        _exportWarnings.Clear();
+
+        foreach (var group in refusals.GroupBy(r => (r.What, r.Reason)))
+        {
+            var files = string.Join(", ", group.Select(r => r.File));
+            var line = $"{group.Key.What}: {files} — {group.Key.Reason}";
+
+            _exportWarnings.Add(line);
+            Warnings.Add(line);
+        }
     }
 
     /// <summary>

@@ -355,6 +355,19 @@ public partial class MainWindow : Window
             vm.ImportHeightMap(probeLog);
         }
 
+        // Writes the export for real, twice: once with the map taken as top-up and once as flipped.
+        //
+        // Twice on purpose. What this exists to check is what the *second* export does to the
+        // first one's entries in the checks panel — they used to accumulate, so a pair of runs
+        // that disagreed about which side was probed left every file refused for two opposite
+        // reasons at once, both of which had been true when they were written.
+        if (Argument(args, "--write-export") is { } exportTo && vm.PlanExport() is { } writing)
+        {
+            vm.WriteExport(writing, Path.Combine(exportTo, "top"), dryRun: true, level: true);
+            vm.WriteExport(writing, Path.Combine(exportTo, "flipped"), dryRun: true, level: true,
+                levelFlipped: true);
+        }
+
         // Opens the export confirmation for a screenshot, so the dialog that decides what actually
         // gets written is checkable headlessly like everything else.
         if (args.Contains("--export", StringComparer.OrdinalIgnoreCase) && vm.PlanExport() is { } plan)

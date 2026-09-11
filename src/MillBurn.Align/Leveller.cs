@@ -112,10 +112,12 @@ public static class Leveller
         var program = programMirrored ? "on the flipped stock" : "with the board top-up";
         var map = mapOfFlippedStock ? "with the stock flipped" : "with the board top-up";
 
-        return $"This program is cut {program} and the map was probed {map}. Turning the board over "
-            + "presents the other face and mirrors the coordinates as well, so the correction would "
-            + "land on the wrong point of the wrong surface. Cut this one unlevelled, or probe the "
-            + "side you are about to cut and level this file on its own.";
+        // Short on purpose. This sentence is repeated once per refused file, and the reasoning
+        // behind it — the other face, the mirrored coordinates, the re-clamping — belongs in the
+        // help page, where it is read once, rather than in a panel where it is read five times or
+        // not at all.
+        return $"cut {program}, but the map was probed {map}. A map describes only the side it was "
+            + "probed on: cut this unlevelled, or probe that side and level it on its own.";
     }
 
     public static (string Text, LevelReport Report) Apply(
