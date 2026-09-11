@@ -587,7 +587,37 @@ is a correction of *millimetres*, which drives the cutter through the board rath
 Item 1 above — adaptive densification near clamps — is *not* built: it needs to know where the
 clamps are, which needs the fixture model from the same phase.
 
-### 5.1 A map is only true of a board that cannot move
+### 5.1 Verified against one controller
+
+**The log reader has only ever been checked against GRBL**, and the shape of a log is a property of
+the firmware and the sender rather than of anything here. That is a real limit on a feature whose
+entire interface is a file somebody else wrote, and it should be stated rather than discovered.
+
+What is known, and how confidently:
+
+| Firmware | Expected shape | Status |
+|---|---|---|
+| GRBL | `[PRB:x,y,z:1]` in machine coordinates, with the streamed commands echoed | **Verified** on a real capture |
+| grblHAL, FluidNC | The same dialect | Very likely fine, unverified |
+| LinuxCNC | `(PROBEOPEN file)` writes a plain table of numbers per touch | *Should* read as a triples file, untested |
+| Smoothieware, Mach3, Mach4 | Whatever the probing macro chose to write | Unknown |
+
+`ProbeLog` therefore records **what the firmware called itself**, sniffed loosely from a startup
+banner or a `$I` reply anywhere in the file. Loosely on purpose: the banners differ between
+firmwares and between versions of one firmware, and the object is not to parse a version string but
+to be able to say *this came from a grblHAL* when a log does not import. A match that occasionally
+picks the wrong line is worth more than an exact one that recognises only the firmware already known
+to work.
+
+The probing file's header asks the operator to type `$I` before the run so the answer is in the same
+log. Deliberately not *in* the file: GRBL refuses `$` commands while a program is running, and a
+diagnostic that can abort somebody's job is a bad trade for a line of provenance.
+
+`.github/ISSUE_TEMPLATE/probe-log.yml` asks for the log whole and unedited, and says why the
+sender's own chatter must not be trimmed out of it — the `ok` lines and echoed commands are where
+the work offset is recovered from, so a helpfully tidied log is an unreadable one.
+
+### 5.2 A map is only true of a board that cannot move
 
 **The probe and the cutter press on the stock with completely different force, and a map is only
 worth anything if the board is the same shape for both.**

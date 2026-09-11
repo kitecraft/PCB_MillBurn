@@ -259,6 +259,41 @@ public sealed class ProbeLogFrameTests(ITestOutputHelper output)
         Assert.DoesNotContain(log.Notes, n => n.Contains("has been moved", StringComparison.Ordinal));
     }
 
+    // ------------------------------------------------------------------ whose log is this
+
+    /// <summary>
+    /// The firmware's own name, wherever it said it. This reader has only ever been verified
+    /// against GRBL, so when a log will not import the first question is which controller wrote it
+    /// — and the answer is usually already in the file.
+    /// </summary>
+    [Theory]
+    [InlineData("Grbl 1.1f ['$' for help]")]
+    [InlineData("[VER:1.1f.20170801:]")]
+    [InlineData(">>> [VER:1.1h.20190825:MillBurn]")]
+    [InlineData("grblHAL 1.1f ['$' or '$HELP' for help]")]
+    [InlineData("[MSG:FluidNC v3.7.18 (wifi) https://github.com/bdring/FluidNC]")]
+    [InlineData("Build version: edge-3fadf5f, Build date: Oct 1 2020, Smoothieware")]
+    public void TheFirmwareIsRecognisedWhereverItIntroducesItself(string banner)
+    {
+        var log = ProbeLog.Parse(banner + "\n[PRB:1.000,1.000,-0.140:1]");
+
+        output.WriteLine(log.Controller ?? "(nothing)");
+        Assert.NotNull(log.Controller);
+    }
+
+    /// <summary>A log that never says is null rather than guessed at.</summary>
+    [Fact]
+    public void ALogThatNeverSaysIsNotInvented() =>
+        Assert.Null(ProbeLog.Parse("[PRB:1.000,1.000,-0.140:1]").Controller);
+
+    /// <summary>And the real capture identifies itself only if the operator ran $I.</summary>
+    [Fact]
+    public void TheRealCaptureHasNoBannerBecauseNobodyAskedForOne()
+    {
+        Assert.Null(ProbeLog.Parse(RealLog).Controller);
+        Assert.NotNull(ProbeLog.Parse("Grbl 1.1f ['$' for help]\n" + RealLog).Controller);
+    }
+
     // ------------------------------------------------------------------ the noise
 
     /// <summary>

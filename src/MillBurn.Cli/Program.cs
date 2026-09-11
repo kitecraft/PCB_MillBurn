@@ -1920,6 +1920,11 @@ internal static class Program
             return null;
         }
 
+        if (log.Controller is { } firmware)
+        {
+            Console.Error.WriteLine($"  controller  {firmware}");
+        }
+
         foreach (var note in log.Notes)
         {
             Console.Error.WriteLine($"  note        {note}");

@@ -412,6 +412,30 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   as the replies &mdash; most senders do by default.
 </p>
 
+<div class="warn">
+  <p>
+    <strong>This has only ever been tested against GRBL.</strong> The shape of a probing log is a
+    property of your controller and your sender, not of this app, and no amount of care here can
+    anticipate a format nobody has seen. grblHAL and FluidNC answer in the same dialect and are very
+    likely fine; LinuxCNC's <code>(PROBEOPEN&nbsp;file)</code> writes a plain table of numbers which
+    <em>should</em> read as a triples file, untested; Smoothieware, Mach3 and Mach4 depend entirely
+    on the macro that wrote the log.
+  </p>
+  <p>
+    If yours will not import, that is worth reporting and it is almost certainly not your fault.
+    Send <strong>the log itself</strong>, whole and unedited &mdash; the <code>ok</code> lines and
+    the echoed commands are not noise, they are where the work offset is read from &mdash; plus your
+    controller, its firmware version, and your sender. We will do our best to read it.
+  </p>
+  <p>
+    <strong>On a GRBL-family board, type <code>$I</code> in your sender's console before you start
+    the probing run.</strong> Its reply names the firmware and lands in the same log, which answers
+    the first question any report raises. It is deliberately <em>not</em> in the probing file:
+    GRBL refuses <code>$</code> commands while a program is running, and a diagnostic that can abort
+    your job is a bad trade. The probing file's header says to do it.
+  </p>
+</div>
+
 <h3>Hold the board down everywhere, not just at the edges</h3>
 
 <p>

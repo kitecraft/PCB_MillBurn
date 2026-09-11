@@ -208,6 +208,15 @@ public static class ProbeRoutine
         lines.Add(Boxed("Put a probe on the tool and a clip on the copper, zero"));
         lines.Add(Boxed("Z on the surface, run this, and save your sender's log."));
         lines.Add(Boxed(string.Empty));
+        lines.Add(Boxed("Hold the stock down across its whole area, not just at"));
+        lines.Add(Boxed("the edges. A probe triggers at no force and a cutter"));
+        lines.Add(Boxed("does not, so an unsupported middle is measured where"));
+        lines.Add(Boxed("it lies and then pushed away when it is cut."));
+        lines.Add(Boxed(string.Empty));
+        lines.Add(Boxed("Type $I in your sender's console before you start, so"));
+        lines.Add(Boxed("its reply names your controller in the same log. Not"));
+        lines.Add(Boxed("in this file: GRBL refuses $ commands while running."));
+        lines.Add(Boxed(string.Empty));
 
         // Said here rather than only in the help, because this is what the operator is looking at
         // the moment it happens. Plenty of G-code viewers have no G38.2 in their vocabulary, and a

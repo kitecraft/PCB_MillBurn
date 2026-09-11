@@ -1,0 +1,72 @@
+name: A probe log will not import
+description: The height map came out wrong, or would not import at all
+title: "Probe log: "
+labels: ["probe log", "controller"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **The log reader has only ever been verified against GRBL.**
+
+        The shape of a probing log is a property of your controller and your sender, and neither of
+        those is something this project can test against without a file. If yours does not import,
+        that is worth reporting — it is very likely a format nobody here has seen rather than
+        anything you did.
+
+        The file is the whole report. Everything else below just saves a round trip.
+  - type: textarea
+    id: log
+    attributes:
+      label: The log
+      description: >
+        Attach it or paste it. Whole and unedited, including the sender's own chatter — the `ok`
+        lines and the echoed commands are not noise here, they are where the work offset is read
+        from. If it is long, the first hundred lines and the last twenty are usually enough.
+      placeholder: Drag the file in, or paste it here.
+    validations:
+      required: true
+  - type: input
+    id: controller
+    attributes:
+      label: Controller and firmware version
+      description: >
+        GRBL, grblHAL, FluidNC, Smoothieware, LinuxCNC, Mach3, something else. On a GRBL-family
+        board, typing `$I` in your sender's console prints it — do that before the probing run and
+        the answer ends up in the log itself.
+      placeholder: e.g. grblHAL 1.1f on a Teensy 4.1
+    validations:
+      required: true
+  - type: input
+    id: sender
+    attributes:
+      label: Sender
+      description: The program that streamed the file and wrote the log.
+      placeholder: e.g. gSender 1.4.9
+    validations:
+      required: true
+  - type: dropdown
+    id: what-happened
+    attributes:
+      label: What happened
+      options:
+        - It imported but the map is in the wrong place
+        - It imported but the heights are wrong
+        - It found no probe points at all
+        - It found some of the probe points
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the board and the probing run actually were
+      description: >
+        Board size, how many probe points you asked for, and where work zero was set. If you know
+        your work offset — the distance from machine zero to the board corner — say so: that is the
+        number the reader is trying to recover from the log, so knowing the right answer makes a
+        wrong one obvious.
+  - type: textarea
+    id: version
+    attributes:
+      label: PCB_MillBurn version
+      description: Which build, and whether it came from a release or was built from source.

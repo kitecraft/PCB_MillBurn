@@ -840,6 +840,17 @@ by a number that happens to line up two corners is precisely the quiet, plausibl
 feature exists to prevent. A log with no echoes in it is not guessed at either — it says that
 nothing in the file records where work zero was, and what to do about it.
 
+**Verified against one controller, and now saying so.** A log's shape is a property of the firmware
+and the sender, not of anything here, and this reader has only ever met GRBL's. `ProbeLog` records
+what the firmware called itself — sniffed loosely from a startup banner or a `$I` reply anywhere in
+the file, because the object is to be able to say *this came from a grblHAL* rather than to parse a
+version string. The probing file's header asks the operator to run `$I` before starting, so the
+answer lands in the same log; it is deliberately not *in* the file, because GRBL refuses `$`
+commands while a program runs and a diagnostic that can abort a job is a poor trade. There is an
+issue template for the logs that do not import, and it says not to tidy them: the `ok` lines and the
+echoed commands are where the work offset comes from. See
+[04 §5.1](04-Machines-Laser-and-Mixed-Workflows.md#51-verified-against-one-controller).
+
 The same pass stopped counting the sender's own conversation as damage. Every `ok` and every echoed
 command was being tallied as a line that could not be read, so a log that parsed perfectly reported
 "39 line(s) could not be read" — which is how a warning worth reading gets ignored.

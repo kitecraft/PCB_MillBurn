@@ -44,6 +44,16 @@ public sealed record ProbeLogResult
     /// </summary>
     public IReadOnlyList<Point2> CommandedPoints { get; init; } = [];
 
+    /// <summary>
+    /// What the firmware called itself, if it said so anywhere in the log — a startup banner, or
+    /// the reply to <c>$I</c>. Null when nothing in the file identifies it.
+    ///
+    /// Worth capturing because this reader has been verified against **GRBL only**, and the shape
+    /// of a log is a property of the firmware. When somebody reports one that does not import, the
+    /// first question is which controller wrote it, and the answer is usually already in the file.
+    /// </summary>
+    public string? Controller { get; init; }
+
     public IReadOnlyList<string> Notes { get; init; } = [];
 
     public bool IsEmpty => Samples.Count == 0;
@@ -79,6 +89,7 @@ public static class ProbeLog
         var samples = new List<ProbeSample>();
         var notes = new List<string>();
         var commanded = new List<Point2>();
+        string? controller = null;
         var failed = 0;
         var unreadable = 0;
         var sawProbeReport = false;
@@ -97,6 +108,8 @@ public static class ProbeLog
             {
                 continue;
             }
+
+            controller ??= FirmwareName(line);
 
             var (movedX, movedY) = CommandedMove(line, scale);
             lastX = movedX ?? lastX;
@@ -208,6 +221,7 @@ public static class ProbeLog
             Notes = notes,
             FrameOffset = offset,
             CommandedPoints = commanded,
+            Controller = controller,
         };
     }
 
@@ -289,6 +303,42 @@ public static class ProbeLog
 
         return false;
     }
+
+    /// <summary>
+    /// The firmware's own name, if this line is the line where it said it.
+    ///
+    /// Matched loosely and on purpose. The exact banners differ between firmwares and between
+    /// versions of one firmware, and the point here is not to parse a version string — it is to be
+    /// able to say "this log came from a grblHAL" when somebody reports one that would not import.
+    /// A loose match that occasionally picks up the wrong line is more useful than an exact one
+    /// that recognises only the firmware already known to work.
+    /// </summary>
+    private static string? FirmwareName(string line)
+    {
+        foreach (var name in KnownFirmware)
+        {
+            if (line.Contains(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return Tidy(line);
+            }
+        }
+
+        // GRBL's reply to $I. It carries a version and the build options and never the word Grbl,
+        // so it is recognised by its shape instead.
+        return line.Contains("[VER:", StringComparison.OrdinalIgnoreCase) ? Tidy(line) : null;
+    }
+
+    /// <summary>
+    /// Firmwares whose logs might turn up here. Only GRBL's has been verified against a real file;
+    /// the rest are recognised so that a report can at least say which one it was.
+    /// </summary>
+    private static readonly string[] KnownFirmware =
+    [
+        "grblHAL", "FluidNC", "Grbl", "Smoothie", "Marlin", "LinuxCNC", "Mach3", "Mach4",
+        "Duet", "RepRapFirmware",
+    ];
+
+    private static string Tidy(string line) => line.Trim().Trim('>', '<', '*', ' ').Trim();
 
     /// <summary>
     /// A line the sender wrote about itself rather than about the surface.
