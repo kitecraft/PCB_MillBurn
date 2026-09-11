@@ -800,6 +800,55 @@ available if you are willing to drill them all the same size.
 each diameter named with its own hole count, and no hole lost in the split. Plus that the biggest
 bit goes first, which was right all along and is worth pinning.
 
+### The probing round trip did not close
+
+Reported from the bench the same day: a probing routine was generated, run, the sender's log saved
+and imported. The app accepted the map — *Job ▸ Forget height map* lit up — and the export window's
+**Level to the imported height map** stayed greyed out with no usable reason.
+
+**The routine is written in work coordinates and GRBL answers `[PRB:]` in machine coordinates, and
+nothing bridged the two.** The board sat at 0–20.89 mm; the log described a region at 41–60 mm. The
+leveller refused it for running 57 mm outside the probed area, which was true, correct, and no help
+at all. **The app could not read back the output of its own feature.**
+
+Two things kept it hidden for a whole phase.
+
+*The note said the job was done.* `ProbeLog` already emitted "GRBL probe reports are in machine
+coordinates; the map will be shifted to put zero at the board's origin corner" — which is true of
+**Z**, where `HeightMapOptions.ZeroAt` re-datums the surface, and was never true of X and Y. A
+sentence describing the missing half as finished is worse than no sentence.
+
+*Every test fixture was already in the job's frame.* Machine coordinates only differ from work
+coordinates when somebody has set a work offset, which every real user has and no hand-written
+fixture did.
+
+**The fix reads the frame out of the log itself.** A sender echoes what it streams, so the log
+contains the commanded `G0 X… Y…` positions — in work coordinates — alongside the replies. The
+offset between the two point sets is the work offset, and applying it puts the map back on the
+board. The recovered offset is stated in the import note rather than applied silently.
+
+Two details decide whether that is safe:
+
+*The sets are matched by their lowest corner, not pairwise in order.* A sender streams several
+commands ahead of the replies: in the log that found this, the **first** probe's reply arrives
+underneath the **fourth** probe's echo. Anything pairing by position gets every point wrong while
+looking entirely reasonable.
+
+*Every shifted point must then land on a commanded one, or the shift is refused.* Two point sets
+that merely share a lowest corner are not translations of each other, and moving a whole height map
+by a number that happens to line up two corners is precisely the quiet, plausible wrongness this
+feature exists to prevent. A log with no echoes in it is not guessed at either — it says that
+nothing in the file records where work zero was, and what to do about it.
+
+The same pass stopped counting the sender's own conversation as damage. Every `ok` and every echoed
+command was being tallied as a line that could not be read, so a log that parsed perfectly reported
+"39 line(s) could not be read" — which is how a warning worth reading gets ignored.
+
+**And the measurement is the point.** The stock was **0.139 mm out of flat** across 19 × 35 mm, on
+a job whose isolation cut is 0.05 mm deep. Unlevelled, that board cuts through in one corner and
+does not touch the copper in another. It is the case the whole feature was built for, and until this
+it could not be applied to it.
+
 ### Isolation had no width, only a lap count
 
 Raised from the machine, immediately after that dry run: *we cut only once around the traces, and
