@@ -189,6 +189,12 @@ levelling job that runs outside the probed area is refused. Settings that contra
 refused rather than quietly clamped. Every one of those is a case where being helpful would mean
 being wrong silently.
 
+**Dial the bit in before you trust it.** *Job ▸ Test cuts…* writes a short program that cuts a few
+lines on scrap — one per depth, or one per feed — and an HTML page explaining how to read them. Every
+number the app computes about a cut comes from your tool library, and the library is a claim about a
+physical object; this is how you check it. Both tests cut the first line twice, at opposite ends of
+the coupon, so you can tell whether the stock moved before you believe anything else on it.
+
 **Say what changed.** `File ▸ Refresh from source` compares the project against the folder it came
 from and shows you what moved before it applies anything.
 
@@ -224,6 +230,8 @@ millburn svg    <silkscreen.gbr> --flavour lightburn --spot 0.1
 **Probe and level:**
 
 ```sh
+millburn testcut depth --tool "30°" --from 0.02 --step 0.02 # lines on scrap, plus a page on reading them
+millburn testcut feed --depth 0.05 --step 50 --probe        # + a probing routine for the coupon
 millburn probe  <folder> --spacing 8 --depth 2 --feed 30   # a G38.2 grid to run and log
 millburn export <folder> --level probe.log --write         # bend every program to the surface
 millburn level  anyones.nc --map probe.log                 # works on any G-code, not just ours

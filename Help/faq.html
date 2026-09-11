@@ -26,6 +26,7 @@
     <li><a href="#files">The exported files</a></li>
     <li><a href="#zero">Where is work zero?</a></li>
     <li><a href="#dryrun">Watching a job before it cuts anything</a></li>
+    <li><a href="#testcuts">Dialling a bit in: test cuts</a></li>
     <li><a href="#isolation">How wide is the gap around each trace?</a></li>
     <li><a href="#vbit">Why does the isolation depth change the cut width?</a></li>
     <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
@@ -178,6 +179,48 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   From the command line: <code>millburn export &lt;folder&gt; --dry-run --write</code>, with
   <code>--dry-run-height&nbsp;&lt;mm&gt;</code> if 5&nbsp;mm is not the clearance you want.
 </p>
+
+<h2 id="testcuts">Dialling a bit in: test cuts</h2>
+
+<p>
+  <em>Job &rarr; Test cuts&hellip;</em> writes a small program that cuts a few lines on a piece of
+  scrap, and an HTML page beside it explaining how to read them. Two tests:
+</p>
+
+<ul>
+  <li>
+    <strong>Depth and width.</strong> One line per depth, getting deeper. For a V-bit this is the
+    important one: measure each line and compare it with the width the app predicted. If they
+    disagree, the tip or the angle in your tool library is wrong &mdash; and every isolation job on
+    this machine is computed from those two numbers.
+  </li>
+  <li>
+    <strong>Feed rate.</strong> One line per feed, all at the same depth. Nothing about the geometry
+    changes; what changes is how clean the edge is, and that is something you can only see. Pick the
+    fastest line that still looks right, not the cleanest one.
+  </li>
+</ul>
+
+<p>
+  Both cut the first line again at the far end of the coupon. Measure both: if they do not match,
+  the stock is tilted or Z moved during the run, and nothing else on the coupon means anything. It
+  costs one line and about four seconds.
+</p>
+
+<p>
+  <strong>Use scrap, hold it down across its whole area, and zero on the copper.</strong> The page
+  written beside the program says how much bare copper the test needs, so you can find a piece
+  before you clamp one.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Never level a test cut with your board's height map.</strong> A map describes one piece
+    of stock in the position it was clamped in, and a test coupon is a different piece in a
+    different place. If the scrap will not sit flat, the dialog offers a probing routine sized to
+    the coupon itself &mdash; probe that, import it, and level the test file against it.
+  </p>
+</div>
 
 <h2 id="isolation">How wide is the gap around each trace?</h2>
 

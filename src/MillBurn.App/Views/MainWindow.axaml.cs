@@ -11,6 +11,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using MillBurn.App.ViewModels;
 using MillBurn.Core;
+using MillBurn.Gcode;
 using MillBurn.Pipeline;
 
 namespace MillBurn.App.Views;
@@ -455,6 +456,18 @@ public partial class MainWindow : Window
             _captureInstead = prompt;
         }
 
+        // The test-cut dialog, so its numbers and its live summary can be checked in a screenshot.
+        if (args.Contains("--test-cuts", StringComparer.OrdinalIgnoreCase))
+        {
+            var cuts = new TestCutWindow(vm.Library, vm.Settings.Machine)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            cuts.Show(this);
+            _captureInstead = cuts;
+        }
+
         // Reset, without the confirmation — the question is a UI concern and what needs checking is
         // that the settings really do go back to what an import would have given them.
         if (args.Contains("--reset-layers", StringComparer.OrdinalIgnoreCase))
@@ -861,6 +874,84 @@ public partial class MainWindow : Window
     {
         Patterns = ["*.log", "*.txt", "*.csv", "*.tsv", "*.nc", "*.*"],
     };
+
+    /// <summary>
+    /// Test cuts for a bit, written wherever the operator asks.
+    ///
+    /// Enabled with no board open, because this tests the tool library's claim about a physical
+    /// object and that claim does not depend on which design happens to be loaded.
+    /// </summary>
+    private async void OnTestCutsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var chosen = await TestCutWindow.AskAsync(this, vm.Library, vm.Settings.Machine);
+
+        if (chosen is null)
+        {
+            return;
+        }
+
+        var (text, report) = TestCut.Generate(chosen.Options);
+
+        var suggested = chosen.Options.Kind == TestCutKind.Depth ? "depth-test" : "feed-test";
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Write test cut",
+            SuggestedFileName = suggested,
+            DefaultExtension = "nc",
+            FileTypeChoices = [GcodeFileType],
+        });
+
+        if (file?.TryGetLocalPath() is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(path, text);
+
+            var guide = Path.ChangeExtension(path, null) + ".html";
+            File.WriteAllText(guide, TestCutGuide.Build(chosen.Options, report, Path.GetFileName(path)));
+
+            var written = 2;
+
+            // The coupon's own surface, never the board's. A map describes one piece of stock as it
+            // was clamped, and this is a different piece in a different place.
+            if (chosen.WithProbe)
+            {
+                var region = new Bounds(
+                    0,
+                    0,
+                    Nm.FromMillimetres(report.StockWidthMm),
+                    Nm.FromMillimetres(report.StockHeightMm));
+
+                var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
+                {
+                    SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+                    SafeHeightMm = vm.Settings.Machine.SafeZMm,
+                    MaxDepthMm = vm.Settings.Probe.MaxDepthMm,
+                    FeedMmPerMin = vm.Settings.Probe.FeedMmPerMin,
+                    MarginMm = 1,
+                });
+
+                File.WriteAllText(Path.ChangeExtension(path, null) + ".probe.nc", probe);
+                written++;
+            }
+
+            vm.StatusMessage = FormattableString.Invariant(
+                $"Wrote {written} file(s). The test needs {report.StockWidthMm:F0} x {report.StockHeightMm:F0} mm of scrap copper-clad; read the page beside it before you run it.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            vm.StatusMessage = $"Could not write the test cut: {ex.Message}";
+        }
+    }
 
     private async void OnWriteProbeClicked(object? sender, RoutedEventArgs e)
     {

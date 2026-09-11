@@ -190,6 +190,8 @@
                         <MenuItem Header="_Reset layers to defaults…" Click="OnResetLayersClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
+                        <MenuItem Header="_Test cuts…" Click="OnTestCutsClicked" />
+                        <Separator />
                         <MenuItem Header="Write _probing routine…" Click="OnWriteProbeClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <MenuItem Header="_Import height map…" Click="OnImportHeightMapClicked" />

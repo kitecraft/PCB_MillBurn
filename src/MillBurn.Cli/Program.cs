@@ -34,6 +34,9 @@ internal static class Program
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
             Console.WriteLine("                                 --level-side top|bottom which face the map was probed on");
+            Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
+            Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
+            Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -72,6 +75,7 @@ internal static class Program
             "project" when args.Length >= 2 => ProjectCommand(args),
             "mill" when args.Length >= 2 => Mill(args),
             "export" when args.Length >= 2 => Export(args),
+            "testcut" => TestCutCommand(args),
             "probe" when args.Length >= 2 => Probe(args),
             "level" when args.Length >= 3 => Level(args),
             "tools" => ToolsCommand(args),
@@ -1774,6 +1778,117 @@ internal static class Program
     /// schedule — you probe the stock once it is clamped, which is usually well before you have
     /// settled what to cut.
     /// </summary>
+    /// <summary>
+    /// <c>testcut depth|feed</c> — lines on scrap for dialling a bit in, and the page that explains
+    /// how to read them.
+    ///
+    /// Needs no board. What it is testing is the tool library's claim about a physical object, and
+    /// that claim is the same whichever design happens to be open.
+    /// </summary>
+    private static int TestCutCommand(string[] args)
+    {
+        var kind = args.Length >= 2 && args[1].StartsWith("feed", StringComparison.OrdinalIgnoreCase)
+            ? TestCutKind.Feed
+            : TestCutKind.Depth;
+
+        var library = ToolLibrary.LoadOrDefault();
+        var app = AppSettings.LoadOrDefault();
+
+        var wanted = Argument(args, "--tool");
+        var tool = wanted is null
+            ? LayerOperations.DefaultToolFor(OperationKind.Isolation, library.Tools)
+            : library.Find(wanted);
+
+        if (tool is null)
+        {
+            Console.Error.WriteLine($"No tool matching '{wanted}'. Try: millburn tools list");
+            return 1;
+        }
+
+        double Number(string name, double fallback) =>
+            Argument(args, name) is { } raw
+            && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : fallback;
+
+        var defaults = new TestCutOptions { Tool = tool, Kind = kind };
+
+        var options = new TestCutOptions
+        {
+            Tool = tool,
+            Kind = kind,
+            LineCount = (int)Number("--lines", defaults.LineCount),
+            LineLengthMm = Number("--length", defaults.LineLengthMm),
+            LineSpacingMm = Number("--spacing", defaults.LineSpacingMm),
+            MarginMm = Number("--margin", defaults.MarginMm),
+            SafeZMm = app.Machine.SafeZMm,
+            ApproachZMm = app.Machine.ApproachZMm,
+            Decimals = app.Machine.Decimals,
+            RepeatFirstLine = !args.Contains("--no-repeat", StringComparer.OrdinalIgnoreCase),
+
+            StartDepthMm = Number("--from", defaults.StartDepthMm),
+            DepthMm = Number("--depth", defaults.DepthMm),
+
+            // One --step, meaning whichever quantity this test is stepping.
+            DepthStepMm = kind == TestCutKind.Depth ? Number("--step", defaults.DepthStepMm) : defaults.DepthStepMm,
+            FeedStepMmPerMin = kind == TestCutKind.Feed ? Number("--step", defaults.FeedStepMmPerMin) : defaults.FeedStepMmPerMin,
+        };
+
+        var (text, report) = TestCut.Generate(options);
+
+        var output = Argument(args, "-o") ?? Argument(args, "--out")
+            ?? Path.Combine(
+                Environment.CurrentDirectory,
+                (kind == TestCutKind.Depth ? "depth-test" : "feed-test") + ".nc");
+
+        File.WriteAllText(output, text);
+
+        var guide = Path.ChangeExtension(output, null) + ".html";
+        File.WriteAllText(guide, TestCutGuide.Build(options, report, Path.GetFileName(output)));
+
+        Console.WriteLine(output);
+        Line($"  tool        {tool.Name}");
+        Line($"  lines       {report.Lines.Count}");
+        Line($"  stock       {report.StockWidthMm:F1} x {report.StockHeightMm:F1} mm of bare copper");
+        Line($"  time        about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds");
+        Line($"  guide       {Path.GetFileName(guide)}");
+
+        // The coupon is a different piece of stock from the board, so the board's height map does
+        // not describe it. A test that matters to a hundredth deserves its own few touches.
+        if (args.Contains("--probe", StringComparer.OrdinalIgnoreCase))
+        {
+            var region = new Bounds(
+                0, 0, Nm.FromMillimetres(report.StockWidthMm), Nm.FromMillimetres(report.StockHeightMm));
+
+            var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
+            {
+                SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+                SafeHeightMm = app.Machine.SafeZMm,
+                MaxDepthMm = app.Probe.MaxDepthMm,
+                FeedMmPerMin = app.Probe.FeedMmPerMin,
+                MarginMm = 1,
+            });
+
+            var probePath = Path.ChangeExtension(output, null) + ".probe.nc";
+            File.WriteAllText(probePath, probe);
+
+            Line($"  probe       {Path.GetFileName(probePath)}");
+            Line($"              run it, keep the log, then: millburn level {Path.GetFileName(output)} --map <log>");
+        }
+
+        foreach (var note in report.Notes)
+        {
+            Line($"  note        {note}");
+        }
+
+        foreach (var warning in report.Warnings)
+        {
+            Console.Error.WriteLine($"  CHECK       {warning}");
+        }
+
+        return 0;
+    }
+
     private static int Probe(string[] args)
     {
         if (LoadBoardOrProject(args[1]) is not { } board)

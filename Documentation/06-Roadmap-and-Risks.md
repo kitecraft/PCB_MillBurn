@@ -1090,6 +1090,52 @@ Two headless flags exist now because of it: `--isolate <layer>` and `--overlay <
 arrangement is unreachable by loading a file, and it is the one in which this class of defect is
 visible at all.
 
+### Test cuts: checking the library against a caliper
+
+Asked for from the bench, and it closes a gap the rest of the app cannot close on its own.
+
+**Every number this app computes about a cut comes from the tool library, and every one of them is a
+claim about a physical object.** A V-bit's cut width is derived from a tip diameter somebody typed
+in. That number has already been wrong by a factor of twenty-five — in *units* rather than in digits,
+from a product listing that quoted inches without saying so — and nothing anywhere on screen showed
+it. The arithmetic was faultless throughout.
+
+So `Job ▸ Test cuts…` writes a short program that cuts a few lines on scrap, plus an HTML page
+beside it explaining how to read them. Two tests:
+
+- **Depth and width** — one line per depth, getting deeper. The file and the page both carry the
+  *predicted* width for each line, so the operator is comparing a measurement against a stated
+  claim rather than against a feeling. A constant error across every line is the tip; an error that
+  grows with depth is the angle; and the page gives the arithmetic for both.
+- **Feed rate** — one line per feed at a fixed depth, centred on the tool's own feed so there is a
+  baseline in the middle. Nothing geometric changes; what changes is the edge, which is a thing only
+  an eye can judge. The page says to pick the fastest line that still looks clean rather than the
+  cleanest one, because cutting slower than necessary costs hours on a dense board and wears the bit
+  faster.
+
+**Both cut the first line again at the far end of the coupon.** One line, four seconds, and it is
+the difference between a measurement and a guess: two identical cuts at opposite ends of the stock
+should measure the same, and when they do not, the stock is tilted or Z moved and every other number
+on the coupon is off by an unknown, varying amount. The check is built into the artefact rather than
+left as advice.
+
+**It takes no board**, and is enabled without one. What it tests is the library's claim about a bit,
+which does not depend on which design is open.
+
+**Height maps: its own probe, never the board's.** Raised immediately, and the answer is the second
+half of the question rather than the first. A map describes one piece of stock as it was clamped, and
+a coupon is a different piece in a different place — applying the board's map to it would be
+confident and wrong everywhere, which is the same refusal
+[the levelling side already makes](#the-probing-round-trip-did-not-close) about the flipped side of a
+board. So the dialog offers a probing routine *sized to the coupon*, and the guide says plainly not
+to use the board's. The existing `millburn level <file> --map <log>` does the rest, because a test
+cut is just G-code.
+
+Arcs were considered and left out. A circle tests backlash, axis squareness and whether the
+controller honours `G2`/`G3` — all worth testing, none of them a property of the bit. Mixing them in
+would put two unknowns in one measurement, and measuring a width across a curve is harder than
+across a line for no gain. A circle test belongs in its own generator, aimed at the machine.
+
 ### Requested from the workshop — all five built
 
 Five ideas that arrived from using the app at the machine, recorded here so they keep their
