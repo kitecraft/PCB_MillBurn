@@ -89,7 +89,7 @@ public sealed record AppSettings
     public MillingDefaults Milling { get; init; } = new();
 
     /// <summary>
-    /// Width of the board panel, in pixels.
+    /// Width of the board pane, in pixels.
     ///
     /// Remembered for the same reason the window's own size is: resizing the same thing at every
     /// start is a small irritation that never stops being one. Wider than it was, because the

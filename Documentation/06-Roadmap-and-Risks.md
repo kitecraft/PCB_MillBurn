@@ -252,7 +252,7 @@ which file, what tool it assumes, how deep it goes, and whether anything about t
 wrong. Every SVG in one export shares a page, so the layers overlay when imported; cropping each to
 its own extents is the mistake that puts the second burn out by the difference between two crops.
 
-The board panel follows the same shape: **Project info**, **Layers**, **Export**, as collapsible
+The board pane follows the same shape: **Project info**, **Layers**, **Export**, as collapsible
 drawers, with Export pinned to the bottom so a nine-layer board cannot push it off-screen. Each
 layer row carries its own output dropdown, its tool, and only the numbers its operation actually
 has — a depth for isolation, a break-through for anything that goes all the way through, tabs for
@@ -1073,7 +1073,7 @@ first, and it leaves board thickness and colours alone: those describe the stock
 eyes, not the design.
 
 **Preview and Export moved to the header, and the export filter was deleted.** They had lived at the
-bottom of the board panel, under a heading, behind a "Both / SVG only / G-code only" dropdown. Once
+bottom of the board pane, under a heading, behind a "Both / SVG only / G-code only" dropdown. Once
 every row says what it produces, a second control that can disagree with six rows at once is one
 answer too many. `PlanExport` still takes a filter, because Preview genuinely only ever wants the
 G-code; an export takes none.
@@ -1494,7 +1494,7 @@ back rotated 180°, which looks identical and is not.
 Anything not built is labelled as such on the page rather than described as if it worked — the
 `not built yet` marker is a class in the stylesheet, not a habit. The pages have since grown
 sections on dry runs, probing and levelling, the drilling companion, custom start and end G-code,
-the standalone G-code viewer, the machine settings, and the board panel, all of which now exist.
+the standalone G-code viewer, the machine settings, and the board pane, all of which now exist.
 
 **`Help/` is not `Documentation/`.** This directory is design documentation — why the code is
 shaped the way it is, written for whoever maintains it. User help is a different audience, a

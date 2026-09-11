@@ -160,7 +160,7 @@ public sealed partial class MainViewModel : ViewModelBase
     public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
 
     /// <summary>
-    /// Remembers how wide the board panel was left.
+    /// Remembers how wide the board pane was left.
     ///
     /// Only when it has actually changed: this runs on every close, and rewriting the settings file
     /// to store the number it already held is work for nothing.

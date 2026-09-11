@@ -27,7 +27,7 @@ public sealed record OutputChoice(OutputKind Kind, string Label)
 }
 
 /// <summary>
-/// One row in the board panel: whether it is shown, what colour, and what it is turned into.
+/// One row in the board pane: whether it is shown, what colour, and what it is turned into.
 ///
 /// **Visibility and export are deliberately separate.** Conflating them reads well in a sentence and
 /// fails in use: you constantly want the soldermask on screen to check a pad against while cutting
