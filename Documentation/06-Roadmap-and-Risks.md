@@ -1370,6 +1370,38 @@ actually produces, somewhere in the two-opt or or-opt neighbourhood when a node'
 differ. It costs half a second an export and no correctness, and it is written down here rather than
 guessed at.
 
+### Levelling put a quarter of a line in the air
+
+Found on a coupon, from the backplot of the levelled file rather than from the coupon itself. Part
+of line 1 was drawn as travel rather than as cutting, which is the viewer saying the move is above
+the surface.
+
+The first line of a depth series is cut **0.020 mm** deep. The scrap it was levelled against is
+**0.027 mm out of flat**. Levelling adds the surface's own height to every Z, so wherever the stock
+stood higher than 0.020 mm above the Z datum the commanded Z went positive — 79 of that line's
+segments ended at or above the copper, the worst by 0.004 mm. About a quarter of the line ran in the
+air.
+
+**The correction was right. The cut was never deep enough to survive it.** That is the whole of the
+bug, and it is not confined to test cuts: a board isolated at 0.05 mm on stock bowed 0.15 mm has
+exactly the same problem, and there the symptom is nets that are still connected.
+
+Nothing showed it on the machine. The spindle turns, the axes move, the program completes, and the
+file that produced it says *"LEVELLED. Every Z follows a measured surface"* — which is true, and is
+the reason nobody looks further.
+
+`Leveller.Apply` now counts, for every feed segment that was below the surface before the
+correction, whether it is at or above the surface after it. `LevelReport` carries the count, the
+worst height, and the shallowest cut in the program; the sentence goes into the levelled file's own
+**header**, the export checks, the CLI's report as `IN THE AIR`, and — for a test cut, where the
+series deliberately starts shallower than most stock is bowed — a dialog.
+
+The header is the part that matters most, because the file is what reaches the machine. Writing it
+meant deferring the header until the moves had been written, since whether anything lifted out is
+only known then; it is emitted as a placeholder and replaced at the end.
+
+Rerunning the same coupon with the series starting at 0.050 mm instead of 0.020 clears it entirely.
+
 <a id="phase-55"></a>
 
 ### Phase 5.5 — Drilling, finished — **scheduled, not started**

@@ -382,4 +382,81 @@ public sealed class LevellerTests(ITestOutputHelper output)
         // in others: the bow is several times the depth of the cut.
         Assert.True(map.RangeMm > 0.1, "the test surface should be meaningfully bowed");
     }
+
+    // ------------------------------------------------------------------ cuts that lift out
+
+    /// <summary>
+    /// A cut shallower than the stock is bowed comes out of the material once it is levelled, and
+    /// the program has to say so.
+    ///
+    /// Found on a real coupon. A depth series started at 0.020 mm on scrap 0.027 mm out of flat;
+    /// levelling faithfully raised every Z by the surface's own height and 79 segments of the first
+    /// line ended up above the copper. Nothing on the machine could show it — the spindle turned,
+    /// the axes moved, and a quarter of that line was cut in the air. The correction was right; the
+    /// cut was never deep enough to survive it.
+    /// </summary>
+    [Fact]
+    public void ACutShallowerThanTheBowIsReportedAsInTheAir()
+    {
+        var map = Tilted(0.0005);
+        var program = string.Join(
+            '\n',
+            "G21 G90",
+            "G0 X0 Y50 Z2",
+            "G1 Z-0.020 F60",
+            "G1 X100 Y50 F600",
+            "G0 Z2");
+
+        var (text, report) = Leveller.Apply(program, map);
+
+        output.WriteLine($"{report.LiftedOut} lifted, worst {report.LiftedByMm:F4} mm, "
+            + $"shallowest cut {report.ShallowestCutMm:F3} mm, bow {map.RangeMm:F3} mm");
+
+        Assert.Null(report.Refusal);
+        Assert.True(report.LiftedOut > 0, "a 0.020 mm cut on a 0.050 mm bow must lift out");
+        Assert.True(report.LiftedByMm > 0);
+        Assert.Equal(0.020, report.ShallowestCutMm, 3);
+
+        // And it has to be in the file, because the file is what reaches the machine.
+        Assert.Contains("in the air", text, StringComparison.Ordinal);
+        Assert.Contains(report.Notes, n => n.Contains("at or above the surface", StringComparison.Ordinal));
+    }
+
+    /// <summary>A cut deeper than the bow stays in the material, and nothing is said.</summary>
+    [Fact]
+    public void ACutDeeperThanTheBowIsNotFlagged()
+    {
+        var map = Tilted(0.0005);
+        var program = string.Join(
+            '\n',
+            "G21 G90",
+            "G0 X0 Y50 Z2",
+            "G1 Z-0.200 F60",
+            "G1 X100 Y50 F600",
+            "G0 Z2");
+
+        var (text, report) = Leveller.Apply(program, map);
+
+        Assert.Equal(0, report.LiftedOut);
+        Assert.DoesNotContain("in the air", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A rapid held above the work is meant to be above the work, and must not be counted.
+    /// </summary>
+    [Fact]
+    public void RapidsAboveTheWorkAreNotCountedAsLiftedOut()
+    {
+        var map = Tilted(0.0005);
+        var program = string.Join(
+            '\n',
+            "G21 G90",
+            "G0 X0 Y50 Z2",
+            "G0 X100 Y50 Z2",
+            "G1 Z-0.200 F60",
+            "G1 X0 Y50 F600",
+            "G0 Z2");
+
+        Assert.Equal(0, Leveller.Apply(program, map).Report.LiftedOut);
+    }
 }

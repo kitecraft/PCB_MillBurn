@@ -511,6 +511,18 @@ public static class TestCutGuide
             .Append("matches line 1, the coupon was flat enough and you can stop worrying about ")
             .Append("this.</p>\n");
 
+        if (options.Kind == TestCutKind.Depth)
+        {
+            page.Append("<div class=\"warn\"><p><strong>Levelling does not rescue a line shallower ")
+                .Append("than the stock is bowed.</strong> The correction raises every Z by the ")
+                .Append("surface's own height, so a cut that shallow comes <em>out</em> of the ")
+                .Append("copper wherever the stock is high &mdash; it runs in the air and cuts ")
+                .Append("nothing, with nothing to notice while it happens. Start the series deeper ")
+                .Append(Invariant($"than the bow: at {report.Lines[0].DepthMm:F3} mm, scrap more "))
+                .Append("than that out of flat costs you line 1, and the repeat it is compared ")
+                .Append("against. The program says so in its header when it happens.</p></div>\n");
+        }
+
         page.Append("<p>If it still is not flat enough &mdash; thin stock, or a machine bed that is ")
             .Append("not &mdash; probe <em>this coupon</em> and level the test file against that:</p>\n");
 
