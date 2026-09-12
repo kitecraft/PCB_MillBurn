@@ -70,13 +70,13 @@ PCB_MillBurn.slnx
 ├── src/
 │   ├── MillBurn.Core            net10.0   Units, geometry primitives, transforms, project model
 │   ├── MillBurn.Gerber          net10.0   Gerber X2/X3 + Excellon parsers → semantic model
-│   ├── MillBurn.Geometry        net10.0   Clipper2 + NTS: offset, boolean, voronoi, pocket, arcs
+│   ├── MillBurn.Geometry        net10.0   Clipper2: offset, boolean, area, inversion, tessellation
 │   ├── MillBurn.Cam             net10.0   Operation generators (isolation, drill, outline, mask)
-│   ├── MillBurn.Optimize        net10.0   Travel optimizer, precedence constraints, time model
+│   ├── MillBurn.Optimize        net10.0   Travel optimizer, precedence, simplification, pass linking
 │   ├── MillBurn.Gcode           net10.0   Mill only: emitter, parser, backplot, dry run, probing
-│   ├── MillBurn.Post            net10.0   Mill only: profiles + post-processor templates
-│   ├── MillBurn.Export          net10.0   SVG / DXF / PDF / PNG - the whole laser path
-│   ├── MillBurn.Align           net10.0   Fiducial fits, transforms, height maps + levelling
+│   ├── MillBurn.Post            net10.0   Mill only: post-processor templates — EMPTY, Phase 6
+│   ├── MillBurn.Export          net10.0   SVG. DXF and PDF are Phase 4/5 and not built
+│   ├── MillBurn.Align           net10.0   Height maps + levelling. Fiducial fits are Phase 5
 │   ├── MillBurn.Viewer          net10.0   Toolpath scene, LOD, spatial culling, Skia renderer
 │   ├── MillBurn.Pipeline        net10.0   The cached, cancellable stage graph tying it together
 │   ├── MillBurn.App             net10.0   Shell ONLY: MVVM, docking, Skia viewport
@@ -85,8 +85,16 @@ PCB_MillBurn.slnx
 └── tests/
     ├── MillBurn.Tests           xUnit unit + property tests
     ├── MillBurn.GoldenTests     Golden-file and determinism regression
-    └── boards/                  Six real KiCad exports, committed as fixtures
+    ├── boards/                  Six real KiCad exports, committed as fixtures
+    └── corpus/                  Empty. Where a pcb2gcode test-data checkout is looked for;
+                                 GPL-3.0, so never committed, and those tests skip without it
 ```
+
+Three projects are named here for the shape of the graph rather than for what they hold today.
+`MillBurn.Post` has a Scriban reference and no source file; `MillBurn.Export` writes SVG and
+nothing else; `MillBurn.Mcp` does not exist on disk at all. Naming them early is deliberate — it
+fixes where the code goes when it arrives — but the table said what they *would* contain as though
+they contained it, which is the one thing a layout diagram must not do.
 
 Dependency direction is strictly downward. `MillBurn.App` references everything; nothing
 references `MillBurn.App`. `MillBurn.Cli` and `MillBurn.Mcp` are peers of it — entry points holding
@@ -120,7 +128,19 @@ Explicitly **not** used: Boost.Geometry, GEOS native, libgerbv, Cairo. Those are
 dependency chain and they are the reason it is painful to build on Windows. Everything above is a
 NuGet package that restores on a clean Windows box with no vcpkg, no MSYS2, no CMake.
 
-## 4. The incremental pipeline
+## 4. The incremental pipeline — **designed, not built**
+
+> **Status.** Nothing in this section exists. There is no `PipelineCache`, no `CancellationToken`
+> anywhere in `src/`, and no debounce. `MillBurn.Pipeline` is a set of builders that run start to
+> finish on the calling thread, and every export recomputes from the parsed board.
+>
+> It has not been the constraint anyone expected. A real board plans, emits, backplots and renders
+> fast enough that nobody has waited for it, and the two places that *would* hurt — a 66-up panel's
+> isolation, and the optimizer at Thorough — are both one-off operations behind a button rather
+> than something a slider drags. So this is kept as the design for when a live preview is built,
+> and the **< 200 ms** target below is unmeasured because the thing it measures does not run.
+>
+> The rest of the section is the intended design, not a description of the code.
 
 The single biggest UX difference from pcb2gcode is that **PCB_MillBurn is not a batch converter**.
 Change a number, see the result. That requires the pipeline to be incremental and cancellable.
@@ -212,17 +232,22 @@ Key UI principles:
 5. **One palette, everywhere.** Port IceLight V2's semantic token system
    (`Theme_Quick_Reference.md`) and extend it with CAM tokens — `PathIsolation`, `PathDrill`,
    `PathOutline`, `PathTravel`, `PathRapidLong`, `DrcViolation` — so the viewport, the legend, and
-   the [SVG export](05-Viewer-and-Export.md#3-svg-export) all read from the same source and agree.
+   the [SVG export](05-Viewer-and-Export.md#3-svg-export--the-laser-half-of-the-product) all read from the same source and agree.
    See [07 §5](07-UI-Framework-Decision.md#5-ideas-worth-carrying-over-from-icelight-v2).
 
 ## 7. Threading
 
-- UI thread: MAUI/WinUI only.
-- Pipeline: `Task.Run` on the thread pool, `Parallel.For` inside geometry stages where the work
-  is embarrassingly parallel (per-net offsets, per-contour compositing).
+- UI thread: Avalonia's dispatcher only. (This said "MAUI/WinUI" until the Phase 0 spike settled
+  the shell question; [07](07-UI-Framework-Decision.md) is the decision and Avalonia won it.)
 - All cross-boundary data is immutable, so no locks in the pipeline.
 - No machine I/O anywhere. PCB_MillBurn writes files; a sender (UGS, Candle, LightBurn,
   LinuxCNC) runs them. See §1.1.
+
+**Planned, not built:** `Task.Run` onto the thread pool, and `Parallel.For` inside the geometry
+stages where the work is embarrassingly parallel (per-net offsets, per-contour compositing). Every
+stage runs to completion on the calling thread today. It has not hurt — the slowest real board
+plans in well under a second, and a panel's isolation is the only thing that takes long enough to
+notice — so this waits until §4 is built, which is what makes it worth having.
 
 ## 8. Testing strategy
 

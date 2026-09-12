@@ -22,7 +22,7 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 | # | Document | Contents |
 |---|---|---|
 | 01 | [Architecture](01-Architecture.md) | Solution layout, project graph, the scope boundary, incremental pipeline, licensing |
-| 02 | [Gerber & Geometry Pipeline](02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 + Excellon parsing, Clipper2/NTS geometry, isolation, pocketing, DRC |
+| 02 | [Gerber & Geometry Pipeline](02-Gerber-and-Geometry-Pipeline.md) | Gerber X2 + Excellon parsing, Clipper2 geometry, isolation, pocketing, drilling, the board outline |
 | 03 | [Toolpath Optimization](03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, the GTSP model, cost model, constraints, arc fitting |
 | 04 | [Machines, Laser & Mixed Workflows](04-Machines-Laser-and-Mixed-Workflows.md) | **Mill takes G-code, laser takes SVG**; machine profiles, why kerf compensation is *not* ours, the Job/Operation/Setup model, **board re-alignment** |
 | 05 | [Viewer & Export](05-Viewer-and-Export.md) | Real-time backplot viewer (UGS-informed), and the **SVG writer that is the entire laser output path** |
@@ -33,9 +33,11 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 
 | Path | What it is | License | How we use it |
 |---|---|---|---|
-| `WorkingFolder/pcb2gcode/` | The original C++ tool | GPL-3.0 | Behavioural reference + benchmark baseline. **Do not port code.** |
-| `WorkingFolder/Universal-G-Code-Sender/` | UGS (Java/NetBeans/JOGL) | GPL-3.0 | Design reference for the backplot viewer and the G-code processor chain. **Do not port code.** |
-| `..\IceLight_App\IceLight V2` | Your existing MAUI app | yours | UI reference: the semantic theme-token system, converters, feature-foldered `CoreUI/` layout. Port these ideas forward. |
+| `WorkingFolder/pcb2gcode/` | The original C++ tool | GPL-3.0 | Behavioural reference. **Do not port code.** Never actually run — the optimizer's gate measures against our own nearest-neighbour baseline instead, for the reasons in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria). |
+| `WorkingFolder/Universal-G-Code-Sender/` | UGS (Java/NetBeans/JOGL) | GPL-3.0 | Design reference for the backplot viewer and the G-code processor chain. **Do not port code.** Also the sender this project's output is actually run through. |
+
+`WorkingFolder/` is scratch space and is git-ignored in its entirety; both checkouts are the
+developer's own and are not part of this repository.
 
 Both are GPL-3.0. Reading them to understand *approach* is fine; copying code makes PCB_MillBurn
 GPL-3.0 too — and PCB_MillBurn is **MIT**, so that rule is load-bearing rather than decorative. Everything we build should be clean-room from published specs

@@ -153,9 +153,16 @@ The optimizer gets a **budget**, exposed in the UI as a three-position control:
 
 | Mode | Budget | Typical use |
 |---|---|---|
-| Fast | 50 ms | Live preview while dragging a slider |
-| Balanced | 500 ms | Default; runs on every settled edit |
-| Thorough | 10 s | One click before exporting the final file |
+| Fast | no local search | Live preview while dragging a slider |
+| Balanced | 1,000 moves examined per node | Default; runs on every settled edit |
+| Thorough | 20,000 moves examined per node | One click before exporting the final file |
+
+**The budget is work, not wall-clock time, and that is a correction rather than a detail.** It was
+milliseconds — 50, 500, 10,000 — and a wall clock makes the result depend on what else the machine
+was doing. The same board, the same settings, three runs: **1709, 1831 and 1926 mm** of travel. A
+faster machine produced a different file from a slower one, and a golden test could not pin any of
+it. Counting moves examined makes the budget a property of the problem, so the same input gives the
+same output on any hardware and the line below is true:
 
 Same seed, same result, every time. The UI shows the improvement so the value is visible:
 
@@ -168,12 +175,17 @@ fact the user can check.
 
 Ordering is necessary but not sufficient. Three more sources of wasted time:
 
-1. **Excessive lifts.** If two consecutive paths' endpoints are closer than a threshold and the
-   straight line between them stays outside the keep-out geometry, **do not lift at all** —
-   travel at cutting depth. pcb2gcode has `backtrack.cpp`/`path_finding.cpp` doing a limited
-   version of this;
-   generalise it with an STRtree-based visibility check and a configurable "max distance to
-   travel at depth".
+1. **Excessive lifts — built.** If the straight line from one path's end to the next path's start
+   cuts only material that is already gone, **do not lift at all** — travel at cutting depth.
+   `PassLinker` does this; the design, the measurements and the refusals are written up in
+   [06 §6.3](06-Roadmap-and-Risks.md#63-staying-down-between-passes-that-touch--done).
+
+   One correction to what this section originally said, because it matters: *"endpoints closer
+   than a threshold"* is the wrong rule. A tenth of a millimetre between two laps of the same pad
+   is safe; the same tenth of a millimetre between two unrelated runs is a cut trace. Distance
+   cannot tell those apart, so the implemented test is containment in the swept area of the passes
+   either side, and there is no distance threshold at all. On a real board it removed 13 of 26
+   plunges, worth about 13 % of the run.
 
 2. **Path merging via Eulerian traversal.** Adjacent isolation contours often share endpoints. Build
    the connectivity graph and find Eulerian paths so a chain of segments becomes one continuous
@@ -189,12 +201,28 @@ Ordering is necessary but not sufficient. Three more sources of wasted time:
 
 ## 8. Acceptance criteria
 
-Benchmark against pcb2gcode on the corpus, same board, same tool, same depths:
+**The baseline is our own nearest-neighbour orderer, not pcb2gcode.** This originally said
+"benchmark against pcb2gcode on the corpus". That was never run and is not going to be: it means
+building a GPL-3.0 C++ tool, matching its tool and depth parameters closely enough for the
+comparison to mean anything, and then reporting a number nobody can reproduce without the same
+build. The baseline that is actually kept in the tree is better evidence. It is the
+nearest-neighbour ordering that shipped, and it already considers **both ends of every candidate**
+— the defect §1 identifies in pcb2gcode's solver — so beating it is a harder test than beating the
+thing this project was started over.
 
-- **Rapid travel distance:** ≥ 40% reduction on outline/edge-cut operations, ≥ 25% overall.
-- **Estimated cut time** (trapezoidal model): ≥ 20% reduction.
-- **G-code line count:** ≥ 5× reduction via simplification + arc fitting.
-- **Optimizer wall time:** < 500 ms at Balanced for a 5000-path board.
+Measured on the real boards, in `OptimizerBenchmarkTests`:
+
+- **Rapid travel:** below the nearest-neighbour baseline on isolation and on drilling, by a
+  margin worth having, per board.
+- **G-code line count:** ≥ 5× reduction via simplification + arc fitting. A panel's isolation goes
+  301,097 → 15,191, which is 20×, inside a 2 µm bound.
+- **Optimizer budget:** counted in moves examined rather than milliseconds (§6), so the gate is
+  on the *result* being deterministic rather than on a clock.
 - **Zero** precedence violations, verified by an assertion in the golden tests.
 
-These go in CI as a regression gate. If a change makes travel worse, the build fails.
+These go in CI as a regression gate. The assertions are direction and magnitude, not exact
+millimetres: a gate that pins the number fails on every legitimate improvement, which teaches
+whoever sees it to update the number without looking — and then it is guarding nothing.
+
+Still open: the local search can cycle on open runs — 299,044 "improvements" on 50 nodes — which
+the step budget bounds rather than fixes.

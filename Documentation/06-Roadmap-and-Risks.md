@@ -104,6 +104,10 @@ three copper islands, matching the three named nets the parser found.
 - `MillBurn.Cli inspect` prints the parse report from the risk table below.
 - Verified against 24 external corpus files and two real KiCad 10 boards: **zero errors**.
   The NanoV3.3 board resolves 34 apertures with SMDPad/ComponentPad/ViaPad/Conductor classified.
+  The corpus is pcb2gcode's test data, which is GPL-3.0 and therefore **not committed here**
+  ([01 §9](01-Architecture.md#9-licensing-strategy)) — so those cases run for a developer with a
+  checkout beside the repo and **skip in CI and on a fresh clone**. The six committed boards and
+  the hand-written spec fixtures are what runs everywhere.
 - Two bugs worth remembering, both of which produced a *clean-looking* empty result:
   the closing `*` of an extended command was left on the body, so every aperture parameter parsed
   as `0.5*`; and files write a bare `D10` with no `*` terminator, which merges with the next line,
@@ -354,14 +358,25 @@ reads the project's own settings first now. `project save` gained the same `--se
 configured project is scriptable rather than only clickable — which is also what makes the round
 trip checkable without a person in the loop.
 
-### Phase 3 — The optimizer — **done**
+### Phase 3 — The optimizer — **done, with one item open**
 
-- GTSP model with entry-configuration sets, closed-loop free start.
-- Trapezoidal time cost model.
-- Greedy + 2-opt + Or-opt + configuration flip, with candidate lists and don't-look bits.
-- Precedence DAG.
-- Eulerian path merging; travel-at-depth when safe.
-- Douglas–Peucker simplification + G2/G3 arc fitting.
+- GTSP model with entry-configuration sets, closed-loop free start. **Done.**
+- Trapezoidal time cost model. **Done**, and later corrected against a real machine — see
+  [the first real board](#the-first-real-board-and-the-estimate-that-was-wrong-by-more-than-double).
+- Greedy + 2-opt + Or-opt + configuration flip, with candidate lists and don't-look bits. **Done.**
+- Precedence DAG. **Done.**
+- Travel-at-depth when safe. **Done**, but late and under another number: it shipped as
+  [§6.3](#63-staying-down-between-passes-that-touch--done) after the workshop asked for it, which
+  means this phase was marked complete while carrying it.
+- **Eulerian path merging — not built.** Adjacent isolation contours that share endpoints should
+  become one continuous move. It is the last open item of the phase and it is worth more now than
+  when it was written, because §6.3 has just measured what removing a single plunge is worth on a
+  slow Z axis.
+- Douglas–Peucker simplification + G2/G3 arc fitting. **Done.**
+
+**Marked done anyway**, because the phase's purpose — beating the ordering that prompted this
+project, deterministically, under a gate — is met. The open item is listed so that "done" does not
+quietly come to mean "everything in the list above".
 
 **The cost model came first, because everything else is only as good as what it minimises.**
 `MotionPlanner` is GRBL's own algorithm: a junction speed per corner from the machine's deviation
@@ -542,7 +557,17 @@ revisit it once Phase 5 can verify a program without cutting.
 **Done when:** the acceptance metrics in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria)
 are met on the corpus and enforced in CI.
 
-### Phase 4 — Laser output (SVG) — **in progress**
+### Phase 4 — Laser output (SVG) — **in progress, and parked**
+
+> **Where it actually stands.** The half that was pulled forward is done and physically proven: the
+> SVG writer, the silkscreen operation, the shared page origin, the LightBurn palette mapping and
+> the mask-open geometry, measured true on a 66-up panel. Nothing has been added since, through
+> four subsequent phases of mill-side work, because every board cut in that time was a mill job.
+>
+> Outstanding: **pad selection from X2 attributes**, **DXF as a second flavour**, a **shipped
+> LightBurn layer preset**, and the **registration-repeatability generator**. None of them is
+> blocked; they are simply behind the mill in the queue. Listed here so "in progress" does not read
+> as "being worked on".
 
 Laser output is **SVG, not G-code** ([04 §1](04-Machines-Laser-and-Mixed-Workflows.md#1-two-machines-two-output-formats)),
 which deletes most of what this phase used to contain: no laser dialect, no scanline fill, no
@@ -2049,8 +2074,20 @@ a board to it. So the settings reference comes from the settings types, the CLI 
 CLI's own help, and the shortcut list from the key bindings — none of them retyped. Workflows,
 troubleshooting and the conceptual pages are prose and stay stable.
 
-A test walks the HTML and fails on a broken internal link or a missing image. Cheap, and it is the
-only thing that reliably catches documentation rot.
+**Generated sections: not built.** Everything in `Help/` is hand-written today, including the
+numbers. The risk is stated above and it is real, so this is the next thing owed to Phase 7 rather
+than more prose.
+
+`HelpPagesTests` walks the HTML and fails on a broken internal link, a missing anchor, a referenced
+file that does not ship, or an FAQ section nothing links to. Cheap, and it is the only thing that
+reliably catches documentation rot — the FAQ is one long page reached almost entirely by fragment,
+so a renamed section silently sends every "More ›" to the top of it, which looks exactly like the
+help failing to answer the question.
+
+It was written after an audit found this paragraph claiming it already existed. The pages were in
+fact sound — 47 internal links, all resolving — which is the point: nothing would have told anyone
+if they had not been. The test was verified by breaking an anchor on purpose and watching two of
+its five cases fail.
 
 Contents, in the order someone needs them: getting started; the two mixed workflows; milling with a
 V-bit and why the depth-to-width relationship matters; laser export and which SVG flavour suits
@@ -2315,17 +2352,38 @@ comparing against the total the export review predicted.
 
 ## 2. Cross-cutting acceptance criteria
 
-| Metric | Target |
-|---|---|
-| Preview latency (parameter change → redrawn) | < 200 ms on a 100×80 mm 2-layer board |
-| Optimizer, Balanced mode, 5000 paths | < 500 ms |
-| Rapid travel vs. pcb2gcode, outline ops | ≥ 40% reduction |
-| Estimated cut time vs. pcb2gcode, overall | ≥ 20% reduction |
-| G-code line count vs. pcb2gcode | ≥ 5× reduction |
-| Viewer frame rate, 500k segments | >= 60 fps pan/zoom — **met: 98 fps measured, Phase 0** |
-| Cross-machine registration | ≤ 50 µm |
-| Time-estimate accuracy vs. wall clock | within 10% |
-| Output determinism | byte-identical across runs |
+| Metric | Target | Where it stands |
+|---|---|---|
+| Viewer frame rate, 500k segments | ≥ 60 fps pan/zoom | **Met: 98 fps**, Phase 0 |
+| Output determinism | byte-identical across runs | **Met**, 8 determinism tests |
+| G-code line count | ≥ 5× reduction by simplification | **Met: 20×** on a panel, 2 µm bound |
+| Rapid travel, outline ops | below the nearest-neighbour baseline | **Met**, gated per board |
+| Time estimate vs. wall clock | the actual falls inside the bracket | **Met so far: 4 of 4.** See below |
+| Optimizer, Balanced, 5000 paths | deterministic result | **Met.** The ms target is retired — see below |
+| Preview latency (parameter change → redrawn) | < 200 ms | **Not measured**, and cannot be until [01 §4](01-Architecture.md#4-the-incremental-pipeline--designed-not-built) is built |
+| Cross-machine registration | ≤ 50 µm | **Not measured.** Needs the Phase 5 alignment work |
+
+Three of these were re-aimed after they turned out to be measuring the wrong thing, and saying so
+is more useful than quietly deleting them.
+
+**"Within 10% of the wall clock" was never reachable, and the reason is physics rather than
+effort.** What the model can state honestly is a *bracket*: the low end is a machine that never
+slows down, the high end is one that stops dead at every segment, and both are real bounds. Where a
+particular machine lands between them is what GRBL's `$11` junction deviation governs, and `$11` is
+read from the dump but does not yet narrow the bracket. So the criterion is now "the measurement
+falls inside the bracket", which four of four runs have done since the machine profile was
+corrected — and the next thing worth doing to these numbers is making the bracket narrower, not
+making the midpoint more accurate.
+
+**"Optimizer, Balanced, < 500 ms" is retired**, because a wall clock was the defect: the same board
+gave 1709 / 1831 / 1926 mm of travel on three runs. The budget is counted in moves examined now
+([03 §6](03-Toolpath-Optimization.md#6-time-boxing)), so the criterion is determinism, which a
+golden test can actually hold.
+
+**"vs. pcb2gcode" is gone from every row.** pcb2gcode has never been run in this project and there
+is no plan to run it; the benchmark that exists compares against our own nearest-neighbour orderer,
+which is a harder baseline than pcb2gcode's solver and is reproducible by anyone with the repo. The
+reasoning is in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria).
 
 ## 3. Risks
 
@@ -2335,7 +2393,7 @@ comparing against the total the export review predicted.
 | **Aperture macros are more work than they look.** | Medium | Budget real time in Phase 1. All 21 primitives plus expression evaluation. Do not defer — boards that use them are common and the failure mode is silent wrong copper. |
 | **UI framework fit.** A dense CAM tool needs docking, a real code editor, and a fast custom canvas. | Medium | Decided in [07](07-UI-Framework-Decision.md): Avalonia recommended, WPF as fallback. Mitigated structurally — all logic lives in UI-free libraries, so the shell is one replaceable project. The Phase 0 spike settles it in two days rather than two months. |
 | **Registration accuracy may not reach 50 µm**, since measurement is done by hand in the operator's sender. | Medium | Push hard on the **fixture** path, which needs no per-job measurement at all. Where fiducials are used, layer the fallbacks: probe (numeric) → microscope crosshair (cheap) → naked eye (worst). Always report the fit residual so the operator knows what they actually got rather than assuming, and refuse to export above the threshold without an override. |
-| **Fiducials destroyed by an intervening process.** | High | This is the classic mixed-workflow failure. Encode survivability rules per workflow ([04 §4.2](04-Machines-Laser-and-Mixed-Workflows.md#42-fiducials--measurement)) and validate them when the Job is built: refuse to plan a job whose fiducials cannot survive to their next use. |
+| **Fiducials destroyed by an intervening process.** | High | This is the classic mixed-workflow failure. Encode survivability rules per workflow ([04 §4.2](04-Machines-Laser-and-Mixed-Workflows.md#42-fiducials--measurement-mill)) and validate them when the Job is built: refuse to plan a job whose fiducials cannot survive to their next use. |
 | **Optimizer is slow enough to break the live pipeline.** | Medium | Hard time budget with three modes; candidate lists cap the work; the optimizer is always interruptible and always returns its best-so-far. |
 | **GPL contamination** from reading pcb2gcode / UGS. | High | Clean-room discipline ([01 §9](01-Architecture.md#9-licensing-strategy)). Reference the *design*, write the code. Do not paste. Keep a note in any file whose design was informed by a GPL source, describing what was learned rather than copied. |
 | **Scope.** This document describes a lot of software. | High | The phase boundaries are real. Phase 2 alone is already useful; Phase 3 alone already beats pcb2gcode at the thing that prompted this project. Ship those before touching Phase 6. |
@@ -2346,13 +2404,18 @@ comparing against the total the export review predicted.
 1. ~~**License for PCB_MillBurn itself?**~~ **Answered: MIT** — attribution only, no restrictions
    on who ships it. Every dependency is permissive too, so there is no copyleft in the graph. See
    [01 §9](01-Architecture.md#9-licensing-strategy) and `THIRD-PARTY-NOTICES.md`.
-2. **UI shell: Avalonia, WPF, or stay on MAUI?** Recommendation and reasoning in
-   [07](07-UI-Framework-Decision.md); settled by the Phase 0 spike.
+2. ~~**UI shell: Avalonia, WPF, or stay on MAUI?**~~ **Answered: Avalonia**, settled by the Phase 0
+   spike exactly as [07](07-UI-Framework-Decision.md) proposed — the viewport sustained 98 fps on
+   500,247 segments, which was the acceptance test. The app targets plain `net10.0` and the Linux
+   build is published and run.
 3. ~~**Which laser controller(s) do you actually have?**~~ **Answered:** it does not matter, because
    laser output is SVG. Still worth knowing *which laser software* — LightBurn's palette mapping is
    the one target-specific thing in the export, and the shipped layer preset should match it.
-4. **Is there a touch probe on the mill?** It changes the default alignment recommendation from
-   microscope-crosshair to probe, and it makes the generated probe routines worth building early.
+4. ~~**Is there a touch probe on the mill?**~~ **Answered: yes.** Probe routines have been
+   generated, run, and their logs imported to level real boards, so the generated-probe path was
+   built early and is the default alignment recommendation. It also means the fiducial fallback
+   ladder in [04 §4.2](04-Machines-Laser-and-Mixed-Workflows.md#42-fiducials--measurement-mill) can
+   start at its numeric rung rather than at a microscope.
 5. ~~**Single board or panels?**~~ **Settled: we do not panelise.** A panel made in the EDA tool
    is cut correctly and always has been — every closed profile in `Edge_Cuts`, inner pieces before
    the frame around them. Building an array *here* is dropped, not deferred.
@@ -2369,6 +2432,9 @@ comparing against the total the export review predicted.
    flatness stops being ignorable), and the fact that isolation milling a panel multiplies both the
    run time and the cost of one broken bit by N. Recorded for the user in `Help/faq.html` so the
    trade is visible before someone asks for it.
-6. **Which sender(s) do you use?** It determines which probe-log formats to import first and which
-   G-code dialect quirks to prioritise. (The app itself never talks to a machine —
+6. ~~**Which sender(s) do you use?**~~ **Answered: Universal G-code Sender**, on a Monport
+   controller running GRBL 1.1f. That is why UGS's console format is the probe-log dialect that
+   works today, why `$I` and `$$` are read out of a pasted console rather than from a file, and why
+   Candle's and bCNC's grid-matrix formats are still waiting on a real example — a parser written
+   from a memory of a format is worse than none. (The app itself never talks to a machine —
    [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
