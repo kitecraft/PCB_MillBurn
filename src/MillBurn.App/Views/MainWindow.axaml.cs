@@ -395,6 +395,20 @@ public partial class MainWindow : Window
             _captureInstead = window;
         }
 
+        // The paste box, so the one window that has no file picker behind it is still checkable
+        // from a screenshot like everything else here.
+        if (args.Contains("--paste", StringComparer.OrdinalIgnoreCase))
+        {
+            var paste = PasteWindow.Preview(
+                "Paste a $$ dump",
+                "Send $$ to the controller and paste back everything it replied. Whatever is not "
+                + "in the paste is left alone, so a partial one is fine.");
+
+            paste.RequestedThemeVariant = ActualThemeVariant;
+            paste.Show(this);
+            _captureInstead = paste;
+        }
+
         if (args.Contains("--settings", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new SettingsWindow(vm.Settings) { RequestedThemeVariant = ActualThemeVariant };

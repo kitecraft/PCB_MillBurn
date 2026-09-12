@@ -33,11 +33,62 @@ public sealed record MachineSettings
     /// <summary>
     /// How fast the machine traverses, for the time estimates and for the dry run when programmed
     /// feeds are turned off. Not emitted: <c>G0</c> carries no feed word.
+    ///
+    /// GRBL's <c>$110</c>/<c>$111</c>.
     /// </summary>
     public double RapidMmPerMin { get; init; } = 2000;
 
+    /// <summary>
+    /// How fast Z traverses. GRBL's <c>$112</c>.
+    ///
+    /// Separate because it is usually far slower than X and Y — a leadscrew against gravity rather
+    /// than a belt — and because a PCB job is mostly plunging and retracting. On a real machine
+    /// measured at <c>$112 = 100</c> against <c>$110 = 2000</c>, the 79 Z moves of one isolation
+    /// program came to 108 mm and **one minute sixteen**, a quarter of its running time, all of it
+    /// invisible while the estimate costed them at the traverse rate.
+    /// </summary>
+    public double ZRapidMmPerMin { get; init; } = 600;
+
+    /// <summary>
+    /// Acceleration in mm/s². GRBL's <c>$120</c>.
+    ///
+    /// The number that decides how long a program takes, far more than the feed rates do. Nothing
+    /// in a PCB job is long enough to reach full speed: at 20 mm/s² a move must run 56 mm before it
+    /// ever touches 2000 mm/min, and isolation moves are a millimetre. Get this wrong and every
+    /// estimate is wrong — a dry run of 267 moves took 2 min 21 against a predicted 30 to 63
+    /// seconds, and computing it again with the machine's real 20 mm/s² instead of an assumed 200
+    /// gave 2 min 29.
+    ///
+    /// It also decides what the travel optimizer believes. Its whole premise is that short moves
+    /// cost more than their length, and an acceleration set ten times too high under-weights the
+    /// exact effect it exists to exploit.
+    /// </summary>
+    public double AccelerationMmPerSecondSquared { get; init; } = 200;
+
+    /// <summary>
+    /// How far the controller may cut a corner to carry speed through it, in mm. GRBL's <c>$11</c>.
+    ///
+    /// This is what puts a real machine somewhere between "stops at every vertex" and "never slows
+    /// down", and it is why an estimate can be a bracket rather than a guess.
+    /// </summary>
+    public double JunctionDeviationMm { get; init; } = 0.01;
+
     /// <summary>Decimals on coordinates. Three is one micron, past every machine this targets.</summary>
     public int Decimals { get; init; } = 3;
+
+    /// <summary>
+    /// How the motion planner, the optimizer and the time estimate all read these.
+    ///
+    /// One profile rather than one per consumer. There were two, and the second — the one the
+    /// estimates used — had no Z rate at all.
+    /// </summary>
+    public MachineProfile Profile => new()
+    {
+        RapidMmPerMin = RapidMmPerMin,
+        ZRapidMmPerMin = ZRapidMmPerMin,
+        AccelerationMmPerSecondSquared = AccelerationMmPerSecondSquared,
+        JunctionDeviationMm = JunctionDeviationMm,
+    };
 
     /// <summary>
     /// Emit <c>G81</c>/<c>G83</c> canned cycles for drilling.

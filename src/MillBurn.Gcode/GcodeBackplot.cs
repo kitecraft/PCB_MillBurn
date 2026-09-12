@@ -71,15 +71,6 @@ public sealed record BackplotStats
         : string.Create(CultureInfo.InvariantCulture, $"{(int)t.TotalMinutes}m {t.Seconds}s");
 }
 
-/// <summary>Machine limits, for costing a program.</summary>
-public sealed record MotionLimits
-{
-    public double RapidMmPerMin { get; init; } = 2000;
-
-    /// <summary>Acceleration in mm/s². 200 is a typical small GRBL router.</summary>
-    public double AccelerationMmPerSecondSquared { get; init; } = 200;
-}
-
 /// <summary>
 /// Classifies a parsed program for drawing, and costs it.
 ///
@@ -163,11 +154,19 @@ public static class GcodeBackplot
         return inMaterial ? BackplotRole.Cut : BackplotRole.Travel;
     }
 
+    /// <summary>
+    /// What the program costs on this machine.
+    ///
+    /// <paramref name="limits"/> used to be a second type holding a subset of
+    /// <see cref="MachineProfile"/>, and it had quietly drifted: it never grew a Z rate, so every
+    /// plunge and retract in every estimate was costed at the traverse speed. One profile now, and
+    /// one place to be wrong.
+    /// </summary>
     public static BackplotStats Measure(
-        IReadOnlyList<BackplotMove> moves, MotionLimits? limits = null)
+        IReadOnlyList<BackplotMove> moves, MachineProfile? limits = null)
     {
         ArgumentNullException.ThrowIfNull(moves);
-        limits ??= new MotionLimits();
+        limits ??= new MachineProfile();
 
         var cut = 0.0;
         var travel = 0.0;
@@ -190,6 +189,14 @@ public static class GcodeBackplot
             var feed = role is BackplotRole.Travel or BackplotRole.LongTravel or BackplotRole.Gouge
                 ? limits.RapidMmPerMin
                 : move.FeedMmPerMin > 0 ? move.FeedMmPerMin : limits.RapidMmPerMin;
+
+            // A Z move goes no faster than the Z axis can, whatever the program asked for. A
+            // retract is a G0 and carries no feed word at all, so without this it was costed at the
+            // traverse rate — twenty times too fast on a machine with a leadscrew and gravity.
+            if (role is BackplotRole.Plunge or BackplotRole.Retract)
+            {
+                feed = Math.Min(feed, limits.ZRapidMmPerMin);
+            }
 
             switch (role)
             {

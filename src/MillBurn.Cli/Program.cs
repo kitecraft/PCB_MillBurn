@@ -1301,7 +1301,7 @@ internal static class Program
         // one of them is what the machine will run.
         var program = GcodeParser.Parse(text);
         var backplot = GcodeBackplot.Classify(program);
-        var measured = GcodeBackplot.Measure(backplot);
+        var measured = GcodeBackplot.Measure(backplot, AppSettings.LoadOrDefault().Machine.Profile);
 
         Console.WriteLine();
         Line($"  backplot    {program.Moves.Count:N0} moves parsed back from the file");

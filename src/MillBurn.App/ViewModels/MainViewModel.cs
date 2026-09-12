@@ -357,7 +357,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         var classified = GcodeBackplot.Classify(parsed);
-        var measured = GcodeBackplot.Measure(classified);
+        var measured = GcodeBackplot.Measure(classified, Settings.Machine.Profile);
 
         // Drawn against the board when there is one, so a program opened over the board it came
         // from lands on it. On its own it stands in work coordinates, which is where it was
@@ -819,7 +819,7 @@ public sealed partial class MainViewModel : ViewModelBase
         foreach (var item in plan.Items)
         {
             var classified = GcodeBackplot.Classify(GcodeParser.Parse(item.Content));
-            var measured = GcodeBackplot.Measure(classified);
+            var measured = GcodeBackplot.Measure(classified, Settings.Machine.Profile);
 
             // Kept apart by source layer rather than poured into one list. Merged, the viewer can
             // only ever show every program's cuts at once — and looking at one layer's toolpath is

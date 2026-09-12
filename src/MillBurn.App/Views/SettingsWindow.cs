@@ -80,6 +80,7 @@ public sealed class SettingsWindow : Window
         var body = new StackPanel { Spacing = 2, Margin = new Thickness(0, 12) };
 
         Section(body, "The machine");
+        body.Children.Add(FromDump());
         Number(body, "safeZ", "Safe height", "mm", settings.Machine.SafeZMm, 0.5, 50, 0.5,
             "Every travel move in every program crosses the board at this height. Raise it above "
             + "anything that stands proud of the stock — clamps, tape, a probe clip.");
@@ -88,6 +89,21 @@ public sealed class SettingsWindow : Window
         Number(body, "rapid", "Rapid rate", "mm/min", settings.Machine.RapidMmPerMin, 100, 20000, 100,
             "Used for the time estimates, and for a dry run with the programmed feeds turned off. "
             + "Never written into a file: G0 carries no feed word.");
+        Number(body, "zrapid", "Z rapid rate", "mm/min", settings.Machine.ZRapidMmPerMin, 20, 20000, 50,
+            "GRBL's $112. Usually far slower than X and Y — a leadscrew against gravity rather than "
+            + "a belt — and a PCB job is mostly plunging and retracting, so this decides a large "
+            + "part of how long one takes.");
+        Number(body, "accel", "Acceleration", "mm/s²", settings.Machine.AccelerationMmPerSecondSquared,
+            1, 5000, 10,
+            "GRBL's $120, and the number that decides how long a program takes more than any feed "
+            + "rate does. At 20 mm/s² a move must run 56 mm before it ever reaches 2000 mm/min, and "
+            + "isolation moves are a millimetre. It also tells the travel optimizer how much a short "
+            + "move really costs.");
+        Number(body, "junction", "Junction deviation", "mm", settings.Machine.JunctionDeviationMm,
+            0.001, 1, 0.005,
+            "GRBL's $11. How far the controller may cut a corner to carry speed through it, which is "
+            + "what puts a real machine between “stops at every vertex” and “never "
+            + "slows down”.");
         Number(body, "decimals", "Coordinate decimals", "", settings.Machine.Decimals, 2, 5, 1,
             "Three is one micron, which is past every machine this targets.");
         Flag(body, "canned", "Emit canned drilling cycles (G81/G83)", settings.Machine.CannedCycles,
@@ -211,6 +227,78 @@ public sealed class SettingsWindow : Window
     }
 
     // ------------------------------------------------------------------ building rows
+
+    /// <summary>
+    /// Takes the four numbers that decide a time estimate straight out of the controller.
+    ///
+    /// Every one of them describes a physical machine, and three of them had no way to be set at
+    /// all — so they sat on defaults that were wrong by a factor of ten on the first machine they
+    /// met. The controller knows all four and will say so for the asking, which makes typing them
+    /// in by hand a step at which numbers go missing rather than a chore worth keeping.
+    /// </summary>
+    private StackPanel FromDump()
+    {
+        var read = new Button
+        {
+            Content = "Read from a $$ dump…",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+        };
+
+        var said = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Margin = new Thickness(0, 6, 0, 0),
+            IsVisible = false,
+            [!ForegroundProperty] = new DynamicResourceExtension("TextSecondary"),
+        };
+
+        read.Click += async (_, _) =>
+        {
+            if (await PasteWindow.AskAsync(
+                    this,
+                    "Paste a $$ dump",
+                    "Send $$ to the controller and paste back everything it replied. Whatever is "
+                    + "not in the paste is left alone, so a partial one is fine.")
+                is not { } text)
+            {
+                return;
+            }
+
+            var dump = GrblSettings.Parse(text);
+
+            if (dump.Rejection is { } why)
+            {
+                said.Text = why;
+                said.IsVisible = true;
+
+                return;
+            }
+
+            var (updated, changes) = dump.ApplyTo(Chosen().Machine);
+
+            _numbers["rapid"].Value = (decimal)updated.RapidMmPerMin;
+            _numbers["zrapid"].Value = (decimal)updated.ZRapidMmPerMin;
+            _numbers["accel"].Value = (decimal)updated.AccelerationMmPerSecondSquared;
+            _numbers["junction"].Value = (decimal)updated.JunctionDeviationMm;
+
+            var lines = new List<string>(changes);
+            lines.AddRange(dump.Notes());
+
+            said.Text = lines.Count == 0
+                ? $"Read {dump.Values.Count} settings. Everything this app uses already matched."
+                : string.Join('\n', lines);
+
+            said.IsVisible = true;
+        };
+
+        return new StackPanel
+        {
+            Margin = new Thickness(0, 2, 0, 6),
+            Children = { read, said },
+        };
+    }
 
     private static void Section(Panel into, string title) =>
         into.Children.Add(new TextBlock
@@ -345,6 +433,9 @@ public sealed class SettingsWindow : Window
             SafeZMm = Value("safeZ"),
             ApproachZMm = Value("approachZ"),
             RapidMmPerMin = Value("rapid"),
+            ZRapidMmPerMin = Value("zrapid"),
+            AccelerationMmPerSecondSquared = Value("accel"),
+            JunctionDeviationMm = Value("junction"),
             Decimals = (int)Value("decimals"),
             CannedCycles = Flagged("canned"),
         },
@@ -419,6 +510,9 @@ public sealed class SettingsWindow : Window
         _numbers["safeZ"].Value = (decimal)machine.SafeZMm;
         _numbers["approachZ"].Value = (decimal)machine.ApproachZMm;
         _numbers["rapid"].Value = (decimal)machine.RapidMmPerMin;
+        _numbers["zrapid"].Value = (decimal)machine.ZRapidMmPerMin;
+        _numbers["accel"].Value = (decimal)machine.AccelerationMmPerSecondSquared;
+        _numbers["junction"].Value = (decimal)machine.JunctionDeviationMm;
         _numbers["decimals"].Value = machine.Decimals;
         _flags["canned"].IsChecked = machine.CannedCycles;
 

@@ -9,7 +9,7 @@ PogoTest1-B_Cu.nc
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   Mirrored · flip the stock left-to-right
   summary   531 mm cutting, 96 mm travel
-  summary   3m 15s – 3m 26s · 523 lines
+  summary   3m 16s – 3m 26s · 523 lines
   summary   Simplified: 3,592 → 402 moves, 92 arcs (89 % fewer)
   summary   Ordering: 131 mm rapid → 96 mm (27 % less)
   warning   Mirrored: the stock must be flipped left-to-right about its vertical centreline, and re-registered. Flipping it the other way cuts a mirror image.
@@ -95,7 +95,7 @@ PogoTest1-PTH.nc
   sha256    ce30fa549e83121f
   summary   16 holes in 2 sizes · 1.90 mm deep (0.30 mm through the back)
   summary   16 holes drilled, 118 mm travel
-  summary   2m 22s – 2m 26s · 150 lines
+  summary   2m 23s – 2m 26s · 150 lines
   summary   Ordering: 123 mm rapid → 118 mm (4 % less)
   comment   ( PCB_MillBurn - PogoTest1-PTH — Drilling )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )

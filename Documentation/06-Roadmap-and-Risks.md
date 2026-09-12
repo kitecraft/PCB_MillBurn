@@ -1411,6 +1411,60 @@ symptom was read as the bug. The evidence that would have settled it — that th
 surface, so the depth below it is invariant — was one line of code away the whole time, and the
 operator got there first from the physics.
 
+### The first real board, and the estimate that was wrong by more than double
+
+The whole chain ran on metal: Gerbers in, test cuts to correct the tool, a probe, a levelled
+program, and a board. The loop the project exists for closed — a tip width taken off a product
+listing as 0.127 mm was measured on a coupon, entered as **0.11**, and the app then worked out that
+three passes of a 0.148 mm cut would clear the 0.400 mm moat asked for. No file needed editing, the
+sender complained about nothing, and the SVG had already imported at true 1:1.
+
+Two numbers came back that did not match.
+
+| | Estimated | Actual |
+|---|---|---|
+| The dry run | 0:30 – 1:02 | **2:21** |
+| The levelled isolation | 1:05 – 2:48 | **4:34** |
+
+The dry run is the clean experiment, because it makes no Z moves at all — so its error is
+acceleration alone. Recomputing it by hand: 267 moves, 688 mm, and if every move starts and stops,
+**0.89 min at the assumed 200 mm/s² against 2.49 min at the machine's real 20**. The measurement was
+2.35. The machine is landing on the pessimistic bound computed with its own acceleration.
+
+**Nothing was wrong with the shape of the model.** `MachineProfile` already had acceleration,
+junction deviation, a separate Z traverse and a minimum junction speed, each with its GRBL setting
+named in the doc comment. Three things were wrong around it:
+
+- **`MachineSettings` exposed only `RapidMmPerMin`.** The other three could not be set at any price,
+  so they sat on defaults: 200 mm/s² against a real 20, and a Z traverse of 600 against a real 100.
+- **`MotionLimits` — a second, smaller copy of the same idea, which the estimates actually used —
+  had no Z rate at all.** Every `G0 Z` retract was costed at the traverse rate. On that job: 79 Z
+  moves, 108 mm, **one minute sixteen**, a quarter of the run, entirely invisible. It is deleted;
+  `MachineProfile` is the only profile now.
+- **Neither real caller passed a profile to `ExportPlanner.Plan`.** Both handed it `machineSettings`
+  and left `machine` null, so the optimizer ran on defaults too — and the optimizer's whole premise
+  is that short moves cost more than their length, which is an effect that scales with acceleration.
+  It now defaults from the settings.
+
+`GrblSettings.Parse` reads a pasted `$$` dump, the same trick as pulling the firmware's name out of
+a `$I` reply in a probe log and for the same reason: the answer is already in the operator's
+terminal. **Settings ▸ The machine ▸ Read from a `$$` dump…** fills in `$110`, `$112`, `$120` and
+`$11`, leaves alone anything the paste did not mention, lists what changed, and says so when the
+paste is a different report rather than silently doing nothing. It also points out `$32 = 1` — laser
+mode, where GRBL does not stop at corners for the spindle and S words drive a laser.
+
+With the machine's own numbers, both measurements fall inside the bracket; before, neither did.
+
+| | Estimated before | Estimated now | Actual |
+|---|---|---|---|
+| The dry run | 0:30 – 1:02 | 0:32 – 3:10 | 2:21 |
+| The levelled isolation | 1:05 – 2:48 | 1:57 – 8:52 | 4:34 |
+
+**The bracket is now honest and wide.** Its ends are real bounds — never slowing, and stopping dead
+at every one of 1,070 segments — and where a machine lands between them is exactly what `$11`
+governs. It is stored and used by the optimizer but does not yet close the estimate's bracket, which
+is the next thing worth doing to these numbers.
+
 <a id="phase-55"></a>
 
 ### Phase 5.5 — Drilling, finished — **scheduled, not started**

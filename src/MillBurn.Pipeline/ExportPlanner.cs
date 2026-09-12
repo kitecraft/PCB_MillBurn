@@ -99,6 +99,16 @@ public static class ExportPlanner
         var items = new List<ExportItem>();
         var skipped = new List<string>();
 
+        // The machine's own numbers, unless a caller deliberately supplied a different profile.
+        //
+        // Both real callers passed the settings and left this null, so the optimizer and the time
+        // estimate ran on built-in defaults — an acceleration of 200 mm/s² against a real machine's
+        // 20, and a Z traverse of 600 against a real 100. Estimates were out by more than double,
+        // and the optimizer was choosing orderings with the wrong cost function: its whole premise
+        // is that short moves cost more than their length, which is an effect that scales with
+        // acceleration.
+        machine ??= (machineSettings ?? new MachineSettings()).Profile;
+
         // Every export in one run shares a page, so the layers overlay when imported. Cropping each
         // to its own extents is the mistake that puts the second burn out by the difference.
         var page = board.Bounds.IsEmpty
@@ -405,7 +415,7 @@ public static class ExportPlanner
                 : $"Start/end G-code, line {issue.Line}: {issue.Message}");
         }
         var emitted = GcodeParser.Parse(text);
-        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(emitted));
+        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(emitted), machine);
 
         // Drilling has no lateral cutting distance, so reporting "0 mm cutting" for it reads as a
         // failure rather than as the shape of the operation.

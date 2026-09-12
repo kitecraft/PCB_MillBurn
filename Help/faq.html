@@ -1366,6 +1366,53 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </p>
 </div>
 
+<h3>How long will this take? Give it the machine's own numbers</h3>
+
+<p>
+  Four settings decide every time estimate, and three of them are things only your controller knows.
+  <strong>Settings &rsaquo; The machine &rsaquo; Read from a <code>$$</code> dump&hellip;</strong>
+  takes them straight from it: send <code>$$</code> in your sender, paste back what it replies, and
+  the app fills in what it found. Anything not in the paste is left alone, so a partial one is fine.
+</p>
+
+<table>
+  <tr><th>Setting</th><th>What it decides</th></tr>
+  <tr><td><code>$110</code>/<code>$111</code></td><td>Traverse rate.</td></tr>
+  <tr><td><code>$112</code></td><td>Z traverse. Usually far slower, and a PCB job is mostly plunging and retracting.</td></tr>
+  <tr><td><code>$120</code></td><td>Acceleration. This one matters more than any feed rate.</td></tr>
+  <tr><td><code>$11</code></td><td>Junction deviation &mdash; how much speed the controller carries through a corner.</td></tr>
+</table>
+
+<p>
+  <strong>Acceleration is the one that surprises people.</strong> Nothing in a PCB job is long enough
+  to reach full speed. At 20&nbsp;mm/s&sup2; a move has to run 56&nbsp;mm before it ever touches
+  2000&nbsp;mm/min, and isolation moves are about a millimetre &mdash; so the machine spends its
+  whole life accelerating and the feed rate barely enters into it.
+</p>
+
+<p>
+  On the first machine these met, the defaults were wrong by ten times: an acceleration of 200 where
+  the real one was 20, and a Z traverse of 600 against a real 100. A dry run estimated at 30 to 63
+  seconds took <strong>2&nbsp;min&nbsp;21</strong>. With the machine's own numbers the same file
+  estimates 32&nbsp;seconds to 3&nbsp;min&nbsp;10, and the measurement sits inside it.
+</p>
+
+<div class="note">
+  <p>
+    The estimate is a <em>range</em>, and the range is wide because its ends are real bounds: never
+    slowing down at one end, stopping dead at every segment at the other. Where a machine lands
+    between them is what <code>$11</code> governs, and modelling that properly would narrow the
+    range &mdash; it is stored now but not yet used to close the bracket.
+  </p>
+</div>
+
+<p>
+  These numbers do more than print an estimate. The travel optimiser's whole premise is that many
+  short moves cost more than their summed length, which is an effect that scales with acceleration
+  &mdash; so an acceleration set ten times too high was choosing orderings with the wrong idea of
+  what they cost.
+</p>
+
 <h2 id="framing">My machine needs its own lines at the start</h2>
 
 <p>
