@@ -63,7 +63,12 @@ public sealed class TestCutWindow : Window
     private readonly Button _chooseLog = new() { Content = "Choose…", FontSize = 11, Padding = new Thickness(8, 2) };
     private readonly Button _write = new() { Content = "Write files…", IsDefault = true };
 
+    private readonly ToolLibrary _library;
+
     private string? _logPath;
+
+    /// <summary>What reopening a saved setup had to say, if anything. Shown in the summary.</summary>
+    private string? _reopened;
 
     public TestCutWindow(
         ToolLibrary library,
@@ -75,6 +80,7 @@ public sealed class TestCutWindow : Window
         ArgumentNullException.ThrowIfNull(machine);
 
         _machine = machine;
+        _library = library;
 
         Title = "Test cuts";
         AppIcon.Apply(this);
@@ -141,6 +147,8 @@ public sealed class TestCutWindow : Window
             Margin = new Thickness(0, 0, 0, 12),
             [!ForegroundProperty] = new DynamicResourceExtension("TextSecondary"),
         });
+
+        body.Children.Add(Reopen());
 
         body.Children.Add(Row("Test", _kind));
         body.Children.Add(Row("Bit", _tool));
@@ -257,6 +265,105 @@ public sealed class TestCutWindow : Window
                 picked,
             },
         };
+    }
+
+    /// <summary>
+    /// The way back into a test that was set up once already.
+    ///
+    /// A coupon that gets probed first is written in one visit and cut in another, and in between
+    /// this dialog closes and takes every number in it with it. The settings are saved beside the
+    /// program precisely so the second visit does not start from memory — a test whose two halves
+    /// disagree measures nothing — so the way to load them belongs at the top, before anything is
+    /// typed rather than after.
+    /// </summary>
+    private StackPanel Reopen()
+    {
+        var open = new Button { Content = "Reopen a saved test…", FontSize = 11, Padding = new Thickness(8, 3) };
+
+        open.Click += async (_, _) => await ReopenAsync();
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Margin = new Thickness(0, 0, 0, 12),
+            Children =
+            {
+                open,
+                new TextBlock
+                {
+                    Text = "Every test writes its settings beside its program.",
+                    FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    [!ForegroundProperty] = new DynamicResourceExtension("TextSecondary"),
+                },
+            },
+        };
+    }
+
+    private async Task ReopenAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Reopen a saved test",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Test cut settings") { Patterns = ["*" + TestCutSetup.Extension] },
+                FilePickerFileTypes.All,
+            ],
+        });
+
+        if (files.Count == 0 || files[0].TryGetLocalPath() is not { } path)
+        {
+            return;
+        }
+
+        if (TestCutSetup.Load(path) is not { } saved)
+        {
+            _reopened = Path.GetFileName(path) + " is not a saved test cut.";
+            Refresh();
+            return;
+        }
+
+        Restore(saved);
+    }
+
+    /// <summary>Puts a saved setup back into the dialog, and says what it could not put back.</summary>
+    internal void Restore(TestCutSetup saved)
+    {
+        _kind.SelectedIndex = saved.Kind == TestCutKind.Depth ? 0 : 1;
+
+        _numbers["lines"].Value = saved.LineCount;
+        _numbers["length"].Value = (decimal)saved.LineLengthMm;
+        _numbers["spacing"].Value = (decimal)saved.LineSpacingMm;
+        _numbers["from"].Value = (decimal)saved.StartDepthMm;
+        _numbers["step"].Value = (decimal)saved.DepthStepMm;
+        _numbers["depth"].Value = (decimal)saved.DepthMm;
+        _numbers["feedStep"].Value = (decimal)saved.FeedStepMmPerMin;
+        _flags["repeat"].IsChecked = saved.RepeatFirstLine;
+
+        // The bit is the one thing that can fail to come back, and the one thing that must not fail
+        // quietly: a depth series measured with a different cone is a page of numbers about nothing.
+        if (saved.ToolIn(_library) is { } tool)
+        {
+            _tool.SelectedItem = _library.Tools.FirstOrDefault(t => t.Id == tool.Id);
+            _reopened = null;
+        }
+        else
+        {
+            _reopened = FormattableString.Invariant(
+                $"The bit this was set up with, “{saved.ToolName ?? "unnamed"}”, is not in the library any more. Pick the one you are testing.");
+        }
+
+        // Straight to the half the operator came back for.
+        if (saved.ProbeWritten)
+        {
+            _fromLog.IsChecked = true;
+        }
+
+        ShowRowsForKind();
+        Refresh();
     }
 
     private TestCutLevelling Levelling => _probeFirst.IsChecked == true
@@ -420,6 +527,11 @@ public sealed class TestCutWindow : Window
                 "\n\nEvery Z will follow the surface in " + Path.GetFileName(_logPath) + ".",
             _ => string.Empty,
         };
+
+        if (_reopened is { } note)
+        {
+            text += "\n\n" + note;
+        }
 
         foreach (var warning in report.Warnings)
         {

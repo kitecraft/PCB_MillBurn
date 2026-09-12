@@ -222,6 +222,35 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </p>
 </div>
 
+<h3>Coming back to a test you started</h3>
+
+<p>
+  Probing the coupon first means two visits: write the routine, run it, come back with the log. The
+  dialog closes in between and takes every number in it with it, so <strong>each test writes its
+  settings beside its program</strong> &mdash; <code>depth-test.testcut.json</code> next to
+  <code>depth-test.nc</code>. <em>Reopen a saved test&hellip;</em>, at the top of the dialog, puts
+  them all back and skips straight to <em>Level to a probe log</em>, which is what you came back for.
+</p>
+
+<p>
+  It matters more than convenience. A depth series whose second half was set up from memory &mdash;
+  a different line spacing, a different bit &mdash; is not a measurement of anything. If the bit it
+  was set up with has since left your library, the dialog says so and makes you choose rather than
+  cutting with whatever was selected.
+</p>
+
+<p>
+  Every test writes one, not only the probed ones, because a test worth running once is usually
+  worth running again with the same numbers and a different bit. On the command line the same file
+  works as a starting point: <code>millburn testcut --reopen depth-test.testcut.json</code>, and
+  anything you add after it still wins.
+</p>
+
+<p>
+  What it does <em>not</em> carry is your machine's safe height, approach or decimals. Those belong
+  to the machine as it is set up now, not to a test written last week.
+</p>
+
 <h2 id="isolation">How wide is the gap around each trace?</h2>
 
 <p>

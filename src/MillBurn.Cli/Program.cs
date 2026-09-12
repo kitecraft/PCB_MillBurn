@@ -38,6 +38,7 @@ internal static class Program
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
             Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
+            Console.WriteLine("                                 --reopen <file> starts from a saved .testcut.json");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -1812,7 +1813,41 @@ internal static class Program
                 ? value
                 : fallback;
 
-        var defaults = new TestCutOptions { Tool = tool, Kind = kind };
+        // A saved setup is the starting point, not the last word: anything given on the command
+        // line still wins, so "run that test again but deeper" is one flag rather than seven.
+        var saved = Argument(args, "--reopen") is { } from ? TestCutSetup.Load(from) : null;
+
+        if (Argument(args, "--reopen") is { } named && saved is null)
+        {
+            Console.Error.WriteLine($"'{named}' is not a saved test cut.");
+            return 1;
+        }
+
+        if (saved is not null)
+        {
+            kind = saved.Kind;
+
+            if (wanted is null && saved.ToolIn(library) is { } remembered)
+            {
+                tool = remembered;
+            }
+        }
+
+        var defaults = saved is null
+            ? new TestCutOptions { Tool = tool, Kind = kind }
+            : new TestCutOptions
+            {
+                Tool = tool,
+                Kind = kind,
+                LineCount = saved.LineCount,
+                LineLengthMm = saved.LineLengthMm,
+                LineSpacingMm = saved.LineSpacingMm,
+                StartDepthMm = saved.StartDepthMm,
+                DepthStepMm = saved.DepthStepMm,
+                DepthMm = saved.DepthMm,
+                FeedStepMmPerMin = saved.FeedStepMmPerMin,
+                RepeatFirstLine = saved.RepeatFirstLine,
+            };
 
         var options = new TestCutOptions
         {
@@ -1825,7 +1860,8 @@ internal static class Program
             SafeZMm = app.Machine.SafeZMm,
             ApproachZMm = app.Machine.ApproachZMm,
             Decimals = app.Machine.Decimals,
-            RepeatFirstLine = !args.Contains("--no-repeat", StringComparer.OrdinalIgnoreCase),
+            RepeatFirstLine = defaults.RepeatFirstLine
+                && !args.Contains("--no-repeat", StringComparer.OrdinalIgnoreCase),
 
             StartDepthMm = Number("--from", defaults.StartDepthMm),
             DepthMm = Number("--depth", defaults.DepthMm),
@@ -1882,12 +1918,21 @@ internal static class Program
                 Path.GetFileName(output),
                 levelled.Length > 0 ? Path.GetFileName(Argument(args, "--level")!) : null));
 
+        // Beside the program, so the same test can be set up again without retyping it — and so a
+        // coupon that gets probed first can be finished in a second visit with the numbers it was
+        // started with.
+        var setup = TestCutSetup.PathBeside(output);
+        TestCutSetup
+            .From(options, args.Contains("--probe", StringComparer.OrdinalIgnoreCase), Path.GetFileName(output))
+            .Save(setup);
+
         Console.WriteLine(output);
         Line($"  tool        {tool.Name}");
         Line($"  lines       {report.Lines.Count}");
         Line($"  stock       {report.StockWidthMm:F1} x {report.StockHeightMm:F1} mm of bare copper");
         Line($"  time        about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds");
         Line($"  guide       {Path.GetFileName(guide)}");
+        Line($"  settings    {Path.GetFileName(setup)}");
 
         if (levelled.Length > 0)
         {

@@ -193,7 +193,9 @@ being wrong silently.
 lines on scrap — one per depth, or one per feed — and an HTML page explaining how to read them. Every
 number the app computes about a cut comes from your tool library, and the library is a claim about a
 physical object; this is how you check it. Both tests cut the first line twice, at opposite ends of
-the coupon, so you can tell whether the stock moved before you believe anything else on it.
+the coupon, so you can tell whether the stock moved before you believe anything else on it. Each
+test also writes its own settings beside it, so probing the coupon first — which takes two visits —
+does not mean setting the second half up from memory.
 
 **Say what changed.** `File ▸ Refresh from source` compares the project against the folder it came
 from and shows you what moved before it applies anything.
@@ -232,6 +234,7 @@ millburn svg    <silkscreen.gbr> --flavour lightburn --spot 0.1
 ```sh
 millburn testcut depth --tool "30°" --from 0.02 --step 0.02 # lines on scrap, plus a page on reading them
 millburn testcut feed --depth 0.05 --step 50 --probe        # + a probing routine for the coupon
+millburn testcut --reopen depth-test.testcut.json           # the same test again, same numbers
 millburn probe  <folder> --spacing 8 --depth 2 --feed 30   # a G38.2 grid to run and log
 millburn export <folder> --level probe.log --write         # bend every program to the surface
 millburn level  anyones.nc --map probe.log                 # works on any G-code, not just ours

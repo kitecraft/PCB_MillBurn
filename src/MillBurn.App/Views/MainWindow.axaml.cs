@@ -469,7 +469,9 @@ public partial class MainWindow : Window
         // The test-cut dialog, so its numbers and its live summary can be checked in a screenshot.
         if (args.Contains("--test-cuts", StringComparer.OrdinalIgnoreCase))
         {
-            var surface = Argument(args, "--test-cuts") switch
+            var asked = Argument(args, "--test-cuts");
+
+            var surface = asked switch
             {
                 "probe" => TestCutLevelling.WriteProbe,
                 "log" => TestCutLevelling.FromLog,
@@ -480,6 +482,14 @@ public partial class MainWindow : Window
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
+
+            // A saved setup can be named instead, so the dialog as it comes back from disk is
+            // checkable in a screenshot rather than only by clicking through a file picker.
+            if (asked is { } saved && saved.EndsWith(TestCutSetup.Extension, StringComparison.OrdinalIgnoreCase)
+                && TestCutSetup.Load(saved) is { } reopened)
+            {
+                cuts.Restore(reopened);
+            }
 
             cuts.Show(this);
             _captureInstead = cuts;
@@ -942,13 +952,20 @@ public partial class MainWindow : Window
             {
                 File.WriteAllText(path, CouponProbe(vm, report));
 
+                // The settings go with it. This half of the job ends with the dialog closing, and
+                // by the time the operator comes back with a log, which test it was and what was
+                // typed into it are gone — and a coupon whose two halves disagree measures nothing.
+                var settings = TestCutSetup.PathBeside(path);
+                TestCutSetup.From(chosen.Options, probeWritten: true, Path.GetFileName(path))
+                    .Save(settings);
+
                 vm.StatusMessage = FormattableString.Invariant(
-                    $"Wrote {Path.GetFileName(path)}. Run it, keep your sender's log, then come back and choose “Level to a probe log”.");
+                    $"Wrote {Path.GetFileName(path)} and {Path.GetFileName(settings)}. Run the probe, keep your sender's log, then come back, reopen those settings and choose “Level to a probe log”.");
 
                 return;
             }
 
-            var written = 2;
+            var written = 3;
             var levelled = string.Empty;
 
             if (chosen.LogPath is { } log)
@@ -1003,6 +1020,11 @@ public partial class MainWindow : Window
                     report,
                     Path.GetFileName(path),
                     levelled.Length > 0 ? Path.GetFileName(chosen.LogPath!) : null));
+
+            // Beside every test, not only the probed ones: a test worth running once is usually
+            // worth running again with the same numbers and a different bit.
+            TestCutSetup.From(chosen.Options, probeWritten: false, Path.GetFileName(path))
+                .Save(TestCutSetup.PathBeside(path));
 
             if (levelled.Length == 0 || chosen.LogPath is null)
             {
