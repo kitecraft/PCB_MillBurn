@@ -584,22 +584,68 @@ public static class OutlineOperation
         foreach (var segment in segments)
         {
             var length = segment.From.DistanceTo(segment.To);
-            var midpoint = travelled + (length / 2);
 
-            // Distance from this segment's midpoint to the nearest tab centre.
-            var nearest = Math.Abs(((midpoint + (spacing / 2)) % spacing) - (spacing / 2));
-
-            if (nearest < half)
+            if (length <= 0)
             {
-                if (run.Count > 0)
+                continue;
+            }
+
+            // Every place inside this segment where a tab starts or ends, so the segment can be cut
+            // there rather than kept or dropped whole.
+            //
+            // This is what was wrong. The test used to be made once per segment, against the
+            // segment's own midpoint — which works only while segments are short. An offset
+            // rectangle is four straight edges and four tessellated corners, so a 37 mm edge is a
+            // single segment and a tab landing anywhere along it was simply not noticed. Asking for
+            // four tabs on a 21 x 37 mm board produced two, both at corners, in opposing corners,
+            // because the corners were the only places with segments short enough to be seen.
+            var marks = new List<double> { travelled };
+
+            for (var k = (long)Math.Floor(travelled / spacing) - 1;
+                k <= (long)Math.Ceiling((travelled + length) / spacing) + 1;
+                k++)
+            {
+                foreach (var edge in new[] { (k * spacing) - half, (k * spacing) + half })
                 {
-                    yield return run;
-                    run = [];
+                    if (edge > travelled + 1e-9 && edge < travelled + length - 1e-9)
+                    {
+                        marks.Add(edge);
+                    }
                 }
             }
-            else
+
+            marks.Add(travelled + length);
+            marks.Sort();
+
+            for (var i = 0; i + 1 < marks.Count; i++)
             {
-                run.Add(segment);
+                var from = marks[i];
+                var to = marks[i + 1];
+
+                if (to - from <= 1e-9)
+                {
+                    continue;
+                }
+
+                if (UnderTab((from + to) / 2, spacing, half))
+                {
+                    if (run.Count > 0)
+                    {
+                        yield return run;
+                        run = [];
+                    }
+
+                    continue;
+                }
+
+                // An arc is kept whole: the offset corners are tessellated to lines before they get
+                // here, so nothing that reaches this is curved, and slicing one by distance would
+                // be wrong if anything ever did.
+                run.Add(segment.IsArc
+                    ? segment
+                    : ArtSegment.Line(
+                        Along(segment, (from - travelled) / length),
+                        Along(segment, (to - travelled) / length)));
             }
 
             travelled += length;
@@ -610,6 +656,20 @@ public static class OutlineOperation
             yield return run;
         }
     }
+
+    /// <summary>
+    /// Whether a point this far around the contour is under a tab.
+    ///
+    /// Tab centres sit at whole multiples of the spacing, so the one at zero straddles the seam
+    /// where the contour closes — which is right, and is why <c>TabCount</c> gaps come out of
+    /// <c>TabCount</c> centres rather than one more.
+    /// </summary>
+    private static bool UnderTab(double at, double spacing, double half) =>
+        Math.Abs(((at + (spacing / 2)) % spacing) - (spacing / 2)) < half;
+
+    private static Point2 Along(ArtSegment segment, double t) => new(
+        segment.From.X + (long)Math.Round((segment.To.X - segment.From.X) * t),
+        segment.From.Y + (long)Math.Round((segment.To.Y - segment.From.Y) * t));
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 }

@@ -169,6 +169,67 @@ public sealed class PanelOutlineTests
         Assert.Equal(frame.Stack, open[0]);
     }
 
+    /// <summary>
+    /// Asking for four tabs puts four gaps in the contour, wherever the vertices happen to be.
+    ///
+    /// Reported from the workshop on a 21 x 37 mm board: four tabs selected, **two cut, in opposing
+    /// corners**. The test for "is this under a tab" was made once per segment against that
+    /// segment's own midpoint, which works only while segments are short — and an offset rectangle
+    /// is four straight edges and four tessellated corners, so a 37 mm edge is a single segment and
+    /// a tab landing anywhere along it was simply not noticed. The only places with segments short
+    /// enough to be seen were the corners, which is exactly where the two survivors were.
+    ///
+    /// A plain rectangle is therefore the fixture that matters: it is the shape with the fewest,
+    /// longest segments, and the one the old code failed on.
+    /// </summary>
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(6)]
+    public void EveryTabAskedForIsCut(int tabs)
+    {
+        var toolpath = OutlineOperation.Build(
+            [Rect(0, 0, 21, 37)],
+            Options with { TabCount = tabs, BoardThicknessNm = Nm.FromMillimetres(0.8) });
+
+        // One depth's worth of open runs. A closed pass is a shallow one, cut before the tabs start.
+        var runs = toolpath.Passes
+            .Where(p => !p.Closed)
+            .GroupBy(p => p.DepthNm)
+            .First()
+            .ToList();
+
+        Assert.Equal(tabs, runs.Count);
+    }
+
+    /// <summary>
+    /// And they are spread around it rather than bunched wherever the geometry allowed. Four tabs
+    /// in two opposing corners hold a board about as well as two do.
+    /// </summary>
+    [Fact]
+    public void TheTabsAreSpacedAroundThePerimeter()
+    {
+        var toolpath = OutlineOperation.Build(
+            [Rect(0, 0, 21, 37)],
+            Options with { TabCount = 4, BoardThicknessNm = Nm.FromMillimetres(0.8) });
+
+        var runs = toolpath.Passes
+            .Where(p => !p.Closed)
+            .GroupBy(p => p.DepthNm)
+            .First()
+            .Select(p => p.LengthNm / (double)Nm.PerMillimetre)
+            .OrderBy(l => l)
+            .ToList();
+
+        Assert.Equal(4, runs.Count);
+
+        // Four gaps in a 21 x 37 rectangle fall a quarter of the perimeter apart, so no run is a
+        // stub and none is most of the outline. The old behaviour produced two runs of about half
+        // the perimeter each.
+        Assert.All(runs, l => Assert.InRange(l, 10.0, 40.0));
+    }
+
     /// <summary>A lone board is its own outermost profile, so it still gets tabs.</summary>
     [Fact]
     public void ASingleBoardStillGetsTabs()
