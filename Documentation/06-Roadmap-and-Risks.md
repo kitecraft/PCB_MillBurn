@@ -1804,7 +1804,7 @@ the left and right borders differ.
 
 - **Rulers down the edges of the viewport.** See 6.1.
 - **Climb or conventional, chosen rather than inherited.** See 6.2.
-- **Staying down between passes that touch**, instead of lifting between concentric rings. See 6.3.
+- **Staying down between passes that touch** — done. See 6.3.
 - **Tabs: where, how many, how big.** See 6.4.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
@@ -1904,57 +1904,78 @@ it does.
 both faces of a double-sided board, and an operation for which the question is meaningless says so
 rather than offering a switch that changes nothing.
 
-#### 6.3 Staying down between passes that touch — **scheduled, not started**
+#### 6.3 Staying down between passes that touch — **done**
 
 Requested from the workshop: *"When cutting paths next to each other, the job does a z-lift then
 back down. Cutting around a circle with 3 loops: the first loop is cut, then a z-lift and z-lower,
 then the second ring, another z-lift/lower, then the third cut. Perhaps we can optimize some of
 them out?"*
 
-Yes, and it is worth more than it sounds, because a lift is not free on a machine whose Z traverse
-is 100 mm/min. One cycle in the levelled `PogoTest1-F_Cu.nc` is a 2.04 mm retract, a 1.50 mm rapid
-back down and a 0.54 mm feed to depth: **about 2.7 seconds**, and the program does 26 of them in a
-job that runs in 4:35. That is a quarter of the wall clock spent going up and down.
+Worth more than it sounds, because a lift is not free on a machine whose Z traverse is 100 mm/min
+against 2000 in XY. One cycle is a 2.04 mm retract, a 1.50 mm rapid back down and a 0.54 mm feed to
+depth: **about 2.7 seconds**, and the real board's isolation did 26 of them in a job that ran in
+4:35. A quarter of the wall clock, spent moving the tool away from the exact place it was about to
+work.
 
-**How many are actually adjacent** is measurable rather than a guess. Sorting the 25 link moves in
-that program by the distance from where one run ends to where the next begins:
+**How many are actually adjacent was measurable rather than a guess.** Sorting the twenty-five link
+moves in that program by the distance from where one run ends to where the next begins:
 
 ```
 0.126 0.126 0.126 0.126 0.126 0.126 0.126 0.126 0.127 0.150 0.154 0.161 0.161
 0.629 0.762 0.982 1.302 1.912 2.175 2.338 2.793 5.054 6.903 8.553 10.008
 ```
 
-The break is unmistakable. Thirteen of the twenty-five are a stepover apart — 0.126 mm is *exactly*
-the isolation stepover — and the next is five times further. Those thirteen are ring-to-ring links
-on the same island, and the cutter clears 0.148 mm, so the material between the two rings was
-removed by the pass that just finished. The tool can walk across it at depth. **Thirteen plunges
-removed is about 35 seconds off 4:35, 13%**, with no change to what gets cut.
+The break is unmistakable. Thirteen are a stepover apart — 0.126 mm is *exactly* the isolation
+stepover — and the next is five times further. Those thirteen are lap-to-lap on the same island.
 
-**The rule has to be about cleared material, not about distance.** A 0.126 mm hop between
-concentric rings is safe because the previous pass cleared that exact band; a 0.126 mm hop between
-two unrelated runs that happen to end up near each other is a gouge through copper that was meant
-to stay. The test is whether the straight line from the end of one run to the start of the next
-lies inside the region already cut *at this depth*, which the pipeline can know: the isolation
-passes are generated as a series of offsets and the swept area of each is already what decides the
-next one.
+**The rule is about material, not distance**, and that distinction is the whole design. A 0.126 mm
+hop between concentric laps is safe because the lap that just finished cleared that band. The same
+0.126 mm hop between two unrelated runs that happen to end up near each other is a cut trace, and
+it would be invisible in the file. A distance threshold cannot tell those apart, so there is not
+one.
 
-Cheap and sound in that order:
+`PassLinker` asks the only question that decides it: would the tool, dragged from here to there at
+depth, cut anything that is not already gone or about to be? It is answered with the same Clipper
+offsets that produced the paths. The region a pass clears is its centreline swept by the tool, and
+a link is allowed when its own swept ribbon lies inside the previous pass's ribbon plus the next
+one's. The next one counts because it is cut immediately afterwards — material the link takes out
+of it was leaving anyway.
 
-1. **Same island, consecutive passes, gap ≤ the stepover.** Covers all thirteen above, needs no new
-   geometry, and is provably inside the previous sweep. Do this one first.
-2. **The general test** — link inside the accumulated cleared region — for everything else,
-   including mask-relief pocketing where it will matter more.
+**`EndType.Joined`, not `EndType.Polygon`.** A closed contour inflated as a polygon becomes a
+filled region, which would claim the island *inside* an isolation ring as cleared ground — the
+copper the ring exists to protect. That is the one mistake here that cuts a trace in half, so it
+has its own test: two halves of a ring, whose straight-line link runs across the middle of the pad,
+must be refused.
 
-**Not for the outline.** A cut-out runs the full thickness and there is nothing cleared beside it;
-its lifts are structural. Same for a plunge into fresh copper at a new depth.
+**Deliberately local** — the previous pass and the next, not the whole accumulated history of the
+board. That is the conservative direction (a link over ground cleared five passes ago is refused),
+it keeps the cost to two small offsets and a difference per link, and it covers all thirteen.
 
-**It changes the estimate as well as the job.** `GcodeBackplot` counts plunges and prices them at
-the Z rate, so removing them has to show up in the bracket, and the dry run is again the clean
-experiment — it has no Z moves to remove, so its time must not change at all.
+**What it does not touch.** An outline cut goes through the stock and has nothing cleared beside
+it; its lifts are structural. A drill is a plunge, not a contour. A pass at a different depth is a
+plunge by definition, however close it starts to where the last one finished.
 
-**Done when** the thirteen links in that file are cut at depth, the program's own before/after
-run times on the machine bracket the predicted saving, and a synthetic case where two runs end up a
-stepover apart *without* shared cleared material still lifts.
+**Measured, on the board it was reported from.** Thirteen of seventeen candidate links kept down on
+the top copper, twenty-one of thirty-one on the bottom. Plunges in the top-copper program go from
+26 to 13, and 1.8 mm of rapid becomes 1.8 mm of cutting. The levelled program's estimate goes from
+**1:56 – 8:52 to 1:19 – 8:13**: thirty-nine seconds off each end, against a predicted 13 × 2.7 s =
+35 s, on a run that measured 4:35.
+
+**The test that matters is the refusal.** `NoLinkOnARealBoardTouchesCopper` takes the copper
+straight from the Gerber and the links from the passes that were marked, sweeps each link by the
+tool and intersects it with the copper. The two halves share no code, so it is not the linker
+agreeing with itself. Nothing registers — not a square micron.
+
+**A coverage gap it exposed.** Every golden snapshot in the corpus used the default isolation
+width, which is one lap, and one lap has no lap after it. Concentric passes, their ordering, and
+everything that decides whether the tool lifts between them were outside the corpus entirely —
+`PassLinker` could have been deleted and all three snapshots would still have matched. There is now
+a `-wide-moat` snapshot per single board at the 0.4 mm the workshop actually cuts.
+
+**Still open:** the general version, where the allowed region is everything cleared so far at this
+depth rather than the two neighbouring passes. It would pick up links across ground cleared earlier
+in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
+a strict subset of it, so nothing has to be undone to get there.
 
 #### 6.4 Tabs: where, how many, how big — **scheduled, not started**
 

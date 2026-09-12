@@ -1,0 +1,116 @@
+PogoTest1
+=========
+
+PogoTest1-B_Cu.nc
+  operation Isolation routing
+  layer     Bottom copper
+  lines     1596
+  sha256    0ccbb8fe3d3e1c25
+  summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
+  summary   Mirrored · flip the stock left-to-right
+  summary   1473 mm cutting, 147 mm travel
+  summary   8m 37s – 9m 6s · 1,595 lines
+  summary   Simplified: 9,648 → 1,333 moves, 254 arcs (86 % fewer)
+  summary   Ordering: 157 mm rapid → 150 mm (5 % less)
+  summary   Stayed down for 25 of 41 pass links (2.9 mm), saving that many plunges
+  warning   Mirrored: the stock must be flipped left-to-right about its vertical centreline, and re-registered. Flipping it the other way cuts a mirror image.
+  comment   ( PCB_MillBurn - PogoTest1-B_Cu — Isolation routing )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
+  comment   ( BOTTOM SIDE. Flip the stock left-to-right about its vertical centreline, then re-register. Coordinates below are already mirrored for that flip. )
+  comment   ( Bottom copper )
+  comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
+  comment   ( 0.400 mm of isolation asked for; 4 passes clears 0.450 mm. )
+  comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
+  control   M3 S12000 · M5 · M30
+  depths    -0.050
+  moves     179 rapid, 1148 feed, 254 arc
+  distance  1472.59 mm cutting, 146.66 mm travel
+  plunges   88
+  extent    0.000 .. 20.751 x 0.000 .. 36.741 mm
+
+PogoTest1-Edge_Cuts.nc
+  operation Cut out
+  layer     Board outline
+  lines     134
+  sha256    c63dc949444e660f
+  summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
+  summary   557 mm cutting, 71 mm travel
+  summary   2m 34s – 2m 38s · 133 lines
+  summary   Simplified: 264 → 48 moves, 20 arcs (82 % fewer)
+  comment   ( PCB_MillBurn - PogoTest1-Edge_Cuts — Cut out )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
+  comment   ( Board outline )
+  comment   ( 5 passes of 0.40 mm to 1.90 mm. )
+  comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
+  control   M3 S12000 · M5 · M30
+  depths    -1.900, -1.600, -1.200, -0.800, -0.400
+  moves     59 rapid, 42 feed, 20 arc
+  distance  557.18 mm cutting, 71.38 mm travel
+  plunges   28
+  extent    -0.500 .. 21.390 x -0.500 .. 37.380 mm
+
+PogoTest1-F_Cu.nc
+  operation Isolation routing
+  layer     Top copper
+  lines     435
+  sha256    22ca9237865ed288
+  summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
+  summary   1241 mm cutting, 85 mm travel
+  summary   6m 35s – 6m 44s · 434 lines
+  summary   Simplified: 10,495 → 335 moves, 143 arcs (97 % fewer)
+  summary   Ordering: 92 mm rapid → 88 mm (5 % less)
+  summary   Stayed down for 18 of 20 pass links (2.1 mm), saving that many plunges
+  comment   ( PCB_MillBurn - PogoTest1-F_Cu — Isolation routing )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
+  comment   ( Top copper )
+  comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
+  comment   ( 0.400 mm of isolation asked for; 4 passes clears 0.450 mm. )
+  comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
+  control   M3 S12000 · M5 · M30
+  depths    -0.050
+  moves     55 rapid, 223 feed, 143 arc
+  distance  1240.63 mm cutting, 85.40 mm travel
+  plunges   26
+  extent    0.000 .. 19.952 x 0.000 .. 32.100 mm
+
+PogoTest1-NPTH.nc
+  operation Drilling
+  layer     Non-plated holes
+  lines     31
+  sha256    54655473ca7f5b3b
+  summary   2 holes in 1 size · 1.90 mm deep (0.30 mm through the back)
+  summary   2 holes drilled, 60 mm travel
+  summary   0m 18s – 0m 19s · 30 lines
+  comment   ( PCB_MillBurn - PogoTest1-NPTH — Drilling )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
+  comment   ( Drill 2.20 mm [2 holes] )
+  comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
+  control   M3 S12000 · M5 · M30
+  depths    -1.900, -1.600, -0.800
+  moves     13 rapid, 6 feed, 0 arc
+  distance  0.00 mm cutting, 60.12 mm travel
+  plunges   8
+  extent    0.000 .. 9.045 x 0.000 .. 28.665 mm
+
+PogoTest1-PTH.nc
+  operation Drilling
+  layer     Plated holes
+  lines     151
+  sha256    ce30fa549e83121f
+  summary   16 holes in 2 sizes · 1.90 mm deep (0.30 mm through the back)
+  summary   16 holes drilled, 118 mm travel
+  summary   2m 23s – 2m 26s · 150 lines
+  summary   Ordering: 123 mm rapid → 118 mm (4 % less)
+  comment   ( PCB_MillBurn - PogoTest1-PTH — Drilling )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
+  comment   ( Drill 1.70 mm [8 holes] )
+  comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
+  comment   ( Drill 1.00 mm [8 holes] )
+  comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
+  comment   ( Change tool to 1.00 mm drill )
+  control   M3 S12000 · M5 · M0 · M3 S12000 · M5 · M30
+  depths    -1.900, -1.600, -0.800
+  moves     84 rapid, 48 feed, 0 arc
+  distance  0.00 mm cutting, 117.98 mm travel
+  plunges   64
+  extent    0.000 .. 16.832 x 0.000 .. 33.607 mm

@@ -351,6 +351,7 @@ public static class ExportPlanner
         var prepared = new List<Toolpath>(toolpaths.Count);
         var reduced = SimplifyResult.Nothing;
         var route = RoutePlan.Nothing;
+        var links = LinkResult.Nothing;
         var at = start;
 
         for (var i = 0; i < toolpaths.Count; i++)
@@ -385,7 +386,12 @@ public static class ExportPlanner
             route += plan;
             at = last ? start : EndOf(ordered, at);
 
-            prepared.Add(Translate(ordered, shift));
+            // Last, because which pass follows which is exactly what decides whether the tool can
+            // stay down between them, and nothing after this reorders anything.
+            var (linkedPath, linkStep) = PassLinker.Apply(ordered);
+            links += linkStep;
+
+            prepared.Add(Translate(linkedPath, shift));
         }
 
         var job = new Job
@@ -449,6 +455,14 @@ public static class ExportPlanner
         {
             summary.Add(Invariant(
                 $"Ordering: {route.InitialTravelMm:F0} mm rapid → {route.TravelMm:F0} mm ({route.TravelSavedFraction:P0} less)"));
+        }
+
+        // A lift is the most expensive thing in an isolation program that nobody counts, because Z
+        // traverse is typically a twentieth of the XY rate. Say how many were not taken.
+        if (links.Linked > 0)
+        {
+            summary.Add(Invariant(
+                $"Stayed down for {links.Linked} of {links.Considered} pass links ({links.LinkedLengthMm:F1} mm), saving that many plunges"));
         }
 
         if (measured.GougeCount > 0)

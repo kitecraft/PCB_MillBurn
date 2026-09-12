@@ -170,17 +170,34 @@ public static class GcodeEmitter
                 currentTool = toolpath.Tool;
             }
 
-            foreach (var pass in toolpath.Passes)
+            // A pass that is linked to the one before it is reached without lifting, so the pass
+            // before it must not retract. Whether to go up at the end of one pass is therefore a
+            // property of the *next* one, which is why this looks ahead rather than deciding as it
+            // goes. PassLinker has already proved the link stays in cleared material.
+            for (var p = 0; p < toolpath.Passes.Count; p++)
             {
+                var pass = toolpath.Passes[p];
                 if (pass.Path.Count == 0)
                 {
                     continue;
                 }
 
-                rapid += at.DistanceTo(pass.Start);
-                at = EmitPass(sb, pass, toolpath.Tool, options, Mm);
+                var linked = pass.LinkedFromPrevious && p > 0 && toolpath.Passes[p - 1].Path.Count > 0;
+                var next = p + 1 < toolpath.Passes.Count ? toolpath.Passes[p + 1] : null;
+                var retract = next is null || !next.LinkedFromPrevious || next.Path.Count == 0;
+
+                if (linked)
+                {
+                    cut += at.DistanceTo(pass.Start);
+                }
+                else
+                {
+                    rapid += at.DistanceTo(pass.Start);
+                    plunges++;
+                }
+
+                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract);
                 cut += pass.LengthNm;
-                plunges++;
             }
 
             foreach (var drill in toolpath.Drills)
@@ -217,19 +234,35 @@ public static class GcodeEmitter
     }
 
     private static Point2 EmitPass(
-        StringBuilder sb, ToolpathPass pass, Tool tool, GcodeOptions options, Func<long, string> mm)
+        StringBuilder sb,
+        ToolpathPass pass,
+        Tool tool,
+        GcodeOptions options,
+        Func<long, string> mm,
+        bool linked,
+        bool retract)
     {
         var start = pass.Start;
-
-        // Up, across, down. Never across at depth.
-        sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
-        sb.Append("G0 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y)).Append('\n');
-        sb.Append("G0 Z").Append(mm(options.ApproachZNm)).Append('\n');
-        sb.Append("G1 Z").Append(mm(-pass.DepthNm))
-          .Append(" F").Append(tool.PlungeMmPerMin.ToString(CultureInfo.InvariantCulture)).Append('\n');
-
         var feed = tool.FeedMmPerMin.ToString(CultureInfo.InvariantCulture);
         var first = true;
+
+        if (linked)
+        {
+            // Straight across at depth, cutting. Everything it passes through was cleared by the
+            // pass that just finished or is cleared by this one — PassLinker refuses anything else.
+            sb.Append("G1 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y))
+              .Append(" F").Append(feed).Append('\n');
+            first = false;
+        }
+        else
+        {
+            // Up, across, down. Never across at depth.
+            sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+            sb.Append("G0 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y)).Append('\n');
+            sb.Append("G0 Z").Append(mm(options.ApproachZNm)).Append('\n');
+            sb.Append("G1 Z").Append(mm(-pass.DepthNm))
+              .Append(" F").Append(tool.PlungeMmPerMin.ToString(CultureInfo.InvariantCulture)).Append('\n');
+        }
 
         foreach (var segment in pass.Path)
         {
@@ -260,7 +293,11 @@ public static class GcodeEmitter
             sb.Append('\n');
         }
 
-        sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+        if (retract)
+        {
+            sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+        }
+
         return pass.End;
     }
 

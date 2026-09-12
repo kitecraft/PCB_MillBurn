@@ -27,7 +27,24 @@ public sealed class ProgramSnapshotTests
     [InlineData(RealBoards.PogoTest1)]
     [InlineData(RealBoards.GridStripConnector)]
     [InlineData(RealBoards.Panel)]
-    public void TheProgramsForThisBoardAreUnchanged(string board)
+    public void TheProgramsForThisBoardAreUnchanged(string board) => Pin(board, 0, board + "-programs");
+
+    /// <summary>
+    /// The same board with a moat wide enough to need several laps, which is what anybody actually
+    /// cuts.
+    ///
+    /// Every other case here leaves the isolation width at zero — one lap — and one lap has no lap
+    /// after it. That left concentric passes, their ordering, and everything that decides whether
+    /// the tool lifts between them outside the corpus entirely: <c>PassLinker</c> could have been
+    /// deleted and all three snapshots above would still have matched.
+    /// </summary>
+    [Theory]
+    [InlineData(RealBoards.PogoTest1)]
+    [InlineData(RealBoards.GridStripConnector)]
+    public void TheProgramsForThisBoardWithAWideMoatAreUnchanged(string board) =>
+        Pin(board, Nm.FromMillimetres(0.4), board + "-wide-moat");
+
+    private static void Pin(string board, long isolationWidthNm, string snapshot)
     {
         var loaded = BoardLoader.LoadFolder(RealBoards.Directory(board));
 
@@ -37,6 +54,7 @@ public sealed class ProgramSnapshotTests
             {
                 FileName = l.FileName,
                 Output = LayerOperations.DefaultFor(l.Role),
+                IsolationWidthNm = isolationWidthNm,
             },
             StringComparer.Ordinal);
 
@@ -54,7 +72,7 @@ public sealed class ProgramSnapshotTests
             Fingerprint(report, item);
         }
 
-        Snapshot.Match(board + "-programs", report.ToString());
+        Snapshot.Match(snapshot, report.ToString());
     }
 
     private static void Fingerprint(StringBuilder into, ExportItem item)

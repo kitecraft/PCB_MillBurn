@@ -49,6 +49,17 @@ public sealed record ToolpathPass
     /// </summary>
     public int Stack { get; init; } = -1;
 
+    /// <summary>
+    /// Reach this pass from the end of the previous one without lifting: no retract, no rapid, no
+    /// plunge, just a cutting move across to where it starts.
+    ///
+    /// Only ever set by <c>PassLinker</c>, which proves that the link stays inside material the
+    /// previous pass already cleared or this one is about to. It is on the pass rather than decided
+    /// in the emitter because the emitter has no geometry — it writes what it is given, and what
+    /// gets written here is the difference between a 2.7-second lift and a 0.13 mm move.
+    /// </summary>
+    public bool LinkedFromPrevious { get; init; }
+
     public Point2 Start => Path.Count == 0 ? Point2.Origin : Path[0].From;
 
     public Point2 End => Path.Count == 0 ? Point2.Origin : Path[^1].To;
