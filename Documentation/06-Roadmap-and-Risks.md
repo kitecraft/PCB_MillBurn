@@ -1633,12 +1633,52 @@ the left and right borders differ.
 
 ### Phase 6 — Polish and reach
 
+- **Rulers down the edges of the viewport.** See below.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - Solder-paste stencil generation.
 - Machine-profile sharing.
+
+#### 6.1 Rulers — **scheduled, not started**
+
+Requested from the workshop: a scale down the left edge and along the top of the viewport, so the
+size of what is on screen can be read rather than guessed at.
+
+The viewport already knows everything this needs — the board draws in millimetres, `ViewTransform`
+converts world to screen, and the status bar carries a millimetres-per-pixel figure that almost
+nobody looks at. What is missing is the reading being *where the eye already is*, next to the board
+rather than in the corner of the window.
+
+**Reuse the grid's step ladder.** `BoardRenderer` already picks a spacing from
+`0.1, 0.5, 1, 5, 10, 25, 50, 100, 250` mm — the first whose on-screen size clears 12 px — and the
+grid lines the ruler ticks against are drawn from it. A ruler that chose its own spacing would
+disagree with the grid it sits over at some zoom level, and a disagreement is worse than no ruler.
+Major ticks get a number; the step below gets an unlabelled minor tick.
+
+**Both viewports, one implementation.** `BoardView` and `ToolpathView` are deliberately siblings
+rather than a shared base ([05 §2.2](05-Viewer-and-Export.md#22-rendering-skiasharp)), but a ruler
+is a function of the transform and the viewport rectangle and nothing else, so it belongs in
+`MillBurn.Viewer` beside the grid and is called by both. The headless PNG renderers get it for free,
+which also makes it checkable in a screenshot like everything else here.
+
+**Zero is the board's corner, because that is where the machine's zero is.** Every emitted file uses
+the board's lower-left corner as work zero, so the ruler must read the same — a ruler measuring from
+the window's edge would be a second coordinate system on the screen and would eventually be
+believed. Y counts upward, not down the screen.
+
+Worth having with it, cheaply:
+
+- **A cursor readout.** The world position under the pointer, next to the ruler or on it. This is
+  the thing people actually reach for when they ask how big something is.
+- **A measuring drag.** Click-drag with a modifier to get a dimension between two points, with dx,
+  dy and the diagonal. Not a drawing tool and not saved — a tape measure.
+- **Toggleable, and remembered**, alongside the existing theme and colour preferences.
+
+Left for later: a ruler in inches (the app is millimetres throughout and mixing units in one view is
+how a wrong number gets read confidently), and printable dimensioned output, which is a drawing
+feature rather than a viewer one.
 
 ### Phase 7 — User documentation — **started**
 
