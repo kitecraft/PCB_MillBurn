@@ -121,7 +121,7 @@ public sealed class TestCutTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ the program
 
     [Fact]
-    public void ItCutsOneLinePerLine()
+    public void ItCutsOnePassPerPass()
     {
         var (text, report) = TestCut.Generate(Depth);
 
@@ -130,7 +130,13 @@ public sealed class TestCutTests(ITestOutputHelper output)
         var parsed = GcodeParser.Parse(text);
         var cuts = parsed.Moves.Where(m => !m.IsRapid && m.MovesInPlane).ToList();
 
-        Assert.Equal(report.Lines.Count, cuts.Count);
+        // A line is a band: as many traverses along X as it has passes, and a stepover in Y between
+        // each pair of them. Nothing lifts in the middle — retracting between passes would cost a
+        // plunge apiece for nothing.
+        var passes = report.Lines[0].PassCount;
+        var perLine = passes + (passes - 1);
+
+        Assert.Equal(report.Lines.Count * perLine, cuts.Count);
     }
 
     /// <summary>Nothing crosses the stock at depth: every traverse is above the surface.</summary>
@@ -218,4 +224,105 @@ public sealed class TestCutTests(ITestOutputHelper output)
         Assert.Contains(
             TestCut.Generate(Depth with { Tool = Tool.DefaultOutlineMill }).Report.Notes,
             n => n.Contains("one width at any depth", StringComparison.Ordinal));
+
+    // ------------------------------------------------------------------ measurable by a caliper
+
+    /// <summary>
+    /// The reason the bands exist, stated as an assertion.
+    ///
+    /// A single pass of a 60° V-bit runs 0.150 mm at 0.02 deep and 0.266 at 0.12 — you cannot get a
+    /// caliper jaw onto either, and the whole spread across the series is 0.116 mm against an
+    /// honest accuracy of about 0.02. Twenty passes put the same information on a band a caliper
+    /// can sit against.
+    /// </summary>
+    [Fact]
+    public void EveryLineIsWideEnoughToGetACaliperOnto()
+    {
+        var (_, report) = TestCut.Generate(Depth with { Tool = Tool.DefaultVBit with { IncludedAngleDegrees = 60 } });
+
+        Assert.All(report.Lines, l => Assert.True(
+            l.BandWidthMm > 1.0,
+            $"line {l.Number} is only {l.BandWidthMm:F3} mm across"));
+    }
+
+    /// <summary>
+    /// And the constant that turns a band back into a cut width is exact and identical on every
+    /// line — which is what makes the differences between lines trustworthy, because a caliper's
+    /// error is mostly a fixed bias and a fixed bias cancels between two readings.
+    /// </summary>
+    [Fact]
+    public void TheSteppedOverGroundIsTheSameOnEveryLine()
+    {
+        var (_, report) = TestCut.Generate(Depth);
+
+        Assert.Single(report.Lines.Select(l => l.SteppedMm).Distinct());
+
+        foreach (var line in report.Lines)
+        {
+            Assert.Equal(line.PredictedWidthMm, line.BandWidthMm - line.SteppedMm, 9);
+        }
+    }
+
+    /// <summary>
+    /// The stepover has to sit under the narrowest cut in the series, or the passes stop
+    /// overlapping and the band is not a band.
+    /// </summary>
+    [Fact]
+    public void ThePassesOverlapAtTheShallowestLine()
+    {
+        var (_, report) = TestCut.Generate(Depth);
+        var shallowest = report.Lines.MinBy(l => l.DepthMm);
+
+        Assert.True(
+            shallowest.StepoverMm < shallowest.PredictedWidthMm,
+            $"stepping {shallowest.StepoverMm:F3} mm across a {shallowest.PredictedWidthMm:F3} mm cut leaves ribs");
+    }
+
+    /// <summary>
+    /// Widening the lines must not let them run into each other: the spacing is a gap between
+    /// bands, not a distance between centres.
+    /// </summary>
+    [Fact]
+    public void BandsDoNotTouch()
+    {
+        var (_, report) = TestCut.Generate(Depth with { LineSpacingMm = 2 });
+
+        for (var i = 1; i < report.Lines.Count; i++)
+        {
+            var below = report.Lines[i - 1];
+            var gap = report.Lines[i].YMm - (below.YMm + below.SteppedMm);
+
+            Assert.True(gap > 1.0, $"only {gap:F2} mm between line {i} and line {i + 1}");
+        }
+    }
+
+    /// <summary>
+    /// A feed test stays one pass however many are asked for. What it asks is what an edge looks
+    /// like, and a band of overlapping passes hides every edge but the outer two.
+    /// </summary>
+    [Fact]
+    public void AFeedSeriesIsAlwaysASinglePass() =>
+        Assert.All(
+            TestCut.Generate(Feed with { PassesPerLine = 20 }).Report.Lines,
+            l => Assert.Equal(1, l.PassCount));
+
+    /// <summary>A stepover given by hand is used as given.</summary>
+    [Fact]
+    public void AStepoverCanBeSetByHand() =>
+        Assert.All(
+            TestCut.Generate(Depth with { StepoverMm = 0.07 }).Report.Lines,
+            l => Assert.Equal(0.07, l.StepoverMm));
+
+    /// <summary>
+    /// The coupon has to be big enough for what it now cuts. Shipping a program that runs off the
+    /// end of the stock the page told you to find would be worse than the narrow lines were.
+    /// </summary>
+    [Fact]
+    public void TheStockSizeCoversTheBands()
+    {
+        var (_, report) = TestCut.Generate(Depth);
+        var last = report.Lines[^1];
+
+        Assert.True(report.StockHeightMm >= last.YMm + last.SteppedMm);
+    }
 }

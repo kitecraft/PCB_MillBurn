@@ -121,11 +121,15 @@ public static class TestCutGuide
 
     private static void Table(StringBuilder page, TestCutOptions options, TestCutReport report)
     {
+        var banded = options.Kind == TestCutKind.Depth && report.Lines[0].PassCount > 1;
+
         page.Append("<h2>What each line is</h2>\n<table>\n<tr><th>#</th><th>Depth</th>");
 
-        page.Append(options.Kind == TestCutKind.Depth
-            ? "<th>Predicted width</th><th>Measured</th>"
-            : "<th>Feed</th><th>Per tooth</th>");
+        page.Append(options.Kind != TestCutKind.Depth
+            ? "<th>Feed</th><th>Per tooth</th>"
+            : banded
+                ? "<th>One pass</th><th>Predicted band</th><th>MEASURED band</th>"
+                : "<th>Predicted width</th><th>Measured</th>");
 
         page.Append("<th>Y</th></tr>\n");
 
@@ -140,21 +144,63 @@ public static class TestCutGuide
 
             page.Append("</td><td>").Append(Invariant($"{line.DepthMm:F3} mm</td>"));
 
-            page.Append(options.Kind == TestCutKind.Depth
-                ? Invariant($"<td>{line.PredictedWidthMm:F3} mm</td><td class=\"blank\">&nbsp;</td>")
-                : Invariant($"<td>{line.FeedMmPerMin:F0} mm/min</td><td>{line.ChipLoadNm / 1000:F1} &micro;m</td>"));
+            page.Append(options.Kind != TestCutKind.Depth
+                ? Invariant($"<td>{line.FeedMmPerMin:F0} mm/min</td><td>{line.ChipLoadNm / 1000:F1} &micro;m</td>")
+                : banded
+                    ? Invariant($"<td>{line.PredictedWidthMm:F3} mm</td><td>{line.BandWidthMm:F3} mm</td><td class=\"blank\">&nbsp;</td>")
+                    : Invariant($"<td>{line.PredictedWidthMm:F3} mm</td><td class=\"blank\">&nbsp;</td>"));
 
             page.Append(Invariant($"<td>{line.YMm:F1} mm</td></tr>\n"));
         }
 
         page.Append("</table>\n");
 
-        if (options.Kind == TestCutKind.Depth)
+        if (options.Kind != TestCutKind.Depth)
         {
-            page.Append("<p class=\"note\">Print this page and write the measurements in the blank ")
-                .Append("column. The predicted widths are what the tool library currently believes; ")
-                .Append("the point of the test is to find out whether it is right.</p>\n");
+            return;
         }
+
+        page.Append("<p class=\"note\">Print this page and write the measurements in the blank ")
+            .Append("column. The predicted figures are what the tool library currently believes; ")
+            .Append("the point of the test is to find out whether it is right.</p>\n");
+
+        if (!banded)
+        {
+            return;
+        }
+
+        var stepped = report.Lines[0].SteppedMm;
+
+        // The deepest line, not the last one. The last one is the repeat of line 1, which is the
+        // shallowest — quoting it here read "0.150 mm at the shallowest and 0.150 at the deepest".
+        var deepest = report.Lines.MaxBy(l => l.DepthMm);
+
+        // The arithmetic, spelled out, because it is the whole reason the bands are wide.
+        page.Append("<h3>Why the band, and what to do with it</h3>\n")
+            .Append("<p>One pass of this bit is ")
+            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3}&nbsp;mm at the shallowest line "))
+            .Append(Invariant($"and {deepest.PredictedWidthMm:F3}&nbsp;mm at the deepest. "))
+            .Append("Those are not widths a caliper can measure — you cannot get a jaw onto them at ")
+            .Append("all, and reading a few hundredths off a groove that narrow is guesswork. ")
+            .Append(Invariant($"So each line is cut {report.Lines[0].PassCount} times, stepping "))
+            .Append(Invariant($"{report.Lines[0].StepoverMm:F3}&nbsp;mm each time, which puts the same "))
+            .Append("information on a band about two millimetres across.</p>\n")
+            .Append("<p><strong>Measure the band, then subtract ")
+            .Append(Invariant($"{stepped:F3}&nbsp;mm.</strong> "))
+            .Append("That number is the ground the passes stepped over. It is commanded rather ")
+            .Append("than observed, so it is exact, and it is <em>the same on every line</em> — ")
+            .Append("which is what makes this work. Your caliper's error is mostly a fixed bias, ")
+            .Append("and a fixed bias cancels when you compare one line against another.</p>\n")
+            .Append("<p>You can skip the subtraction entirely if you only want the angle: the ")
+            .Append("band grows with depth at exactly the rate the cut does, so the slope of ")
+            .Append("measured band against depth is the same slope, offset and all.</p>\n");
+
+        page.Append("<div class=\"warn\"><p><strong>If you can see ribs of copper left between ")
+            .Append("the passes, stop and read that instead of measuring.</strong> It means this ")
+            .Append(Invariant($"bit cuts narrower than {report.Lines[0].StepoverMm:F3}&nbsp;mm at "))
+            .Append(Invariant($"{report.Lines[0].DepthMm:F3}&nbsp;mm deep — which is well under half "))
+            .Append("what the library claims. A loupe finds that in seconds and no caliper would ")
+            .Append("have caught it, so it is the most useful thing on the coupon.</p></div>\n");
     }
 
     // ------------------------------------------------------------------ reading it
@@ -209,8 +255,12 @@ public static class TestCutGuide
 
         page.Append("<p>You can also work the tip out directly from a single line: ")
             .Append("<code>tip = width &minus; 2 &times; depth &times; tan(angle / 2)</code>. For ")
-            .Append(Invariant($"this bit at {report.Lines[0].DepthMm:F3} mm, a measured width of "))
-            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3} mm would mean the library is exactly right.</p>\n"));
+            .Append(Invariant($"this bit at {report.Lines[0].DepthMm:F3} mm, a width of "))
+            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3} mm would mean the library is exactly right"));
+
+        page.Append(report.Lines[0].PassCount > 1
+            ? Invariant($" &mdash; which is a band of {report.Lines[0].BandWidthMm:F3} mm, the width being what is left once {report.Lines[0].SteppedMm:F3} mm is taken off.</p>\n")
+            : ".</p>\n");
 
         page.Append("<p><strong>Put the answer back in the tool library</strong> ")
             .Append("&mdash; <em>Edit &rarr; Tool library</em>. Every isolation job on this machine ")

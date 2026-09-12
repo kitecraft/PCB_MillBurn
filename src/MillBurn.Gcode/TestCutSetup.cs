@@ -66,6 +66,11 @@ public sealed record TestCutSetup
 
     public bool RepeatFirstLine { get; init; } = true;
 
+    public int PassesPerLine { get; init; } = 20;
+
+    /// <summary>Zero means "work one out from the shallowest line", as it does in the options.</summary>
+    public double StepoverMm { get; init; }
+
     /// <summary>
     /// Whether this was the probe-only half of a two-visit coupon.
     ///
@@ -96,6 +101,8 @@ public sealed record TestCutSetup
             DepthMm = options.DepthMm,
             FeedStepMmPerMin = options.FeedStepMmPerMin,
             RepeatFirstLine = options.RepeatFirstLine,
+            PassesPerLine = options.PassesPerLine,
+            StepoverMm = options.StepoverMm,
             ProbeWritten = probeWritten,
             Program = program,
         };

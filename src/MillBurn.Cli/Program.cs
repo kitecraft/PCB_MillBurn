@@ -39,6 +39,7 @@ internal static class Program
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
             Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
             Console.WriteLine("                                 --reopen <file> starts from a saved .testcut.json");
+            Console.WriteLine("                                 depth: --passes <n> --stepover <mm> widen each line to a measurable band");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -1847,6 +1848,8 @@ internal static class Program
                 DepthMm = saved.DepthMm,
                 FeedStepMmPerMin = saved.FeedStepMmPerMin,
                 RepeatFirstLine = saved.RepeatFirstLine,
+                PassesPerLine = saved.PassesPerLine,
+                StepoverMm = saved.StepoverMm,
             };
 
         var options = new TestCutOptions
@@ -1862,6 +1865,8 @@ internal static class Program
             Decimals = app.Machine.Decimals,
             RepeatFirstLine = defaults.RepeatFirstLine
                 && !args.Contains("--no-repeat", StringComparer.OrdinalIgnoreCase),
+            PassesPerLine = (int)Number("--passes", defaults.PassesPerLine),
+            StepoverMm = Number("--stepover", defaults.StepoverMm),
 
             StartDepthMm = Number("--from", defaults.StartDepthMm),
             DepthMm = Number("--depth", defaults.DepthMm),
@@ -1929,6 +1934,12 @@ internal static class Program
         Console.WriteLine(output);
         Line($"  tool        {tool.Name}");
         Line($"  lines       {report.Lines.Count}");
+
+        if (report.Lines[0].PassCount > 1)
+        {
+            Line($"  each line   {report.Lines[0].PassCount} passes stepping {report.Lines[0].StepoverMm:F3} mm");
+            Line($"  measure     the band, then subtract {report.Lines[0].SteppedMm:F3} mm");
+        }
         Line($"  stock       {report.StockWidthMm:F1} x {report.StockHeightMm:F1} mm of bare copper");
         Line($"  time        about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds");
         Line($"  guide       {Path.GetFileName(guide)}");

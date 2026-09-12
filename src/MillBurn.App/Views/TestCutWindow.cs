@@ -156,9 +156,14 @@ public sealed class TestCutWindow : Window
         body.Children.Add(Gap());
 
         Add(body, "from", "First line at (mm)", 0.02, 0, 3, 0.01, "F3");
-        Add(body, "step", "Deeper each line by (mm)", 0.02, 0.001, 1, 0.01, "F3");
+        Add(body, "step", "Deeper each line by (mm)", 0.05, 0.001, 1, 0.01, "F3");
         Add(body, "depth", "Depth (mm)", 0.05, 0.001, 3, 0.01, "F3");
         Add(body, "feedStep", "Feed changes by (mm/min)", 50, 1, 2000, 10, "F0");
+
+        body.Children.Add(Gap());
+
+        Add(body, "passes", "Passes per line", 20, 1, 200, 1, "F0");
+        Add(body, "stepover", "Passes step over (mm)", 0, 0, 5, 0.01, "F3");
 
         body.Children.Add(Gap());
 
@@ -341,6 +346,8 @@ public sealed class TestCutWindow : Window
         _numbers["step"].Value = (decimal)saved.DepthStepMm;
         _numbers["depth"].Value = (decimal)saved.DepthMm;
         _numbers["feedStep"].Value = (decimal)saved.FeedStepMmPerMin;
+        _numbers["passes"].Value = saved.PassesPerLine;
+        _numbers["stepover"].Value = (decimal)saved.StepoverMm;
         _flags["repeat"].IsChecked = saved.RepeatFirstLine;
 
         // The bit is the one thing that can fail to come back, and the one thing that must not fail
@@ -473,6 +480,11 @@ public sealed class TestCutWindow : Window
         _rows["step"].IsVisible = depth;
         _rows["depth"].IsVisible = !depth;
         _rows["feedStep"].IsVisible = !depth;
+
+        // A feed test is one pass by definition: what it asks is what an edge looks like, and a
+        // band of overlapping passes hides every edge but the outer two.
+        _rows["passes"].IsVisible = depth;
+        _rows["stepover"].IsVisible = depth;
     }
 
     // ------------------------------------------------------------------ the numbers
@@ -488,6 +500,8 @@ public sealed class TestCutWindow : Window
         LineSpacingMm = Value("spacing"),
         StartDepthMm = Value("from"),
         DepthStepMm = Value("step"),
+        PassesPerLine = (int)Value("passes"),
+        StepoverMm = Value("stepover"),
         DepthMm = Value("depth"),
         FeedStepMmPerMin = Value("feedStep"),
         RepeatFirstLine = _flags["repeat"].IsChecked == true,
@@ -515,6 +529,17 @@ public sealed class TestCutWindow : Window
             $"{report.Lines.Count} lines, {range}.\n")
             + Invariant($"Needs {report.StockWidthMm:F0} × {report.StockHeightMm:F0} mm of bare copper, ")
             + Invariant($"about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds.");
+
+        // What the operator will actually put a caliper on, and the number they take off it. The
+        // stepover is normally left at zero, meaning "work one out from the shallowest line", so it
+        // has to be said here rather than left as a zero sitting in a box.
+        var band = report.Lines[0];
+
+        if (band.PassCount > 1)
+        {
+            text += Invariant(
+                $"\n\nEach line is {band.PassCount} passes stepping {band.StepoverMm:F3} mm: measure a band of about {band.BandWidthMm:F2} mm and subtract {band.SteppedMm:F3} mm. One pass alone would be {band.PredictedWidthMm:F3} mm, which no caliper can read.");
+        }
 
         text += Levelling switch
         {

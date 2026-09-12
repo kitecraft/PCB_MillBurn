@@ -190,7 +190,9 @@ refused rather than quietly clamped. Every one of those is a case where being he
 being wrong silently.
 
 **Dial the bit in before you trust it.** *Job ▸ Test cuts…* writes a short program that cuts a few
-lines on scrap — one per depth, or one per feed — and an HTML page explaining how to read them. Every
+bands on scrap — one per depth, or one line per feed — and an HTML page explaining how to read them.
+A depth band is twenty passes stepped sideways, because a single pass of a V-bit is 0.15 mm wide and
+no caliper can read that; you measure a 2 mm band and subtract a number the app computed exactly. Every
 number the app computes about a cut comes from your tool library, and the library is a claim about a
 physical object; this is how you check it. Both tests cut the first line twice, at opposite ends of
 the coupon, so you can tell whether the stock moved before you believe anything else on it. Each

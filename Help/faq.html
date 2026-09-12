@@ -189,10 +189,10 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <ul>
   <li>
-    <strong>Depth and width.</strong> One line per depth, getting deeper. For a V-bit this is the
-    important one: measure each line and compare it with the width the app predicted. If they
-    disagree, the tip or the angle in your tool library is wrong &mdash; and every isolation job on
-    this machine is computed from those two numbers.
+    <strong>Depth and width.</strong> One band per depth, getting deeper. For a V-bit this is the
+    important one: measure each band and compare it with what the app predicted. If they disagree,
+    the tip or the angle in your tool library is wrong &mdash; and every isolation job on this
+    machine is computed from those two numbers.
   </li>
   <li>
     <strong>Feed rate.</strong> One line per feed, all at the same depth. Nothing about the geometry
@@ -205,6 +205,51 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   Both cut the first line again at the far end of the coupon. Measure both: if they do not match,
   the stock is tilted or Z moved during the run, and nothing else on the coupon means anything. It
   costs one line and about four seconds.
+</p>
+
+<h3>Why a band and not a line</h3>
+
+<p>
+  A single pass of a 60&deg; V-bit is <strong>0.150&nbsp;mm</strong> wide at 0.02&nbsp;mm deep and
+  0.266&nbsp;mm at 0.12. You cannot get a caliper jaw onto either, and the whole spread across six
+  lines is about a tenth of a millimetre &mdash; five divisions on an instrument that is honestly
+  good to two. Measuring that is guessing.
+</p>
+
+<p>
+  So each line of a depth test is cut <strong>twenty times, stepping sideways</strong> by a little
+  under the narrowest cut in the series, which puts the same information on a band roughly two
+  millimetres across. <strong>Measure the band and subtract the stepped-over ground</strong> &mdash;
+  the page beside the program names the number, and so does the comment above each line in the
+  G-code. What is left is the width one pass of that bit actually cuts.
+</p>
+
+<p>
+  The subtraction is exact, because the stepover is commanded rather than observed, and it is
+  <em>the same on every line</em>. That is what makes it work: a caliper's error is mostly a fixed
+  bias, and a fixed bias cancels when you compare one line against another. If all you want is the
+  included angle you can skip the subtraction entirely &mdash; the band grows with depth at exactly
+  the rate the cut does.
+</p>
+
+<div class="note">
+  <p>
+    <strong>Ribs of copper left between the passes are a result, not a failure.</strong> They mean
+    the bit is cutting narrower than the stepover, which is well under half what your library
+    claims. A loupe finds that in seconds and no caliper would have caught it.
+  </p>
+</div>
+
+<p>
+  <strong>Passes per line</strong> and <strong>Passes step over</strong> are both yours to set; a
+  stepover of zero means "work one out from the shallowest line". The depth steps are wide on
+  purpose for the same reason: what fixes the angle is the lever arm, and 0.02&nbsp;mm steps gave a
+  series whose whole width range fitted inside the caliper's own error.
+</p>
+
+<p>
+  A feed test stays a single pass, always. There the question is what the edge looks like, and a
+  band of overlapping passes hides every edge but the outer two.
 </p>
 
 <p>
