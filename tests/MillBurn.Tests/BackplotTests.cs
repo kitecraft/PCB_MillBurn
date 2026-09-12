@@ -118,6 +118,82 @@ public sealed class BackplotTests
     private static IReadOnlyList<BackplotMove> Classify(string gcode) =>
         GcodeBackplot.Classify(GcodeParser.Parse(gcode));
 
+    /// <summary>
+    /// A cut is a cut wherever the stock top happens to be, not only below Z zero.
+    ///
+    /// Found on a levelled coupon. Levelling writes the measured height of the surface into every
+    /// Z, so over a high spot the commanded Z is *positive* and the cut is still exactly its
+    /// nominal depth below the copper — by construction, since the emitted Z is nominal plus the
+    /// correction and the correction is the surface. Classifying by "Z below zero" drew a quarter
+    /// of that line as travel, which read as a cut that had not happened, and under-reported the
+    /// cutting distance with it: 2497 mm against the true 2565 mm.
+    ///
+    /// Zeroing Z on the spoilboard instead of the stock does the same thing to an ordinary program,
+    /// and plenty of people work that way.
+    /// </summary>
+    [Fact]
+    public void APositiveZAfterAPlungeIsStillCutting()
+    {
+        var moves = Classify(string.Join(
+            '\n',
+            "G21 G90",
+            "G0 Z2.000",
+            "G0 X0.000 Y0.000",
+            "G0 Z0.500",
+            "G1 Z0.004 F60",
+            "G1 X10.000 Y0.000 F600",
+            "G1 X10.000 Y0.100",
+            "G0 Z2.000",
+            "M30"));
+
+        var cuts = moves.Where(m => m.Role == BackplotRole.Cut).ToList();
+
+        Assert.Equal(2, cuts.Count);
+        Assert.All(cuts, m => Assert.True(m.Move.DeepestZNm > 0, "these are the positive-Z ones"));
+
+        // And the retract still ends the cut, so what follows is travel again.
+        Assert.Equal(BackplotRole.Retract, moves[^1].Role);
+    }
+
+    /// <summary>
+    /// Above the work and never plunged is travel, however the program is written. The state has to
+    /// be established by a feed move going down, or every rapid across a board becomes a cut.
+    /// </summary>
+    [Fact]
+    public void AProgramThatNeverPlungesHasNoCuts()
+    {
+        var moves = Classify(string.Join(
+            '\n',
+            "G21 G90",
+            "G0 Z2.000",
+            "G0 X0.000 Y0.000",
+            "G1 X10.000 Y0.000 F600",
+            "G1 X10.000 Y10.000",
+            "M30"));
+
+        Assert.DoesNotContain(moves, m => m.Role == BackplotRole.Cut);
+    }
+
+    /// <summary>A retract ends it: a feed move after lifting is travel, not a cut at height.</summary>
+    [Fact]
+    public void LiftingOutEndsTheCut()
+    {
+        var moves = Classify(string.Join(
+            '\n',
+            "G21 G90",
+            "G0 Z2.000",
+            "G1 Z-0.050 F60",
+            "G1 X10.000 Y0.000 F600",
+            "G0 Z2.000",
+            "G1 X20.000 Y0.000 F600",
+            "M30"));
+
+        var inPlane = moves.Where(m => m.Move.MovesInPlane).ToList();
+
+        Assert.Equal(BackplotRole.Cut, inPlane[0].Role);
+        Assert.NotEqual(BackplotRole.Cut, inPlane[^1].Role);
+    }
+
     [Fact]
     public void MovesAreClassifiedByWhatTheyAreDoing()
     {

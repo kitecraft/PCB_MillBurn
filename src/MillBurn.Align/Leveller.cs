@@ -56,22 +56,6 @@ public sealed record LevelReport
     /// <summary>The furthest any point of the path lay outside the probed area.</summary>
     public required double FurthestOutsideMm { get; init; }
 
-    /// <summary>
-    /// Cutting segments that were below the surface before levelling and are at or above it after.
-    ///
-    /// Levelling adds the surface's own height to every Z, so a cut shallower than the stock is out
-    /// of flat comes out of the material wherever the stock is high. The correction is right; the
-    /// cut was never deep enough to survive it. Nothing warns you on the machine — the spindle
-    /// runs, the axes move, and part of the pass is in the air.
-    /// </summary>
-    public int LiftedOut { get; init; }
-
-    /// <summary>How far above the surface the worst of those segments sits.</summary>
-    public double LiftedByMm { get; init; }
-
-    /// <summary>The shallowest cut in the program before levelling — the first to lift out.</summary>
-    public double ShallowestCutMm { get; init; }
-
     /// <summary>Why levelling was refused, or null if it was applied.</summary>
     public string? Refusal { get; init; }
 
@@ -176,17 +160,17 @@ public static class Leveller
             .GroupBy(m => m.Line)
             .ToDictionary(g => g.Key, g => g.ToList());
 
+        var output = new List<string>(lines.Length * 2)
+        {
+            Header(map, options, inches),
+        };
+
         var levelled = 0;
         var added = 0;
         var arcs = 0;
         var rise = 0.0;
         var fall = 0.0;
         var lastFeed = double.NaN;
-        var lift = new Lift();
-
-        // A placeholder: the header cannot be written until the moves have been, because whether
-        // any of them came out above the surface is only known then. Replaced at the end.
-        var output = new List<string>(lines.Length * 2) { string.Empty };
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -209,7 +193,7 @@ public static class Leveller
 
                 var before = output.Count;
 
-                Write(output, move, map, options, inches, ref lastFeed, ref rise, ref fall, lift);
+                Write(output, move, map, options, inches, ref lastFeed, ref rise, ref fall);
 
                 levelled++;
                 added += output.Count - before - 1;
@@ -221,19 +205,6 @@ public static class Leveller
             }
         }
 
-        var notes = new List<string>(map.Notes);
-
-        if (lift.Count > 0)
-        {
-            notes.Add(string.Create(
-                CultureInfo.InvariantCulture,
-                $"{lift.Count} cutting segment(s) come out at or above the surface, the worst by {lift.ByMm:F3} mm. The shallowest cut here is {lift.ShallowestMm:F3} mm and the surface is {map.RangeMm:F3} mm out of flat, so that cut is in the air wherever the stock is high. Levelling is doing the right thing; the cut is too shallow to survive it. Cut deeper than the stock is bowed, or hold it down better and probe again."));
-        }
-
-        // The header is written first and only now knows this, so it is replaced rather than
-        // appended to — what lands on the machine has to carry the warning, not only the console.
-        output[0] = Header(map, options, inches, lift);
-
         return (string.Join("\n", output), new LevelReport
         {
             MovesLevelled = levelled,
@@ -242,49 +213,11 @@ public static class Leveller
             MaxRiseMm = rise,
             MaxFallMm = fall,
             FurthestOutsideMm = outside,
-            LiftedOut = lift.Count,
-            LiftedByMm = lift.ByMm,
-            ShallowestCutMm = lift.ShallowestMm,
-            Notes = notes,
+            Notes = map.Notes,
         });
     }
 
     // ------------------------------------------------------------------ writing one move
-
-    /// <summary>
-    /// How much of the program levelling lifted out of the material.
-    ///
-    /// A small class rather than three more <c>ref</c> parameters: <see cref="Write"/> already
-    /// carries three, and these three numbers are one fact rather than three.
-    /// </summary>
-    private sealed class Lift
-    {
-        public int Count { get; private set; }
-
-        public double ByMm { get; private set; }
-
-        public double ShallowestMm { get; private set; }
-
-        /// <summary>Records one cutting segment, as commanded and as corrected.</summary>
-        public void Saw(long commandedNm, long correctedNm)
-        {
-            if (commandedNm >= 0)
-            {
-                return;
-            }
-
-            var depth = -commandedNm / (double)Nm.PerMillimetre;
-            ShallowestMm = ShallowestMm == 0 ? depth : Math.Min(ShallowestMm, depth);
-
-            if (correctedNm < 0)
-            {
-                return;
-            }
-
-            Count++;
-            ByMm = Math.Max(ByMm, correctedNm / (double)Nm.PerMillimetre);
-        }
-    }
 
     private static void Write(
         List<string> output,
@@ -294,8 +227,7 @@ public static class Leveller
         bool inches,
         ref double lastFeed,
         ref double rise,
-        ref double fall,
-        Lift lift)
+        ref double fall)
     {
         var deepest = Math.Min(move.FromZNm, move.ToZNm);
         var subdivide = deepest <= Nm.FromMillimetres(options.SubdivideBelowMm);
@@ -331,12 +263,6 @@ public static class Leveller
 
             rise = Math.Max(rise, mm);
             fall = Math.Min(fall, mm);
-
-            // Feed moves only: a rapid above the work is meant to be above the work.
-            if (!move.IsRapid)
-            {
-                lift.Saw(z, z + correction);
-            }
 
             // An arc that has to be broken up becomes lines: its Z now changes along its length in
             // a way no G2 can express. An arc that does not stays an arc, helix and all.
@@ -448,7 +374,7 @@ public static class Leveller
         Refusal = why,
     };
 
-    private static string Header(HeightMap map, LevelOptions options, bool inches, Lift lift)
+    private static string Header(HeightMap map, LevelOptions options, bool inches)
     {
         var fit = map.Fit.ToString().ToLowerInvariant();
         var surface = Invariant($"( {map.PointCount} probe points, {fit} fit, {map.RangeMm:F3} mm out of flat. )");
@@ -463,27 +389,9 @@ public static class Leveller
             steps,
             "( Set work zero exactly where it was when you probed, or    )",
             "( this is worse than no levelling at all.                   )",
+            "( ******************************************************** )",
+            inches ? "G20 G90" : "G21 G90",
         };
-
-        // A cut shallower than the stock is bowed comes out of the material once the correction is
-        // applied. It has to be said here, in the file that goes to the machine, because there is
-        // nothing to notice while it runs: the spindle turns and the axes move.
-        if (lift.Count > 0)
-        {
-            lines.Add("(                                                          )");
-            lines.Add("( WARNING: part of this program is in the air.              )");
-            lines.Add(Invariant(
-                $"( {lift.Count} cutting segment(s) end at or above the surface, )"));
-            lines.Add(Invariant(
-                $"( the worst by {lift.ByMm:F3} mm. The shallowest cut is {lift.ShallowestMm:F3} mm )"));
-            lines.Add(Invariant(
-                $"( and the stock is {map.RangeMm:F3} mm out of flat, so it cuts )"));
-            lines.Add("( nothing wherever the stock is high. Cut deeper than       )");
-            lines.Add("( the bow, or hold the stock down better and probe again.   )");
-        }
-
-        lines.Add("( ******************************************************** )");
-        lines.Add(inches ? "G20 G90" : "G21 G90");
 
         return string.Join("\n", lines);
     }

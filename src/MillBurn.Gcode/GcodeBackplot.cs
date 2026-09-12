@@ -101,17 +101,42 @@ public static class GcodeBackplot
         var threshold = longTravelNm > 0 ? longTravelNm : DefaultLongTravelNm;
         var classified = new List<BackplotMove>(program.Moves.Count);
 
+        // Whether the tool is down in the work, tracked rather than inferred from Z.
+        //
+        // Z below zero is only "in the material" while the stock's top surface *is* zero, and that
+        // is an assumption rather than a fact. A levelled program breaks it by design: every Z
+        // carries the measured height of the surface at that point, so over a high spot the
+        // commanded Z is positive and the cut is still exactly its nominal depth below the copper.
+        // Read as "above zero, therefore travelling", a correct levelled program draws with holes
+        // in it — which is how this was found, on a coupon whose first line looked like it had not
+        // been cut. Zeroing Z on the spoilboard rather than on the stock breaks the same assumption
+        // for an ordinary program, and is a common enough habit.
+        //
+        // So: the tool goes down when a feed move takes it down, and comes up when a move lifts it
+        // straight up. That is what plunging and retracting are, and it needs no datum at all.
+        var down = false;
+
         foreach (var move in program.Moves)
         {
-            classified.Add(new BackplotMove(RoleOf(move, threshold), move));
+            if (!move.IsRapid && move.ToZNm < move.FromZNm)
+            {
+                down = true;
+            }
+
+            classified.Add(new BackplotMove(RoleOf(move, threshold, down), move));
+
+            if (!move.MovesInPlane && move.ToZNm > move.FromZNm)
+            {
+                down = false;
+            }
         }
 
         return classified;
     }
 
-    private static BackplotRole RoleOf(GcodeMove move, long threshold)
+    private static BackplotRole RoleOf(GcodeMove move, long threshold, bool down)
     {
-        var inMaterial = move.DeepestZNm < 0;
+        var inMaterial = down || move.DeepestZNm < 0;
 
         if (move.IsRapid)
         {

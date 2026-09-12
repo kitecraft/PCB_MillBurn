@@ -967,7 +967,6 @@ public partial class MainWindow : Window
 
             var written = 3;
             var levelled = string.Empty;
-            string? lifted = null;
 
             if (chosen.LogPath is { } log)
             {
@@ -1007,17 +1006,6 @@ public partial class MainWindow : Window
                         text = bent;
                         levelled = FormattableString.Invariant(
                             $" Levelled to {map.PointCount} probe points, {map.RangeMm:F3} mm out of flat — which describes whatever stock was on the table when that log ran.");
-
-                        // The shallowest line of a depth series is the one levelling lifts out of
-                        // the material first, and a coupon is exactly where that bites: the series
-                        // deliberately starts at a depth smaller than most stock is bowed. Worth a
-                        // dialog rather than a line in the status bar, because the line it ruins is
-                        // line 1 — which the repeat at the far end is compared against, and which
-                        // the whole series is anchored on.
-                        lifted = applied.LiftedOut > 0
-                            ? FormattableString.Invariant(
-                                $"{applied.LiftedOut} cutting segment(s) of this coupon end at or above the surface, the worst by {applied.LiftedByMm:F3} mm.\n\nThe shallowest line is {applied.ShallowestCutMm:F3} mm deep and the scrap is {map.RangeMm:F3} mm out of flat, so that line spends part of its length in the air and will come out short and ragged — and the repeat at the far end will not match it.\n\nStart the series deeper than the scrap is bowed, or hold the scrap down across its whole area and probe it again. The other lines are unaffected.")
-                            : null;
                     }
                 }
             }
@@ -1037,11 +1025,6 @@ public partial class MainWindow : Window
             // worth running again with the same numbers and a different bit.
             TestCutSetup.From(chosen.Options, probeWritten: false, Path.GetFileName(path))
                 .Save(TestCutSetup.PathBeside(path));
-
-            if (lifted is { } air)
-            {
-                await ConfirmWindow.NoteAsync(this, "Part of this coupon is in the air", air);
-            }
 
             if (levelled.Length == 0 || chosen.LogPath is null)
             {

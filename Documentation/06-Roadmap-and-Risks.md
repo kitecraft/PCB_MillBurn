@@ -1370,37 +1370,46 @@ actually produces, somewhere in the two-opt or or-opt neighbourhood when a node'
 differ. It costs half a second an export and no correctness, and it is written down here rather than
 guessed at.
 
-### Levelling put a quarter of a line in the air
+### The viewer decided a levelled cut was travel — and the first diagnosis was wrong
 
-Found on a coupon, from the backplot of the levelled file rather than from the coupon itself. Part
-of line 1 was drawn as travel rather than as cutting, which is the viewer saying the move is above
-the surface.
+Reported from the workshop as *"something odd with the first cuts"*: on a levelled depth-test
+coupon, part of line 1 drew as travel rather than as cutting.
 
-The first line of a depth series is cut **0.020 mm** deep. The scrap it was levelled against is
-**0.027 mm out of flat**. Levelling adds the surface's own height to every Z, so wherever the stock
-stood higher than 0.020 mm above the Z datum the commanded Z went positive — 79 of that line's
-segments ended at or above the copper, the worst by 0.004 mm. About a quarter of the line ran in the
-air.
+**The wrong answer, taken first.** Line 1 is cut 0.020 mm deep and the scrap is 0.027 mm out of
+flat, so after levelling 79 of that line's segments carry a Z at or above **zero** — up to +0.004.
+That looks exactly like a cut lifting out of the material, and a check was built to count it and
+warn about it, in the file header, the export review and the CLI.
 
-**The correction was right. The cut was never deep enough to survive it.** That is the whole of the
-bug, and it is not confined to test cuts: a board isolated at 0.05 mm on stock bowed 0.15 mm has
-exactly the same problem, and there the symptom is nets that are still connected.
+It was a false alarm, and kitecraft said so: *"in reality the cut would actually work correct
+because the leveller follows the true bow."* Right, and the source settles it in one line —
+`Leveller` emits `Z = nominal + correction`, where the correction **is** the height of the surface
+at that point. So the depth below the actual copper is `commanded − correction = nominal`, always,
+everywhere, by construction. **Levelling cannot lift a cut out of the material.** Over a high spot
+the commanded Z is positive because the copper is there too.
 
-Nothing showed it on the machine. The spindle turns, the axes move, the program completes, and the
-file that produced it says *"LEVELLED. Every Z follows a measured surface"* — which is true, and is
-the reason nobody looks further.
+The warning was reverted. A check that fires on a correct file is worse than no check: it teaches
+people to skip the panel it appears in.
 
-`Leveller.Apply` now counts, for every feed segment that was below the surface before the
-correction, whether it is at or above the surface after it. `LevelReport` carries the count, the
-worst height, and the shallowest cut in the program; the sentence goes into the levelled file's own
-**header**, the export checks, the CLI's report as `IN THE AIR`, and — for a test cut, where the
-series deliberately starts shallower than most stock is bowed — a dialog.
+**The real answer.** `GcodeBackplot.RoleOf` decided `inMaterial = DeepestZNm < 0`. That is not a
+fact, it is an assumption — *the top of the stock is at work zero* — and a levelled program breaks
+it deliberately. Two consequences, and the second was invisible:
 
-The header is the part that matters most, because the file is what reaches the machine. Writing it
-meant deferring the header until the moves had been written, since whether anything lifted out is
-only known then; it is emitted as a placeholder and replaced at the end.
+- A correct cut drew as travel, which reads as a cut that never happened.
+- The **cutting distance was under-reported with it**: 2497 mm against a true 2565 mm on that
+  coupon, so the time estimate was short too.
 
-Rerunning the same coupon with the series starting at 0.050 mm instead of 0.020 clears it entirely.
+The assumption breaks for an ordinary program as well, whenever Z is zeroed on the spoilboard
+rather than on the stock top — a common enough habit, and one that would have made a whole job
+render as travel.
+
+The fix tracks what plunging and retracting *are*: the tool goes down when a feed move takes it
+down and comes up when a move lifts it straight up. No datum, no assumption about where the surface
+is. `Z < 0` is kept as well, so a program that never plunges explicitly still classifies sensibly.
+
+**What it cost to learn:** a commit written, shipped and reverted inside an hour, because the
+symptom was read as the bug. The evidence that would have settled it — that the correction *is* the
+surface, so the depth below it is invariant — was one line of code away the whole time, and the
+operator got there first from the physics.
 
 <a id="phase-55"></a>
 

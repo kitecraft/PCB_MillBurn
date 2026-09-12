@@ -2087,17 +2087,6 @@ internal static class Program
         ReportMap(map);
         Line($"  corrections {report.MaxFallMm:F3} to {report.MaxRiseMm:F3} mm over {report.MovesLevelled:N0} moves");
         Line($"  detail      {report.SegmentsAdded:N0} segments added, {report.ArcsExpanded:N0} arc(s) expanded");
-
-        if (report.LiftedOut > 0)
-        {
-            Console.Error.WriteLine(
-                $"  IN THE AIR  {report.LiftedOut:N0} cutting segment(s) end at or above the surface, worst by {report.LiftedByMm:F3} mm.");
-            Console.Error.WriteLine(
-                $"              The shallowest cut is {report.ShallowestCutMm:F3} mm and the stock is {map.RangeMm:F3} mm out of flat.");
-            Console.Error.WriteLine(
-                "              Cut deeper than the bow, or hold the stock down better and probe again.");
-        }
-
         Line($"  wrote       {output}");
 
         return 0;

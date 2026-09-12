@@ -739,20 +739,6 @@ public sealed partial class MainViewModel : ViewModelBase
                     var name = Path.GetFileNameWithoutExtension(item.TargetName)
                         + ".levelled" + Path.GetExtension(item.TargetName);
 
-                    // Levelling raises every Z by the surface's own height, so a cut shallower than
-                    // the stock is bowed comes out of the material where the stock is high. The file
-                    // is still written and still correct — it is the depth that is wrong — but this
-                    // is the last place anybody looks before it goes to the machine.
-                    if (report.LiftedOut > 0)
-                    {
-                        refusals.Add((
-                            "In the air",
-                            name,
-                            string.Create(
-                                System.Globalization.CultureInfo.InvariantCulture,
-                                $"{report.LiftedOut} cutting segment(s) end at or above the surface, worst by {report.LiftedByMm:F3} mm. The shallowest cut is {report.ShallowestCutMm:F3} mm and the stock is {surface.RangeMm:F3} mm out of flat, so it cuts nothing where the stock is high. Cut deeper than the bow, or hold the stock down better and probe again.")));
-                    }
-
                     File.WriteAllText(Path.Combine(folder, name), text);
                     extra++;
                 }
