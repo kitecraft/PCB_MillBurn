@@ -85,7 +85,7 @@ public sealed class TestCutWindow : Window
 
         Title = "Test cuts";
         AppIcon.Apply(this);
-        Width = 560;
+        Width = 940;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -154,6 +154,12 @@ public sealed class TestCutWindow : Window
         body.Children.Add(Row("Test", _kind));
         body.Children.Add(Row("Bit", _tool));
 
+        // Two columns, because one was 1,300 pixels tall and ran off the top and bottom of a
+        // 1080-high screen. What each test asks for goes on the left; what the coupon and the
+        // machine need goes on the right, under the summary that both of them feed.
+        var left = new StackPanel { Spacing = 4 };
+        var right = new StackPanel { Spacing = 4 };
+
         // Two experiments that happen to share a coupon, headed by what each one calibrates.
         //
         // They are not two views of one test, and running them together is a convenience rather
@@ -162,7 +168,7 @@ public sealed class TestCutWindow : Window
         // series measures how width changes with depth, whose slope is the **angle** and does not
         // involve the tip at all. Saying so in the heading is the difference between two boxes of
         // numbers and knowing which one to run.
-        body.Children.Add(_sections["useLadder"] = Section(
+        left.Children.Add(_sections["useLadder"] = Section(
             "useLadder",
             "Width ladder",
             "calibrates the tip width",
@@ -171,10 +177,14 @@ public sealed class TestCutWindow : Window
             + "with a loupe, no caliper. Given the included angle, that fixes the tip width: the "
             + "number most often wrong, and the one no caliper can reach."));
 
-        Add(body, "rungs", "Rungs", 5, 2, 20, 1, "F0");
-        Add(body, "ladderAt", "Cut at (mm deep)", 0.05, 0.001, 3, 0.01, "F3");
+        Add(left, "rungs", "Rungs", 5, 2, 20, 1, "F0");
+        Add(left, "ladderAt", "Cut at (mm deep)", 0.05, 0.001, 3, 0.01, "F3");
 
-        body.Children.Add(_sections["useSeries"] = Section(
+        // A feed test has neither of the two sections — it calibrates nothing, it shows you an edge
+        // — so its rows would otherwise sit in the left column under no heading at all.
+        left.Children.Add(_sections["feed"] = Heading("Feed series — finds the cleanest edge"));
+
+        left.Children.Add(_sections["useSeries"] = Section(
             "useSeries",
             "Depth series",
             "calibrates the included angle",
@@ -182,41 +192,48 @@ public sealed class TestCutWindow : Window
             + "2 × tan(angle / 2) — the angle, with the tip cancelling out of it entirely. This one "
             + "wants a caliper, which is why each line is cut as a wide band rather than a groove."));
 
-        Add(body, "lines", "Lines", 6, 1, 40, 1, "F0");
-        Add(body, "from", "First line at (mm)", 0.02, 0, 3, 0.01, "F3");
-        Add(body, "step", "Deeper each line by (mm)", 0.05, 0.001, 1, 0.01, "F3");
-        Add(body, "depth", "Depth (mm)", 0.05, 0.001, 3, 0.01, "F3");
-        Add(body, "feedStep", "Feed changes by (mm/min)", 50, 1, 2000, 10, "F0");
-        Add(body, "passes", "Passes per line", 20, 1, 200, 1, "F0");
-        Add(body, "stepover", "Passes step over (mm)", 0, 0, 5, 0.01, "F3");
+        Add(left, "lines", "Lines", 6, 1, 40, 1, "F0");
+        Add(left, "from", "First line at (mm)", 0.02, 0, 3, 0.01, "F3");
+        Add(left, "step", "Deeper each line by (mm)", 0.05, 0.001, 1, 0.01, "F3");
+        Add(left, "depth", "Depth (mm)", 0.05, 0.001, 3, 0.01, "F3");
+        Add(left, "feedStep", "Feed changes by (mm/min)", 50, 1, 2000, 10, "F0");
+        Add(left, "passes", "Passes per line", 20, 1, 200, 1, "F0");
+        Add(left, "stepover", "Passes step over (mm)", 0, 0, 5, 0.01, "F3");
 
-        body.Children.Add(Heading("The coupon"));
+        right.Children.Add(Heading("The coupon"));
 
-        Add(body, "length", "Line length (mm)", 15, 2, 200, 1, "F0");
-        Add(body, "spacing", "Lines apart (mm)", 2, 0.5, 20, 0.5, "F1");
+        Add(right, "length", "Line length (mm)", 15, 2, 200, 1, "F0");
+        Add(right, "spacing", "Lines apart (mm)", 2, 0.5, 20, 0.5, "F1");
 
         // Not part of either test: it asks whether the *stock* held still, which is the question
         // that decides whether anything else on the coupon can be believed. On a ladder-only
         // coupon it repeats the bottom rung, where a tilt shows up as the transition moving.
-        body.Children.Add(Flag(
+        right.Children.Add(Flag(
             "repeat",
             "Cut the first line again at the far end",
             "Two identical cuts at opposite ends of the coupon should measure the same. When they "
             + "do not, the stock is tilted or Z moved, and nothing else on it can be trusted.",
             true));
 
-        body.Children.Add(Surface());
+        right.Children.Add(Surface());
 
-        var panel = new Border
+        right.Children.Add(new Border
         {
             Margin = new Thickness(0, 14, 0, 0),
             Padding = new Thickness(10, 8),
             CornerRadius = new CornerRadius(4),
             Background = new SolidColorBrush(Color.FromArgb(0x20, 0x5A, 0xA9, 0xF5)),
             Child = _effect,
+        });
+
+        var columns = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,28,*"),
+            Margin = new Thickness(0, 4, 0, 0),
+            Children = { Place(left, 0), Place(right, 2) },
         };
 
-        body.Children.Add(panel);
+        body.Children.Add(columns);
 
         var cancel = new Button { Content = "Cancel", IsCancel = true };
         cancel.Click += (_, _) => Close();
@@ -445,7 +462,7 @@ public sealed class TestCutWindow : Window
 
     private static Grid Row(string label, Control editor) => new()
     {
-        ColumnDefinitions = new ColumnDefinitions("190,*"),
+        ColumnDefinitions = new ColumnDefinitions("170,*"),
         Margin = new Thickness(0, 3),
         Children =
         {
@@ -620,6 +637,7 @@ public sealed class TestCutWindow : Window
 
         _sections["useLadder"].IsVisible = depth;
         _sections["useSeries"].IsVisible = depth;
+        _sections["feed"].IsVisible = !depth;
 
         // Off means the rows are still there to read, just not in play.
         var ladder = !depth || _flags["useLadder"].IsChecked == true;
