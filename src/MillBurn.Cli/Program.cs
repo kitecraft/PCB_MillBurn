@@ -2098,7 +2098,7 @@ internal static class Program
 
         ReportMap(map);
         Line($"  corrections {report.MaxFallMm:F3} to {report.MaxRiseMm:F3} mm over {report.MovesLevelled:N0} moves");
-        Line($"  detail      {report.SegmentsAdded:N0} segments added, {report.ArcsExpanded:N0} arc(s) expanded");
+        Line($"  detail      {report.SegmentsAdded:N0} segments added, {report.ArcsSplit:N0} arc(s) split");
         Line($"  wrote       {output}");
 
         return 0;

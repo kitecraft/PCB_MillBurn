@@ -128,7 +128,7 @@ public sealed class LevellerTests(ITestOutputHelper output)
         var after = GcodeParser.Parse(levelled).Moves.Where(m => m.MovesInPlane).Select(m => m.To).ToList();
 
         output.WriteLine($"{board}: {before.Count} moves became {after.Count}, "
-            + $"{report.ArcsExpanded} arcs expanded");
+            + $"{report.ArcsSplit} arcs split");
 
         // Subdivision adds points along the way, but every original destination is still visited,
         // in the same order.
@@ -219,11 +219,17 @@ public sealed class LevellerTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ arcs
 
     /// <summary>
-    /// A cutting arc cannot survive levelling: its Z now varies along its length in a way no
-    /// <c>G2</c> can express. It becomes lines, which is the honest trade.
+    /// A cutting arc stays an arc. It used to become lines, and that was wrong by a distance
+    /// anyone could see on the board.
+    ///
+    /// The reasoning behind flattening was that a <c>G2</c> cannot change Z along its length. It
+    /// can — a <c>G2</c> with a Z word is a helix, and any controller that accepts the arcs the
+    /// program already contains accepts those. Meanwhile the split count came from
+    /// <see cref="LevelOptions.SegmentMm"/>, which exists to bound *depth* error and knows nothing
+    /// about curvature, so the chords it produced were as coarse as the arc was short.
     /// </summary>
     [Fact]
-    public void ACuttingArcBecomesLines()
+    public void ACuttingArcStaysAnArc()
     {
         var (text, report) = Leveller.Apply("""
             G21 G90
@@ -233,19 +239,90 @@ public sealed class LevellerTests(ITestOutputHelper output)
             M30
             """, Tilted());
 
-        Assert.Equal(1, report.ArcsExpanded);
-        Assert.DoesNotContain("G2 ", text, StringComparison.Ordinal);
+        Assert.Equal(1, report.ArcsSplit);
 
-        // And the arc is still an arc in shape: every point stays on the circle it came from.
+        var arcs = GcodeParser.Parse(text).Moves.Where(m => m.IsArc).ToList();
+        Assert.True(arcs.Count > 1, $"the arc should have been split, got {arcs.Count}");
+
+        // Every piece turns about the original centre, at the original radius, and the last one
+        // ends exactly where the arc was asked to end.
         var centre = P(10, 10);
-        var points = GcodeParser.Parse(text).Moves.Where(m => m.MovesInPlane && m.ToZNm < 0).ToList();
-
-        Assert.True(points.Count > 8, $"the arc should have become several lines, got {points.Count}");
-
-        foreach (var move in points)
+        foreach (var arc in arcs)
         {
-            Assert.Equal(10, move.To.DistanceTo(centre) / Nm.PerMillimetre, 2);
+            Assert.Equal(10, arc.Centre.DistanceTo(arc.From) / (double)Nm.PerMillimetre, 2);
+            Assert.Equal(10, arc.Centre.DistanceTo(arc.To) / (double)Nm.PerMillimetre, 2);
+            Assert.Equal(0, arc.Centre.DistanceTo(centre) / (double)Nm.PerMillimetre, 2);
         }
+
+        Assert.Equal(P(20, 10), arcs[^1].To);
+
+        // And the Z still follows the surface: that was the whole point of splitting it.
+        Assert.True(
+            arcs.Select(a => a.ToZNm).Distinct().Count() > 1,
+            "every piece came out at the same height, so nothing was levelled");
+    }
+
+    /// <summary>
+    /// The shape this was found on: a 1.7 mm pad's isolation ring.
+    ///
+    /// It is 7.4 mm around, which at one millimetre a segment is eight chords — a visible octagon
+    /// 0.09 mm inside the circle it replaced, on a cut 0.15 mm wide. The user saw hexagons on the
+    /// small pads of a finished board and said so, which is how this was found rather than by any
+    /// test here: the old one checked that the chord *endpoints* lay on the circle, and they did.
+    ///
+    /// So this measures the middle of each move, which is where a chord is furthest out.
+    /// </summary>
+    [Fact]
+    public void ASmallPadIsStillRoundAfterLevelling()
+    {
+        var (text, _) = Leveller.Apply("""
+            G21 G90
+            G0 X11.177 Y10.000
+            G1 Z-0.040 F60
+            G3 X11.177 Y10.000 I-1.177 J0.000 F1300
+            M30
+            """, Tilted());
+
+        var centre = P(10, 10);
+        var worst = 0.0;
+
+        foreach (var move in GcodeParser.Parse(text).Moves.Where(m => m.MovesInPlane && m.ToZNm < 0))
+        {
+            // The middle of whatever this move actually is on the machine: the midpoint of a line,
+            // and the true mid-arc point of an arc.
+            var middle = move.IsArc
+                ? Mid(move, centre, 1.177)
+                : new Point2((move.From.X + move.To.X) / 2, (move.From.Y + move.To.Y) / 2);
+
+            worst = Math.Max(worst, Math.Abs((middle.DistanceTo(centre) / (double)Nm.PerMillimetre) - 1.177));
+        }
+
+        // A micron is rounding. The chorded version of this was out by 0.0896 mm.
+        Assert.True(worst < 0.002, $"the ring is {worst:0.0000} mm off round at its worst");
+    }
+
+    /// <summary>Halfway round an arc by angle, on the nominal radius.</summary>
+    private static Point2 Mid(GcodeMove move, Point2 centre, double radiusMm)
+    {
+        var from = Math.Atan2(move.From.Y - centre.Y, move.From.X - centre.X);
+        var to = Math.Atan2(move.To.Y - centre.Y, move.To.X - centre.X);
+        var sweep = to - from;
+
+        if (move.Kind == MoveKind.ArcCounterClockwise)
+        {
+            while (sweep <= 0) { sweep += 2 * Math.PI; }
+        }
+        else
+        {
+            while (sweep >= 0) { sweep -= 2 * Math.PI; }
+        }
+
+        var angle = from + (sweep / 2);
+        var radius = radiusMm * Nm.PerMillimetre;
+
+        return new Point2(
+            centre.X + (long)Math.Round(radius * Math.Cos(angle)),
+            centre.Y + (long)Math.Round(radius * Math.Sin(angle)));
     }
 
     [Fact]

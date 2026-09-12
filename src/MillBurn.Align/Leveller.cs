@@ -15,6 +15,9 @@ public sealed record LevelOptions
     /// rides a straight line across ground the map says is curved. On a board bowed 0.15 mm over
     /// 100 mm, a 10 mm move cuts about 1.5 µm off its intended depth in the middle and a 1 mm move
     /// about 15 nm — well past the point where anything else in the machine is the limit.
+    ///
+    /// This bounds error in **Z and nothing else**. An arc split by it is still an arc, so the
+    /// shape in the plane is untouched however coarse this is set.
     /// </summary>
     public double SegmentMm { get; init; } = 1;
 
@@ -46,7 +49,8 @@ public sealed record LevelReport
 
     public required int SegmentsAdded { get; init; }
 
-    public required int ArcsExpanded { get; init; }
+    /// <summary>How many arcs were split into shorter arcs. They stay arcs; none become lines.</summary>
+    public required int ArcsSplit { get; init; }
 
     /// <summary>The largest correction applied, up and down. The stock's bow, as the cutter sees it.</summary>
     public required double MaxRiseMm { get; init; }
@@ -209,7 +213,7 @@ public static class Leveller
         {
             MovesLevelled = levelled,
             SegmentsAdded = added,
-            ArcsExpanded = arcs,
+            ArcsSplit = arcs,
             MaxRiseMm = rise,
             MaxFallMm = fall,
             FurthestOutsideMm = outside,
@@ -242,6 +246,10 @@ public static class Leveller
             steps = (int)Math.Max(1, Math.Ceiling(length / Nm.FromMillimetres(options.SegmentMm)));
         }
 
+        // Where the previous step left the cutter, which is where this step's arc centre has to be
+        // measured from: I and J are relative to the start of their own move.
+        var previous = move.From;
+
         for (var s = 1; s <= steps; s++)
         {
             var t = s / (double)steps;
@@ -264,9 +272,17 @@ public static class Leveller
             rise = Math.Max(rise, mm);
             fall = Math.Min(fall, mm);
 
-            // An arc that has to be broken up becomes lines: its Z now changes along its length in
-            // a way no G2 can express. An arc that does not stays an arc, helix and all.
-            var word = !subdivide && move.IsArc
+            // An arc stays an arc, in pieces or whole.
+            //
+            // It used to become lines, on the reasoning that a G2 cannot change Z along its
+            // length. It can: a G2 or G3 with a Z word is a helix, and every controller that
+            // accepts the arcs this program already contains accepts those too. Flattening was
+            // also wrong by a distance anyone could see, because SegmentMm bounds *depth* error
+            // and was being asked to bound *chord* error as well. A 1.7 mm pad's isolation ring
+            // is 7.4 mm around, which at one millimetre a segment is eight chords — an octagon,
+            // 0.09 mm inside the circle it replaced, on a cut 0.15 mm wide. Smaller pads came out
+            // as hexagons, and the smallest as a segment traced up and back.
+            var word = move.IsArc
                 ? move.Kind == MoveKind.ArcClockwise ? "G2" : "G3"
                 : move.IsRapid ? "G0" : "G1";
 
@@ -280,10 +296,10 @@ public static class Leveller
 
             line.Append(" Z").Append(Coordinate(z + correction, inches));
 
-            if (!subdivide && move.IsArc)
+            if (move.IsArc)
             {
-                line.Append(" I").Append(Coordinate(move.Centre.X - move.From.X, inches))
-                    .Append(" J").Append(Coordinate(move.Centre.Y - move.From.Y, inches));
+                line.Append(" I").Append(Coordinate(move.Centre.X - previous.X, inches))
+                    .Append(" J").Append(Coordinate(move.Centre.Y - previous.Y, inches));
             }
 
             // Modal, so it is written only when it changes — which after subdivision is once per
@@ -296,6 +312,7 @@ public static class Leveller
             }
 
             output.Add(line.ToString());
+            previous = at;
         }
     }
 
@@ -367,7 +384,7 @@ public static class Leveller
     {
         MovesLevelled = 0,
         SegmentsAdded = 0,
-        ArcsExpanded = 0,
+        ArcsSplit = 0,
         MaxRiseMm = 0,
         MaxFallMm = 0,
         FurthestOutsideMm = 0,
