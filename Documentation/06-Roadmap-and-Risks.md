@@ -1465,6 +1465,80 @@ at every one of 1,070 segments — and where a machine lands between them is exa
 governs. It is stored and used by the optimizer but does not yet close the estimate's bracket, which
 is the next thing worth doing to these numbers.
 
+<a id="every-tab-asked-for"></a>
+
+### Four tabs asked for, two tabs cut
+
+The second board's edge cuts were set to four tabs and came off the blank on two, in **opposing
+corners**. That last detail is the whole diagnosis.
+
+`SplitForTabs` walked the outline segment by segment and asked, once per segment, whether *that
+segment's midpoint* was under a tab. An outline is an offset profile: four long straight edges and
+four tessellated corners. The 37 mm edge is a single segment, tested at 18.5 mm, and a tab anywhere
+else along it was simply not noticed — the whole edge got cut. Only the corner segments were short
+enough to land inside a tab, so the tabs that survived were the ones that happened to fall on
+corners, which on an evenly-spaced four is two of them, diagonally opposite.
+
+It is a good example of a bug that a test can be written *around* without touching: every existing
+test used tessellated geometry, where segments are short and the midpoint test is nearly right.
+
+The split now happens **within** a segment. For each one, collect the tab boundaries that fall
+inside it, sort them, walk the intervals, and keep the ones whose middle is not under a tab —
+slicing the segment at the exact boundary rather than at whatever vertex was nearby. The tests that
+came with it assert the thing the user actually observed: *n* tabs asked for produce *n* gaps, and
+those gaps are spread around the perimeter rather than clustered.
+
+The golden snapshots moved with it: `PogoTest1`'s outline goes from 588 mm of cutting to 557 mm and
+from 92 lines to 134 — the two missing gaps, across five passes.
+
+<a id="hexagon-pads"></a>
+
+### Levelling turned the small pads into hexagons
+
+Reported from the workshop, about a finished board: *"Can we make the circles more circular? The
+small pads came out as obvious and clear 6 sided polygons."*
+
+They did, and the chain that produced them was short. The Gerber says `%ADD12C,1.700000*%` — a
+circle. `Tessellate` flattens it at a 1 µm sagitta, about 65 sides, and the arc fitter puts it back
+together into a single `G3`. The emitted `PogoTest1-F_Cu.nc` contains exactly that. Then levelling
+ran, and the file that went to the machine had **no arcs in it at all**.
+
+`Leveller.Write` breaks a cutting move into pieces of `SegmentMm` and, for an arc, wrote those
+pieces as chords. `SegmentMm` is 1 mm and exists to bound error in **Z**: the correction is applied
+at the ends of a move, so a long move rides a straight line across ground the map says is curved. It
+knows nothing about curvature in the plane. Handed a 1.7 mm pad's isolation ring — 7.4 mm around —
+it produced eight chords:
+
+| Ring | Circumference | Chords at 1 mm | Shape | Worst error |
+|---|---|---|---|---|
+| 1.7 mm pad, outer pass | 7.40 mm | 8 | octagon | **0.090 mm** |
+| 1.7 mm pad, inner pass | 5.81 mm | 6 | hexagon | **0.124 mm** |
+| 0.2 mm trace end cap | 1.13 mm | 2 | a line, traced up and back | — |
+
+On a cut 0.148 mm wide. The user could see it without magnification, which is how it was found.
+
+**The reason given for flattening was wrong.** The comment said an arc cannot survive levelling
+because its Z now varies along its length in a way no `G2` can express. A `G2` with a Z word is a
+helix, and every controller that accepts the arcs the *unlevelled* program already contains accepts
+those. So an arc now stays an arc when it is split: same centre, same radius, one piece per segment,
+each piece's `I` and `J` measured from its own start.
+
+**It costs nothing.** The real board's levelled program is the same 1,224 lines it was — 104 arcs
+split into 488 — and the machine executes the same number of blocks. Reported cutting distance goes
+from 932 mm to 939 mm, which is the seven millimetres the chords were cutting short. Worst
+start-to-end radius disagreement across all 488 arcs is 1.17 µm, from printing coordinates to three
+decimals; GRBL rejects at 5 µm *and* 0.1 %.
+
+**The test that should have caught it asserted the bug was correct**, and checked that the chord
+*endpoints* lay on the circle. They did — that is what a chord is. Measuring the middle of each move
+is the version that fails on the old code, and there is now a second test on the exact 1.7 mm ring
+this was seen on.
+
+It is the same lesson as [the viewer that decided a levelled cut was
+travel](#the-viewer-decided-a-levelled-cut-was-travel--and-the-first-diagnosis-was-wrong): the two
+worst bugs in this area were both in what happens to a program *after* it is correct, and both were
+found by a person looking at a real result rather than by anything in the suite.
+
 <a id="phase-55"></a>
 
 ### Phase 5.5 — Drilling, finished — **scheduled, not started**
@@ -1730,6 +1804,8 @@ the left and right borders differ.
 
 - **Rulers down the edges of the viewport.** See 6.1.
 - **Climb or conventional, chosen rather than inherited.** See 6.2.
+- **Staying down between passes that touch**, instead of lifting between concentric rings. See 6.3.
+- **Tabs: where, how many, how big.** See 6.4.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -1827,6 +1903,93 @@ it does.
 **Done when** a per-operation choice exists, the emitted programs measurably run the chosen hand on
 both faces of a double-sided board, and an operation for which the question is meaningless says so
 rather than offering a switch that changes nothing.
+
+#### 6.3 Staying down between passes that touch — **scheduled, not started**
+
+Requested from the workshop: *"When cutting paths next to each other, the job does a z-lift then
+back down. Cutting around a circle with 3 loops: the first loop is cut, then a z-lift and z-lower,
+then the second ring, another z-lift/lower, then the third cut. Perhaps we can optimize some of
+them out?"*
+
+Yes, and it is worth more than it sounds, because a lift is not free on a machine whose Z traverse
+is 100 mm/min. One cycle in the levelled `PogoTest1-F_Cu.nc` is a 2.04 mm retract, a 1.50 mm rapid
+back down and a 0.54 mm feed to depth: **about 2.7 seconds**, and the program does 26 of them in a
+job that runs in 4:35. That is a quarter of the wall clock spent going up and down.
+
+**How many are actually adjacent** is measurable rather than a guess. Sorting the 25 link moves in
+that program by the distance from where one run ends to where the next begins:
+
+```
+0.126 0.126 0.126 0.126 0.126 0.126 0.126 0.126 0.127 0.150 0.154 0.161 0.161
+0.629 0.762 0.982 1.302 1.912 2.175 2.338 2.793 5.054 6.903 8.553 10.008
+```
+
+The break is unmistakable. Thirteen of the twenty-five are a stepover apart — 0.126 mm is *exactly*
+the isolation stepover — and the next is five times further. Those thirteen are ring-to-ring links
+on the same island, and the cutter clears 0.148 mm, so the material between the two rings was
+removed by the pass that just finished. The tool can walk across it at depth. **Thirteen plunges
+removed is about 35 seconds off 4:35, 13%**, with no change to what gets cut.
+
+**The rule has to be about cleared material, not about distance.** A 0.126 mm hop between
+concentric rings is safe because the previous pass cleared that exact band; a 0.126 mm hop between
+two unrelated runs that happen to end up near each other is a gouge through copper that was meant
+to stay. The test is whether the straight line from the end of one run to the start of the next
+lies inside the region already cut *at this depth*, which the pipeline can know: the isolation
+passes are generated as a series of offsets and the swept area of each is already what decides the
+next one.
+
+Cheap and sound in that order:
+
+1. **Same island, consecutive passes, gap ≤ the stepover.** Covers all thirteen above, needs no new
+   geometry, and is provably inside the previous sweep. Do this one first.
+2. **The general test** — link inside the accumulated cleared region — for everything else,
+   including mask-relief pocketing where it will matter more.
+
+**Not for the outline.** A cut-out runs the full thickness and there is nothing cleared beside it;
+its lifts are structural. Same for a plunge into fresh copper at a new depth.
+
+**It changes the estimate as well as the job.** `GcodeBackplot` counts plunges and prices them at
+the Z rate, so removing them has to show up in the bracket, and the dry run is again the clean
+experiment — it has no Z moves to remove, so its time must not change at all.
+
+**Done when** the thirteen links in that file are cut at depth, the program's own before/after
+run times on the machine bracket the predicted saving, and a synthetic case where two runs end up a
+stepover apart *without* shared cleared material still lifts.
+
+#### 6.4 Tabs: where, how many, how big — **scheduled, not started**
+
+Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
+put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
+locations."*
+
+Both observations are right, and both follow from the same thing: tabs today are **count plus two
+global numbers**. `TabCount` are spaced by equal arc length from an arbitrary seam, every one is
+`TabWidthNm` wide and leaves `TabHeightNm` of material. Nothing looks at the board.
+
+What that gets wrong:
+
+- **3 mm is a lot on a 21 mm edge** and not much on a 100 mm one. The default should scale with the
+  perimeter, or with how much of the board is hanging off it.
+- **Equal arc length lands them anywhere**, including across a corner, next to a mounting hole, or
+  on the one edge that has to be straight because a connector sits on it.
+- **One height for all of them.** A tab on a long edge holds less than a tab near a corner.
+
+Worth having, roughly in this order:
+
+1. **Placement by edge rather than by arc length** — one per straight edge, centred, which on a
+   rectangle is the answer everyone draws by hand.
+2. **Width and height per tab**, with sensible defaults derived from the perimeter and thickness.
+3. **Manual placement**: click the outline in the viewport to put a tab there, drag to move it.
+   This is the one that actually answers "not in the best locations", and it needs the viewport to
+   hit-test the profile, which nothing does yet.
+4. **Keep-out from features** — no tab within *n* mm of a hole, a pad, or the board's own artwork.
+
+**The physics stays.** Whatever chooses the position, the split happens in `SplitForTabs`, and the
+lesson from the bug is that the split must be computed on arc length within a segment and never on
+which vertices happen to exist.
+
+**Done when** a rectangular board puts one centred tab on each edge by default, any of them can be
+moved and resized individually, and the emitted gaps land where the picture says they will.
 
 ### Phase 7 — User documentation — **started**
 

@@ -355,6 +355,13 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     different place. If the scrap will not sit flat, the dialog offers a probing routine sized to
     the coupon itself &mdash; probe that, import it, and level the test file against it.
   </p>
+  <p>
+    And if you do level the coupon, <strong>touch Z off on the same spot for the probing run and
+    the cutting run</strong>. The map is measured relative to wherever Z zero was; re-zero on a
+    spot 0.03&nbsp;mm higher and every band comes out 0.03&nbsp;mm shallower than the number beside
+    it, which on a V-bit is a width error you will then go and dial into your tool.
+    <a href="#levelling">More &rsaquo;</a>
+  </p>
 </div>
 
 <h3>Coming back to a test you started</h3>
@@ -610,6 +617,16 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     <strong>Work zero must be in exactly the same place when you cut as when you probed.</strong>
     If it moved, the levelled file is worse than the unlevelled one &mdash; it is now confidently
     applying the wrong correction. Probe, then cut, without re-zeroing in between.
+  </p>
+  <p>
+    <strong>And when you do have to re-zero, touch off Z on the same spot every time.</strong>
+    A tool change, a second program, a run the next morning &mdash; each one needs Z set again, and
+    each one is a chance to set it somewhere else. The map does not record heights above the table;
+    it records heights <em>relative to wherever Z zero was when you probed</em>. Touch off the next
+    tool on a spot that happens to sit 0.03&nbsp;mm higher and every correction in the table is
+    0.03&nbsp;mm out, across the whole board, in the same direction &mdash; which on a 0.05&nbsp;mm
+    isolation pass is most of the cut. Pick a spot, mark it, and use that one: the probe grid's
+    first point is as good as any.
   </p>
   <p>
     A height map belongs to the piece of stock on the table, not to the design. It is deliberately

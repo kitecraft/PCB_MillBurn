@@ -208,6 +208,19 @@ public static class ProbeRoutine
         lines.Add(Boxed("Put a probe on the tool and a clip on the copper, zero"));
         lines.Add(Boxed("Z on the surface, run this, and save your sender's log."));
         lines.Add(Boxed(string.Empty));
+
+        // The failure this prevents is silent and total: the map holds heights relative to
+        // whatever Z zero was when it was measured, so a later tool touched off on a different
+        // spot shifts every correction in the table by the same amount, in the same direction.
+        // On a 0.05 mm isolation pass that is most of the cut, and nothing about the file or the
+        // preview looks any different.
+        lines.Add(Boxed("MARK THE SPOT YOU ZERO Z ON AND USE IT EVERY TIME -"));
+        lines.Add(Boxed("for this probe, for each tool change, and for every"));
+        lines.Add(Boxed("program levelled against the log this produces. The"));
+        lines.Add(Boxed("map holds heights relative to where Z zero was, so"));
+        lines.Add(Boxed("re-zeroing on a spot 0.03 mm higher puts every"));
+        lines.Add(Boxed("correction in it 0.03 mm out, across the whole board."));
+        lines.Add(Boxed(string.Empty));
         lines.Add(Boxed("Hold the stock down across its whole area, not just at"));
         lines.Add(Boxed("the edges. A probe triggers at no force and a cutter"));
         lines.Add(Boxed("does not, so an unsupported middle is measured where"));
