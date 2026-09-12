@@ -138,9 +138,16 @@ public sealed record TestCutSetup
         {
             var loaded = JsonSerializer.Deserialize<TestCutSetup>(File.ReadAllText(path), Json);
 
-            // A file with none of these is not a test cut setup, whatever it is called. Zero lines
-            // or zero length would produce a program that cuts nothing and says nothing about why.
-            return loaded is { LineCount: > 0, LineLengthMm: > 0 } ? loaded : null;
+            // Not a test cut setup, whatever it is called.
+            //
+            // The bit's name is the fingerprint: every save writes one, and nothing else does. It
+            // has to carry that weight now that either half of the test may be switched off — a
+            // count of zero is how that is stored, so counting is no longer enough to tell a real
+            // file from a stray object that deserialised onto the defaults.
+            return loaded is { LineLengthMm: > 0, ToolName.Length: > 0 }
+                && (loaded.LineCount > 0 || loaded.LadderRungs > 0)
+                ? loaded
+                : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

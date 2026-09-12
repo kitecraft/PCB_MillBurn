@@ -40,7 +40,8 @@ internal static class Program
             Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
             Console.WriteLine("                                 --reopen <file> starts from a saved .testcut.json");
             Console.WriteLine("                                 depth: --passes <n> --stepover <mm> widen each line to a measurable band");
-            Console.WriteLine("                                 depth: --rungs <n> a width ladder at --depth; 0 leaves it off");
+            Console.WriteLine("                                 depth: --rungs <n> a width ladder at --depth, for the tip width");
+            Console.WriteLine("                                 either half can be left out: --rungs 0 or --lines 0");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -1938,10 +1939,21 @@ internal static class Program
         Line($"  tool        {tool.Name}");
         Line($"  lines       {report.Lines.Count}");
 
-        if (report.Lines[0].PassCount > 1)
+        // Each half described from its own lines. The repeat is a copy of the bottom rung, so it
+        // must not be counted as one, and the series figures mean nothing on a ladder-only coupon.
+        var seriesLines = report.Lines.Where(l => !l.IsLadder).ToList();
+        var ladderRungs = report.Lines.Where(l => l.IsLadder && !l.IsRepeat).ToList();
+
+        if (seriesLines.Count > 0 && seriesLines[0].PassCount > 1)
         {
-            Line($"  each line   {report.Lines[0].PassCount} passes stepping {report.Lines[0].StepoverMm:F3} mm");
-            Line($"  measure     the band, then subtract {report.Lines[0].SteppedMm:F3} mm");
+            Line($"  each line   {seriesLines[0].PassCount} passes stepping {seriesLines[0].StepoverMm:F3} mm");
+            Line($"  measure     the band, then subtract {seriesLines[0].SteppedMm:F3} mm");
+        }
+
+        if (ladderRungs.Count > 1)
+        {
+            Line($"  ladder      {ladderRungs.Count} rungs at {ladderRungs[0].DepthMm:F3} mm, stepping {ladderRungs[0].StepoverMm:F3} to {ladderRungs[^1].StepoverMm:F3} mm");
+            Line($"              the first rung with copper left in it is the tip width");
         }
         Line($"  stock       {report.StockWidthMm:F1} x {report.StockHeightMm:F1} mm of bare copper");
         Line($"  time        about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds");

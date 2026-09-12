@@ -51,6 +51,7 @@ public sealed class TestCutWindow : Window
     private readonly Dictionary<string, NumericUpDown> _numbers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckBox> _flags = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Control> _rows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Control> _sections = new(StringComparer.Ordinal);
 
     private readonly TextBlock _effect = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly MachineSettings _machine;
@@ -153,32 +154,53 @@ public sealed class TestCutWindow : Window
         body.Children.Add(Row("Test", _kind));
         body.Children.Add(Row("Bit", _tool));
 
-        body.Children.Add(Gap());
+        // Two experiments that happen to share a coupon, headed by what each one calibrates.
+        //
+        // They are not two views of one test, and running them together is a convenience rather
+        // than a requirement. The width of a V-cut is `tip + 2 x depth x tan(angle/2)`: the ladder
+        // measures the width at one depth, which fixes the **tip** once the angle is known, and the
+        // series measures how width changes with depth, whose slope is the **angle** and does not
+        // involve the tip at all. Saying so in the heading is the difference between two boxes of
+        // numbers and knowing which one to run.
+        body.Children.Add(_sections["useLadder"] = Section(
+            "useLadder",
+            "Width ladder",
+            "calibrates the tip width",
+            "Short bands at one depth, each stepping over a little more than the last. The first "
+            + "one with copper left standing in it is what this bit really cuts — found by eye, "
+            + "with a loupe, no caliper. Given the included angle, that fixes the tip width: the "
+            + "number most often wrong, and the one no caliper can reach."));
 
+        Add(body, "rungs", "Rungs", 5, 2, 20, 1, "F0");
+        Add(body, "ladderAt", "Cut at (mm deep)", 0.05, 0.001, 3, 0.01, "F3");
+
+        body.Children.Add(_sections["useSeries"] = Section(
+            "useSeries",
+            "Depth series",
+            "calibrates the included angle",
+            "Bands at increasing depth. Plot measured width against depth and the slope is "
+            + "2 × tan(angle / 2) — the angle, with the tip cancelling out of it entirely. This one "
+            + "wants a caliper, which is why each line is cut as a wide band rather than a groove."));
+
+        Add(body, "lines", "Lines", 6, 1, 40, 1, "F0");
         Add(body, "from", "First line at (mm)", 0.02, 0, 3, 0.01, "F3");
         Add(body, "step", "Deeper each line by (mm)", 0.05, 0.001, 1, 0.01, "F3");
         Add(body, "depth", "Depth (mm)", 0.05, 0.001, 3, 0.01, "F3");
         Add(body, "feedStep", "Feed changes by (mm/min)", 50, 1, 2000, 10, "F0");
-
-        body.Children.Add(Gap());
-
-        Add(body, "rungs", "Width ladder rungs", 5, 0, 20, 1, "F0");
-        Add(body, "ladderAt", "Ladder cut at (mm deep)", 0.05, 0.001, 3, 0.01, "F3");
-
-        body.Children.Add(Gap());
-
         Add(body, "passes", "Passes per line", 20, 1, 200, 1, "F0");
         Add(body, "stepover", "Passes step over (mm)", 0, 0, 5, 0.01, "F3");
 
-        body.Children.Add(Gap());
+        body.Children.Add(Heading("The coupon"));
 
-        Add(body, "lines", "Lines", 6, 1, 40, 1, "F0");
         Add(body, "length", "Line length (mm)", 15, 2, 200, 1, "F0");
         Add(body, "spacing", "Lines apart (mm)", 2, 0.5, 20, 0.5, "F1");
 
+        // Not part of either test: it asks whether the *stock* held still, which is the question
+        // that decides whether anything else on the coupon can be believed. On a ladder-only
+        // coupon it repeats the bottom rung, where a tilt shows up as the transition moving.
         body.Children.Add(Flag(
             "repeat",
-            "Cut line 1 again at the far end",
+            "Cut the first line again at the far end",
             "Two identical cuts at opposite ends of the coupon should measure the same. When they "
             + "do not, the stock is tilted or Z moved, and nothing else on it can be trusted.",
             true));
@@ -344,7 +366,6 @@ public sealed class TestCutWindow : Window
     {
         _kind.SelectedIndex = saved.Kind == TestCutKind.Depth ? 0 : 1;
 
-        _numbers["lines"].Value = saved.LineCount;
         _numbers["length"].Value = (decimal)saved.LineLengthMm;
         _numbers["spacing"].Value = (decimal)saved.LineSpacingMm;
         _numbers["from"].Value = (decimal)saved.StartDepthMm;
@@ -353,8 +374,22 @@ public sealed class TestCutWindow : Window
         _numbers["feedStep"].Value = (decimal)saved.FeedStepMmPerMin;
         _numbers["passes"].Value = saved.PassesPerLine;
         _numbers["stepover"].Value = (decimal)saved.StepoverMm;
-        _numbers["rungs"].Value = saved.LadderRungs;
         _numbers["ladderAt"].Value = (decimal)saved.DepthMm;
+
+        // A count of zero is how "leave this half out" is stored, so it comes back as the switch
+        // rather than as a zero in a box the operator then has to work out how to undo.
+        _flags["useLadder"].IsChecked = saved.LadderRungs > 0;
+        _flags["useSeries"].IsChecked = saved.LineCount > 0;
+
+        if (saved.LadderRungs > 0)
+        {
+            _numbers["rungs"].Value = saved.LadderRungs;
+        }
+
+        if (saved.LineCount > 0)
+        {
+            _numbers["lines"].Value = saved.LineCount;
+        }
         _flags["repeat"].IsChecked = saved.RepeatFirstLine;
 
         // The bit is the one thing that can fail to come back, and the one thing that must not fail
@@ -454,6 +489,87 @@ public sealed class TestCutWindow : Window
         into.Children.Add(row);
     }
 
+    /// <summary>
+    /// A heading that turns one of the two tests on and off, and says what it is for.
+    ///
+    /// A checkbox rather than a radio pair because both together is the normal answer and either
+    /// alone is a reasonable one — and because the rows beneath a heading grey out rather than
+    /// vanish, which keeps the dialog the same shape however it is set.
+    /// </summary>
+    private StackPanel Section(string key, string title, string calibrates, string what)
+    {
+        var box = new CheckBox
+        {
+            IsChecked = true,
+            FontSize = 13,
+            FontWeight = FontWeight.SemiBold,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock
+                    {
+                        Text = "— " + calibrates,
+                        FontWeight = FontWeight.Normal,
+                        FontSize = 12,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!ForegroundProperty] = new DynamicResourceExtension("TextSecondary"),
+                    },
+                },
+            },
+        };
+
+        box.IsCheckedChanged += (_, _) =>
+        {
+            ShowRowsForKind();
+            Refresh();
+        };
+
+        _flags[key] = box;
+
+        return new StackPanel
+        {
+            Margin = new Thickness(0, 16, 0, 4),
+            Children =
+            {
+                new Border
+                {
+                    Height = 1,
+                    Margin = new Thickness(0, 0, 0, 10),
+                    [!BackgroundProperty] = new DynamicResourceExtension("BorderSubtle"),
+                },
+                box,
+                new TextBlock
+                {
+                    Text = what,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 11,
+                    Margin = new Thickness(26, 2, 0, 8),
+                    [!ForegroundProperty] = new DynamicResourceExtension("TextSecondary"),
+                },
+            },
+        };
+    }
+
+    /// <summary>A plain heading for the rows that belong to neither test.</summary>
+    private static StackPanel Heading(string title) => new()
+    {
+        Margin = new Thickness(0, 16, 0, 4),
+        Children =
+        {
+            new Border
+            {
+                Height = 1,
+                Margin = new Thickness(0, 0, 0, 10),
+                [!BackgroundProperty] = new DynamicResourceExtension("BorderSubtle"),
+            },
+            new TextBlock { Text = title, FontSize = 13, FontWeight = FontWeight.SemiBold },
+        },
+    };
+
     private StackPanel Flag(string key, string label, string why, bool value)
     {
         var box = new CheckBox { Content = label, IsChecked = value, FontSize = 12 };
@@ -478,7 +594,13 @@ public sealed class TestCutWindow : Window
         };
     }
 
-    /// <summary>Only the numbers this test actually uses. The rest would be noise to read past.</summary>
+    /// <summary>
+    /// Only the numbers this test actually uses, and only enabled where they apply.
+    ///
+    /// Rows grey out rather than disappear when their half is switched off, so the dialog keeps its
+    /// shape and it stays obvious that the other test is a thing that exists. Rows that belong to
+    /// the *other kind* of test do disappear, because those are noise rather than a choice.
+    /// </summary>
     private void ShowRowsForKind()
     {
         var depth = _kind.SelectedIndex == 0;
@@ -489,29 +611,52 @@ public sealed class TestCutWindow : Window
         _rows["feedStep"].IsVisible = !depth;
 
         // A feed test is one pass by definition: what it asks is what an edge looks like, and a
-        // band of overlapping passes hides every edge but the outer two.
+        // band of overlapping passes hides every edge but the outer two. It has no ladder either —
+        // a ladder asks about width, and a feed test deliberately holds width still.
         _rows["passes"].IsVisible = depth;
         _rows["stepover"].IsVisible = depth;
         _rows["rungs"].IsVisible = depth;
         _rows["ladderAt"].IsVisible = depth;
+
+        _sections["useLadder"].IsVisible = depth;
+        _sections["useSeries"].IsVisible = depth;
+
+        // Off means the rows are still there to read, just not in play.
+        var ladder = !depth || _flags["useLadder"].IsChecked == true;
+        var series = !depth || _flags["useSeries"].IsChecked == true;
+
+        _rows["rungs"].IsEnabled = ladder;
+        _rows["ladderAt"].IsEnabled = ladder;
+
+        foreach (var key in new[] { "lines", "from", "step", "passes", "stepover" })
+        {
+            _rows[key].IsEnabled = series;
+        }
     }
 
     // ------------------------------------------------------------------ the numbers
 
     private double Value(string key) => (double)(_numbers[key].Value ?? 0);
 
+    /// <summary>
+    /// Whether one of the two tests is in. Always true for a feed test, which has neither: its
+    /// lines are its own thing and the ladder does not apply to it at all.
+    /// </summary>
+    private bool Included(string key) =>
+        _kind.SelectedIndex != 0 || _flags[key].IsChecked == true;
+
     private TestCutOptions Read() => new()
     {
         Tool = _tool.SelectedItem as Tool ?? Tool.DefaultVBit,
         Kind = _kind.SelectedIndex == 0 ? TestCutKind.Depth : TestCutKind.Feed,
-        LineCount = (int)Value("lines"),
+        LineCount = Included("useSeries") ? (int)Value("lines") : 0,
         LineLengthMm = Value("length"),
         LineSpacingMm = Value("spacing"),
         StartDepthMm = Value("from"),
         DepthStepMm = Value("step"),
         PassesPerLine = (int)Value("passes"),
         StepoverMm = Value("stepover"),
-        LadderRungs = (int)Value("rungs"),
+        LadderRungs = Included("useLadder") ? (int)Value("rungs") : 0,
         DepthMm = _kind.SelectedIndex == 0 ? Value("ladderAt") : Value("depth"),
         FeedStepMmPerMin = Value("feedStep"),
         RepeatFirstLine = _flags["repeat"].IsChecked == true,
@@ -531,35 +676,50 @@ public sealed class TestCutWindow : Window
         var options = Read();
         var (_, report) = TestCut.Generate(options);
 
-        var range = options.Kind == TestCutKind.Depth
-            ? Invariant($"{report.Lines.Min(l => l.DepthMm):F3} to {report.Lines.Max(l => l.DepthMm):F3} mm deep")
-            : Invariant($"{report.Lines.Min(l => l.FeedMmPerMin):F0} to {report.Lines.Max(l => l.FeedMmPerMin):F0} mm/min");
+        // Neither half in. Everything below would divide by an empty coupon, and there is nothing
+        // to say about it except which switch to put back on.
+        if (report.Lines.Count == 0)
+        {
+            _effect.Text = "Nothing to cut. Switch on the width ladder, the depth series, or both.";
+            _write.IsEnabled = false;
 
-        var text = Invariant(
-            $"{report.Lines.Count} lines, {range}.\n")
-            + Invariant($"Needs {report.StockWidthMm:F0} × {report.StockHeightMm:F0} mm of bare copper, ")
+            return;
+        }
+
+        // The two halves are described separately, because either may be missing and each one's
+        // figures are meaningless applied to the other. The repeat is excluded from the rungs: it
+        // is a copy of the bottom one, and counting it made a five-rung ladder claim six and report
+        // its stepover range as running from the bottom rung to the bottom rung.
+        var series = report.Lines.Where(l => !l.IsLadder).ToList();
+        var rungs = report.Lines.Where(l => l.IsLadder && !l.IsRepeat).ToList();
+
+        var text = options.Kind != TestCutKind.Depth
+            ? Invariant(
+                $"{report.Lines.Count} lines, {report.Lines.Min(l => l.FeedMmPerMin):F0} to {report.Lines.Max(l => l.FeedMmPerMin):F0} mm/min.\n")
+            : series.Count > 0
+                ? Invariant(
+                    $"{series.Count} lines, {series.Min(l => l.DepthMm):F3} to {series.Max(l => l.DepthMm):F3} mm deep")
+                    + (rungs.Count > 0 ? Invariant($", plus {rungs.Count} ladder rungs.\n") : ".\n")
+                : Invariant($"{rungs.Count} ladder rungs, all {rungs[0].DepthMm:F3} mm deep.\n");
+
+        text += Invariant($"Needs {report.StockWidthMm:F0} × {report.StockHeightMm:F0} mm of bare copper, ")
             + Invariant($"about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds.");
+
+        if (rungs.Count > 1)
+        {
+            text += Invariant(
+                $"\n\nThe ladder steps {rungs[0].StepoverMm:F3} to {rungs[^1].StepoverMm:F3} mm. The first rung with copper left standing in it is what this bit really cuts — that is the tip width, read by eye.");
+        }
 
         // What the operator will actually put a caliper on, and the number they take off it. The
         // stepover is normally left at zero, meaning "work one out from the shallowest line", so it
         // has to be said here rather than left as a zero sitting in a box.
-        var band = report.Lines[0];
-
-        var rungs = report.Lines.Count(l => l.IsLadder);
-
-        if (rungs > 1)
+        if (series.Count > 0 && series[0].PassCount > 1)
         {
-            var ladder = report.Lines.First(l => l.IsLadder);
-            var top = report.Lines.Last(l => l.IsLadder);
+            var band = series[0];
 
             text += Invariant(
-                $"\n\nPlus a {rungs}-rung width ladder at {ladder.DepthMm:F3} mm, stepping {ladder.StepoverMm:F3} to {top.StepoverMm:F3} mm. The first rung with copper left standing in it is what this bit really cuts — no caliper needed.");
-        }
-
-        if (band.PassCount > 1)
-        {
-            text += Invariant(
-                $"\n\nEach line is {band.PassCount} passes stepping {band.StepoverMm:F3} mm: measure a band of about {band.BandWidthMm:F2} mm and subtract {band.SteppedMm:F3} mm. One pass alone would be {band.PredictedWidthMm:F3} mm, which no caliper can read.");
+                $"\n\nEach series line is {band.PassCount} passes stepping {band.StepoverMm:F3} mm: measure a band of about {band.BandWidthMm:F2} mm and subtract {band.SteppedMm:F3} mm. One pass alone would be {band.PredictedWidthMm:F3} mm, which no caliper can read.");
         }
 
         text += Levelling switch
@@ -586,7 +746,8 @@ public sealed class TestCutWindow : Window
 
         _effect.Text = text;
 
-        // Nothing to write until there is a log to write against.
+        // Nothing to write until there is a log to write against, and nothing to write at all
+        // without one of the two tests.
         _write.IsEnabled = Levelling != TestCutLevelling.FromLog || _logPath is not null;
     }
 }

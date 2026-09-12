@@ -369,6 +369,51 @@ public sealed class TestCutTests(ITestOutputHelper output)
     public void AFeedSeriesHasNoLadder() =>
         Assert.DoesNotContain(TestCut.Generate(Feed).Report.Lines, l => l.IsLadder);
 
+    /// <summary>
+    /// The ladder on its own, which is a whole test: it fixes the tip width, which is the number
+    /// most often wrong. No series lines, and the ladder still gets its repeat at the far end —
+    /// a tilt shifts the effective depth, which moves the transition, so the check still earns its
+    /// four seconds.
+    /// </summary>
+    [Fact]
+    public void TheLadderAloneIsAWholeTest()
+    {
+        var (text, report) = TestCut.Generate(Depth with { LineCount = 0 });
+
+        Assert.All(report.Lines, l => Assert.True(l.IsLadder));
+        Assert.Equal(Depth.LadderRungs + 1, report.Lines.Count);
+        Assert.True(report.Lines[^1].IsRepeat);
+
+        Assert.DoesNotContain(report.Warnings, w => w.Contains("cuts nothing", StringComparison.Ordinal));
+        Assert.Contains("LADDER RUNGS", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Lines get deeper as they go", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>The series on its own, which is the other whole test: it fixes the included angle.</summary>
+    [Fact]
+    public void TheSeriesAloneIsAWholeTest()
+    {
+        var (text, report) = TestCut.Generate(Depth with { LadderRungs = 0 });
+
+        Assert.DoesNotContain(report.Lines, l => l.IsLadder);
+        Assert.DoesNotContain("LADDER", text, StringComparison.Ordinal);
+        Assert.Contains("Lines get deeper as they go", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Neither half is not a crash. The dialog recalculates on every keystroke and one of those
+    /// keystrokes is a zero on the way to a number.
+    /// </summary>
+    [Fact]
+    public void NeitherHalfSaysSoRatherThanThrowing()
+    {
+        var (text, report) = TestCut.Generate(Depth with { LineCount = 0, LadderRungs = 0 });
+
+        Assert.Empty(report.Lines);
+        Assert.Equal(string.Empty, text);
+        Assert.Contains(report.Warnings, w => w.Contains("Nothing to cut", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void TheLadderCanBeTurnedOff() =>
         Assert.DoesNotContain(

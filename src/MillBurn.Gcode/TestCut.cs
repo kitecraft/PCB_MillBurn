@@ -83,7 +83,14 @@ public sealed record TestCutOptions
 
     public TestCutKind Kind { get; init; } = TestCutKind.Depth;
 
-    /// <summary>How many lines to cut, before the repeat.</summary>
+    /// <summary>
+    /// How many lines of the depth series to cut, before the repeat. Zero leaves the series out.
+    ///
+    /// The series and the <see cref="LadderRungs">ladder</see> are two different experiments that
+    /// happen to share a coupon: one asks how the cut width <em>changes</em> with depth, the other
+    /// asks what it <em>is</em> at one depth. Either is worth running on its own, and the ladder in
+    /// particular answers the question most people actually have.
+    /// </summary>
     public int LineCount { get; init; } = 6;
 
     /// <summary>
@@ -245,6 +252,22 @@ public static class TestCut
         var warnings = new List<string>();
         var lines = Plan(options, notes, warnings);
 
+        // Neither half asked for. The report is still a report — it says what is wrong rather than
+        // throwing, because the dialog recalculates on every keystroke and one of those keystrokes
+        // is a zero on the way to a number.
+        if (lines.Count == 0)
+        {
+            return (string.Empty, new TestCutReport
+            {
+                Kind = options.Kind,
+                Lines = [],
+                StockWidthMm = 0,
+                StockHeightMm = 0,
+                EstimatedSeconds = 0,
+                Warnings = ["Nothing to cut: this test has no depth series and no width ladder."],
+            });
+        }
+
         var report = new TestCutReport
         {
             Kind = options.Kind,
@@ -264,7 +287,9 @@ public static class TestCut
     private static List<TestCutLine> Plan(
         TestCutOptions options, List<string> notes, List<string> warnings)
     {
-        var count = Math.Clamp(options.LineCount, 1, 40);
+        var count = options.Kind == TestCutKind.Feed
+            ? Math.Clamp(options.LineCount, 1, 40)
+            : Math.Clamp(options.LineCount, 0, 40);
 
         if (count != options.LineCount)
         {
@@ -294,7 +319,12 @@ public static class TestCut
         // shorten the span it is testing.
         y = Ladder(options, lines, y, passes);
 
-        if (options.RepeatFirstLine && count > 1)
+        // A repeat of whatever came first, which is a series line when there is a series and the
+        // bottom rung when there is not. Either answers the same question: did the stock move
+        // between one end of the coupon and the other. On a ladder-only coupon a tilt shifts the
+        // effective depth, which shifts every width, which moves the transition — so the repeat is
+        // worth as much there as it is above.
+        if (options.RepeatFirstLine && lines.Count > 1)
         {
             var first = lines[0];
 
@@ -303,8 +333,6 @@ public static class TestCut
                 Number = lines.Count + 1,
                 YMm = y,
                 IsRepeat = true,
-                PassCount = passes,
-                StepoverMm = stepover,
             });
         }
 
@@ -435,14 +463,26 @@ public static class TestCut
     {
         var tool = options.Tool;
 
+        // Nothing asked for. Generate says so; there is nothing here to check about it, and every
+        // line below assumes there is at least one line.
+        if (lines.Count == 0)
+        {
+            return;
+        }
+
         // The series, not the ladder. A ladder rung sits at its own depth, so a series that cuts
-        // nothing would otherwise look fine because the rungs beneath it do.
+        // nothing would otherwise look fine because the rungs beneath it do — and a coupon that is
+        // deliberately ladder-only must not be told it cuts nothing.
         var series = lines.Where(l => !l.IsLadder).ToList();
         var deepest = lines.Max(l => l.DepthMm);
 
-        if (series.Count == 0 || series.Max(l => l.DepthMm) <= 0)
+        if (deepest <= 0)
         {
             warnings.Add("Every line is at or above the surface, so this test cuts nothing.");
+        }
+        else if (series.Count > 0 && series.Max(l => l.DepthMm) <= 0)
+        {
+            warnings.Add("Every line of the depth series is at or above the surface, so it cuts nothing. The width ladder below it still does.");
         }
 
         if (tool.MaxDepthNm > 0 && Nm.FromMillimetres(deepest) > tool.MaxDepthNm)
@@ -586,16 +626,16 @@ public static class TestCut
 
         yield return Invariant($"{kind} TEST CUT. Scrap copper-clad only.");
         yield return string.Empty;
+        var series = report.Lines.Where(l => !l.IsLadder).ToList();
+
         yield return Invariant($"{options.Tool.Name}");
         yield return Invariant(
             $"{report.Lines.Count} lines, {options.LineLengthMm:F1} mm long, {options.LineSpacingMm:F1} mm apart.");
 
-        var band = report.Lines[0];
-
-        if (band.PassCount > 1)
+        if (series.Count > 0 && series[0].PassCount > 1)
         {
             yield return Invariant(
-                $"Each is {band.PassCount} passes stepping {band.StepoverMm:F3} mm.");
+                $"Each of the {series.Count} series lines is {series[0].PassCount} passes stepping {series[0].StepoverMm:F3} mm.");
         }
         yield return Invariant(
             $"Needs {report.StockWidthMm:F1} x {report.StockHeightMm:F1} mm of bare copper.");
@@ -607,19 +647,24 @@ public static class TestCut
 
         if (options.Kind == TestCutKind.Depth)
         {
-            yield return string.Empty;
-            yield return "Lines get deeper as they go. Measure each band";
-            yield return "across, subtract the stepped-over ground named in";
-            yield return "the comment above it, and what is left is the width";
-            yield return "that one pass of this bit cuts at that depth.";
+            if (series.Count > 0)
+            {
+                yield return string.Empty;
+                yield return "Lines get deeper as they go. Measure each band";
+                yield return "across, subtract the stepped-over ground named in";
+                yield return "the comment above it, and what is left is the width";
+                yield return "that one pass of this bit cuts at that depth.";
+            }
 
-            var rungs = report.Lines.Where(l => l.IsLadder).ToList();
+            var rungs = report.Lines.Where(l => l.IsLadder && !l.IsRepeat).ToList();
 
             if (rungs.Count > 1)
             {
                 yield return string.Empty;
+                var lead = series.Count > 0 ? "Then " : "";
+
                 yield return Invariant(
-                    $"Then {rungs.Count} LADDER RUNGS, all {rungs[0].DepthMm:F3} mm deep,");
+                    $"{lead}{rungs.Count} LADDER RUNGS, all {rungs[0].DepthMm:F3} mm deep,");
                 yield return Invariant(
                     $"stepping {rungs[0].StepoverMm:F3} up to {rungs[^1].StepoverMm:F3} mm.");
                 yield return "The bottom one should be solid and the top one";

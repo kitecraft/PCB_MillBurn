@@ -122,7 +122,17 @@ public static class TestCutGuide
 
     private static void Table(StringBuilder page, TestCutOptions options, TestCutReport report)
     {
-        var banded = options.Kind == TestCutKind.Depth && report.Lines[0].PassCount > 1;
+        // The series alone. A ladder-only coupon has no series table to draw, and every figure
+        // quoted around this one — the stepped-over ground, the shallowest cut — belongs to the
+        // series rather than to whatever happens to be first in the list.
+        var series = report.Lines.Where(l => !l.IsLadder).ToList();
+
+        if (series.Count == 0)
+        {
+            return;
+        }
+
+        var banded = options.Kind == TestCutKind.Depth && series[0].PassCount > 1;
 
         page.Append("<h2>What each line is</h2>\n<table>\n<tr><th>#</th><th>Depth</th>");
 
@@ -134,7 +144,7 @@ public static class TestCutGuide
 
         page.Append("<th>Y</th></tr>\n");
 
-        foreach (var line in report.Lines.Where(l => !l.IsLadder))
+        foreach (var line in series)
         {
             page.Append("<tr><td>").Append(line.Number);
 
@@ -170,21 +180,21 @@ public static class TestCutGuide
             return;
         }
 
-        var stepped = report.Lines[0].SteppedMm;
+        var stepped = series[0].SteppedMm;
 
         // The deepest line, not the last one. The last one is the repeat of line 1, which is the
         // shallowest — quoting it here read "0.150 mm at the shallowest and 0.150 at the deepest".
-        var deepest = report.Lines.Where(l => !l.IsLadder).MaxBy(l => l.DepthMm);
+        var deepest = series.MaxBy(l => l.DepthMm);
 
         // The arithmetic, spelled out, because it is the whole reason the bands are wide.
         page.Append("<h3>Why the band, and what to do with it</h3>\n")
             .Append("<p>One pass of this bit is ")
-            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3}&nbsp;mm at the shallowest line "))
+            .Append(Invariant($"{series[0].PredictedWidthMm:F3}&nbsp;mm at the shallowest line "))
             .Append(Invariant($"and {deepest.PredictedWidthMm:F3}&nbsp;mm at the deepest. "))
             .Append("Those are not widths a caliper can measure — you cannot get a jaw onto them at ")
             .Append("all, and reading a few hundredths off a groove that narrow is guesswork. ")
-            .Append(Invariant($"So each line is cut {report.Lines[0].PassCount} times, stepping "))
-            .Append(Invariant($"{report.Lines[0].StepoverMm:F3}&nbsp;mm each time, which puts the same "))
+            .Append(Invariant($"So each line is cut {series[0].PassCount} times, stepping "))
+            .Append(Invariant($"{series[0].StepoverMm:F3}&nbsp;mm each time, which puts the same "))
             .Append("information on a band about two millimetres across.</p>\n")
             .Append("<p><strong>Measure the band, then subtract ")
             .Append(Invariant($"{stepped:F3}&nbsp;mm.</strong> "))
@@ -198,9 +208,9 @@ public static class TestCutGuide
 
         page.Append("<div class=\"warn\"><p><strong>If you can see ribs of copper left between ")
             .Append("the passes of these bands, the bit is cutting far narrower than the library ")
-            .Append(Invariant($"claims</strong> &mdash; under {report.Lines[0].StepoverMm:F3}&nbsp;mm "))
-            .Append(Invariant($"at {report.Lines[0].DepthMm:F3}&nbsp;mm deep, against the "))
-            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3}&nbsp;mm it expects. The ladder "))
+            .Append(Invariant($"claims</strong> &mdash; under {series[0].StepoverMm:F3}&nbsp;mm "))
+            .Append(Invariant($"at {series[0].DepthMm:F3}&nbsp;mm deep, against the "))
+            .Append(Invariant($"{series[0].PredictedWidthMm:F3}&nbsp;mm it expects. The ladder "))
             .Append("below is built to find exactly that, and to say by how much.</p></div>\n");
     }
 
@@ -217,7 +227,7 @@ public static class TestCutGuide
     /// </summary>
     private static void LadderSection(StringBuilder page, TestCutReport report)
     {
-        var rungs = report.Lines.Where(l => l.IsLadder).ToList();
+        var rungs = report.Lines.Where(l => l.IsLadder && !l.IsRepeat).ToList();
 
         if (rungs.Count < 2)
         {
@@ -236,9 +246,15 @@ public static class TestCutGuide
 
         page.Append("<h2>The width ladder</h2>\n");
 
-        page.Append("<p>The lines above measure how the cut <em>changes</em> with depth. These ")
-            .Append(Invariant($"{rungs.Count} rungs measure what it actually <em>is</em>, at "))
-            .Append(Invariant($"{rungs[0].DepthMm:F3}&nbsp;mm deep, and they do it without a caliper.</p>\n"));
+        var hasSeries = report.Lines.Any(l => !l.IsLadder);
+
+        page.Append(hasSeries
+            ? "<p>The lines above measure how the cut <em>changes</em> with depth, which is the "
+                + "included angle. These "
+            : "<p>These ")
+            .Append(Invariant($"{rungs.Count} rungs measure what the cut actually <em>is</em>, at "))
+            .Append(Invariant($"{rungs[0].DepthMm:F3}&nbsp;mm deep &mdash; which, given the angle, "))
+            .Append("is the <strong>tip width</strong>. And they do it without a caliper.</p>\n");
 
         page.Append("<p>Every rung is the same depth and the same ")
             .Append(Invariant($"{rungs[0].PassCount} passes. What climbs is the stepover, from "))
@@ -363,6 +379,18 @@ public static class TestCutGuide
 
     private static void DepthAnalysis(StringBuilder page, TestCutOptions options, TestCutReport report)
     {
+        var series = report.Lines.Where(l => !l.IsLadder).ToList();
+
+        // Nothing to read across depths when the coupon is a ladder on its own. The ladder has its
+        // own section, which says everything a single-depth measurement can say.
+        if (series.Count == 0)
+        {
+            page.Append("<p>This coupon is a width ladder on its own, so there is no series of ")
+                .Append("depths to read across. The ladder section above is the whole of it.</p>\n");
+
+            return;
+        }
+
         page.Append("<p><strong>Measure across the middle of each line</strong>, not at the ends. ")
             .Append("The tool plunges at one end and leaves at the other, and both ends lie. A loupe ")
             .Append("with a scale, a microscope, or calipers on a good light will all do it; you are ")
@@ -397,11 +425,11 @@ public static class TestCutGuide
 
         page.Append("<p>You can also work the tip out directly from a single line: ")
             .Append("<code>tip = width &minus; 2 &times; depth &times; tan(angle / 2)</code>. For ")
-            .Append(Invariant($"this bit at {report.Lines[0].DepthMm:F3} mm, a width of "))
-            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3} mm would mean the library is exactly right"));
+            .Append(Invariant($"this bit at {series[0].DepthMm:F3} mm, a width of "))
+            .Append(Invariant($"{series[0].PredictedWidthMm:F3} mm would mean the library is exactly right"));
 
-        page.Append(report.Lines[0].PassCount > 1
-            ? Invariant($" &mdash; which is a band of {report.Lines[0].BandWidthMm:F3} mm, the width being what is left once {report.Lines[0].SteppedMm:F3} mm is taken off.</p>\n")
+        page.Append(series[0].PassCount > 1
+            ? Invariant($" &mdash; which is a band of {series[0].BandWidthMm:F3} mm, the width being what is left once {series[0].SteppedMm:F3} mm is taken off.</p>\n")
             : ".</p>\n");
 
         page.Append("<p><strong>Put the answer back in the tool library</strong> ")

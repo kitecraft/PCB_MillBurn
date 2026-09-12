@@ -119,8 +119,9 @@ public sealed class TestCutSetupTests : IDisposable
     /// <summary>Anything that is not one of these comes back as null rather than as defaults.</summary>
     [Theory]
     [InlineData("G21 G90\nG0 X0 Y0\n")]
-    [InlineData("{ \"SchemaVersion\": 1, \"LineCount\": 0 }")]
+    [InlineData("{ \"SchemaVersion\": 1, \"LineCount\": 0, \"LadderRungs\": 0 }")]
     [InlineData("{ \"SchemaVersion\": 1, \"LineCount\": 6, \"LineLengthMm\": 0 }")]
+    [InlineData("{ \"SchemaVersion\": 1, \"LineCount\": 6, \"LineLengthMm\": 15 }")]
     [InlineData("not json at all")]
     public void AFileThatIsNotOneIsRefused(string content)
     {
@@ -130,6 +131,28 @@ public sealed class TestCutSetupTests : IDisposable
         File.WriteAllText(file, content);
 
         Assert.Null(TestCutSetup.Load(file));
+    }
+
+    /// <summary>
+    /// Either half of the test may be left out, and a count of zero is how that is recorded — so a
+    /// setup with no depth series is a real setup, not a broken one.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 5)]
+    [InlineData(6, 0)]
+    public void HalfATestIsStillATest(int lines, int rungs)
+    {
+        var file = Path_("half" + TestCutSetup.Extension);
+
+        TestCutSetup
+            .From(Custom(Tool.DefaultVBit) with { LineCount = lines, LadderRungs = rungs }, false)
+            .Save(file);
+
+        var back = TestCutSetup.Load(file);
+
+        Assert.NotNull(back);
+        Assert.Equal(lines, back.LineCount);
+        Assert.Equal(rungs, back.LadderRungs);
     }
 
     [Fact]

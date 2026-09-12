@@ -302,9 +302,44 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </p>
 </div>
 
+<h3>Which of the two to run</h3>
+
 <p>
-  Set <strong>Width ladder rungs</strong> to 0 to leave it off, and <strong>Ladder cut at</strong>
-  to the depth you actually isolate at &mdash; that is the depth worth knowing precisely.
+  They are two different experiments sharing a coupon, and the dialog heads each with what it
+  calibrates:
+</p>
+
+<ul>
+  <li>
+    <strong>Width ladder &mdash; calibrates the tip width.</strong> It measures what the cut
+    <em>is</em> at one depth. Given the included angle, that pins the tip &mdash; the number most
+    often wrong, and the one no caliper can reach.
+  </li>
+  <li>
+    <strong>Depth series &mdash; calibrates the included angle.</strong> It measures how the cut
+    <em>changes</em> with depth. Plot width against depth and the slope is
+    2&nbsp;&times;&nbsp;tan(angle&nbsp;/&nbsp;2), with the tip cancelling out of it entirely.
+  </li>
+</ul>
+
+<p>
+  That falls straight out of the model: <code>width = tip + 2 &times; depth &times;
+  tan(angle / 2)</code>. One point on that line fixes the intercept once you know the gradient; the
+  gradient needs several points.
+</p>
+
+<p>
+  <strong>Either can be switched off.</strong> Most bits arrive with the angle as marked and the tip
+  wrong, so the ladder on its own is often the whole job &mdash; and it is much the cheaper coupon:
+  about 19&nbsp;&times;&nbsp;18&nbsp;mm and a minute, against 19&nbsp;&times;&nbsp;41&nbsp;mm and
+  five minutes for both. Run the series when you have reason to doubt the angle, or once at the
+  start so the ladder's answer means something.
+</p>
+
+<p>
+  The <em>repeat at the far end</em> belongs to neither: it asks whether the stock held still, which
+  decides whether anything else on the coupon can be believed. On a ladder-only coupon it repeats
+  the bottom rung, where a tilt shows up as the transition moving.
 </p>
 
 <p>
