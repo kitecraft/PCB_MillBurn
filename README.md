@@ -285,20 +285,30 @@ not the easiest — was exported as front-copper SVG and laser-engraved onto cop
 pads and outer dimensions all measure true to within the ~0.1 mm the caliper is good for, which
 bounds any scale error across 165 mm at **0.061%**.
 
-**The mill half has started moving.** A generated dry run has been executed on a real CNC and ran
-correctly — the whole program traced in the air, spindle off, nothing struck. That exercises the
-emitter, the post, the ordering and the dry-run rewrite in one go, and it put the first number on
-the time model: **predicted 1:57–2:01, actual 1:50**, about 5 % conservative.
+**The mill half has now cut a board.** Top-copper isolation with a 30° V-bit dialled in by the test
+cuts, a probed height map bending every pass to the real surface, then the outline routed out with
+tabs. Generated, dry-run, and run on a real CNC: no hand-editing at any step, no complaint from the
+sender, and the board came out of the blank.
 
-**What has not happened yet is the tool touching copper.** The cut width, the drilling run and the
-levelled surface have not been measured on a real board. 658 tests pass with zero warnings under
-`TreatWarningsAsErrors`, but until there is a board on the bench, the cutting path is "believed
-correct", not "proven".
+**What the first real board shook out** is worth more than the test suite that passed before it.
+The time model was wrong by the machine's own numbers — the defaults assumed 200 mm/s² and
+600 mm/min on Z against a real 20 and 100. The backplot read a levelled pass above Z=0 as "not
+cutting" and under-reported the distance with it. And four tabs came out as two, in opposing
+corners, because the tab split tested one point per segment and an offset rectangle's edge is one
+segment. All three are fixed, and Settings will now read a GRBL `$` dump so the profile comes from
+the machine rather than from a guess. With it right, four programs predicted 0:10–0:27, 0:40–2:07,
+0:32–3:10 and 1:56–8:52 ran in 0:30, 0:48, 2:22 and 4:35 — three inside the bracket, and the miss
+is the shortest program, where the sender's own start-up is most of the three seconds.
+
+**What has still not touched copper:** drilling with tool changes, double-sided work and its
+mirror, soldermask relief, and the routed channel between the boards of a panel. 791 tests pass
+with zero warnings under `TreatWarningsAsErrors`, but those four paths are "believed correct", not
+"proven".
 
 Done: reading and drawing boards, projects, toolpaths and G-code, the travel optimizer,
 simplification and arc fitting (a panel's isolation goes from 301,097 lines to 15,191, within a
-2 µm bound), isolation width, dry runs, height mapping, machine settings, custom start/end G-code,
-the standalone G-code viewer.
+2 µm bound), isolation width, dry runs, height mapping, test cuts for dialling a bit in, machine settings read
+from a controller's own `$` dump, custom start/end G-code, the standalone G-code viewer.
 
 Next: **slots, mill-drill and library-aware tool selection** — an end mill moving sideways at
 depth is a slot and is also a hole too big to drill, and neither can pick its own cutter today.
