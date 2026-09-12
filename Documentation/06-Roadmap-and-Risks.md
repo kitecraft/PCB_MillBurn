@@ -1674,7 +1674,8 @@ the left and right borders differ.
 
 ### Phase 6 — Polish and reach
 
-- **Rulers down the edges of the viewport.** See below.
+- **Rulers down the edges of the viewport.** See 6.1.
+- **Climb or conventional, chosen rather than inherited.** See 6.2.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -1720,6 +1721,58 @@ Worth having with it, cheaply:
 Left for later: a ruler in inches (the app is millimetres throughout and mixing units in one view is
 how a wrong number gets read confidently), and printable dimensioned output, which is a drawing
 feature rather than a viewer one.
+
+#### 6.2 Climb or conventional — **scheduled, not started, low priority**
+
+Asked from the workshop: *"is the default cut direction making a climb cut or a conventional cut?"*
+The honest answer is that **nothing chooses**. There is no setting, and no part of the pipeline
+considers it. What follows is what the investigation found, recorded so the work starts from
+measurement rather than from re-deriving it.
+
+**Today the direction is inherited from the geometry.** A closed contour keeps whatever winding
+Clipper gave it: `ToolpathRouter.Materialise` only rotates which vertex a closed loop starts at
+(`RotateTo`) and never reverses it — `RouteNode.Flip` applies to open passes alone. Measured on
+PogoTest1:
+
+| File | Counter-clockwise | Clockwise |
+|---|---|---|
+| `PogoTest1-F_Cu.nc` | 25 | 0 |
+| `PogoTest1-Edge_Cuts.nc` | 8 | 0 |
+| `PogoTest1-B_Cu.nc` | 27 | 23 |
+
+**Most of what is emitted cannot be either.** A V-bit isolation pass and the outline cut-out are
+full-width slots: the cutter is engaged on both sides at once, so it is climbing and conventional
+simultaneously. The same goes for the first pass of anything. This is worth stating in whatever UI
+the setting eventually gets, or it will promise a choice that does not exist for the operation in
+front of it.
+
+**Where it is real:** the second and subsequent isolation passes, which widen the moat and meet
+fresh copper on one side only, and mask-relief pocketing. There, going counter-clockwise around an
+island puts the fresh material to the *right* of travel, and with the `M3` clockwise spindle the
+emitter always writes, material on the right is **climb** — see `G41`, tool offset left of the path.
+So the app climbs today, by accident rather than by choice.
+
+Three things make this more than flipping a winding.
+
+**The bottom side is mirrored, and mirroring flips the hand.** Setting every contour
+counter-clockwise would give the two faces *opposite* physical cut directions. The convention has to
+be applied after the mirror, in machine terms, not to the drawing.
+
+**Holes wind opposite to islands, correctly.** An annular pad's inner boundary must run the other
+way round from its outer one to keep the cutter on the same side of the copper. Any normalisation
+has to preserve that relationship rather than force one winding everywhere — which is the obvious
+implementation and the wrong one.
+
+**It takes a degree of freedom away from the travel optimiser.** Open passes — tabbed outline runs,
+panel-channel centrelines, test-cut bands — are reversed freely today to save rapid, and the
+test-cut bands alternate deliberately so a deeper pass does not drive back to its start first
+([one pass down the middle](#one-pass-down-the-middle) measured 7 m of that on a panel). Honouring a
+direction on those costs travel, so the setting should apply to closed contours and say plainly that
+it does.
+
+**Done when** a per-operation choice exists, the emitted programs measurably run the chosen hand on
+both faces of a double-sided board, and an operation for which the question is meaningless says so
+rather than offering a switch that changes nothing.
 
 ### Phase 7 — User documentation — **started**
 
