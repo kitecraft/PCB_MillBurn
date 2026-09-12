@@ -252,6 +252,61 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   band of overlapping passes hides every edge but the outer two.
 </p>
 
+<h3>The width ladder: what a wrong one looks like</h3>
+
+<p>
+  A measurement you cannot check is not much better than a guess. A band that comes out close to its
+  prediction is either a bit that matches its library or a reading taken slightly wrong, and nothing
+  else on the coupon separates those two.
+</p>
+
+<p>
+  So a depth test ends with a <strong>ladder</strong>: five short bands, all at the same depth, all
+  the same number of passes, and the <strong>stepover climbing</strong> from comfortably under the
+  width your library claims to comfortably over it. Step over by less than the bit cuts and the
+  passes overlap, so the rung comes out as one clean band. Step over by more and they leave
+  <strong>hairlines of copper standing between them</strong>.
+</p>
+
+<p class="big">
+  The first rung with copper left in it is how wide your bit really cuts.
+</p>
+
+<p>
+  The bottom rung is solid whatever your bit does and the top rung is ribbed whatever your bit does
+  &mdash; that top rung is the deliberately-wrong example. You are never asked to judge one sample
+  in isolation, only to find where a row of them changes, which is the sort of thing an eye is good
+  at. No caliper, no microscope: a loupe and a minute.
+</p>
+
+<p>
+  <strong>It says which way to move the number, too.</strong> The page beside the program marks the
+  rung the library expects. If copper appears <em>below</em> it, your bit cuts narrower than the
+  library says &mdash; your isolation is clearing a thinner moat than the app believes, so reduce
+  the tip width. If every rung including the top one is solid, it cuts wider &mdash; increase it. If
+  the change falls where the table says, you are done, and you know it rather than hoping it.
+</p>
+
+<p>
+  The ladder pins the width at one depth; the bands above it pin how that width grows with depth.
+  You need both, because a tip that is too small and an angle that is too shallow look identical on
+  a single line.
+</p>
+
+<div class="note">
+  <p>
+    <strong>One honest caveat:</strong> the thinnest ribs sometimes lift with the chip instead of
+    standing, which makes a rung look solid when it was not quite. That bias only runs one way, so
+    read the first <em>clearly</em> ribbed rung as an upper bound and the last clearly solid one as
+    a lower bound.
+  </p>
+</div>
+
+<p>
+  Set <strong>Width ladder rungs</strong> to 0 to leave it off, and <strong>Ladder cut at</strong>
+  to the depth you actually isolate at &mdash; that is the depth worth knowing precisely.
+</p>
+
 <p>
   <strong>Use scrap, hold it down across its whole area, and zero on the copper.</strong> The page
   written beside the program says how much bare copper the test needs, so you can find a piece

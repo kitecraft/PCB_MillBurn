@@ -41,7 +41,7 @@ public sealed class TestCutTests(ITestOutputHelper output)
     {
         var (_, report) = TestCut.Generate(Depth);
 
-        var depths = report.Lines.Where(l => !l.IsRepeat).Select(l => Math.Round(l.DepthMm, 3)).ToList();
+        var depths = report.Lines.Where(l => !l.IsRepeat && !l.IsLadder).Select(l => Math.Round(l.DepthMm, 3)).ToList();
 
         output.WriteLine(string.Join(", ", depths));
         Assert.Equal([0.02, 0.04, 0.06, 0.08, 0.10], depths);
@@ -133,10 +133,9 @@ public sealed class TestCutTests(ITestOutputHelper output)
         // A line is a band: as many traverses along X as it has passes, and a stepover in Y between
         // each pair of them. Nothing lifts in the middle — retracting between passes would cost a
         // plunge apiece for nothing.
-        var passes = report.Lines[0].PassCount;
-        var perLine = passes + (passes - 1);
+        var expected = report.Lines.Sum(l => l.PassCount + (l.PassCount - 1));
 
-        Assert.Equal(report.Lines.Count * perLine, cuts.Count);
+        Assert.Equal(expected, cuts.Count);
     }
 
     /// <summary>Nothing crosses the stock at depth: every traverse is above the surface.</summary>
@@ -240,7 +239,7 @@ public sealed class TestCutTests(ITestOutputHelper output)
     {
         var (_, report) = TestCut.Generate(Depth with { Tool = Tool.DefaultVBit with { IncludedAngleDegrees = 60 } });
 
-        Assert.All(report.Lines, l => Assert.True(
+        Assert.All(report.Lines.Where(l => !l.IsLadder), l => Assert.True(
             l.BandWidthMm > 1.0,
             $"line {l.Number} is only {l.BandWidthMm:F3} mm across"));
     }
@@ -255,7 +254,9 @@ public sealed class TestCutTests(ITestOutputHelper output)
     {
         var (_, report) = TestCut.Generate(Depth);
 
-        Assert.Single(report.Lines.Select(l => l.SteppedMm).Distinct());
+        var series = report.Lines.Where(l => !l.IsLadder).ToList();
+
+        Assert.Single(series.Select(l => l.SteppedMm).Distinct());
 
         foreach (var line in report.Lines)
         {
@@ -271,7 +272,7 @@ public sealed class TestCutTests(ITestOutputHelper output)
     public void ThePassesOverlapAtTheShallowestLine()
     {
         var (_, report) = TestCut.Generate(Depth);
-        var shallowest = report.Lines.MinBy(l => l.DepthMm);
+        var shallowest = report.Lines.Where(l => !l.IsLadder).MinBy(l => l.DepthMm);
 
         Assert.True(
             shallowest.StepoverMm < shallowest.PredictedWidthMm,
@@ -310,8 +311,79 @@ public sealed class TestCutTests(ITestOutputHelper output)
     [Fact]
     public void AStepoverCanBeSetByHand() =>
         Assert.All(
-            TestCut.Generate(Depth with { StepoverMm = 0.07 }).Report.Lines,
+            TestCut.Generate(Depth with { StepoverMm = 0.07 }).Report.Lines.Where(l => !l.IsLadder),
             l => Assert.Equal(0.07, l.StepoverMm));
+
+    // ------------------------------------------------------------------ the width ladder
+
+    /// <summary>
+    /// The ladder brackets the believed width from both sides, which is the whole of its value: the
+    /// bottom rung comes out solid whatever the bit really does and the top rung comes out ribbed
+    /// whatever it really does, so the operator is never asked to judge a single sample in
+    /// isolation — only to find where a row of them changes.
+    /// </summary>
+    [Fact]
+    public void TheLadderBracketsWhatTheLibraryClaims()
+    {
+        var (_, report) = TestCut.Generate(Depth);
+        var rungs = report.Lines.Where(l => l.IsLadder).ToList();
+
+        Assert.True(rungs.Count >= 3, "a ladder needs rungs either side of the answer");
+
+        Assert.True(rungs[0].PredictedRibMm < 0, "the bottom rung must come out solid");
+        Assert.True(rungs[^1].PredictedRibMm > 0, "the top rung must come out ribbed");
+
+        // And it climbs, so "the first ribbed one" is a meaningful thing to look for.
+        for (var i = 1; i < rungs.Count; i++)
+        {
+            Assert.True(rungs[i].StepoverMm > rungs[i - 1].StepoverMm);
+        }
+    }
+
+    /// <summary>Every rung is the same depth and the same passes; only the stepover moves.</summary>
+    [Fact]
+    public void OnlyTheStepoverChangesUpTheLadder()
+    {
+        var rungs = TestCut.Generate(Depth).Report.Lines.Where(l => l.IsLadder).ToList();
+
+        Assert.Single(rungs.Select(r => r.DepthMm).Distinct());
+        Assert.Single(rungs.Select(r => r.PassCount).Distinct());
+        Assert.Equal(rungs.Count, rungs.Select(r => r.StepoverMm).Distinct().Count());
+    }
+
+    /// <summary>
+    /// The repeat stays at the far end of the coupon. That distance is the whole of what it
+    /// measures, so the ladder goes before it rather than past it.
+    /// </summary>
+    [Fact]
+    public void TheLadderDoesNotDisplaceTheRepeat()
+    {
+        var lines = TestCut.Generate(Depth).Report.Lines;
+
+        Assert.True(lines[^1].IsRepeat);
+        Assert.All(lines.Where(l => l.IsLadder), r => Assert.True(r.YMm < lines[^1].YMm));
+    }
+
+    /// <summary>A feed test asks a different question and gets no ladder.</summary>
+    [Fact]
+    public void AFeedSeriesHasNoLadder() =>
+        Assert.DoesNotContain(TestCut.Generate(Feed).Report.Lines, l => l.IsLadder);
+
+    [Fact]
+    public void TheLadderCanBeTurnedOff() =>
+        Assert.DoesNotContain(
+            TestCut.Generate(Depth with { LadderRungs = 0 }).Report.Lines,
+            l => l.IsLadder);
+
+    /// <summary>
+    /// A series that cuts nothing is still flagged, even though the ladder sits at its own depth
+    /// and does cut. The ladder answering does not make the series meaningful.
+    /// </summary>
+    [Fact]
+    public void ASeriesThatCutsNothingIsStillFlaggedWithALadderPresent() =>
+        Assert.Contains(
+            TestCut.Generate(Depth with { StartDepthMm = 0, DepthStepMm = 0 }).Report.Warnings,
+            w => w.Contains("cuts nothing", StringComparison.Ordinal));
 
     /// <summary>
     /// The coupon has to be big enough for what it now cuts. Shipping a program that runs off the

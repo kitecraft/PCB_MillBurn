@@ -40,6 +40,7 @@ internal static class Program
             Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
             Console.WriteLine("                                 --reopen <file> starts from a saved .testcut.json");
             Console.WriteLine("                                 depth: --passes <n> --stepover <mm> widen each line to a measurable band");
+            Console.WriteLine("                                 depth: --rungs <n> a width ladder at --depth; 0 leaves it off");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -1850,6 +1851,7 @@ internal static class Program
                 RepeatFirstLine = saved.RepeatFirstLine,
                 PassesPerLine = saved.PassesPerLine,
                 StepoverMm = saved.StepoverMm,
+                LadderRungs = saved.LadderRungs,
             };
 
         var options = new TestCutOptions
@@ -1867,6 +1869,7 @@ internal static class Program
                 && !args.Contains("--no-repeat", StringComparer.OrdinalIgnoreCase),
             PassesPerLine = (int)Number("--passes", defaults.PassesPerLine),
             StepoverMm = Number("--stepover", defaults.StepoverMm),
+            LadderRungs = (int)Number("--rungs", defaults.LadderRungs),
 
             StartDepthMm = Number("--from", defaults.StartDepthMm),
             DepthMm = Number("--depth", defaults.DepthMm),

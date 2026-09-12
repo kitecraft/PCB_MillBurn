@@ -162,6 +162,11 @@ public sealed class TestCutWindow : Window
 
         body.Children.Add(Gap());
 
+        Add(body, "rungs", "Width ladder rungs", 5, 0, 20, 1, "F0");
+        Add(body, "ladderAt", "Ladder cut at (mm deep)", 0.05, 0.001, 3, 0.01, "F3");
+
+        body.Children.Add(Gap());
+
         Add(body, "passes", "Passes per line", 20, 1, 200, 1, "F0");
         Add(body, "stepover", "Passes step over (mm)", 0, 0, 5, 0.01, "F3");
 
@@ -348,6 +353,8 @@ public sealed class TestCutWindow : Window
         _numbers["feedStep"].Value = (decimal)saved.FeedStepMmPerMin;
         _numbers["passes"].Value = saved.PassesPerLine;
         _numbers["stepover"].Value = (decimal)saved.StepoverMm;
+        _numbers["rungs"].Value = saved.LadderRungs;
+        _numbers["ladderAt"].Value = (decimal)saved.DepthMm;
         _flags["repeat"].IsChecked = saved.RepeatFirstLine;
 
         // The bit is the one thing that can fail to come back, and the one thing that must not fail
@@ -485,6 +492,8 @@ public sealed class TestCutWindow : Window
         // band of overlapping passes hides every edge but the outer two.
         _rows["passes"].IsVisible = depth;
         _rows["stepover"].IsVisible = depth;
+        _rows["rungs"].IsVisible = depth;
+        _rows["ladderAt"].IsVisible = depth;
     }
 
     // ------------------------------------------------------------------ the numbers
@@ -502,7 +511,8 @@ public sealed class TestCutWindow : Window
         DepthStepMm = Value("step"),
         PassesPerLine = (int)Value("passes"),
         StepoverMm = Value("stepover"),
-        DepthMm = Value("depth"),
+        LadderRungs = (int)Value("rungs"),
+        DepthMm = _kind.SelectedIndex == 0 ? Value("ladderAt") : Value("depth"),
         FeedStepMmPerMin = Value("feedStep"),
         RepeatFirstLine = _flags["repeat"].IsChecked == true,
         SafeZMm = _machine.SafeZMm,
@@ -534,6 +544,17 @@ public sealed class TestCutWindow : Window
         // stepover is normally left at zero, meaning "work one out from the shallowest line", so it
         // has to be said here rather than left as a zero sitting in a box.
         var band = report.Lines[0];
+
+        var rungs = report.Lines.Count(l => l.IsLadder);
+
+        if (rungs > 1)
+        {
+            var ladder = report.Lines.First(l => l.IsLadder);
+            var top = report.Lines.Last(l => l.IsLadder);
+
+            text += Invariant(
+                $"\n\nPlus a {rungs}-rung width ladder at {ladder.DepthMm:F3} mm, stepping {ladder.StepoverMm:F3} to {top.StepoverMm:F3} mm. The first rung with copper left standing in it is what this bit really cuts — no caliper needed.");
+        }
 
         if (band.PassCount > 1)
         {

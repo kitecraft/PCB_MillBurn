@@ -68,6 +68,8 @@ public sealed record TestCutSetup
 
     public int PassesPerLine { get; init; } = 20;
 
+    public int LadderRungs { get; init; } = 5;
+
     /// <summary>Zero means "work one out from the shallowest line", as it does in the options.</summary>
     public double StepoverMm { get; init; }
 
@@ -103,6 +105,7 @@ public sealed record TestCutSetup
             RepeatFirstLine = options.RepeatFirstLine,
             PassesPerLine = options.PassesPerLine,
             StepoverMm = options.StepoverMm,
+            LadderRungs = options.LadderRungs,
             ProbeWritten = probeWritten,
             Program = program,
         };

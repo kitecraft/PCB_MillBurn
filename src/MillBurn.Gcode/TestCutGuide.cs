@@ -37,6 +37,7 @@ public static class TestCutGuide
         Facts(page, options, report);
         Before(page, options, report);
         Table(page, options, report);
+        LadderSection(page, report);
         Analysis(page, options, report);
         Trouble(page, options, report);
         Flatness(page, options, report, levelledTo);
@@ -133,7 +134,7 @@ public static class TestCutGuide
 
         page.Append("<th>Y</th></tr>\n");
 
-        foreach (var line in report.Lines)
+        foreach (var line in report.Lines.Where(l => !l.IsLadder))
         {
             page.Append("<tr><td>").Append(line.Number);
 
@@ -173,7 +174,7 @@ public static class TestCutGuide
 
         // The deepest line, not the last one. The last one is the repeat of line 1, which is the
         // shallowest — quoting it here read "0.150 mm at the shallowest and 0.150 at the deepest".
-        var deepest = report.Lines.MaxBy(l => l.DepthMm);
+        var deepest = report.Lines.Where(l => !l.IsLadder).MaxBy(l => l.DepthMm);
 
         // The arithmetic, spelled out, because it is the whole reason the bands are wide.
         page.Append("<h3>Why the band, and what to do with it</h3>\n")
@@ -196,11 +197,152 @@ public static class TestCutGuide
             .Append("measured band against depth is the same slope, offset and all.</p>\n");
 
         page.Append("<div class=\"warn\"><p><strong>If you can see ribs of copper left between ")
-            .Append("the passes, stop and read that instead of measuring.</strong> It means this ")
-            .Append(Invariant($"bit cuts narrower than {report.Lines[0].StepoverMm:F3}&nbsp;mm at "))
-            .Append(Invariant($"{report.Lines[0].DepthMm:F3}&nbsp;mm deep — which is well under half "))
-            .Append("what the library claims. A loupe finds that in seconds and no caliper would ")
-            .Append("have caught it, so it is the most useful thing on the coupon.</p></div>\n");
+            .Append("the passes of these bands, the bit is cutting far narrower than the library ")
+            .Append(Invariant($"claims</strong> &mdash; under {report.Lines[0].StepoverMm:F3}&nbsp;mm "))
+            .Append(Invariant($"at {report.Lines[0].DepthMm:F3}&nbsp;mm deep, against the "))
+            .Append(Invariant($"{report.Lines[0].PredictedWidthMm:F3}&nbsp;mm it expects. The ladder "))
+            .Append("below is built to find exactly that, and to say by how much.</p></div>\n");
+    }
+
+    // ------------------------------------------------------------------ the width ladder
+
+    /// <summary>
+    /// The rungs, what each should look like, and what the one that changes tells you.
+    ///
+    /// This exists because a single measurement cannot be checked. A band that comes out close to
+    /// its prediction is either a bit that matches its library or a reading taken slightly wrong,
+    /// and nothing on the coupon separates those. The ladder answers a different shape of question
+    /// — not "is this number right" but "where does this row of samples change" — and that is the
+    /// kind of question an eye is good at and an instrument is not needed for.
+    /// </summary>
+    private static void LadderSection(StringBuilder page, TestCutReport report)
+    {
+        var rungs = report.Lines.Where(l => l.IsLadder).ToList();
+
+        if (rungs.Count < 2)
+        {
+            return;
+        }
+
+        var believed = rungs[0].PredictedWidthMm;
+        // The rung nearest the believed width, rather than the first at or above it. Stepovers are
+        // rounded to four places when the ladder is planned, so the rung meant to sit exactly on
+        // the believed width lands a few ten-thousandths under it and any "at or above" test puts
+        // the label one rung too high.
+        var matching = rungs
+            .Select((r, i) => (Index: i, Off: Math.Abs(r.StepoverMm - believed)))
+            .MinBy(x => x.Off)
+            .Index;
+
+        page.Append("<h2>The width ladder</h2>\n");
+
+        page.Append("<p>The lines above measure how the cut <em>changes</em> with depth. These ")
+            .Append(Invariant($"{rungs.Count} rungs measure what it actually <em>is</em>, at "))
+            .Append(Invariant($"{rungs[0].DepthMm:F3}&nbsp;mm deep, and they do it without a caliper.</p>\n"));
+
+        page.Append("<p>Every rung is the same depth and the same ")
+            .Append(Invariant($"{rungs[0].PassCount} passes. What climbs is the stepover, from "))
+            .Append(Invariant($"{rungs[0].StepoverMm:F3} to {rungs[^1].StepoverMm:F3}&nbsp;mm. "))
+            .Append("Step over by less than the bit cuts and the passes overlap, so the rung comes ")
+            .Append("out as one clean band. Step over by more and they leave <strong>hairlines of ")
+            .Append("copper standing between them</strong>. So:</p>\n");
+
+        page.Append("<p class=\"big\">The first rung with copper left in it is how wide this bit ")
+            .Append("really cuts.</p>\n");
+
+        page.Append("<table>\n<tr><th>Rung</th><th>Stepover</th><th>If the library is right</th>")
+            .Append("<th>SOLID or RIBBED</th></tr>\n");
+
+        for (var i = 0; i < rungs.Count; i++)
+        {
+            var rung = rungs[i];
+
+            page.Append("<tr><td>").Append(rung.Number);
+
+            if (i == matching)
+            {
+                page.Append(" <span class=\"tag\">the library's answer</span>");
+            }
+
+            page.Append(Invariant($"</td><td>{rung.StepoverMm:F3} mm</td><td>"));
+
+            page.Append(rung.PredictedRibMm > 0.0005
+                ? Invariant($"ribbed, {rung.PredictedRibMm:F3} mm of copper")
+                : rung.PredictedRibMm < -0.0005
+                    ? Invariant($"solid, overlapping {-rung.PredictedRibMm:F3} mm")
+                    : "exactly touching");
+
+            page.Append("</td><td class=\"blank\">&nbsp;</td></tr>\n");
+        }
+
+        page.Append("</table>\n");
+
+        page.Append("<p>Drawn to scale, the bottom rung and the top rung should look like this:</p>\n");
+        page.Append("<div class=\"rungs\">\n");
+        Diagram(page, rungs[0], "Rung " + rungs[0].Number.ToString(CultureInfo.InvariantCulture) + " — solid");
+        Diagram(page, rungs[^1], "Rung " + rungs[^1].Number.ToString(CultureInfo.InvariantCulture) + " — ribbed");
+        page.Append("</div>\n");
+
+        page.Append("<h3>Which way to move the number</h3>\n<ul>\n");
+
+        page.Append("<li><strong>Copper appears at a rung ")
+            .Append(Invariant($"below {rungs[matching].Number}</strong> &mdash; "))
+            .Append("the bit cuts <em>narrower</em> than the library says. Your isolation is ")
+            .Append("clearing a thinner moat than the app believes, so the gaps between nets are ")
+            .Append("smaller than you asked for. Reduce the tip width.</li>\n");
+
+        page.Append("<li><strong>Every rung is solid, including the top one</strong> &mdash; the bit ")
+            .Append("cuts <em>wider</em> than the library says, by at least ")
+            .Append(Invariant($"{rungs[^1].StepoverMm - believed:F3}&nbsp;mm. "))
+            .Append("Increase the tip width. Run the ladder again with a higher stepover to pin it.</li>\n");
+
+        page.Append("<li><strong>The change falls where the table says it should</strong> &mdash; ")
+            .Append("the library describes your bit at this depth, and you now know that rather ")
+            .Append("than hoping it.</li>\n");
+
+        page.Append("</ul>\n");
+
+        page.Append("<p class=\"note\">The ladder fixes the width at one depth; the lines above fix ")
+            .Append("how it grows with depth. You need both, because a tip that is too small and an ")
+            .Append("angle that is too shallow look identical on a single line.</p>\n");
+
+        page.Append("<div class=\"warn\"><p><strong>A rib can tear off instead of standing.</strong> ")
+            .Append("The thinnest ones sometimes lift with the chip rather than survive, which makes ")
+            .Append("a rung look solid when it was not quite. That bias runs one way only, so read ")
+            .Append("the first <em>clearly</em> ribbed rung as an upper bound and the last clearly ")
+            .Append("solid one as a lower bound.</p></div>\n");
+    }
+
+    /// <summary>
+    /// A rung drawn at true proportions: the copper, and the cut each pass takes out of it.
+    ///
+    /// Drawn rather than photographed. A photograph of somebody else's coupon under somebody else's
+    /// light is a poor standard to judge your own against, and this only has to answer "how much
+    /// copper, and how far apart".
+    /// </summary>
+    private static void Diagram(StringBuilder page, TestCutLine rung, string caption)
+    {
+        const double Width = 300;
+        const double Height = 54;
+
+        var span = rung.BandWidthMm;
+        var scale = span > 0 ? Width / span : 1;
+        var cut = rung.PredictedWidthMm * scale;
+
+        page.Append("<figure>\n<svg viewBox=\"0 0 ")
+            .Append(Invariant($"{Width + 2:F0} {Height:F0}\" width=\"100%\" role=\"img\">\n"))
+            .Append(Invariant($"<rect x=\"1\" y=\"1\" width=\"{Width:F1}\" height=\"{Height - 2:F1}\" fill=\"#c0763a\"/>\n"));
+
+        for (var pass = 0; pass < rung.PassCount; pass++)
+        {
+            var x = 1 + (pass * rung.StepoverMm * scale);
+
+            page.Append(Invariant(
+                $"<rect x=\"{x:F2}\" y=\"1\" width=\"{cut:F2}\" height=\"{Height - 2:F1}\" fill=\"#26302b\"/>\n"));
+        }
+
+        page.Append("</svg>\n<figcaption>").Append(Escape(caption))
+            .Append(Invariant($" &middot; stepping {rung.StepoverMm:F3} mm</figcaption>\n</figure>\n"));
     }
 
     // ------------------------------------------------------------------ reading it
@@ -419,6 +561,11 @@ public static class TestCutGuide
         li { margin: 0.5rem 0; }
         .warn { border-left: 3px solid var(--warn); padding: 0.1rem 0 0.1rem 0.9rem; margin: 1rem 0; }
         .note { color: var(--muted); }
+        .big { font-size: 1.1rem; font-weight: 600; margin: 1.2rem 0; }
+        .rungs { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 1rem 0 1.5rem; }
+        .rungs figure { margin: 0; flex: 1 1 16rem; }
+        .rungs svg { display: block; border: 1px solid var(--rule); }
+        figcaption { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; }
         .foot { color: var(--muted); font-size: 0.8rem; margin-top: 2.5rem; }
         """;
 }

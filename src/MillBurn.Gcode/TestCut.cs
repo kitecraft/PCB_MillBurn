@@ -36,6 +36,10 @@ public enum TestCutKind
 /// </param>
 /// <param name="PassCount">How many overlapping passes make up this line.</param>
 /// <param name="StepoverMm">How far apart those passes step.</param>
+/// <param name="IsLadder">
+/// A rung of the width ladder rather than a line of the depth series: one depth, and a stepover
+/// that climbs past the width the bit is believed to cut.
+/// </param>
 public readonly record struct TestCutLine(
     int Number,
     double DepthMm,
@@ -45,8 +49,18 @@ public readonly record struct TestCutLine(
     double ChipLoadNm,
     bool IsRepeat,
     int PassCount = 1,
-    double StepoverMm = 0)
+    double StepoverMm = 0,
+    bool IsLadder = false)
 {
+    /// <summary>
+    /// How much copper a rung of the ladder will leave standing between its passes, if the bit
+    /// cuts exactly what the library claims.
+    ///
+    /// Negative means the passes overlap and the rung comes out solid. The rung where this crosses
+    /// zero is the answer the ladder exists to give.
+    /// </summary>
+    public double PredictedRibMm => StepoverMm - PredictedWidthMm;
+
     /// <summary>
     /// What a caliper will read across the whole band: the cut itself plus the ground the passes
     /// stepped over.
@@ -102,7 +116,14 @@ public sealed record TestCutOptions
     /// </summary>
     public double DepthStepMm { get; init; } = 0.05;
 
-    /// <summary>The one depth every line runs at, for a feed series.</summary>
+    /// <summary>
+    /// The one depth every line runs at, for a feed series — and the depth the width ladder is cut
+    /// at for a depth series.
+    ///
+    /// One depth for the ladder, because it asks a different question from the series above it: not
+    /// how width changes with depth, but exactly what the width is at the depth you actually
+    /// isolate at.
+    /// </summary>
     public double DepthMm { get; init; } = 0.05;
 
     /// <summary>How much the feed changes between lines, for a feed series.</summary>
@@ -136,6 +157,26 @@ public sealed record TestCutOptions
     /// sensitive one.
     /// </summary>
     public double StepoverMm { get; init; }
+
+    /// <summary>
+    /// How many rungs of the width ladder to cut after the depth series. Zero leaves it off.
+    ///
+    /// **The ladder is the part that tells you whether you are reading the rest correctly.** Every
+    /// rung is the same depth and the same number of passes; what climbs is the stepover, from
+    /// comfortably under the width the library claims to comfortably over it. Under, and the passes
+    /// overlap and the rung is solid copper-free. Over, and they leave hairlines of copper standing
+    /// between them.
+    ///
+    /// So the rung where the hairlines first appear <em>is</em> the width this bit actually cuts —
+    /// read with a loupe, against no instrument at all, at the resolution of one rung. The bottom
+    /// rung is always solid and the top rung is always ribbed, which is the deliberately-wrong
+    /// example: you are not asked to judge whether something looks right in isolation, only to find
+    /// where a row of samples changes.
+    /// </summary>
+    public int LadderRungs { get; init; } = 5;
+
+    /// <summary>Passes in each rung. Enough to leave several ribs, which are easier to see than one.</summary>
+    public int LadderPasses { get; init; } = 6;
 
     /// <summary>How far in from the corner of the stock to start.</summary>
     public double MarginMm { get; init; } = 2;
@@ -248,18 +289,80 @@ public static class TestCut
             y += pitch;
         }
 
-        // The repeat goes last and furthest away, because the question it answers is whether
-        // anything changed between one end of the coupon and the other.
+        // The ladder goes between the series and the repeat, so the repeat stays at the far end of
+        // the coupon — that is the whole of what it measures, and putting anything past it would
+        // shorten the span it is testing.
+        y = Ladder(options, lines, y, passes);
+
         if (options.RepeatFirstLine && count > 1)
         {
             var first = lines[0];
 
-            lines.Add(first with { Number = count + 1, YMm = y, IsRepeat = true });
+            lines.Add(first with
+            {
+                Number = lines.Count + 1,
+                YMm = y,
+                IsRepeat = true,
+                PassCount = passes,
+                StepoverMm = stepover,
+            });
         }
 
         Check(options, lines, notes, warnings);
 
         return lines;
+    }
+
+    /// <summary>
+    /// The width ladder: one depth, rising stepover, and somewhere in it the truth.
+    ///
+    /// The rungs run from three fifths of the width the library claims to seven fifths of it, so
+    /// the bottom rung is solid whatever the bit really does and the top rung is ribbed whatever it
+    /// really does. Between them is a transition, and where it falls says both how wrong the
+    /// library is and — the part a single sample can never tell you — which way.
+    /// </summary>
+    private static double Ladder(
+        TestCutOptions options, List<TestCutLine> lines, double y, int seriesPasses)
+    {
+        var rungs = Math.Clamp(options.LadderRungs, 0, 20);
+
+        if (options.Kind != TestCutKind.Depth || rungs < 2 || seriesPasses < 2)
+        {
+            return y;
+        }
+
+        var passes = Math.Clamp(options.LadderPasses, 2, 40);
+        var depth = Math.Max(0, options.DepthMm);
+        var believed = Nm.ToMillimetres(options.Tool.WidthAtDepth(Nm.FromMillimetres(depth)));
+
+        if (believed <= 0)
+        {
+            return y;
+        }
+
+        // Spaced by fraction of the believed width rather than by an absolute step, so one rung is
+        // the same proportion of an answer whatever bit is in the spindle.
+        for (var i = 0; i < rungs; i++)
+        {
+            var fraction = 0.6 + (i * (1.4 - 0.6) / (rungs - 1));
+            var stepover = Math.Round(believed * fraction, 4);
+
+            lines.Add(new TestCutLine(
+                lines.Count + 1,
+                depth,
+                options.Tool.FeedMmPerMin,
+                y,
+                believed,
+                0,
+                IsRepeat: false,
+                passes,
+                stepover,
+                IsLadder: true));
+
+            y += ((passes - 1) * stepover) + options.LineSpacingMm;
+        }
+
+        return y;
     }
 
     /// <summary>One pass for a feed test, whatever was asked for. See <see cref="TestCutOptions.PassesPerLine"/>.</summary>
@@ -331,9 +434,13 @@ public static class TestCut
         TestCutOptions options, List<TestCutLine> lines, List<string> notes, List<string> warnings)
     {
         var tool = options.Tool;
+
+        // The series, not the ladder. A ladder rung sits at its own depth, so a series that cuts
+        // nothing would otherwise look fine because the rungs beneath it do.
+        var series = lines.Where(l => !l.IsLadder).ToList();
         var deepest = lines.Max(l => l.DepthMm);
 
-        if (deepest <= 0)
+        if (series.Count == 0 || series.Max(l => l.DepthMm) <= 0)
         {
             warnings.Add("Every line is at or above the surface, so this test cuts nothing.");
         }
@@ -427,15 +534,23 @@ public static class TestCut
 
         foreach (var line in report.Lines)
         {
-            var what = line.IsRepeat
-                ? Invariant($"Line {line.Number}: a repeat of line 1. Both should measure the same.")
-                : options.Kind == TestCutKind.Depth
-                    ? Invariant($"Line {line.Number}: {line.DepthMm:F3} mm deep, {line.PassCount} pass(es), band predicted {line.BandWidthMm:F3} mm")
-                    : Invariant($"Line {line.Number}: {line.FeedMmPerMin:F0} mm/min at {line.DepthMm:F3} mm deep");
+            var what = line.IsLadder
+                ? Invariant($"Line {line.Number}: LADDER RUNG, stepping {line.StepoverMm:F3} mm at {line.DepthMm:F3} mm deep")
+                : line.IsRepeat
+                    ? Invariant($"Line {line.Number}: a repeat of line 1. Both should measure the same.")
+                    : options.Kind == TestCutKind.Depth
+                        ? Invariant($"Line {line.Number}: {line.DepthMm:F3} mm deep, {line.PassCount} pass(es), band predicted {line.BandWidthMm:F3} mm")
+                        : Invariant($"Line {line.Number}: {line.FeedMmPerMin:F0} mm/min at {line.DepthMm:F3} mm deep");
 
             text.Add(Comment(what));
 
-            if (line.PassCount > 1)
+            if (line.IsLadder)
+            {
+                text.Add(Comment(line.PredictedRibMm > 0
+                    ? Invariant($"  should leave {line.PredictedRibMm:F3} mm ribs if the library is right")
+                    : Invariant($"  should come out solid; the passes overlap by {-line.PredictedRibMm:F3} mm")));
+            }
+            else if (line.PassCount > 1)
             {
                 text.Add(Comment(Invariant(
                     $"  measure the band, then subtract {line.SteppedMm:F3} mm for the cut width")));
@@ -497,6 +612,21 @@ public static class TestCut
             yield return "across, subtract the stepped-over ground named in";
             yield return "the comment above it, and what is left is the width";
             yield return "that one pass of this bit cuts at that depth.";
+
+            var rungs = report.Lines.Where(l => l.IsLadder).ToList();
+
+            if (rungs.Count > 1)
+            {
+                yield return string.Empty;
+                yield return Invariant(
+                    $"Then {rungs.Count} LADDER RUNGS, all {rungs[0].DepthMm:F3} mm deep,");
+                yield return Invariant(
+                    $"stepping {rungs[0].StepoverMm:F3} up to {rungs[^1].StepoverMm:F3} mm.");
+                yield return "The bottom one should be solid and the top one";
+                yield return "should have copper left standing in it. Find the";
+                yield return "first rung with copper in it: its stepover is what";
+                yield return "this bit really cuts.";
+            }
         }
         else
         {

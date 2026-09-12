@@ -73,6 +73,9 @@ p, li { color: var(--text); }
 
 .lead { color: var(--muted); }
 
+/* One sentence that is the answer to the section around it. */
+.big { font-size: 1.1rem; font-weight: 600; margin: 1.3rem 0; }
+
 code, kbd {
   background: var(--code-bg);
   border-radius: 3px;
