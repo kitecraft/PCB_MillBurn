@@ -5,7 +5,7 @@ GridStripConnector_Panelized-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
   lines     6079
-  sha256    1110eed02562193d
+  sha256    aab69c2cb0a6b0e7
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   51 profiles · inner pieces cut before the frame around them
   summary   50 of them enclose nothing and are cut from the inside — slots, windows, or the channels between the boards of a panel
@@ -20,7 +20,7 @@ GridStripConnector_Panelized-Edge_Cuts.nc
   comment   ( Cut on the outside: 1. Cut from the inside: 50, because they enclose nothing — so the pieces either side of them keep their size. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
   comment   ( Tabs on the 1 outer profile[s] only; the 50 inside are held by whatever joins them in the design. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400
   moves     1059 rapid, 4690 feed, 314 arc
   distance  13208.54 mm cutting, 1850.41 mm travel
@@ -31,7 +31,7 @@ GridStripConnector_Panelized-F_Cu.nc
   operation Isolation routing
   layer     Top copper
   lines     6616
-  sha256    f0a7be90caa636f8
+  sha256    034d12146a891751
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   11329 mm cutting, 924 mm travel
   summary   1h 2m – 1h 4m · 6,615 lines
@@ -42,7 +42,7 @@ GridStripConnector_Panelized-F_Cu.nc
   comment   ( Top copper )
   comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -0.050
   moves     795 rapid, 3168 feed, 2640 arc
   distance  11329.59 mm cutting, 924.04 mm travel

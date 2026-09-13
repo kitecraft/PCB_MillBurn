@@ -23,11 +23,11 @@ test, a measurement — so that "done" means something a reader can check.
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
-| 02 Gerber & geometry | 20 | 15 | 0 | 4 | 1 |
+| 02 Gerber & geometry | 21 | 15 | 0 | 5 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 27 | 8 | 2 | 17 | 0 |
 | 05 Viewer & export | 16 | 6 | 2 | 7 | 1 |
-| **Requirements** | **88** | **44** | **5** | **36** | **3** |
+| **Requirements** | **89** | **44** | **5** | **37** | **3** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 11 physical
 capabilities (5 proven, 2 wanting a re-run, 4 never cut).
@@ -82,6 +82,7 @@ one block is most of what is left.
 | G18 | Job-level options, carried in the project | 06 §5.5.3 | **Done** | `JobOptions`; Project info, and `--mill-holes` on the CLI |
 | G19 | A companion page for the routing program | workshop | **Done** | `RoutingGuide`; names the cutter, and what will not be cut |
 | G20 | A numbered picture of the holes and slots on each companion page | 06 §6.5 | **Not started** | inline SVG; refusals hatched, which is the point |
+| G21 | Tool library: filter by kind, sort, copy a tool | 06 §6.6 | **Not started** | a scannable row may be worth more than all three |
 
 ## 03 — Toolpath optimization
 
@@ -207,6 +208,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.3 Staying down between passes | scheduled | **Done — jumped the queue** |
 | 6.4 Tabs: where, how many, how big | scheduled | **Not started** |
 | 6.5 A picture on the companion pages | scheduled | **Not started** |
+| 6.6 Tool library: filter, sort, copy | scheduled | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

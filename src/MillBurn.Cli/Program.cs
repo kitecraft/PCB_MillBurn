@@ -1036,7 +1036,7 @@ internal static class Program
             StepdownNm = Nm.FromMillimetres(Number("--stepdown", 0)),
             FeedMmPerMin = (long)Number("--feed", 200),
             PlungeMmPerMin = (long)Number("--plunge", 60),
-            SpindleRpm = (int)Number("--rpm", 12_000),
+            SpindleRpm = (int)Number("--rpm", 10_000),
             Notes = Argument(args, "--notes"),
         };
 

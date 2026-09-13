@@ -5,7 +5,7 @@ GridStripConnector-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
   lines     132
-  sha256    e2f9571b69825fee
+  sha256    b8ac1b13f4ee3ceb
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   326 mm cutting, 83 mm travel
   summary   1m 48s – 1m 52s · 131 lines
@@ -15,7 +15,7 @@ GridStripConnector-Edge_Cuts.nc
   comment   ( Board outline )
   comment   ( 5 passes of 0.40 mm to 1.90 mm. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400
   moves     59 rapid, 40 feed, 20 arc
   distance  325.90 mm cutting, 83.46 mm travel
@@ -26,7 +26,7 @@ GridStripConnector-F_Cu.nc
   operation Isolation routing
   layer     Top copper
   lines     116
-  sha256    93c6bb859e50812a
+  sha256    9ae90bf593d54979
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   172 mm cutting, 14 mm travel
   summary   0m 56s – 0m 58s · 115 lines
@@ -36,7 +36,7 @@ GridStripConnector-F_Cu.nc
   comment   ( Top copper )
   comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -0.050
   moves     15 rapid, 48 feed, 40 arc
   distance  171.66 mm cutting, 13.95 mm travel

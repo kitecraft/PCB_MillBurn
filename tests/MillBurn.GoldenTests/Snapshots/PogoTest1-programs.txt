@@ -5,7 +5,7 @@ PogoTest1-B_Cu.nc
   operation Isolation routing
   layer     Bottom copper
   lines     524
-  sha256    4171c8f4121b9f12
+  sha256    c22cdc49fafadeba
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   Mirrored · flip the stock left-to-right
   summary   531 mm cutting, 96 mm travel
@@ -19,7 +19,7 @@ PogoTest1-B_Cu.nc
   comment   ( Bottom copper )
   comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -0.050
   moves     87 rapid, 331 feed, 92 arc
   distance  531.42 mm cutting, 95.86 mm travel
@@ -30,7 +30,7 @@ PogoTest1-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
   lines     134
-  sha256    c63dc949444e660f
+  sha256    cf2fefff1c008de0
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   557 mm cutting, 71 mm travel
   summary   2m 34s – 2m 38s · 133 lines
@@ -40,7 +40,7 @@ PogoTest1-Edge_Cuts.nc
   comment   ( Board outline )
   comment   ( 5 passes of 0.40 mm to 1.90 mm. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400
   moves     59 rapid, 42 feed, 20 arc
   distance  557.18 mm cutting, 71.38 mm travel
@@ -51,7 +51,7 @@ PogoTest1-F_Cu.nc
   operation Isolation routing
   layer     Top copper
   lines     159
-  sha256    86dea96c2b38ccec
+  sha256    06e0537a365991f9
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   319 mm cutting, 88 mm travel
   summary   1m 57s – 2m 1s · 158 lines
@@ -62,7 +62,7 @@ PogoTest1-F_Cu.nc
   comment   ( Top copper )
   comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -0.050
   moves     51 rapid, 56 feed, 39 arc
   distance  319.32 mm cutting, 88.41 mm travel
@@ -73,7 +73,7 @@ PogoTest1-NPTH.nc
   operation Drilling
   layer     Non-plated holes
   lines     31
-  sha256    54655473ca7f5b3b
+  sha256    90b0d4059bdc4dd7
   summary   2 holes in 1 size · 1.90 mm deep (0.30 mm through the back)
   summary   2 holes drilled, 60 mm travel
   summary   0m 18s – 0m 19s · 30 lines
@@ -82,7 +82,7 @@ PogoTest1-NPTH.nc
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Drill 2.20 mm [2 holes] )
   comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
-  control   M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -0.800
   moves     13 rapid, 6 feed, 0 arc
   distance  0.00 mm cutting, 60.12 mm travel
@@ -93,7 +93,7 @@ PogoTest1-PTH.nc
   operation Drilling
   layer     Plated holes
   lines     151
-  sha256    ce30fa549e83121f
+  sha256    7a9838d872098c0b
   summary   16 holes in 2 sizes · 1.90 mm deep (0.30 mm through the back)
   summary   16 holes drilled, 118 mm travel
   summary   2m 23s – 2m 26s · 150 lines
@@ -106,7 +106,7 @@ PogoTest1-PTH.nc
   comment   ( Drill 1.00 mm [8 holes] )
   comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
   comment   ( Change tool to 1.00 mm drill )
-  control   M3 S12000 · M5 · M0 · M3 S12000 · M5 · M30
+  control   M3 S10000 · M5 · M0 · M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -0.800
   moves     84 rapid, 48 feed, 0 arc
   distance  0.00 mm cutting, 117.98 mm travel

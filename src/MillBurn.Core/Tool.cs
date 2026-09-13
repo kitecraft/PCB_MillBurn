@@ -60,7 +60,14 @@ public sealed record Tool
 
     public long PlungeMmPerMin { get; init; } = 60;
 
-    public int SpindleRpm { get; init; } = 12_000;
+    /// <summary>
+    /// Spindle speed. Ten thousand, which is where the hobby machines this targets actually live.
+    ///
+    /// It was 12,000 — a number taken from what a bit that size *wants* rather than from what the
+    /// spindles in front of people will hold. A default that most operators have to change on every
+    /// tool they enter is not a default; it is a step in the workflow.
+    /// </summary>
+    public int SpindleRpm { get; init; } = 10_000;
 
     /// <summary>
     /// Depth at which the cone stops widening, because it has reached the shank. Zero means no
@@ -247,7 +254,7 @@ public sealed record Tool
         MaxDepthNm = Nm.FromMillimetres(1.0),
         FeedMmPerMin = 200,
         PlungeMmPerMin = 60,
-        SpindleRpm = 12_000,
+        SpindleRpm = 10_000,
     };
 
     /// <summary>A 1 mm end mill for cutting the board out.</summary>
@@ -260,7 +267,7 @@ public sealed record Tool
         StepdownNm = Nm.FromMillimetres(0.4),
         FeedMmPerMin = 300,
         PlungeMmPerMin = 60,
-        SpindleRpm = 12_000,
+        SpindleRpm = 10_000,
     };
 
     /// <summary>The template a drill file's sizes are instantiated from.</summary>
@@ -272,7 +279,7 @@ public sealed record Tool
         DiameterNm = Nm.FromMillimetres(1.0),
         FeedMmPerMin = 100,
         PlungeMmPerMin = 100,
-        SpindleRpm = 12_000,
+        SpindleRpm = 10_000,
     };
 
     /// <summary>

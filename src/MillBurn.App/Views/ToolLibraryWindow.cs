@@ -54,7 +54,16 @@ public sealed class ToolLibraryWindow : Window
         Title = "Tools";
         AppIcon.Apply(this);
         Width = 720;
-        Height = 560;
+
+        // Tall enough for the longest form the window can show, so nobody has to resize it to read
+        // the field they came for.
+        //
+        // 560 was a hair short, and it was short in the one place that matters: a V-bit has the most
+        // rows — name, kind, included angle, tip width, cone depth, feed, plunge, spindle, notes —
+        // and the spindle speed sat half below the fold with the scrollbar the only clue. Nine rows
+        // at 54 px, the notes box at 74, the cut-width panel and the buttons under them.
+        Height = 690;
+        MinHeight = 620;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         _list.SelectionChanged += (_, _) => Load(_list.SelectedItem as Tool);
@@ -154,7 +163,7 @@ public sealed class ToolLibraryWindow : Window
         _stepdown.Text = Mm(tool?.StepdownNm ?? 0);
         _feed.Text = (tool?.FeedMmPerMin ?? 200).ToString(CultureInfo.InvariantCulture);
         _plunge.Text = (tool?.PlungeMmPerMin ?? 60).ToString(CultureInfo.InvariantCulture);
-        _rpm.Text = (tool?.SpindleRpm ?? 12_000).ToString(CultureInfo.InvariantCulture);
+        _rpm.Text = (tool?.SpindleRpm ?? 10_000).ToString(CultureInfo.InvariantCulture);
         _notes.Text = tool?.Notes ?? string.Empty;
 
         ShowFieldsForKind();
@@ -276,7 +285,7 @@ public sealed class ToolLibraryWindow : Window
             StepdownNm = Nm.FromMillimetres(Number(_stepdown, 0)),
             FeedMmPerMin = (long)Number(_feed, 200),
             PlungeMmPerMin = (long)Number(_plunge, 60),
-            SpindleRpm = (int)Number(_rpm, 12_000),
+            SpindleRpm = (int)Number(_rpm, 10_000),
             Notes = string.IsNullOrWhiteSpace(_notes.Text) ? null : _notes.Text!.Trim(),
         };
     }

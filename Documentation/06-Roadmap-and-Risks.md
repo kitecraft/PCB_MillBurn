@@ -1891,6 +1891,7 @@ the left and right borders differ.
 - **Staying down between passes that touch** — done. See 6.3.
 - **Tabs: where, how many, how big.** See 6.4.
 - **A picture on the companion pages**, with the holes and slots numbered in run order. See 6.5.
+- **The tool library, once it has more than a handful in it** — filter, sort, copy. See 6.6.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2153,6 +2154,53 @@ a number. They are the only thing on the page that cannot be checked against the
 order, a routing page shows its slots with direction and its refusals hatched, the Mega's 44-hole
 step degrades to dots without becoming unreadable, and every page is still one file that opens with
 no network.
+
+#### 6.6 The tool library, once it has more than a handful in it — **scheduled, not started**
+
+Requested from the workshop: **filter by tool type, sorting, and copy a tool.** All three are the
+same symptom — the list was designed for the six tools it shipped with, and a library grows.
+
+**The list is insertion-ordered**, which is not an order. A library added to over months puts the
+0.5 mm end mill bought last Tuesday between a V-bit and a drill, and the only way to find anything
+is to read every row. That is the defect the three requests are circling.
+
+**A better row may be worth more than all three.** Each entry shows a name and nothing else, and a
+name is whatever somebody typed — "1mm Corn Endmill" and "1.2 mm end mill" sit in the same list
+with no common shape. A row that showed the kind as a small mark, the name, and the diameter or tip
+in a column of its own would make the list scannable without sorting or filtering it, and the two
+features would then be for the case where it is genuinely long. Build the row first and see what is
+left to want.
+
+Then, in the order they earn their place:
+
+**Copy.** The one with the most value and the least design. Tools come in families — a 0.8 and a
+1.0 end mill share their feeds, their stepdown philosophy and their notes, and entering the second
+from scratch is retyping the first. It is also how a variant for a different material gets made.
+
+> **It must not copy the id.** `Tool.Id` is what a project stores, and two tools sharing one are the
+> same tool to everything downstream: a job that named the copy would silently cut with the
+> original. New `Guid`, name suffixed with "(copy)", selected with the name box focused so the first
+> keystroke renames it.
+
+**Sorting** by name, by kind, or by diameter. Diameter is the one that matters, because it is how
+anybody thinks about a drawer of bits, and it wants the tip width standing in for a V-bit's
+diameter so the two sort together rather than a V-bit landing at zero.
+
+> **Sort the view, never the file.** `tools.json` keeps its order: it is diffable, it is what a
+> person reads when something goes wrong, and rewriting it on every visit to the window turns a
+> change of sort into a change of file. Nothing about the library's behaviour depends on its
+> order — selection is by id — so there is no reason for the sort to be persistent, or even saved.
+
+**Filter by kind**, which is three buttons rather than a dropdown: a dropdown hides which filter is
+on, and a filter you cannot see is how somebody concludes their tools have vanished.
+
+> **New and Copy must defeat the filter.** A tool created while a filter would hide it has to appear
+> and be selected anyway, or the button looks broken. The honest behaviour is to clear the filter
+> rather than to make an exception to it, so what is on screen always matches what the controls say.
+
+**Done when** a library of thirty tools can be sorted by diameter and filtered to end mills, a tool
+can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
+byte-identical after a session that only looked at it.
 
 ### Phase 7 — User documentation — **started**
 
