@@ -2178,8 +2178,24 @@ Worth having, roughly in this order:
 lesson from the bug is that the split must be computed on arc length within a segment and never on
 which vertices happen to exist.
 
+##### Found since, and waiting for this
+
+- **The tab height in the program's comment can be false.** A pass counts as "tabbed" once it is
+  deeper than `total − TabHeightNm − BreakThroughNm`, and a tabbed pass jumps the tab entirely.
+  Nothing ever cuts the tab region down to the tab's top. So when *every* pass is tabbed — a thin
+  board, a big stepdown — the tab is left the full board thickness. Measured on the test board: 0.8 mm
+  board, 0.5 mm stepdown, 0.1 mm through, so the threshold is 0.3 mm and both passes (0.5 and 0.9 mm)
+  jump the tab. The program says `0.50 mm of material left under each`; 0.8 mm is left. It is the
+  same rule in the blank (`BlankOperation`) and the board outline (`OutlineOperation`). The fix is a
+  pass over each tab at exactly the tab's top, and a comment built from what was emitted.
+- **The blank's tabs are on the top and right edges only**, two per edge, by design: the bottom and
+  left are the datum and must be cut clean. Workshop, on seeing them: *"We can deal with that when
+  we get to the tabs upgrades."* Whatever placement this phase adds has to keep that rule for the
+  blank — a tab stub on a datum edge stops the piece seating, invisibly.
+
 **Done when** a rectangular board puts one centred tab on each edge by default, any of them can be
-moved and resized individually, and the emitted gaps land where the picture says they will.
+moved and resized individually, the emitted gaps land where the picture says they will, and the
+material left under a tab is the height the program says it is.
 
 #### 6.5 A picture on the companion pages — **scheduled, not started**
 
