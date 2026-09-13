@@ -46,6 +46,16 @@ public sealed record ExportItem
     /// <summary>A page written beside this file to explain it, or null.</summary>
     public ExportCompanion? Companion { get; init; }
 
+    /// <summary>
+    /// Whether bending this program to a probed surface means anything.
+    ///
+    /// False for the blank. It is cut through, with depth to spare, before the stock is probed at
+    /// all — the probe is zeroed on the corner the blank makes — so a levelled copy could only be
+    /// levelled against a map of a piece that did not exist yet, and its being written at all
+    /// suggested the blank needed one.
+    /// </summary>
+    public bool Levellable { get; init; } = true;
+
     public int Bytes => System.Text.Encoding.UTF8.GetByteCount(Content);
 }
 
@@ -748,6 +758,7 @@ public static class ExportPlanner
         return new ExportItem
         {
             LayerFileName = "(blank)",
+            Levellable = false,
             LayerLabel = "Blank",
             Role = LayerRole.Unknown,
             Operation = OperationKind.Outline,

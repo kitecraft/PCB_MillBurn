@@ -145,9 +145,17 @@ public static class Leveller
         // runs off the probed area has to be caught here rather than levelled region by region:
         // the answer is to probe a bigger area, and finding that out after the file is written
         // helps nobody.
+        //
+        // Only moves that go below the surface count. A move held in the air is corrected too, but
+        // with the nearest edge value, and a tenth of a millimetre either way at safe height changes
+        // nothing. Counting them refused every program on a job built on a blank: the grid covers
+        // the board, work zero is the blank's corner, and both the park move home to X0 Y0 at the
+        // end of every file and the parser's starting position at X0 Y0 Z0 before the first lift
+        // land a border's width off the map — 15.6 mm on a 10 mm border — while every cut in the
+        // file is inside it. Below, not at: that starting position is at Z0 and cuts nothing.
         var outside = 0.0;
 
-        foreach (var move in parsed.Moves)
+        foreach (var move in parsed.Moves.Where(m => Math.Min(m.FromZNm, m.ToZNm) < 0))
         {
             outside = Math.Max(outside, Math.Max(map.OutsideByMm(move.From), map.OutsideByMm(move.To)));
         }

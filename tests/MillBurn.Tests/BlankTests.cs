@@ -572,6 +572,24 @@ public sealed class BlankTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// The blank is never levelled; everything else still can be.
+    ///
+    /// It is cut through, with depth to spare, before the stock is probed — the probe is zeroed on the
+    /// corner the blank makes. A levelled copy of it could only follow a map of a piece that did not
+    /// exist yet, and writing one suggested the blank needed it.
+    /// </summary>
+    [Fact]
+    public void TheBlankIsNeverLevelled()
+    {
+        var plan = Plan(new BlankOptions { Enabled = true });
+
+        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal));
+
+        Assert.False(blank.Levellable);
+        Assert.All(plan.Items.Where(i => i != blank && i.Output == OutputKind.Gcode), i => Assert.True(i.Levellable, i.TargetName));
+    }
+
     private sealed record Move(bool Rapid, double FromX, double FromY, double FromZ, double X, double Y, double Z);
 
     /// <summary>Every G0 and G1, with where it started from — enough to see lifts, plunges and edges.</summary>

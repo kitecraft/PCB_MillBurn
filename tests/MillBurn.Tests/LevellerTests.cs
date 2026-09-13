@@ -363,6 +363,51 @@ public sealed class LevellerTests(ITestOutputHelper output)
         Assert.Contains("X260.000", text, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A move in the air may leave the map; only a cut may not.
+    ///
+    /// Found on a job built on a blank. The grid covers the board and work zero is the blank's corner,
+    /// so the map does not reach X0 Y0 — and two things in every program are there: where the reader
+    /// assumes the tool starts, before the first lift, and the park move home at the end. Every cut
+    /// was inside the map, and every program was refused as "15.6 mm outside the probed area".
+    ///
+    /// The map here starts 20 mm in from zero for the same reason, and the program has the same shape
+    /// as an exported one: a first lift from the origin, cuts on the board, and a park home.
+    /// </summary>
+    [Fact]
+    public void MovesInTheAirOffTheMapAreNotARefusal()
+    {
+        var samples = new List<ProbeSample>();
+
+        for (var x = 20; x <= 120; x += 50)
+        {
+            for (var y = 20; y <= 120; y += 50)
+            {
+                samples.Add(new ProbeSample(P(x, y), Nm.FromMillimetres(0.002 * x)));
+            }
+        }
+
+        var clearOfZero = HeightMap.Build(samples, new HeightMapOptions { ZeroAt = null });
+
+        var (text, report) = Leveller.Apply("""
+            G21 G90
+            G0 Z2.000
+            G0 X30.000 Y30.000
+            G0 Z0.500
+            G1 Z-0.050 F100
+            G1 X50.000 Y30.000 F200
+            G0 Z2.000
+            G0 X0.000 Y0.000
+            M30
+            """, clearOfZero);
+
+        output.WriteLine($"refusal: {report.Refusal ?? "none"}, furthest outside {report.FurthestOutsideMm:F1} mm");
+
+        Assert.Null(report.Refusal);
+        Assert.True(report.FurthestOutsideMm < 1, "only the cut is measured against the map");
+        Assert.Contains("X50.000", text, StringComparison.Ordinal);
+    }
+
     /// <summary>Under G91 a Z word is a change rather than a position, so there is nothing to correct.</summary>
     [Fact]
     public void IncrementalModeIsRefused()

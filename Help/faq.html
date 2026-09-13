@@ -654,6 +654,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     <strong>Job &rsaquo; Write probing routine&hellip;</strong> Put a probe on the tool and a clip
     on the copper, set work zero exactly as you would for the real job, and run the file. It touches
     off a grid over the board &mdash; ten millimetres apart by default, about four seconds a touch.
+    On a job built on a blank, <strong>cut the blank first</strong> and zero on its corner: the grid
+    still covers only the board, but measured from the blank&rsquo;s corner like every other file.
+    The border is not probed &mdash; the blank is cut through, so nothing there needs levelling.
   </li>
   <li>
     <strong>Save your sender's log</strong>, then <strong>Job &rsaquo; Import height map&hellip;</strong>
@@ -664,7 +667,8 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </li>
   <li>
     <strong>Export</strong> with <em>Level to the imported height map</em> ticked. Each program gets
-    a <code>.levelled.nc</code> beside it whose depth follows the surface.
+    a <code>.levelled.nc</code> beside it whose depth follows the surface &mdash; except the blank,
+    which was cut before there was anything to probe.
   </li>
 </ol>
 

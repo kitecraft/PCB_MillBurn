@@ -1613,11 +1613,12 @@ internal static class Program
 
         if (args.Contains("--probe", StringComparer.OrdinalIgnoreCase))
         {
-            // In the plan's frame, so the map is measured where the programs will use it.
+            // Over the board, in the plan's frame, so the map is measured where the programs use it.
             var frame = plan.FrameFor(board.Bounds);
 
-            var (routine, plan2) = ProbeRoutine.Generate(frame, new ProbeRoutineOptions
+            var (routine, plan2) = ProbeRoutine.Generate(board.Bounds, new ProbeRoutineOptions
             {
+                WorkZero = new Point2(frame.MinX, frame.MinY),
                 SpacingMm = Number(args, "--spacing", app.Probe.SpacingMm),
                 FeedMmPerMin = app.Probe.FeedMmPerMin,
                 MaxDepthMm = app.Probe.MaxDepthMm,
@@ -1734,7 +1735,12 @@ internal static class Program
                 Line($"  {"",-4}{note}");
             }
 
-            if (map is not null && item.Output == OutputKind.Gcode
+            if (map is not null && item.Output == OutputKind.Gcode && !item.Levellable)
+            {
+                // Said, not refused: this is the design rather than a problem with the map.
+                Line($"  {"",-4}not levelled — cut through before anything is probed");
+            }
+            else if (map is not null && item.Output == OutputKind.Gcode
                 && Leveller.WhyNotLevel(item.Mirrored, LevelFlipped(args)) is { } flipped)
             {
                 // One export cannot level both sides from one map, and the side it cannot level is
@@ -2076,11 +2082,13 @@ internal static class Program
                 ?? new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role, app.Import) },
             StringComparer.Ordinal);
 
+        // The grid covers the board; on a blank, work zero is the blank's corner.
         var blank = ExportPlanner.BlankFor(board, settings, ToolLibrary.LoadOrDefault(), JobFor(args, project));
-        var region = blank.Resolved ? blank.Bounds : board.Bounds;
+        var frame = blank.Resolved ? blank.Bounds : board.Bounds;
 
         var options = new ProbeRoutineOptions
         {
+            WorkZero = new Point2(frame.MinX, frame.MinY),
             SpacingMm = Number(args, "--spacing", saved.SpacingMm),
             MaxDepthMm = Number(args, "--depth", saved.MaxDepthMm),
             FeedMmPerMin = Number(args, "--feed", saved.FeedMmPerMin),
@@ -2089,7 +2097,7 @@ internal static class Program
             OnBlank = blank.Resolved,
         };
 
-        var (text, report) = ProbeRoutine.Generate(region, options);
+        var (text, report) = ProbeRoutine.Generate(board.Bounds, options);
 
         var output = Argument(args, "-o") ?? Argument(args, "--out")
             ?? Path.Combine(
@@ -2105,7 +2113,7 @@ internal static class Program
 
         if (blank.Resolved)
         {
-            Line($"  blank       {Nm.ToMillimetreString(region.Width, 2)} x {Nm.ToMillimetreString(region.Height, 2)} mm, probed edge to edge; work zero is its corner");
+            Line($"  blank       {Nm.ToMillimetreString(frame.Width, 2)} x {Nm.ToMillimetreString(frame.Height, 2)} mm — work zero is its corner; the board is probed, not the border");
         }
 
         Line($"  grid        {report.Columns} x {report.Rows} = {report.PointCount} touches, {report.SpacingMm:F1} mm apart");

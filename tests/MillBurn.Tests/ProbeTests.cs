@@ -148,29 +148,29 @@ public sealed class ProbeTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// On a blank the header moves work zero to the blank's corner, and warns that the grid now
-    /// crosses the border — which, unlike a bare board, is exactly where a clamp gets put.
+    /// On a blank the header puts work zero on the blank's corner, and says why the border is not
+    /// probed — somebody who has just cut a blank will reasonably wonder.
     /// </summary>
     [Fact]
-    public void OnABlankTheHeaderSaysSoAndWarnsAboutClamps()
+    public void OnABlankTheHeaderSaysWhereZeroIsAndWhyTheBorderIsNotProbed()
     {
         var text = ProbeRoutine.Generate(Board(80, 60), new ProbeRoutineOptions { OnBlank = true }).Text;
 
         Assert.Contains("BLANK's lower-left corner", text, StringComparison.Ordinal);
-        Assert.Contains("clamps", text, StringComparison.Ordinal);
+        Assert.Contains("not the blank's border", text, StringComparison.Ordinal);
         Assert.DoesNotContain("board's lower-left", text, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// The probe grid for a job on a blank is the blank, in the blank's frame — the same rectangle
-    /// the export shifts every program by.
+    /// A job on a blank probes the board, in the blank's frame.
     ///
-    /// It used to be the board, referenced to the board's corner, beside programs referenced to the
-    /// blank's: a surface measured ten millimetres from where every correction is applied, while
-    /// the probing file and the programs each looked entirely reasonable on their own.
+    /// The board, because that is where everything shallow enough to need levelling is cut: the blank
+    /// is cut through before anything is probed. The blank's frame, because every program is
+    /// referenced to its corner — probed from the board's corner, the map sits a border's width from
+    /// where every correction is applied, while both files look entirely reasonable on their own.
     /// </summary>
     [Fact]
-    public void AJobOnABlankIsProbedInTheBlanksFrame()
+    public void AJobOnABlankProbesTheBoardInTheBlanksFrame()
     {
         var board = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
 
@@ -190,14 +190,24 @@ public sealed class ProbeTests(ITestOutputHelper output)
         Assert.Equal(plan.FrameFor(board.Bounds), blank.Bounds);
         Assert.NotEqual(board.Bounds, blank.Bounds);
 
-        var touches = Touches(ProbeRoutine.Generate(blank.Bounds, new ProbeRoutineOptions { OnBlank = true }).Text);
+        var touches = Touches(ProbeRoutine.Generate(board.Bounds, new ProbeRoutineOptions
+        {
+            WorkZero = new Point2(blank.Bounds.MinX, blank.Bounds.MinY),
+            OnBlank = true,
+        }).Text);
 
-        output.WriteLine($"blank {Mm(blank.Bounds.Width):F2} x {Mm(blank.Bounds.Height):F2} mm, {touches.Count} touches");
+        // Where the board sits on the blank, in the programs' coordinates.
+        var left = Mm(board.Bounds.MinX - blank.Bounds.MinX);
+        var bottom = Mm(board.Bounds.MinY - blank.Bounds.MinY);
 
-        Assert.Equal(1, Mm(touches.Min(t => t.X)), 3);
-        Assert.Equal(1, Mm(touches.Min(t => t.Y)), 3);
-        Assert.Equal(Mm(blank.Bounds.Width) - 1, Mm(touches.Max(t => t.X)), 3);
-        Assert.Equal(Mm(blank.Bounds.Height) - 1, Mm(touches.Max(t => t.Y)), 3);
+        output.WriteLine($"board at {left:F2}, {bottom:F2} on the blank; {touches.Count} touches");
+
+        Assert.True(left > 1 && bottom > 1, "the test needs a border to mean anything");
+
+        Assert.Equal(left + 1, Mm(touches.Min(t => t.X)), 3);
+        Assert.Equal(bottom + 1, Mm(touches.Min(t => t.Y)), 3);
+        Assert.Equal(left + Mm(board.Bounds.Width) - 1, Mm(touches.Max(t => t.X)), 3);
+        Assert.Equal(bottom + Mm(board.Bounds.Height) - 1, Mm(touches.Max(t => t.Y)), 3);
     }
 
     [Fact]

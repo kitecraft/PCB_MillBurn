@@ -485,14 +485,16 @@ public sealed partial class MainViewModel : ViewModelBase
 
         try
         {
-            // The frame the programs are written in, not the board. On a blank the grid covers the
-            // blank and is referenced to its corner; referenced to the board's corner instead, the
-            // map is measured a border's width away from where every correction is applied.
+            // Over the board, in the frame the programs are written in. On a blank the grid still
+            // covers only the board — the blank is cut through before anything is probed and needs no
+            // map — but its coordinates are measured from the blank's corner. From the board's corner
+            // instead, the map sits a border's width from where every correction is applied.
             var frame = Frame;
             var onBlank = frame != _board.Bounds;
 
-            var (text, report) = ProbeRoutine.Generate(frame, new ProbeRoutineOptions
+            var (text, report) = ProbeRoutine.Generate(_board.Bounds, new ProbeRoutineOptions
             {
+                WorkZero = new Point2(frame.MinX, frame.MinY),
                 SpacingMm = Settings.Probe.SpacingMm,
                 FeedMmPerMin = Settings.Probe.FeedMmPerMin,
                 MaxDepthMm = Settings.Probe.MaxDepthMm,
@@ -508,7 +510,7 @@ public sealed partial class MainViewModel : ViewModelBase
             StatusMessage = string.Create(
                 System.Globalization.CultureInfo.InvariantCulture,
                 $"Wrote a {report.Columns} x {report.Rows} probing grid ({report.PointCount} touches, "
-                + $"about {minutes:F0} min{(onBlank ? ", covering the blank" : string.Empty)}) to {path}.");
+                + $"about {minutes:F0} min{(onBlank ? ", zeroed on the blank's corner" : string.Empty)}) to {path}.");
 
             return true;
         }
@@ -736,7 +738,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
             if (level && Surface is { } surface)
             {
-                foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode))
+                // Not the blank: it is cut through before anything is probed. See Levellable.
+                foreach (var item in plan.Items.Where(i => i.Output == OutputKind.Gcode && i.Levellable))
                 {
                     // A map measured before the stock was turned over describes the other face, in
                     // coordinates that have since been mirrored. One export cannot level both

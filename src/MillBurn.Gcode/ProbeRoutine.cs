@@ -53,11 +53,17 @@ public sealed record ProbeRoutineOptions
     public int MaxPoints { get; init; } = 200;
 
     /// <summary>
-    /// Whether the region is a blank rather than the board, which changes what the header says.
+    /// Where work zero is, in the same coordinates as the region, or null for the region's own
+    /// lower-left corner.
     ///
-    /// Work zero moves to the blank's corner, and the grid covers the border as well — where, unlike
-    /// on a bare board, a clamp is a natural thing to have put.
+    /// Separate from the region because on a blank they differ. The grid covers the board — the
+    /// only place anything shallow enough to need levelling is cut — but every program is
+    /// referenced to the blank's corner, and a map in any other frame is measured a border's width
+    /// from where its corrections are applied.
     /// </summary>
+    public Point2? WorkZero { get; init; }
+
+    /// <summary>Whether work zero is a blank's corner, which changes what the header says.</summary>
     public bool OnBlank { get; init; }
 }
 
@@ -114,13 +120,14 @@ public static class ProbeRoutine
             notes.Add("The board is too small for the usual 1 mm edge margin; used a narrower one.");
         }
 
-        // Emitted relative to the region's own lower-left corner, because that is where work zero
-        // is for every other file in the export (Help/faq.html, "Where is work zero?"). A probing
-        // routine that used raw Gerber coordinates would measure a surface in a different frame
-        // from the one the cutting files are in, and the levelling would be nonsense — while
-        // looking perfectly reasonable in both files.
-        var minX = margin;
-        var minY = margin;
+        // Emitted relative to work zero — the region's own lower-left corner unless told otherwise —
+        // because that is where zero is for every other file in the export (Help/faq.html, "Where is
+        // work zero?"). A probing routine in any other frame, raw Gerber coordinates or the board's
+        // corner on a job built on a blank, measures a surface somewhere other than where the
+        // cutting files use it, and the levelling is nonsense while both files look reasonable.
+        var zero = options.WorkZero ?? new Point2(region.MinX, region.MinY);
+        var minX = region.MinX - zero.X + margin;
+        var minY = region.MinY - zero.Y + margin;
         var width = region.Width - (2 * margin);
         var height = region.Height - (2 * margin);
 
@@ -215,9 +222,8 @@ public static class ProbeRoutine
             lines.Add(Boxed("Work zero is the BLANK's lower-left corner, the same"));
             lines.Add(Boxed("as every other file in this export."));
             lines.Add(Boxed(string.Empty));
-            lines.Add(Boxed("The grid covers the whole blank, border included."));
-            lines.Add(Boxed(Invariant($"Between touches it travels at Z{start}: keep")));
-            lines.Add(Boxed("clamps and anything else off the blank."));
+            lines.Add(Boxed("The grid covers the board, not the blank's border:"));
+            lines.Add(Boxed("the blank is cut through, and needs no levelling."));
         }
         else
         {
