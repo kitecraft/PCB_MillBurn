@@ -126,7 +126,7 @@ the condition a workshop is usually in.
 | Layer | Set it to | You get |
 |---|---|---|
 | Top / bottom copper | G-code | Isolation routing around every trace and pad |
-| Plated / non-plated holes | G-code | A drilling program with tool changes, plus its HTML guide |
+| Plated / non-plated holes | G-code | A drilling program with tool changes, plus its HTML guide — and a `.slots.nc` beside it for any routed slots |
 | Board outline | G-code | Cut-out with tabs, in depth passes |
 | Soldermask | G-code | Mask relief — mills the mask off the pads only |
 
@@ -274,9 +274,11 @@ Deliberate, all of it.
   material, all of which live in your laser software beside a calibrated material library. A number
   held here would go stale the moment any of them changed, with nothing to say so — and two tools
   each applying an offset gives you a doubly compensated board that looks wrong in neither.
-- **Mill slotted holes** &mdash; yet. A slot needs an end mill, not a drill, so it is a different
-  tool and a different motion from everything else in a drilling program. It is scheduled. Until
-  then the export **says** which slots it is not making, rather than leaving them out quietly.
+- **Invent a cutter you do not own.** Slots are routed from your tool library, never from a
+  synthesised bit: the widest end mill that fits the slot and reaches through the board. If nothing
+  in the library fits, that slot is refused by name — how wide it is, and the narrowest cutter you
+  have listed — while the slots that *can* be cut still are. A program that depends on a tool you do
+  not own is a file written for a machine that cannot run it.
 - **Guess.** Where the honest answer is "this file does something I cannot safely handle", it says
   so and hands the file back unchanged.
 
@@ -325,8 +327,9 @@ simplification and arc fitting (a panel's isolation goes from 301,097 lines to 1
 settings read from a controller's own `$` dump, custom start/end G-code, the standalone G-code
 viewer.
 
-Next: **slots, mill-drill and library-aware tool selection** — an end mill moving sideways at
-depth is a slot and is also a hole too big to drill, and neither can pick its own cutter today.
+Next: **mill-drill** — a hole too big for any drill you own, spiralled out with an end mill.
+Slots and library-aware tool selection landed with it in mind: an end mill moving sideways at depth
+is a slot and is also a hole too big to drill, and the cutter for both now comes from the library.
 Then **the blank** — the app cuts you a piece of stock and its edges become the datum for every
 machine and every step after it, which removes fiducials, dowel pins and the design rule that goes
 with them. Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF

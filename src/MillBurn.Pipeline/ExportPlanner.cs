@@ -147,6 +147,21 @@ public static class ExportPlanner
             }
 
             items.Add(item);
+
+            // Slots get their own file. A run that alternates drills and end mills is a tool change
+            // the drilling companion page cannot describe honestly, and the two are different
+            // operations with different feeds — so `Board-PTH.slots.nc` sits beside the drilling
+            // program with its own line in this list.
+            if (operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode)
+            {
+                var routed = PlanSlots(board, layer, setting, library, boardThicknessNm, machine, effort,
+                    framing, machineSettings ?? new MachineSettings());
+
+                if (routed is not null)
+                {
+                    items.Add(routed);
+                }
+            }
         }
 
         return new ExportPlan { Items = items, Skipped = skipped };
@@ -298,7 +313,7 @@ public static class ExportPlanner
         IReadOnlyList<Toolpath> toolpaths = operation switch
         {
             OperationKind.Isolation => Only(BuildIsolation(layer, setting, tool, summary, warnings)),
-            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, summary, warnings),
+            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, library, summary, warnings),
             OperationKind.Outline => Only(BuildOutline(board, layer, setting, tool, boardThicknessNm, summary, warnings)),
             OperationKind.Engrave => Only(BuildEngrave(layer, setting, tool, summary)),
             OperationKind.Pocket => Only(BuildPocket(layer, setting, tool, summary, warnings)),
@@ -311,6 +326,124 @@ public static class ExportPlanner
         {
             return null;
         }
+
+        return Assemble(
+            board, layer, setting, operation, toolpaths, tool, summary, warnings,
+            TargetNameFor(layer.FileName, operation, OutputKind.Gcode),
+            LayerOperations.Label(operation),
+            boardThicknessNm, machine, effort, framing, machineSettings, companion: true);
+    }
+
+    /// <summary>
+    /// The slots in a drill file, as their own routing program.
+    ///
+    /// Null when there are no slots, or when none of them can be cut with anything in the library —
+    /// in which case the refusals are already on the drilling item, which is where somebody looking
+    /// at this board will see them.
+    /// </summary>
+    private static ExportItem? PlanSlots(
+        Board board,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        ToolLibrary library,
+        long boardThicknessNm,
+        MachineProfile? machine,
+        RouteEffort effort,
+        ProgramFraming? framing,
+        MachineSettings machineSettings)
+    {
+        if (layer.Drill is null || layer.Drill.Slots.Count == 0)
+        {
+            return null;
+        }
+
+        var options = new SlotOptions
+        {
+            BoardThicknessNm = boardThicknessNm,
+            BreakThroughNm = setting.BreakThroughNm,
+        };
+
+        var targets = new List<DrillSlotTarget>(layer.Drill.Slots.Count);
+
+        for (var i = 0; i < layer.Drill.Slots.Count; i++)
+        {
+            var slot = layer.Drill.Slots[i];
+            var width = layer.Drill.Tools.TryGetValue(slot.Tool, out var t) ? t.DiameterNm : 0;
+
+            if (width > 0)
+            {
+                targets.Add(new DrillSlotTarget(i, slot.From, slot.To, width));
+            }
+        }
+
+        var plan = SlotOperation.Build(targets, library, options, layer.Label);
+        var summary = new List<string>();
+        var warnings = new List<string>();
+
+        // Said on this item and on the drilling item both, because the two are read in different
+        // moods: here by somebody deciding whether to run this file, there by somebody who thinks
+        // the holes are all accounted for.
+        foreach (var refusal in plan.Refusals)
+        {
+            warnings.Add(Invariant(
+                $"{(refusal.Count == 1 ? "1 slot" : $"{refusal.Count} slots")} {Nm.ToMillimetreString(refusal.WidthNm, 2)} mm wide are NOT cut: {refusal.Reason}. Cut them yourself, or the parts that need them will not fit."));
+        }
+
+        if (plan.Toolpaths.Count == 0)
+        {
+            return null;
+        }
+
+        summary.AddRange(plan.Summary);
+
+        var depth = Nm.ToMillimetreString(options.TotalDepthNm, 2);
+        var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
+        summary.Add(Invariant($"{depth} mm deep ({through} mm through the back), ramped not plunged"));
+
+        if (plan.RefusedCount > 0)
+        {
+            summary.Add(Invariant(
+                $"{plan.CutCount} of {plan.CutCount + plan.RefusedCount} slots — the rest have no cutter"));
+        }
+
+        // The tool on the item is only for the advice line; each toolpath carries its own.
+        var tool = plan.Toolpaths[0].Tool;
+        warnings.AddRange(ToolAdvice.For(tool));
+
+        return Assemble(
+            board, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
+            Path.GetFileNameWithoutExtension(layer.FileName) + ".slots.nc",
+            "Routed slots",
+            boardThicknessNm, machine, effort, framing, machineSettings, companion: false);
+    }
+
+    /// <summary>
+    /// Everything between a set of toolpaths and a file: order them, emit, measure, describe.
+    ///
+    /// Extracted because slots are a second program from the same layer — same board, same work
+    /// zero, same ordering and simplification and reporting — differing only in which toolpaths go
+    /// in and what the file is called. Two copies of this would be two places for a fix to land in
+    /// one of.
+    /// </summary>
+    private static ExportItem? Assemble(
+        Board board,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        OperationKind operation,
+        IReadOnlyList<Toolpath> toolpaths,
+        Tool tool,
+        List<string> summary,
+        List<string> warnings,
+        string target,
+        string jobLabel,
+        long boardThicknessNm,
+        MachineProfile? machine,
+        RouteEffort effort,
+        ProgramFraming? framing,
+        MachineSettings machineSettings,
+        bool companion)
+    {
+        _ = tool;
 
         // Each file is referenced to the board's own corner, so every one of them shares a work
         // zero the operator can actually touch off on.
@@ -396,7 +529,7 @@ public static class ExportPlanner
 
         var job = new Job
         {
-            Name = Path.GetFileNameWithoutExtension(layer.FileName) + " — " + LayerOperations.Label(operation),
+            Name = Path.GetFileNameWithoutExtension(layer.FileName) + " — " + jobLabel,
             Toolpaths = prepared,
             OriginShift = shift,
             Notes = notes,
@@ -470,8 +603,6 @@ public static class ExportPlanner
             warnings.Add(Invariant($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this."));
         }
 
-        var target = TargetNameFor(layer.FileName, operation, OutputKind.Gcode);
-
         return new ExportItem
         {
             LayerFileName = layer.FileName,
@@ -484,7 +615,7 @@ public static class ExportPlanner
             Mirrored = mirrored,
             Summary = summary,
             Warnings = warnings,
-            Companion = operation == OperationKind.Drilling && setting.WriteDrillGuide
+            Companion = companion && operation == OperationKind.Drilling && setting.WriteDrillGuide
                 ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings)
                 : null,
         };
@@ -585,6 +716,7 @@ public static class ExportPlanner
         LayerOutputSettings setting,
         Tool tool,
         long thicknessNm,
+        ToolLibrary library,
         List<string> summary,
         List<string> warnings)
     {
@@ -614,25 +746,27 @@ public static class ExportPlanner
 
         summary.Add(Invariant($"{holes} · {depth} mm deep ({through} mm through the back)"));
 
-        // Slots are in the file, are drawn, and are not made. A slot is a routed feature, not a
-        // plunge, and nothing here routes one yet — so the operator is told, rather than handed a
-        // program that quietly leaves the oval holes out of a board that needs them. Silence here
-        // is the whole failure: the picture on screen shows the slots, so there is nothing to
-        // notice until the connector will not fit.
+        // Slots are routed, not drilled, and they get their own file — see SlotsFor. What belongs
+        // here is only the pointer to it, because a drilling program that silently left the oval
+        // holes out of a board that needs them was the original failure, and the picture on screen
+        // shows the slots either way.
         if (layer.Drill.Slots.Count > 0)
         {
-            var widths = layer.Drill.Slots
-                .Select(s => layer.Drill.Tools.TryGetValue(s.Tool, out var t) ? t.DiameterNm : 0)
-                .Where(w => w > 0)
-                .Distinct()
-                .Order()
-                .Select(w => Nm.ToMillimetreString(w, 2) + " mm")
-                .ToList();
-
             var count = layer.Drill.Slots.Count == 1 ? "1 slot" : Invariant($"{layer.Drill.Slots.Count} slots");
 
-            summary.Add(Invariant($"{count} — not in this program"));
-            warnings.Add(Invariant($"{count} in this layer ({string.Join(", ", widths)} wide) are NOT drilled or routed by this program. They are drawn on screen but nothing here makes them; cut them yourself, or the parts that need them will not fit."));
+            summary.Add(Invariant($"{count} — routed separately, see the .slots.nc beside this"));
+        }
+
+        // The library is a claim about the drawer. Not a refusal — you may well own a bit and not
+        // have entered it — but the export window is where somebody would want to find out that
+        // the run stops for a size they have never listed.
+        var missing = ToolChooser.DrillsNotInLibrary(
+            library, layer.Drill.Hits.Select(h => layer.Drill.Tools.TryGetValue(h.Tool, out var t) ? t.DiameterNm : 0).Where(d => d > 0));
+
+        if (missing.Count > 0)
+        {
+            warnings.Add(Invariant(
+                $"The tool library has no drill of {string.Join(", ", missing.Select(m => Nm.ToMillimetreString(m, 2) + " mm"))}. The program still asks for {(missing.Count == 1 ? "it" : "them")} — check you have {(missing.Count == 1 ? "that bit" : "those bits")} before you start."));
         }
 
         // One file per layer, and the sizes inside it become tool changes rather than more files.

@@ -77,6 +77,7 @@ PogoTest1-NPTH.nc
   summary   2 holes in 1 size · 1.90 mm deep (0.30 mm through the back)
   summary   2 holes drilled, 60 mm travel
   summary   0m 18s – 0m 19s · 30 lines
+  warning   The tool library has no drill of 2.20 mm. The program still asks for it — check you have that bit before you start.
   comment   ( PCB_MillBurn - PogoTest1-NPTH — Drilling )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Drill 2.20 mm [2 holes] )
@@ -97,6 +98,7 @@ PogoTest1-PTH.nc
   summary   16 holes drilled, 118 mm travel
   summary   2m 23s – 2m 26s · 150 lines
   summary   Ordering: 123 mm rapid → 118 mm (4 % less)
+  warning   The tool library has no drill of 1.70 mm. The program still asks for it — check you have that bit before you start.
   comment   ( PCB_MillBurn - PogoTest1-PTH — Drilling )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Drill 1.70 mm [8 holes] )

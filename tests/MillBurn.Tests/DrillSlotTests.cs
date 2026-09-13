@@ -8,11 +8,16 @@ namespace MillBurn.Tests;
 /// <summary>
 /// Slotted holes, end to end — from the file on disk to the sentence the operator reads.
 ///
-/// A slot is a stroke in the drill file, not a flash, and nothing here routes one yet. That is a
-/// gap, and a gap is fine. What is not fine is the way it used to present: the slots were parsed,
-/// realised, drawn on screen and counted in the layer's object total, so the picture was entirely
-/// correct, and then they were dropped from the drilling program with nothing said anywhere. The
-/// first symptom available to anybody was a connector that would not fit a finished board.
+/// A slot is a stroke in the drill file, not a flash. For a long time nothing routed one: the slots
+/// were parsed, realised, drawn on screen and counted in the layer's object total, so the picture
+/// was entirely correct, and then they were dropped from the drilling program with nothing said
+/// anywhere. The first symptom available to anybody was a connector that would not fit a finished
+/// board.
+///
+/// They are routed now — <see cref="SlotRoutingTests"/> covers the cutting — and these tests pin
+/// what the *drilling* item says about them, which is the half that was silent. The drilling
+/// program still does not make them, because a run that alternates drills and end mills is a tool
+/// change the companion page cannot describe honestly. It points at the file that does.
 ///
 /// Found on a real Arduino Mega export — seven plated slots, silently absent. Neither board in the
 /// committed corpus has a slot in it, which is why the fixture here is written rather than loaded.
@@ -113,11 +118,11 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
     // ------------------------------------------------------------------ and the program says so
 
     /// <summary>
-    /// The whole point. Whatever else is true, the export must not be silent about a feature it
-    /// is not making.
+    /// The whole point. Whatever else is true, the drilling item must not be silent about a feature
+    /// it is not making — it now says where it *is* made.
     /// </summary>
     [Fact]
-    public void TheExportSaysTheSlotsAreNotBeingMade()
+    public void TheExportSaysWhereTheSlotsAreMade()
     {
         var item = Drilling();
 
@@ -125,19 +130,19 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
         output.WriteLine(string.Join("\n", item.Warnings));
 
         Assert.Contains(
-            item.Warnings,
-            w => w.Contains("2 slots", StringComparison.Ordinal)
-                && w.Contains("NOT drilled or routed", StringComparison.Ordinal));
+            item.Summary,
+            s => s.Contains("2 slots", StringComparison.Ordinal)
+                && s.Contains(".slots.nc", StringComparison.Ordinal));
     }
 
-    /// <summary>Said on the summary line too, which is what the export window shows first.</summary>
+    /// <summary>Said on the summary line, which is what the export window shows first.</summary>
     [Fact]
     public void TheSummaryCountsThemSeparatelyFromTheHoles()
     {
         var item = Drilling();
 
         Assert.Contains(item.Summary, s => s.Contains("2 holes in 1 size", StringComparison.Ordinal));
-        Assert.Contains(item.Summary, s => s.Contains("2 slots — not in this program", StringComparison.Ordinal));
+        Assert.Contains(item.Summary, s => s.Contains("2 slots", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -214,9 +219,15 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
 
         Assert.Contains(plated.Summary, s => s.Contains("7 slots", StringComparison.Ordinal));
 
-        Assert.Contains(
-            plated.Warnings,
-            w => w.Contains("NOT drilled or routed", StringComparison.Ordinal));
+        // And a routing program exists beside it, cutting the three the shipped library can reach
+        // and naming the four it cannot.
+        var slots = plan.Items.Single(i => i.TargetName.EndsWith(".slots.nc", StringComparison.Ordinal));
+
+        output.WriteLine(string.Join("\n", slots.Summary));
+        output.WriteLine(string.Join("\n", slots.Warnings));
+
+        Assert.Contains(slots.Summary, s => s.Contains("3 of 7 slots", StringComparison.Ordinal));
+        Assert.Contains(slots.Warnings, w => w.Contains("are NOT cut", StringComparison.Ordinal));
     }
 
     /// <summary>

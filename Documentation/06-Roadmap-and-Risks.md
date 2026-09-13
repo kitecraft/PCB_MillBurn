@@ -1566,7 +1566,7 @@ found by a person looking at a real result rather than by anything in the suite.
 
 <a id="phase-55"></a>
 
-### Phase 5.5 — Drilling, finished — **scheduled, not started**
+### Phase 5.5 — Drilling, finished — **two of three built**
 
 Three features that belong to Phase 2 and were left behind when it closed. Numbered 5.5 because
 that is when they were scheduled, not where their subject lives — the same reason Phase 1.5 sits
@@ -1577,7 +1577,7 @@ what both need underneath. An end mill moving laterally at depth, with a proper 
 and is also a hole too big to drill; choosing the cutter that does it is a question neither can
 answer today, because nothing in the drilling path has ever looked at the tool library at all.
 
-#### 5.5.1 Library-aware tool selection — the foundation
+#### 5.5.1 Library-aware tool selection — the foundation — **done**
 
 `DrillAndOutlineOperations` calls `Tool.DrillOf(diameter, template)`: it **synthesises** a drill of
 exactly the diameter the file asked for. There is no notion of a bit you own or do not own, and no
@@ -1605,7 +1605,7 @@ drilling summary when the board wants a drill size the library has never heard o
 you may well own it and not have entered it — but the export window is the right place to find out
 that the run stops for a 0.30 mm bit.
 
-#### 5.5.2 Routing slots
+#### 5.5.2 Routing slots — **done**
 
 An oval or routed hole. Seven per board on both Arduino designs; every KiCad board with a slotted
 pad has some. Currently read, drawn, reported and **not made**, which is the state
@@ -1623,7 +1623,7 @@ pad has some. Currently read, drawn, reported and **not made**, which is the sta
 - **Arcs.** An arc-shaped slot is currently dropped at the parser rather than straightened. It can
   come through as an arc once there is something that can cut one.
 
-#### 5.5.3 Mill-drill for holes too big for any bit
+#### 5.5.3 Mill-drill for holes too big for any bit — **not started**
 
 The same machinery pointed at a circle instead of a line. Helical interpolation with a proper
 lead-in — not pcb2gcode's plunge-and-circle, which
@@ -1635,7 +1635,7 @@ rather than in the drill file, so they are cut as outline profiles and the drill
 a hole it cannot make. A board that puts a 3.2 mm mounting hole in the drill file, on a machine
 whose largest drill is 2 mm, has no correct answer today.
 
-#### 5.5.4 What it refuses
+#### 5.5.4 What it refuses — **done for slots**
 
 This is the part that decides whether the phase is worth having, and it is the reason all three
 belong together: each one introduces a case where **there is no correct program to write**.
@@ -1654,7 +1654,46 @@ belong together: each one introduces a case where **there is no correct program 
   four — not an all-or-nothing failure. The export list already shows one item per file and one
   warning per problem; this fits it.
 
-#### Done when
+#### Done when — **met for slots**
+
+The acceptance test ran exactly as written. With the shipped library the Arduino Uno exports
+`Arduino UNO-PTH-drl.slots.nc` cutting **three of its seven slots** with the 1.0 mm end mill, and
+says on both the slot item and the drilling item that the other four are not cut: *"4 slots 0.60 mm
+wide are NOT cut: no end mill is narrow enough — the smallest in the library is 0.80 mm (0.8 mm end
+mill)."* Add a 0.5 mm end mill and re-export: **seven slots, no refusals**, and the three that were
+already being cut are cut by the same 1.0 mm cutter, because the chooser takes the largest that
+fits rather than the newest. Both halves are pinned in `SlotRoutingTests`.
+
+What it turned into, beyond the specification:
+
+- **`ToolChooser`** answers three questions and tells their refusals apart, because they want
+  different things from the operator: nothing narrow enough (a different cutter), nothing that
+  reaches (a longer one), nothing with room to spiral (a drill instead). `MaxDepthNm` and
+  `FluteLengthNm` are read for the first time; zero means *unstated*, which is not zero.
+- **`ToolpathPass.RampFromNm`** — a pass that descends along its length rather than plunging. The
+  emitter interpolates Z by *distance travelled*, not by segment count, because a racetrack's two
+  straights and two arcs are not the same length and splitting the drop by count would descend four
+  times faster on the short ones. An arc in a ramped pass is a helix, which is what 5.5.3 needs.
+- **A flat lap after the ramps.** A ramp leaves the floor sloping by exactly one stepdown over the
+  length of a lap, and on a slot that has to clear a connector's leg that is the difference between
+  fitting and nearly fitting.
+- **An open slot alternates direction**, so each pass ends where the next begins. A closed racetrack
+  is left alone: reversing it reverses the cutting hand, which belongs to [6.2] rather than to pass
+  numbering.
+- **Drill sizes the library has never heard of** are named on the drilling item. Not a refusal — you
+  may own the bit and not have entered it — but the export window is where somebody wants to find
+  out that the run stops for a 0.30 mm bit. PogoTest1 says it for 2.20 mm and 1.70 mm; the Mega for
+  five sizes.
+
+**Still open: 5.5.3.** Neither committed board has a hole too big to drill — both Arduinos put their
+mounting holes on `Edge_Cuts`, so they are cut as outline profiles and the drilling path never sees
+one. The machinery it needs now exists (the chooser, the ramp, helical arcs through the emitter and
+the leveller), and what it needs decided is the *policy*: when does a hole stop being drilled and
+start being milled? The defensible rule is "larger than the largest drill in your library", which is
+derived from something the operator curates rather than invented — but it changes a program
+silently, so it wants saying out loud before it is built.
+
+#### Original acceptance test
 
 An Arduino Uno exports a slot program that cuts three of its seven slots and says, in the export
 window and in the file, exactly which four it will not cut and why. Add a 0.5 mm end mill to the

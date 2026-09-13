@@ -246,6 +246,10 @@ public static class GcodeEmitter
         var feed = tool.FeedMmPerMin.ToString(CultureInfo.InvariantCulture);
         var first = true;
 
+        // A ramped pass enters at its start depth and descends along its length, so the Z it
+        // arrives at is not the Z it works at.
+        var entry = pass.Ramps ? pass.RampFromNm!.Value : pass.DepthNm;
+
         if (linked)
         {
             // Straight across at depth, cutting. Everything it passes through was cleared by the
@@ -260,12 +264,20 @@ public static class GcodeEmitter
             sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
             sb.Append("G0 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y)).Append('\n');
             sb.Append("G0 Z").Append(mm(options.ApproachZNm)).Append('\n');
-            sb.Append("G1 Z").Append(mm(-pass.DepthNm))
+            sb.Append("G1 Z").Append(mm(-entry))
               .Append(" F").Append(tool.PlungeMmPerMin.ToString(CultureInfo.InvariantCulture)).Append('\n');
         }
 
-        foreach (var segment in pass.Path)
+        // Distance travelled, so a ramp descends evenly along the path rather than evenly per
+        // segment: a racetrack's two straights and two arcs are not the same length, and splitting
+        // the drop between them by count would descend four times faster on the short ones.
+        var total = pass.Ramps ? pass.LengthNm : 0;
+        var travelled = 0.0;
+
+        for (var s = 0; s < pass.Path.Count; s++)
         {
+            var segment = pass.Path[s];
+
             if (segment.IsArc)
             {
                 // Arcs survive from the Gerber to here, so they can be emitted as arcs rather than
@@ -282,6 +294,21 @@ public static class GcodeEmitter
             else
             {
                 sb.Append("G1 X").Append(mm(segment.To.X)).Append(" Y").Append(mm(segment.To.Y));
+            }
+
+            if (pass.Ramps && total > 0)
+            {
+                travelled += segment.IsArc
+                    ? segment.RadiusNm * segment.SweptAngle()
+                    : segment.From.DistanceTo(segment.To);
+
+                // The last one lands on the depth exactly rather than on a number that rounding
+                // walked to, because the next pass starts from it.
+                var z = s == pass.Path.Count - 1
+                    ? pass.DepthNm
+                    : entry + (long)Math.Round((pass.DepthNm - entry) * Math.Min(1.0, travelled / total));
+
+                sb.Append(" Z").Append(mm(-z));
             }
 
             if (first)

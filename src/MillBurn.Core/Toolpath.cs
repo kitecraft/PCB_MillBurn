@@ -27,6 +27,24 @@ public sealed record ToolpathPass
     /// <summary>Depth below the work surface. Positive; the emitter negates it.</summary>
     public required long DepthNm { get; init; }
 
+    /// <summary>
+    /// Depth this pass *starts* at, when it descends along its length instead of plunging.
+    ///
+    /// Null means no ramp: drop to <see cref="DepthNm"/> and cut level, which is right for
+    /// isolation and for an outline. A slot or a milled hole ramps instead, because an end mill
+    /// driven straight down at full depth into FR4 is how small cutters break — and the geometry
+    /// hands us the lead-in for free, since the slot is already a line to descend along. Nullable
+    /// rather than zero-means-none, because a *first* pass ramping from the surface down is the
+    /// ordinary case and zero is its real starting depth.
+    ///
+    /// The emitter interpolates Z by distance travelled, so an arc in a ramped pass becomes a
+    /// helix. That is exactly what milling a hole out is.
+    /// </summary>
+    public long? RampFromNm { get; init; }
+
+    /// <summary>True when this pass descends along its length rather than plunging to depth.</summary>
+    public bool Ramps => RampFromNm is { } from && from != DepthNm;
+
     public bool Closed { get; init; }
 
     /// <summary>
