@@ -115,9 +115,10 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <h2 id="zero">Where is work zero?</h2>
 
 <p>
-  The <strong>lower-left corner of the board</strong> — not of your stock, and not wherever the
-  board happened to sit on the EDA canvas. Every file in one export shares it, and every file says
-  so in its header.
+  The <strong>lower-left corner of the board</strong> — or of the <strong>blank</strong>, when the
+  job is built on one (<em>Project info &rsaquo; Build on a blank</em>). Never wherever the board
+  happened to sit on the EDA canvas. Every file in one export shares it, and every file says so in
+  its header.
 </p>
 
 <p>
@@ -128,8 +129,8 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  So: jog to the lower-left corner of where the board will be, zero X and Y there, and load any of
-  the files. They all agree.
+  So: jog to the lower-left corner of where the board will be &mdash; or of the blank &mdash; zero X
+  and Y there, and load any of the files. They all agree.
 </p>
 
 <h2 id="dryrun">Watching a job before it cuts anything</h2>
@@ -585,6 +586,13 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <strong>The order is a suggestion.</strong> Most of it is physics — the blank has to exist before
   anything is measured from it, and the outline has to be last because after it the board is loose
   — but your board may have a reason to differ.
+</p>
+
+<p>
+  <strong>The blank is cut with the Board outline layer&rsquo;s bit.</strong> There is no separate
+  choice for it, so the first program and the last need no tool change between them. To use a
+  different bit for both, change it on the Board outline row. The blank&rsquo;s line in Project info,
+  the export window, this page and the blank&rsquo;s own program all name it.
 </p>
 
 <p>

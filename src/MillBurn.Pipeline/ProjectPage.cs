@@ -16,6 +16,11 @@ public sealed record ProjectPageContext
 
     public BlankPlan Blank { get; init; } = BlankPlan.None;
 
+    /// <summary>
+    /// The Board outline layer's bit, by name — which also cuts the blank. Null says nothing.
+    /// </summary>
+    public string? OutlineCutter { get; init; }
+
     /// <summary>Anything the export list flagged, so the page carries it too.</summary>
     public IReadOnlyList<string> Skipped { get; init; } = [];
 }
@@ -114,10 +119,21 @@ public static class ProjectPage
             + "last because after it the board is loose — but your board may have a reason to "
             + "differ.</p>\n<ol>\n");
 
-        if (context.Blank is { Resolved: true, Cut: true })
+        var cutsBlank = context.Blank is { Resolved: true, Cut: true };
+
+        if (cutsBlank)
         {
-            page.Append("<li><strong>Cut the blank.</strong> Everything else is measured from its "
-                + "lower-left corner.</li>\n");
+            page.Append("<li><strong>Cut the blank</strong>");
+
+            // Named, and said where it comes from: nothing next to the blank's settings picks a bit,
+            // so without this the page leaves somebody standing at the machine guessing.
+            if (context.OutlineCutter is { } cutter)
+            {
+                page.Append(" with the <strong>").Append(Escape(cutter)).Append("</strong> — the "
+                    + "Board outline layer's bit");
+            }
+
+            page.Append(". Everything else is measured from its lower-left corner.</li>\n");
         }
         else if (context.Blank.Resolved)
         {
@@ -179,8 +195,17 @@ public static class ProjectPage
         if (Any(i => i.Operation == OperationKind.Outline
             && !i.TargetName.Contains(".blank.", StringComparison.Ordinal)))
         {
-            page.Append("<li><strong>Cut the board out.</strong> Last: after this it is loose, so "
-                + "anything needing it held has to have happened already.</li>\n");
+            page.Append("<li><strong>Cut the board out</strong>");
+
+            if (context.OutlineCutter is { } cutter)
+            {
+                page.Append(cutsBlank
+                    ? " with the same bit as the blank"
+                    : " with the <strong>" + Escape(cutter) + "</strong>");
+            }
+
+            page.Append(". Last: after this it is loose, so anything needing it held has to have "
+                + "happened already.</li>\n");
         }
 
         page.Append("</ol>\n");

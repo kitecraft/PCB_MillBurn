@@ -396,6 +396,71 @@ public sealed class BlankTests(ITestOutputHelper output)
 
     private static bool Inside(double v, double lo, double hi) => v > lo + 1 && v < hi - 1;
 
+    /// <summary>
+    /// The blank is cut with the Board outline layer's bit, and everywhere a person looks says so.
+    ///
+    /// There is deliberately no picker beside the blank's settings — the blank and the board come
+    /// out with one cutter — so the answer has to be written down: in the blank's program, in the
+    /// outline's, in the export summary and on the project page. And it has to be the outline's bit
+    /// specifically. The lookup used to take the first G-code layer with any bit chosen, so a job
+    /// with a V-bit picked for its copper cut the blank with the V-bit.
+    /// </summary>
+    [Fact]
+    public void TheBlankIsCutWithTheBoardOutlinesBit()
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var endMill = new Tool
+        {
+            Id = Guid.NewGuid(),
+            Name = "2.0 mm end mill",
+            Kind = ToolKind.EndMill,
+            DiameterNm = Nm.FromMillimetres(2),
+            StepdownNm = Nm.FromMillimetres(0.5),
+        };
+
+        var library = new ToolLibrary { Tools = [.. ToolLibrary.Default.Tools, endMill] };
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings
+            {
+                FileName = l.FileName,
+                Output = LayerOperations.DefaultFor(l.Role),
+                ToolId = l.Role switch
+                {
+                    LayerRole.Outline => endMill.Id,
+                    LayerRole.TopCopper or LayerRole.BottomCopper => Tool.DefaultVBit.Id,
+                    _ => null,
+                },
+            },
+            StringComparer.Ordinal);
+
+        // The case that used to go wrong: a copper layer with a bit chosen, ahead of the outline.
+        Assert.NotEqual(
+            LayerRole.Outline,
+            loaded.Layers.First(l => settings[l.FileName] is { ToolId: not null, Output: OutputKind.Gcode }).Role);
+
+        var plan = ExportPlanner.Plan(
+            loaded, settings, library, Nm.FromMillimetres(1.6),
+            job: new JobOptions { Blank = new BlankOptions { Enabled = true } });
+
+        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal));
+        var outline = plan.Items.Single(i => i.Role == LayerRole.Outline);
+        var page = plan.Page!.Content;
+
+        output.WriteLine(string.Join("\n", blank.Summary));
+
+        Assert.Contains("Fit the 2.0 mm end mill", blank.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain(Tool.DefaultVBit.Name, blank.Content, StringComparison.Ordinal);
+        Assert.Contains(blank.Summary, s => s.StartsWith("2.0 mm end mill, the Board outline's bit", StringComparison.Ordinal));
+
+        Assert.Contains("with the 2.0 mm end mill", outline.Content, StringComparison.Ordinal);
+
+        Assert.Contains("Cut the blank</strong> with the <strong>2.0 mm end mill</strong>", page, StringComparison.Ordinal);
+        Assert.Contains("Cut the board out</strong> with the same bit as the blank", page, StringComparison.Ordinal);
+    }
+
     // ------------------------------------------------------------------ it travels with the project
 
     /// <summary>

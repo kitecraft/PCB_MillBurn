@@ -5,7 +5,7 @@ GridStripConnector_Panelized-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
   lines     6079
-  sha256    aab69c2cb0a6b0e7
+  sha256    f60f69819f26dcd5
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   51 profiles · inner pieces cut before the frame around them
   summary   50 of them enclose nothing and are cut from the inside — slots, windows, or the channels between the boards of a panel
@@ -15,7 +15,7 @@ GridStripConnector_Panelized-Edge_Cuts.nc
   comment   ( PCB_MillBurn - GridStripConnector_Panelized-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 66.150, -126.850 mm. )
   comment   ( Board outline )
-  comment   ( 5 passes of 0.40 mm to 1.90 mm. )
+  comment   ( 5 passes of 0.40 mm to 1.90 mm with the 1.0 mm end mill. )
   comment   ( 50 of those are no wider than the cutter, so each is one pass down its middle rather than a lap around both of its sides. )
   comment   ( Cut on the outside: 1. Cut from the inside: 50, because they enclose nothing — so the pieces either side of them keep their size. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )

@@ -5,7 +5,7 @@ GridStripConnector-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
   lines     132
-  sha256    b8ac1b13f4ee3ceb
+  sha256    1c2e423c9d526966
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   326 mm cutting, 83 mm travel
   summary   1m 48s – 1m 52s · 131 lines
@@ -13,7 +13,7 @@ GridStripConnector-Edge_Cuts.nc
   comment   ( PCB_MillBurn - GridStripConnector-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 144.975, -92.025 mm. )
   comment   ( Board outline )
-  comment   ( 5 passes of 0.40 mm to 1.90 mm. )
+  comment   ( 5 passes of 0.40 mm to 1.90 mm with the 1.0 mm end mill. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
   control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400

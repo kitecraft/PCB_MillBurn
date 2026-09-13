@@ -347,7 +347,7 @@
                                         </Grid>
 
                                         <CheckBox IsChecked="{Binding CutTheBlank, Mode=TwoWay}"
-                                                  ToolTip.Tip="Off when the stock is already this size — nothing is cut, and the app is simply told what is on the table.">
+                                                  ToolTip.Tip="Cut with the bit chosen for the Board outline layer, so the blank and the board need no tool change. Off when the stock is already this size — nothing is cut, and the app is simply told what is on the table.">
                                             <TextBlock Text="Cut it on the mill" Classes="caption" />
                                         </CheckBox>
 

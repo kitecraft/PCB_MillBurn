@@ -32,7 +32,7 @@ PogoTest1-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
   lines     134
-  sha256    cf2fefff1c008de0
+  sha256    ab8c14fc8691b454
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   557 mm cutting, 71 mm travel
   summary   2m 34s – 2m 38s · 133 lines
@@ -40,7 +40,7 @@ PogoTest1-Edge_Cuts.nc
   comment   ( PCB_MillBurn - PogoTest1-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Board outline )
-  comment   ( 5 passes of 0.40 mm to 1.90 mm. )
+  comment   ( 5 passes of 0.40 mm to 1.90 mm with the 1.0 mm end mill. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
   control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400

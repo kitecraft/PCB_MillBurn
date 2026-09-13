@@ -400,7 +400,10 @@ public static class OutlineOperation
 
         var perPass = Nm.ToMillimetreString(options.DepthPerPassNm, 2);
         var total = Nm.ToMillimetreString(options.TotalDepthNm, 2);
-        notes.Add(Invariant($"{steps} passes of {perPass} mm to {total} mm."));
+        // The bit, by name, in the program itself. The outline was the one milling program that never
+        // said what to put in the spindle — and on a job with a blank it is the same bit that cut the
+        // blank, which is worth being able to check against the file rather than the window.
+        notes.Add(Invariant($"{steps} passes of {perPass} mm to {total} mm with the {options.Tool.Name}."));
 
         if (centrelines > 0)
         {

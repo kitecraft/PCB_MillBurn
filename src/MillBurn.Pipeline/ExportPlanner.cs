@@ -245,6 +245,7 @@ public static class ExportPlanner
                         Board = board.Bounds,
                         BoardThicknessNm = boardThicknessNm,
                         Blank = blank,
+                        OutlineCutter = OutlineCutter(board, settings, library).Name,
                         Skipped = skipped,
                     }),
                     Invariant($"{items.Count} file(s), a suggested running order, and where work zero is")),
@@ -626,21 +627,32 @@ public static class ExportPlanner
         return Blanks.Resolve(
             (job ?? JobOptions.Default).Blank,
             board.Bounds,
-            OutlineCutter(settings, library).DiameterNm,
+            OutlineCutter(board, settings, library).DiameterNm,
             mirrorsAnything);
     }
 
     /// <summary>
-    /// The cutter that will run the board's outline, which is what sets the blank's minimum border.
+    /// The Board outline layer's bit — which cuts the board out, cuts the blank too, and sets the
+    /// blank's minimum border.
     ///
-    /// Taken from the outline layer's own setting where there is one, so the floor is computed
-    /// against the bit that will actually be beside the blank's edge rather than against a default.
+    /// Looked up by the layer's role. It used to take the first G-code layer with *any* bit picked,
+    /// which on a job whose copper was isolated with a chosen V-bit meant the blank was cut with
+    /// the V-bit and its border floor measured against a 0.1 mm tip.
+    ///
+    /// Public because the window says which bit this is, and has to say the same one the export
+    /// uses.
     /// </summary>
-    private static Tool OutlineCutter(
-        IReadOnlyDictionary<string, LayerOutputSettings> settings, ToolLibrary library)
+    public static Tool OutlineCutter(
+        Board board, IReadOnlyDictionary<string, LayerOutputSettings> settings, ToolLibrary library)
     {
-        var outline = settings.Values.FirstOrDefault(s =>
-            s.ToolId is not null && s.Output == OutputKind.Gcode);
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(library);
+
+        var outline = board.Layers
+            .Where(l => l.Role == LayerRole.Outline)
+            .Select(l => settings.GetValueOrDefault(l.FileName))
+            .FirstOrDefault(s => s is not null);
 
         return outline is not null
             ? ResolveTool(outline, OperationKind.Outline, library)
@@ -671,7 +683,10 @@ public static class ExportPlanner
         MachineSettings machineSettings,
         long thicknessNm)
     {
-        var tool = OutlineCutter(settings, library);
+        // The Board outline layer's bit, so the blank and the board come out with one cutter and no
+        // tool change between the first program and the last. Said in the program and on the page,
+        // because nothing in the window points at the outline row when the blank is being set up.
+        var tool = OutlineCutter(board, settings, library);
         var summary = new List<string>();
         var warnings = new List<string>();
 
@@ -693,6 +708,7 @@ public static class ExportPlanner
             Notes =
             [
                 Invariant($"Cut this first. Everything else in this export is referenced to the corner it makes."),
+                Invariant($"Fit the {tool.Name}: the Board outline layer's bit, which cuts the blank as well as the board."),
                 Invariant($"Blank {Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm. Work zero is its lower-left corner."),
                 "Tabs are on the top and right edges only: a stub on a datum edge stops the blank seating.",
                 "Deburr the two datum edges before first use — a fresh cut leaves a burr underneath.",
@@ -712,7 +728,7 @@ public static class ExportPlanner
 
         summary.Add(Invariant(
             $"{Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm from a larger sheet"));
-        summary.Add(Invariant($"{tool.Name} · {Nm.ToMillimetreString(options.TotalDepthNm, 2)} mm deep in {Nm.ToMillimetreString(options.DepthPerPassNm, 2)} mm passes"));
+        summary.Add(Invariant($"{tool.Name}, the Board outline's bit · {Nm.ToMillimetreString(options.TotalDepthNm, 2)} mm deep in {Nm.ToMillimetreString(options.DepthPerPassNm, 2)} mm passes"));
         summary.Add(Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
         summary.AddRange(blank.Notes);

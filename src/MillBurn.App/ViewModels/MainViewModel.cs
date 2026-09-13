@@ -1581,6 +1581,10 @@ public sealed partial class MainViewModel : ViewModelBase
         RecordOutputs();
         _project.Touch();
 
+        // The blank's line names the outline's bit, so picking a different bit on that row has to
+        // reach it.
+        DescribeBlank(_project.Settings.Job.Blank);
+
         if (_backplot.Count == 0)
         {
             return;
@@ -1734,7 +1738,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 return Bounds.Empty;
             }
 
-            var cutter = LayerOperations.DefaultToolFor(OperationKind.Outline, Library.Tools);
+            var cutter = OutlineCutter();
             var mirrors = Layers.Any(r => r.Layer is not null && r.Mirrored);
             var blank = Blanks.Resolve(_project.Settings.Job.Blank, _board.Bounds, cutter.DiameterNm, mirrors);
 
@@ -1826,14 +1830,36 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         var mirrors = Layers.Any(r => r.Layer is not null && r.Mirrored);
-        var cutter = LayerOperations.DefaultToolFor(OperationKind.Outline, Library.Tools);
+        var cutter = OutlineCutter();
         var plan = Blanks.Resolve(blank, _board.Bounds, cutter.DiameterNm, mirrors);
+
+        // Which bit cuts it, said where the blank is set up. There is deliberately no second picker
+        // here — the blank and the board come out with one cutter — but that has to be visible, or
+        // the only place the answer lives is a row further down that nobody connects with this.
+        var cutWith = blank.Cut
+            ? $"Cut with the Board outline's bit ({cutter.Name}). "
+            : string.Empty;
 
         BlankSummary = plan.Resolved
             ? string.Create(CultureInfo.InvariantCulture,
                 $"{Nm.ToMillimetreString(plan.Bounds.Width, 2)} × {Nm.ToMillimetreString(plan.Bounds.Height, 2)} mm · ")
+                + cutWith
                 + string.Join(" ", plan.Notes)
             : string.Join(" ", plan.Refusals);
+    }
+
+    /// <summary>The Board outline layer's bit, the same one the export will use for the blank.</summary>
+    private Tool OutlineCutter()
+    {
+        if (_board is null)
+        {
+            return LayerOperations.DefaultToolFor(OperationKind.Outline, Library.Tools);
+        }
+
+        var settings = _project.Settings.LayerOutputs.ToDictionary(
+            o => o.FileName, o => o, StringComparer.Ordinal);
+
+        return ExportPlanner.OutlineCutter(_board, settings, Library);
     }
 
     /// <summary>Reads the job options back out of a project that has just been opened.</summary>
