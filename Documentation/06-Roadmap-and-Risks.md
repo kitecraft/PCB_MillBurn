@@ -1787,9 +1787,76 @@ anything unless [5.6.5](#565-verification-the-border-is-a-test-coupon) is built 
 
 #### 5.6.3 The blank itself
 
-**Always a rectangle**, whatever shape the board is, with **four independent offsets** from the
-board's bounding box. Waste matters: an L-shaped corner stop only needs margin on two edges, so the
-default should be generous on the datum edges and tight on the other two.
+**Always a rectangle**, whatever shape the board is. Its size is given one of two ways, and the
+second one arrived from the workshop:
+
+**Grown from the board** — four independent offsets from the board's bounding box. Waste matters: an
+L-shaped corner stop only needs margin on two edges, so the default should be generous on the datum
+edges and tight on the other two.
+
+**Stated outright** — the blank is *this* rectangle, 183 × 122 mm, and the board sits inside it.
+
+> *"My Gerbers2 project is actually one little board panelised into a grid of 11 rows and 6 columns.
+> This is deliberate so that the full board fits onto some pre-cut copper-clad boards I have that
+> are 183 x 122 mm. So, much better to just enter those dimensions directly."*
+
+That is the ordinary case rather than the exotic one. Hobby copper-clad is **bought pre-cut**, in
+sizes the supplier chose, and a board is laid out to suit the stock at least as often as stock is
+cut to suit the board. Asking somebody to work out which four offsets turn their 11 × 6 panel into
+183 × 122 is arithmetic the app is better at, and arithmetic they would have to redo every time the
+panel changed.
+
+**The two modes are the same four numbers read from opposite ends**, which is what keeps one model
+underneath: grown from the board, the offsets give the size; stated outright, the size and the
+board's placement inside it give the offsets. Everything downstream — the origin shift, the SVG
+page, the mirror axis, the keying — works off the offsets either way and never needs to know which
+mode produced them.
+
+##### A stated blank may be one the app cuts, or one the operator already owns
+
+This is the distinction that matters, and 5.6 as first written did not have it: it assumed the mill
+cuts the blank. With a stated size there are two cases and they are not the same feature.
+
+**Cut to size**, from a bigger sheet. Unchanged from everything above — the mill makes the piece, so
+the app knows its dimensions exactly, and that is the premise the whole phase rests on.
+
+**Declared**, because the stock is already that size. No cutting program at all: the app is being
+*told* what is on the table so that the datum, the origin, the shared SVG page and the mirror axis
+all refer to it. Most of this phase's value arrives here with no cut at all, which is worth saying
+plainly — a declared blank costs nothing and still removes fiducials, still fixes the page, still
+makes the two machines agree about a rectangle.
+
+> **A declared blank is a claim, not a measurement.** A pre-cut board sold as 183 × 122 is 182.6 ×
+> 121.4 with a corner that is nearly square, and the app has no way to know. Everything a *cut*
+> blank guarantees, a declared one only asserts. So: invite the measured numbers rather than the
+> nominal ones, say on the runbook that the datum edges are trusted rather than made, and treat the
+> keying in this section as load-bearing rather than a nicety.
+>
+> **"Square the stock" is the bridge between the two.** The one-pass operation already scheduled in
+> [Phase 5](#phase-5--jobs-setups-alignment--started) mills the two datum edges true. Run it on a
+> declared blank and it becomes a known one, at the cost of a millimetre of stock and one pass —
+> which is the honest upgrade path for somebody who starts by declaring and later wants the
+> tolerance.
+
+##### Placement, and what it refuses
+
+**Where the board sits inside a stated blank is an input, not a guess.** Centred by default, because
+that is what somebody laying a panel onto a sheet means; adjustable as an offset from the datum
+corner for the case where the hold-down needs room on one side. The rule from
+[5.6.4](#564-the-offset-and-the-flip-that-breaks-it) applies the moment anything is mirrored —
+**left and right equal by default**, because the flip is about the blank's centreline and asymmetry
+survives it only if the arithmetic is right.
+
+**It refuses when the board does not fit.** Board plus the minimum border against the stated size,
+per edge, naming the edge and the shortfall: *"the panel is 1.4 mm too wide for a 183 mm blank —
+2.9 mm of border either side, and 3.0 mm is the floor for a 1 mm cutter."* This is the check that
+pays for the feature on its own, because the alternative is finding out with the stock clamped.
+
+And having been told the stock size, the app can say how much of it the job uses. For anybody
+panelising to fit a sheet — which is why this was asked for — that number is the one being
+optimised.
+
+##### Every blank, however its size was decided
 
 - **The minimum border is set by hold-down and cutter clearance, not by the jig.** The outline cutter
   needs room to run outside the board, and the blank needs somewhere to be taped or clamped that is
@@ -1801,6 +1868,8 @@ default should be generous on the datum edges and tight on the other two.
   the non-datum edges, or the blank is cut tab-free with tape or vacuum. The runbook says to deburr
   the two datum edges before first use, because a fresh outline cut leaves a burr underneath.
 - **Key it.** A chamfer on one corner, or a shallow notch in one edge, cut while the blank is cut.
+  On a *declared* blank there is nothing to cut it with, so the key is a mark the operator makes —
+  which the app should say, in those words, rather than assuming a chamfer that never happened.
 - **Label it.** The engrave operation already exists and the border is waste: put the project name,
   the date and a mark at the datum corner into it. A blank that says which corner is its datum cannot
   be loaded wrongly three weeks later, and this costs one extra toolpath on a cut that is already
@@ -1808,8 +1877,9 @@ default should be generous on the datum edges and tight on the other two.
 
 **It is not a layer.** No file produces it, it cannot be exported as itself, and every setting a
 layer row offers is meaningless for it — which is exactly the mistake the panel redesign removed. It
-is a job property, like board thickness, and it belongs in Project info beside it. What it *emits* is
-a generated operation, like the probing routine.
+is a job property, like board thickness, and it belongs in Project info beside it — in `JobOptions`,
+which now exists for precisely this kind of thing. What it *emits*, when it emits anything, is a
+generated operation like the probing routine.
 
 #### 5.6.4 The offset, and the flip that breaks it
 
@@ -1865,6 +1935,11 @@ does isolation, drilling and cut-out with no registration problem to solve. The 
 exactly when the work travels — which is every mixed and every double-sided job, but the app should
 say so rather than recommend it universally.
 
+**A declared blank does not make a pre-cut board square.** It fixes the origin, the page and the
+mirror axis, which is most of the value; it cannot tell you that the sheet you bought is 182.6 mm
+rather than 183, or that its corner is a degree out. Anything that needs the tolerance wants either
+a cut blank or "square the stock" run on a declared one.
+
 **It is looser than the pin recipe.** Mill-only work is excellent, because everything is in one
 coordinate frame. Mill-to-laser is limited by the stop's alignment, the blank's squareness and seating
 repeatability — realistically a tenth or two without 5.6.5, tightening with it. The drill-and-pin
@@ -1883,6 +1958,11 @@ twice — land on the etched artwork, measured, within a tenth.
 
 Then the same for a double-sided board, with the flip, and with the export refusing to proceed when
 the left and right borders differ.
+
+And the case that asked for the stated size: a panel laid out to fit 183 × 122 mm pre-cut stock is
+given those two numbers, nothing is cut to make the blank, every program and every SVG references
+its corner, and a panel 1.4 mm too wide for it is refused by name before the stock is clamped rather
+than discovered after.
 
 ### Phase 6 — Polish and reach
 
