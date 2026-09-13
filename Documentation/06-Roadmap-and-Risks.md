@@ -1973,6 +1973,7 @@ than discovered after.
 - **A picture on the companion pages**, with the holes and slots numbered in run order. See 6.5.
 - **The tool library, once it has more than a handful in it** — filter, sort, copy. See 6.6.
 - **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
+- **The viewer leaves a gap in every outline ring.** See 6.8.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2365,6 +2366,35 @@ out, and the second is better:
 after that does *not* re-explain the status bar, every coachmark can be forced open from the
 command line for a screenshot, no automated run ever draws one, and Esc closes anything this puts
 on screen.
+
+#### 6.8 The viewer leaves a gap in every outline ring — **scheduled, not started, small**
+
+Reported from the workshop against the panelised connector board: the board outline is drawn with
+short pieces missing, most visibly at the closed end of each routed channel. The programs are
+correct — this is the picture, not the file.
+
+**The cause is already known**, so this is written down mostly so it is not re-diagnosed. One flag,
+`BoardLayerStyle.Outlined`, is doing two unrelated jobs:
+
+- In `BoardRenderer` it means **stroke this layer rather than fill it** — right for the outline,
+  whose profile would become a white slab if filled.
+- In `BoardScene.Build` it means **these rings are open runs, so do not close them** — right for a
+  backplot, where closing the path would draw a segment from the end of the program back to its
+  start that the machine never makes.
+
+Every stroked board layer gets both meanings. `LayerRole.Outline`, `DrillMap` and `Documentation`
+are stroked, but their rings come from Clipper as *closed areas*, so each one is drawn missing
+exactly the segment that would have closed it. One gap per ring, always at whatever vertex Clipper
+started that ring on — which is why it looks systematic rather than random, and why it lands in the
+same place on all thirty-two cells of a panel.
+
+**The fix is to separate the two meanings**, not to close everything: a backplot must still stay
+open. Something like a `ClosedRings` flag on the style, set true for the board layers and false for
+the backplot, with `Outlined` left to mean only "stroke, do not fill".
+
+**Done when** a stroked area layer is drawn closed, a backplot is still drawn open, and a test
+asserts both — the ring count and the path's own segment count are enough to tell them apart
+without a screenshot.
 
 ### Phase 7 — User documentation — **started**
 

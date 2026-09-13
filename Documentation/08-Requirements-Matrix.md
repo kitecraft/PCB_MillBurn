@@ -154,6 +154,7 @@ one block is most of what is left.
 | V14 | PDF for the documentation profile | §3.4 | **Not started** | — |
 | V15 | Gerber/Excellon round-trip of the modified board | §3.4 | **Superseded** | its purpose was panelisation, which was dropped |
 | V16 | Job Runbook: printable checklist, persisted state, PDF export | §4 | **Partial** | `ProjectPage` covers the order and the caveats; no state, no PDF |
+| V17 | A stroked area layer is drawn closed | 06 §6.8 | **Not started** | one gap per outline ring; the picture only, not the file |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -213,6 +214,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.5 A picture on the companion pages | scheduled | **Not started** |
 | 6.6 Tool library: filter, sort, copy | scheduled | **Not started** |
 | 6.7 Coachmarks and a first-run walkthrough | scheduled | **Not started** — needs research |
+| 6.8 The viewer's gap in every outline ring | workshop | **Not started** — small, cause known |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |
