@@ -347,7 +347,7 @@ public static class DrillGuide
     /// to link to and no network to fetch from — it has to be one file that works on a laptop in a
     /// workshop. It follows the system's light or dark setting rather than picking one.
     /// </summary>
-    private const string Style = """
+    internal const string Style = """
         :root { color-scheme: light dark; --rule: #d9dce1; --muted: #5b6470; --warn: #b3261e; }
         @media (prefers-color-scheme: dark) {
           :root { --rule: #333941; --muted: #9aa4b2; --warn: #ff6b63; }

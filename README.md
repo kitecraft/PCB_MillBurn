@@ -84,7 +84,8 @@ it simplified, and anything worth checking — before a single byte lands on dis
 <td width="50%" valign="top">
 <img src="art/screenshots/drill-guide.png" alt="The drilling companion page listing bits in order with hole counts">
 <p><b>Drilling gets a page of its own.</b> The bits in the order they go in, hole counts, when the
-run stops to change them, and what you have to re-zero. Written beside the program, as HTML.</p>
+run stops to change them, and what you have to re-zero. Written beside the program, as HTML. Routed
+slots get one too — including which features have no cutter and will not be made.</p>
 </td>
 <td width="50%" valign="top">
 <img src="art/screenshots/settings.png" alt="The settings window showing machine, dry run and probing values">
@@ -126,7 +127,7 @@ the condition a workshop is usually in.
 | Layer | Set it to | You get |
 |---|---|---|
 | Top / bottom copper | G-code | Isolation routing around every trace and pad |
-| Plated / non-plated holes | G-code | A drilling program with tool changes, plus its HTML guide — and a `.slots.nc` beside it for slots and for holes too big to drill |
+| Plated / non-plated holes | G-code | A drilling program with tool changes and its HTML guide — plus a `.slots.nc` for slots and holes too big to drill, with a guide of its own |
 | Board outline | G-code | Cut-out with tabs, in depth passes |
 | Soldermask | G-code | Mask relief — mills the mask off the pads only |
 

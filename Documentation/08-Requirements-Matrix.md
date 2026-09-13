@@ -23,11 +23,11 @@ test, a measurement — so that "done" means something a reader can check.
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
-| 02 Gerber & geometry | 18 | 14 | 0 | 3 | 1 |
+| 02 Gerber & geometry | 19 | 15 | 0 | 3 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 27 | 8 | 2 | 17 | 0 |
 | 05 Viewer & export | 16 | 6 | 2 | 7 | 1 |
-| **Requirements** | **86** | **43** | **5** | **35** | **3** |
+| **Requirements** | **87** | **44** | **5** | **35** | **3** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 11 physical
 capabilities (5 proven, 2 wanting a re-run, 4 never cut).
@@ -80,6 +80,7 @@ one block is most of what is left.
 | G16 | A cutter chosen from the library rather than synthesised | 06 §5.5.1 | **Done** | `ToolChooser`; widest that fits and reaches |
 | G17 | Mill-drill: a hole too big for any drill, spiralled out | 06 §5.5.3 | **Done** | `SlotOperation.Holes`; off unless the project asks |
 | G18 | Job-level options, carried in the project | 06 §5.5.3 | **Done** | `JobOptions`; Project info, and `--mill-holes` on the CLI |
+| G19 | A companion page for the routing program | workshop | **Done** | `RoutingGuide`; names the cutter, and what will not be cut |
 
 ## 03 — Toolpath optimization
 

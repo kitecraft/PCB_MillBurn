@@ -424,8 +424,7 @@ public static class ExportPlanner
         // the holes are all accounted for.
         foreach (var refusal in plan.Refusals)
         {
-            warnings.Add(Invariant(
-                $"{(refusal.Count == 1 ? "1 slot" : $"{refusal.Count} slots")} {Nm.ToMillimetreString(refusal.WidthNm, 2)} mm wide are NOT cut: {refusal.Reason}. Cut them yourself, or the parts that need them will not fit."));
+            warnings.Add(Worded(refusal) + " Cut them yourself, or the parts that need them will not fit.");
         }
 
         if (plan.Toolpaths.Count == 0)
@@ -455,12 +454,55 @@ public static class ExportPlanner
         var tool = plan.Toolpaths[0].Tool;
         warnings.AddRange(ToolAdvice.For(tool));
 
-        return Assemble(
+        // One stem, two files: `Board-PTH-drl.slots.nc` and `Board-PTH-drl.routing.html`. The page
+        // is named for what it is rather than for the file it sits beside, the same way the
+        // drilling guide is — `.slots.routing.html` said it twice and read like a mistake.
+        var stem = Path.GetFileNameWithoutExtension(layer.FileName);
+
+        var item = Assemble(
             board, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
-            Path.GetFileNameWithoutExtension(layer.FileName) + ".slots.nc",
+            stem + ".slots.nc",
             "Routed slots",
             boardThicknessNm, machine, effort, framing, machineSettings, companion: false);
+
+        if (item is null)
+        {
+            return null;
+        }
+
+        // The page that travels with the file. It carries the refusals, which is the one thing on
+        // it that cannot be recovered from the program: a file cannot describe what is absent from
+        // it, and the export window is not what anybody has open at the machine.
+        var (html, report) = RoutingGuide.Build(item.Content, new RoutingGuideContext
+        {
+            BoardName = Path.GetFileName(board.Source),
+            LayerLabel = layer.Label,
+            ProgramName = item.TargetName,
+            BoardThicknessNm = boardThicknessNm,
+            BreakThroughNm = setting.BreakThroughNm,
+            Refusals = [.. plan.Refusals.Select(Worded)],
+            RefusedCount = plan.RefusedCount,
+            Warnings = [.. warnings.Where(w => !w.Contains("are NOT cut", StringComparison.Ordinal))],
+        });
+
+        var cutters = report.Steps.Count == 1 ? "1 cutter" : Invariant($"{report.Steps.Count} cutters");
+        var changes = report.Changes == 1 ? "1 tool change" : Invariant($"{report.Changes} tool changes");
+        var missing = plan.RefusedCount == 0
+            ? string.Empty
+            : Invariant($", {plan.RefusedCount} not cut");
+
+        return item with
+        {
+            Companion = new ExportCompanion(
+                stem + ".routing.html",
+                html,
+                $"{cutters}, {changes}{missing}"),
+        };
     }
+
+    /// <summary>One refusal, said the same way on the export list and on the page beside the file.</summary>
+    private static string Worded(SlotRefusal refusal) => Invariant(
+        $"{(refusal.Count == 1 ? "1 feature" : $"{refusal.Count} features")} {Nm.ToMillimetreString(refusal.WidthNm, 2)} mm across are NOT cut: {refusal.Reason}.");
 
     /// <summary>
     /// Hole sizes this board asks for that no drill in the library can make, when the project has
