@@ -331,7 +331,9 @@ viewer.
 Next: **the blank** — the app cuts you a piece of stock and its edges become the datum for every
 machine and every step after it, which removes fiducials, dowel pins and the design rule that goes
 with them. Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
-output, a LightBurn layer preset, and **rulers** down the edges of the viewport so a board's size can be read rather than guessed at. Also planned: an **MCP server** over the same libraries, so an assistant can
+output, a LightBurn layer preset, **rulers** down the edges of the viewport so a board's size can be
+read rather than guessed at, and **a picture on the drilling and routing pages** with every hole and
+slot numbered in the order the machine reaches them. Also planned: an **MCP server** over the same libraries, so an assistant can
 load a board, render it, and say what a job would cut — read-only unless you launch it otherwise.
 And **solder paste** — the paste layer is already read and drawn, and a paste aperture is a
 stencil's hole, so the deposit it wants is its area times the foil thickness. That makes every pad's

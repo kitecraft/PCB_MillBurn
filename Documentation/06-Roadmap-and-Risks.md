@@ -1890,6 +1890,7 @@ the left and right borders differ.
 - **Climb or conventional, chosen rather than inherited.** See 6.2.
 - **Staying down between passes that touch** — done. See 6.3.
 - **Tabs: where, how many, how big.** See 6.4.
+- **A picture on the companion pages**, with the holes and slots numbered in run order. See 6.5.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2095,6 +2096,63 @@ which vertices happen to exist.
 
 **Done when** a rectangular board puts one centred tab on each edge by default, any of them can be
 moved and resized individually, and the emitted gaps land where the picture says they will.
+
+#### 6.5 A picture on the companion pages — **scheduled, not started**
+
+Requested from the workshop: *"in the companion html for drills and routing, include images of the
+layer with the holes/slots numbered in the order of drilling/routing."*
+
+Both pages are currently a table of numbers standing in for a board. They say *six holes with the
+1.00 mm bit* and leave the operator to work out which six — which matters at the two moments the
+page exists for: deciding a bit is about to go in the wrong place, and finding where a run stopped.
+
+**The strongest reason is the one about routing, not drilling.** A refused slot is invisible: it is
+not in the program, and the board renders it exactly as the EDA tool drew it. The page names it in
+prose, which is better than nothing and worse than a picture of the board with four slots marked
+*not cut*. That single drawing turns a paragraph somebody skims into a shape they recognise.
+
+**Inline SVG, not a raster.** The pages are self-contained by rule — one file, no network, nothing
+beside them — so an image has to travel inside the HTML. SVG rather than a data-URI PNG for three
+reasons: the numbers stay crisp when someone zooms in on a cluster of vias, it prints properly next
+to a machine, and it is a few kilobytes where a legible raster of a 100 mm board is hundreds.
+`SvgWriter` already exists and is already shared between the laser path and the documentation
+exports, so this is a third caller rather than a third implementation.
+
+**Draw the outline, the features, and nothing else.** Not the copper. A board's copper as SVG runs
+to hundreds of kilobytes on the panel and adds nothing here — the outline plus the holes is enough
+to locate any of them, and it keeps the page small enough to open on a phone in a workshop.
+
+**The marks come from the program; the backdrop comes from the board.** The same split the rest of
+this code makes, and worth stating because the two can disagree: the outline is context, the
+numbered marks are what the machine will do, and where they differ the marks are the truth. A
+picture drawn from the toolpaths would show the run somebody meant.
+
+**One drawing per bit, not one for the file.** The table already has a row per bit; the picture
+belongs beside its row, showing that bit's holes numbered from one. An overview with everything on
+it sounds useful and is not: at the machine the question is always "where does *this* bit go".
+
+**Legibility is the part that will decide whether this is any good.** An Arduino Mega drills 258
+holes in six sizes. Numbering 44 of them on a 100 mm board is already crowded; numbering 258 is
+spaghetti. So the drawing has to degrade honestly rather than produce something unreadable and call
+it a feature:
+
+- Up to about 40 marks in a step: numbered, with leader lines where they would otherwise collide.
+- Above that: dots, a marked start, and the travel path between them — which answers "where does it
+  begin and roughly where does it go" without pretending to answer "which one is number 173".
+- Either way, the count is on the page in text, and the text is the authority.
+
+**What to draw for a slot** is a question the drilling page does not have. A slot has a length and a
+direction, so the mark is the slot's own shape with the number at one end and an arrow showing which
+way the cutter runs — the direction is not cosmetic, because it is what tells somebody watching that
+the machine is doing what the page says.
+
+**Refused features in the same drawing**, greyed and hatched, with their width labelled rather than
+a number. They are the only thing on the page that cannot be checked against the machine.
+
+**Done when** a board with several bits produces one drawing per bit with its holes numbered in run
+order, a routing page shows its slots with direction and its refusals hatched, the Mega's 44-hole
+step degrades to dots without becoming unreadable, and every page is still one file that opens with
+no network.
 
 ### Phase 7 — User documentation — **started**
 
