@@ -51,6 +51,14 @@ public sealed record ProbeRoutineOptions
     /// already thirteen minutes.
     /// </summary>
     public int MaxPoints { get; init; } = 200;
+
+    /// <summary>
+    /// Whether the region is a blank rather than the board, which changes what the header says.
+    ///
+    /// Work zero moves to the blank's corner, and the grid covers the border as well — where, unlike
+    /// on a bare board, a clamp is a natural thing to have put.
+    /// </summary>
+    public bool OnBlank { get; init; }
 }
 
 /// <summary>What the routine will do, in numbers worth seeing before running it.</summary>
@@ -202,8 +210,21 @@ public static class ProbeRoutine
         lines.Add(Boxed(string.Empty));
         lines.Add(Boxed(grid));
         lines.Add(Boxed(howLong));
-        lines.Add(Boxed("Work zero is the board's lower-left corner, the same"));
-        lines.Add(Boxed("as every other file in this export."));
+        if (options.OnBlank)
+        {
+            lines.Add(Boxed("Work zero is the BLANK's lower-left corner, the same"));
+            lines.Add(Boxed("as every other file in this export."));
+            lines.Add(Boxed(string.Empty));
+            lines.Add(Boxed("The grid covers the whole blank, border included."));
+            lines.Add(Boxed(Invariant($"Between touches it travels at Z{start}: keep")));
+            lines.Add(Boxed("clamps and anything else off the blank."));
+        }
+        else
+        {
+            lines.Add(Boxed("Work zero is the board's lower-left corner, the same"));
+            lines.Add(Boxed("as every other file in this export."));
+        }
+
         lines.Add(Boxed(string.Empty));
         lines.Add(Boxed("Put a probe on the tool and a clip on the copper, zero"));
         lines.Add(Boxed("Z on the surface, run this, and save your sender's log."));

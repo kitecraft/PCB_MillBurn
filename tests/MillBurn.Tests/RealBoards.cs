@@ -19,6 +19,15 @@ public static class RealBoards
     public const string PogoTest1 = "PogoTest1";
 
     /// <summary>
+    /// The project's own feature-coverage board, designed by its author to exercise what users run
+    /// into: plated and non-plated holes from 0.3 to 3.5 mm, plated slots, and edge cuts.
+    ///
+    /// The board that found the routing page reading one hole per cutter: six holes milled by one
+    /// end mill, and a page that said "1 hole". Its KiCad sources are under <c>design/</c>.
+    /// </summary>
+    public const string MillburnTestBoard = "Millburn_Test_Board";
+
+    /// <summary>
     /// Fifty boards and a frame, exported from KiCad as one panel.
     ///
     /// The case the optimizer is most worth measuring on, and the one that found the outline bug:

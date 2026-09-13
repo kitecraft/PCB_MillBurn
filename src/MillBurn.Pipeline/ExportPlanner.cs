@@ -142,14 +142,7 @@ public static class ExportPlanner
         // corner, the shared SVG page is its bounds, and a mirrored layer flips about *its*
         // centreline. Without a blank the frame is the board's own bounding box, which is exactly
         // what those three used before this existed — so a job with no blank is unchanged.
-        var mirrorsAnything = board.Layers.Any(l =>
-            settings.TryGetValue(l.FileName, out var s) && s.Output != OutputKind.None && s.MirrorFor(l.Role));
-
-        var blank = Blanks.Resolve(
-            options.Blank,
-            board.Bounds,
-            OutlineCutter(settings, library).DiameterNm,
-            mirrorsAnything);
+        var blank = BlankFor(board, settings, library, options);
 
         var frame = blank.Resolved ? blank.Bounds : board.Bounds;
 
@@ -559,9 +552,10 @@ public static class ExportPlanner
         var tool = plan.Toolpaths[0].Tool;
         warnings.AddRange(ToolAdvice.For(tool));
 
-        // One stem, two files: `Board-PTH-drl.slots.nc` and `Board-PTH-drl.routing.html`. The page
-        // is named for what it is rather than for the file it sits beside, the same way the
-        // drilling guide is — `.slots.routing.html` said it twice and read like a mistake.
+        // One stem, two files: `Board-PTH-drl.slots.nc` and `Board-PTH-drl.slots.html`. The page
+        // shares the program's name so the two sort together and nobody has to guess which page
+        // belongs to which file — `.routing.html` beside `.slots.nc` read as a page for some other
+        // program.
         var stem = Path.GetFileNameWithoutExtension(layer.FileName);
 
         var item = Assemble(
@@ -588,6 +582,7 @@ public static class ExportPlanner
             Refusals = [.. plan.Refusals.Select(Worded)],
             RefusedCount = plan.RefusedCount,
             Warnings = [.. warnings.Where(w => !w.Contains("are NOT cut", StringComparison.Ordinal))],
+            OnBlank = frame != board.Bounds,
         });
 
         var cutters = report.Steps.Count == 1 ? "1 cutter" : Invariant($"{report.Steps.Count} cutters");
@@ -599,10 +594,40 @@ public static class ExportPlanner
         return item with
         {
             Companion = new ExportCompanion(
-                stem + ".routing.html",
+                stem + ".slots.html",
                 html,
                 $"{cutters}, {changes}{missing}"),
         };
+    }
+
+    /// <summary>
+    /// The stock a job with these settings is built on — the blank <see cref="Plan"/> resolves,
+    /// without planning anything.
+    ///
+    /// Public because the export is not the only thing that has to agree with it. A probing routine
+    /// must be written in the same frame as the programs it will level: a grid referenced to the
+    /// board's corner, beside programs referenced to the blank's, measures a surface a border's
+    /// width away from where the correction is applied — and both files look entirely reasonable
+    /// on their own.
+    /// </summary>
+    public static BlankPlan BlankFor(
+        Board board,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        ToolLibrary library,
+        JobOptions? job = null)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(library);
+
+        var mirrorsAnything = board.Layers.Any(l =>
+            settings.TryGetValue(l.FileName, out var s) && s.Output != OutputKind.None && s.MirrorFor(l.Role));
+
+        return Blanks.Resolve(
+            (job ?? JobOptions.Default).Blank,
+            board.Bounds,
+            OutlineCutter(settings, library).DiameterNm,
+            mirrorsAnything);
     }
 
     /// <summary>
@@ -946,7 +971,7 @@ public static class ExportPlanner
             Summary = summary,
             Warnings = warnings,
             Companion = companion && operation == OperationKind.Drilling && setting.WriteDrillGuide
-                ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings, repeated)
+                ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings, repeated, frame != board.Bounds)
                 : null,
         };
     }
@@ -966,7 +991,8 @@ public static class ExportPlanner
         string program,
         long thicknessNm,
         List<string> warnings,
-        int repeats)
+        int repeats,
+        bool onBlank)
     {
         var (html, report) = DrillGuide.Build(program, new DrillGuideContext
         {
@@ -977,6 +1003,7 @@ public static class ExportPlanner
             BreakThroughNm = setting.BreakThroughNm,
             RepeatedPositions = repeats,
             Warnings = warnings,
+            OnBlank = onBlank,
         });
 
         if (report.Steps.Count == 0)

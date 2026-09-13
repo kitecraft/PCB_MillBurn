@@ -1,6 +1,7 @@
 using MillBurn.Align;
 using MillBurn.Core;
 using MillBurn.Gcode;
+using MillBurn.Pipeline;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -144,6 +145,59 @@ public sealed class ProbeTests(ITestOutputHelper output)
         Assert.Equal(1, Mm(touches.Min(t => t.Y)), 3);
         Assert.Equal(39, Mm(touches.Max(t => t.X)), 3);
         Assert.Equal(29, Mm(touches.Max(t => t.Y)), 3);
+    }
+
+    /// <summary>
+    /// On a blank the header moves work zero to the blank's corner, and warns that the grid now
+    /// crosses the border — which, unlike a bare board, is exactly where a clamp gets put.
+    /// </summary>
+    [Fact]
+    public void OnABlankTheHeaderSaysSoAndWarnsAboutClamps()
+    {
+        var text = ProbeRoutine.Generate(Board(80, 60), new ProbeRoutineOptions { OnBlank = true }).Text;
+
+        Assert.Contains("BLANK's lower-left corner", text, StringComparison.Ordinal);
+        Assert.Contains("clamps", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("board's lower-left", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The probe grid for a job on a blank is the blank, in the blank's frame — the same rectangle
+    /// the export shifts every program by.
+    ///
+    /// It used to be the board, referenced to the board's corner, beside programs referenced to the
+    /// blank's: a surface measured ten millimetres from where every correction is applied, while
+    /// the probing file and the programs each looked entirely reasonable on their own.
+    /// </summary>
+    [Fact]
+    public void AJobOnABlankIsProbedInTheBlanksFrame()
+    {
+        var board = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var settings = board.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        var job = new JobOptions { Blank = new BlankOptions { Enabled = true } };
+
+        var plan = ExportPlanner.Plan(
+            board, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode, job: job);
+
+        var blank = ExportPlanner.BlankFor(board, settings, ToolLibrary.Default, job);
+
+        Assert.True(blank.Resolved);
+        Assert.Equal(plan.FrameFor(board.Bounds), blank.Bounds);
+        Assert.NotEqual(board.Bounds, blank.Bounds);
+
+        var touches = Touches(ProbeRoutine.Generate(blank.Bounds, new ProbeRoutineOptions { OnBlank = true }).Text);
+
+        output.WriteLine($"blank {Mm(blank.Bounds.Width):F2} x {Mm(blank.Bounds.Height):F2} mm, {touches.Count} touches");
+
+        Assert.Equal(1, Mm(touches.Min(t => t.X)), 3);
+        Assert.Equal(1, Mm(touches.Min(t => t.Y)), 3);
+        Assert.Equal(Mm(blank.Bounds.Width) - 1, Mm(touches.Max(t => t.X)), 3);
+        Assert.Equal(Mm(blank.Bounds.Height) - 1, Mm(touches.Max(t => t.Y)), 3);
     }
 
     [Fact]

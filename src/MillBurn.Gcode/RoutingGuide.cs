@@ -37,6 +37,9 @@ public sealed record RoutingGuideContext
     public int RefusedCount { get; init; }
 
     public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>Whether work zero is a blank's corner rather than the board's.</summary>
+    public bool OnBlank { get; init; }
 }
 
 /// <summary>One cutter's worth of routing.</summary>
@@ -47,8 +50,11 @@ public sealed record RoutingGuideStep
     /// <summary>The end mill to fit, as the program named it.</summary>
     public required string Cutter { get; init; }
 
-    /// <summary>What it makes — "3 slots 1.00 mm wide", "8 holes 1.70 mm across".</summary>
-    public required string What { get; init; }
+    /// <summary>
+    /// What it makes, one entry per feature the program cuts with it — "3 slots 1.00 mm wide",
+    /// "1 hole 2.20 mm across", "1 hole 2.50 mm across".
+    /// </summary>
+    public required IReadOnlyList<string> Makes { get; init; }
 
     public required int Line { get; init; }
 
@@ -96,83 +102,124 @@ public static class RoutingGuide
     }
 
     /// <summary>
-    /// Splits the program at its tool changes and measures each section.
+    /// Splits the program into cutters, and each cutter into what it makes.
     ///
-    /// The same <c>M0</c> boundary the drilling guide uses, for the same reason: an honest time per
-    /// cutter is the number that decides whether this is something to start now.
+    /// A step ends where the program stops for a tool change — but a feature's heading is written
+    /// *before* its tool change, not after it. Splitting at the <c>M0</c> alone handed each new
+    /// cutter's first feature to the cutter before it, and reading one comment per step dropped
+    /// every feature after the first. On a board with six holes milled by one end mill, the page
+    /// said "1 hole" beside a program that mills six, and named the wrong size for the one it did
+    /// list.
+    ///
+    /// So the program is cut into features first, at their headings, and a feature starts a new
+    /// step only if it holds a stop. The feature count and the cutter come out of the program's own
+    /// comments — <c>( 3 slots 1.00 mm wide, cut with the 1.0 mm end mill. )</c> — which the
+    /// operation wrote for exactly this: the file is the source, not the toolpath that made it.
     /// </summary>
     private static List<RoutingGuideStep> Read(string program)
     {
         var lines = program.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var steps = new List<RoutingGuideStep>();
-        var start = 0;
+        var starts = new List<int>();
 
-        for (var i = 0; i <= lines.Length; i++)
+        for (var i = 0; i < lines.Length; i++)
         {
-            if (i != lines.Length && Code(lines[i]) != "M0")
+            if (Feature(lines[i]) is null)
             {
                 continue;
             }
 
-            var section = lines[start..Math.Min(i + 1, lines.Length)];
+            // The heading above it — "( Plated holes — 2.20 mm )" — is part of the same feature.
+            var heading = i > 0 && lines[i - 1].TrimStart().StartsWith('(') && Feature(lines[i - 1]) is null;
+            starts.Add(heading ? i - 1 : i);
+        }
 
-            if (Describe(section, start) is { } step)
+        if (starts.Count == 0)
+        {
+            return Seconds(lines) is { } whole
+                ? [new RoutingGuideStep
+                {
+                    Order = 1,
+                    Cutter = "the cutter already in the spindle",
+                    Makes = ["routing"],
+                    Line = 1,
+                    Seconds = whole,
+                }]
+                : [];
+        }
+
+        // Each step is the features from one that holds a stop up to the next that does. The first
+        // starts at the top of the file, so its time includes the preamble.
+        var groups = new List<List<int>>();
+
+        for (var k = 0; k < starts.Count; k++)
+        {
+            var end = k + 1 < starts.Count ? starts[k + 1] : lines.Length;
+            var stops = lines[starts[k]..end].Any(l => Code(l) == "M0");
+
+            if (groups.Count == 0 || stops)
             {
-                steps.Add(step with { Order = steps.Count + 1 });
+                groups.Add([]);
             }
 
-            start = i + 1;
+            groups[^1].Add(k);
+        }
+
+        var steps = new List<RoutingGuideStep>();
+
+        for (var g = 0; g < groups.Count; g++)
+        {
+            var from = g == 0 ? 0 : starts[groups[g][0]];
+            var to = g + 1 < groups.Count ? starts[groups[g + 1][0]] : lines.Length;
+
+            if (Seconds(lines[from..to]) is not { } seconds)
+            {
+                continue;
+            }
+
+            var features = groups[g]
+                .Select(k => Feature(lines.Skip(starts[k]).First(l => Feature(l) is not null))!.Value)
+                .ToList();
+
+            steps.Add(new RoutingGuideStep
+            {
+                Order = steps.Count + 1,
+                Cutter = features[0].Cutter,
+                Makes = [.. features.Select(f => f.What)],
+                Line = starts[groups[g][0]] + 1,
+                Seconds = seconds,
+            });
         }
 
         return steps;
     }
 
     /// <summary>
-    /// What one section makes, and how long it takes.
-    ///
-    /// The cutter's name and the feature count come out of the program's own comments, because the
-    /// operation put them there for exactly this purpose: <c>( 3 slots 1.00 mm wide, cut with the
-    /// 1.0 mm end mill. )</c>. Reading them back is the same discipline as reading the bits out of
-    /// a drilling program — the file is the source, not the toolpath that made it.
+    /// "( 3 slots 1.00 mm wide, cut with the 1.0 mm end mill. )" as what it makes and what with, or
+    /// null for any other line.
     /// </summary>
-    private static RoutingGuideStep? Describe(string[] section, int offset)
+    private static (string What, string Cutter)? Feature(string line)
     {
-        var text = string.Join("\n", section);
-        var parsed = GcodeParser.Parse(text);
+        const string marker = ", cut with the ";
+
+        var trimmed = line.Trim();
+        var at = trimmed.IndexOf(marker, StringComparison.Ordinal);
+
+        return at < 0 || !trimmed.StartsWith('(')
+            ? null
+            : (trimmed[1..at].Trim(), trimmed[(at + marker.Length)..].TrimEnd(')', ' ', '.').Trim());
+    }
+
+    /// <summary>How long a stretch of the program takes, or null if it cuts nothing.</summary>
+    private static double? Seconds(string[] section)
+    {
+        var parsed = GcodeParser.Parse(string.Join("\n", section));
 
         if (!parsed.Moves.Any(m => !m.IsRapid && m.ToZNm < 0))
         {
             return null;
         }
 
-        var cutter = "the cutter already in the spindle";
-        var what = "routing";
-
-        foreach (var line in section.Select(l => l.Trim()))
-        {
-            const string marker = ", cut with the ";
-            var at = line.IndexOf(marker, StringComparison.Ordinal);
-
-            if (at < 0 || !line.StartsWith('('))
-            {
-                continue;
-            }
-
-            what = line[1..at].Trim();
-            cutter = line[(at + marker.Length)..].TrimEnd(')', ' ', '.').Trim();
-            break;
-        }
-
-        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(parsed));
-
-        return new RoutingGuideStep
-        {
-            Order = 0,
-            Cutter = cutter,
-            What = what,
-            Line = offset + 1,
-            Seconds = measured.PessimisticTime.TotalSeconds,
-        };
+        return GcodeBackplot.Measure(GcodeBackplot.Classify(parsed)).PessimisticTime.TotalSeconds;
     }
 
     private static string Code(string line)
@@ -293,7 +340,7 @@ public static class RoutingGuide
         {
             page.Append("<tr><td>").Append(step.Order).Append("</td>")
                 .Append("<td><strong>").Append(Escape(step.Cutter)).Append("</strong></td>")
-                .Append("<td>").Append(Escape(step.What)).Append("</td>")
+                .Append("<td>").Append(string.Join("<br>", step.Makes.Select(Escape))).Append("</td>")
                 .Append("<td>").Append(Duration(step.Seconds)).Append("</td>")
                 .Append("<td>").Append(step.Line).Append("</td></tr>\n");
         }
@@ -327,8 +374,7 @@ public static class RoutingGuide
             + "full depth is how small cutters break. In a preview this looks like the tool sinking "
             + "gradually rather than plunging; that is correct.</li>\n");
 
-        page.Append("<li>Work zero is the <strong>lower-left corner of the board</strong>, the same "
-            + "as every other file in this export.</li>\n");
+        page.Append(DrillGuide.WorkZero(context.OnBlank));
 
         page.Append("<li><strong>Run this after drilling and before the outline.</strong> The board "
             + "is still held to the stock at that point, and a slot cut after the board is free "

@@ -1597,18 +1597,7 @@ internal static class Program
             return 1;
         }
 
-        // The project-level choices. A folder is not a project, so these come from the command line
-        // here and from Project info in the window — the same options either way, which is what
-        // makes a job exported from the CLI identical to one exported from the app.
-        var job = new JobOptions
-        {
-            Blank = Blank(args),
-            MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
-            MillDrillToolId = Argument(args, "--mill-tool") is { } named
-                ? ToolLibrary.LoadOrDefault().Find(named)?.Id
-                : null,
-            MillAboveMm = Number(args, "--mill-above", 0),
-        };
+        var job = JobFor(args, project);
 
         var plan = ExportPlanner.Plan(
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
@@ -1624,13 +1613,17 @@ internal static class Program
 
         if (args.Contains("--probe", StringComparer.OrdinalIgnoreCase))
         {
-            var (routine, plan2) = ProbeRoutine.Generate(board.Bounds, new ProbeRoutineOptions
+            // In the plan's frame, so the map is measured where the programs will use it.
+            var frame = plan.FrameFor(board.Bounds);
+
+            var (routine, plan2) = ProbeRoutine.Generate(frame, new ProbeRoutineOptions
             {
                 SpacingMm = Number(args, "--spacing", app.Probe.SpacingMm),
                 FeedMmPerMin = app.Probe.FeedMmPerMin,
                 MaxDepthMm = app.Probe.MaxDepthMm,
                 MarginMm = app.Probe.MarginMm,
                 MaxPoints = (int)Number(args, "--max", app.Probe.MaxPoints),
+                OnBlank = frame != board.Bounds,
             });
 
             extras[SafeName(board.Source) + ".probe.nc"] = routine;
@@ -2068,7 +2061,23 @@ internal static class Program
             return 1;
         }
 
-        var saved = AppSettings.LoadOrDefault().Probe;
+        var app = AppSettings.LoadOrDefault();
+        var saved = app.Probe;
+
+        // The blank, from the project or the flags, so the grid is written in the same frame as
+        // the programs it will level.
+        var project = args[1].EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
+            ? ProjectFile.Open(args[1])
+            : null;
+
+        var settings = board.Layers.ToDictionary(
+            l => l.FileName,
+            l => project?.Settings.OutputFor(l.FileName)
+                ?? new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role, app.Import) },
+            StringComparer.Ordinal);
+
+        var blank = ExportPlanner.BlankFor(board, settings, ToolLibrary.LoadOrDefault(), JobFor(args, project));
+        var region = blank.Resolved ? blank.Bounds : board.Bounds;
 
         var options = new ProbeRoutineOptions
         {
@@ -2077,9 +2086,10 @@ internal static class Program
             FeedMmPerMin = Number(args, "--feed", saved.FeedMmPerMin),
             MarginMm = Number(args, "--margin", saved.MarginMm),
             MaxPoints = (int)Number(args, "--max", saved.MaxPoints),
+            OnBlank = blank.Resolved,
         };
 
-        var (text, report) = ProbeRoutine.Generate(board.Bounds, options);
+        var (text, report) = ProbeRoutine.Generate(region, options);
 
         var output = Argument(args, "-o") ?? Argument(args, "--out")
             ?? Path.Combine(
@@ -2092,6 +2102,12 @@ internal static class Program
 
         Console.WriteLine(board.Source);
         Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
+
+        if (blank.Resolved)
+        {
+            Line($"  blank       {Nm.ToMillimetreString(region.Width, 2)} x {Nm.ToMillimetreString(region.Height, 2)} mm, probed edge to edge; work zero is its corner");
+        }
+
         Line($"  grid        {report.Columns} x {report.Rows} = {report.PointCount} touches, {report.SpacingMm:F1} mm apart");
         Line($"  time        about {minutes:F0} minute(s)");
 
@@ -2272,6 +2288,35 @@ internal static class Program
             Console.Error.WriteLine($"Could not read '{input}': {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// The job options: the project's own, unless the command line names any.
+    ///
+    /// A project given on the command line used to be exported with none of its job options — no
+    /// blank, no milled holes — because these were only ever read from flags. The same project then
+    /// came out of the CLI as a different job from the one the window writes, with work zero in a
+    /// different place and a drilling program for holes the window mills. Flags still win, all
+    /// together, so a one-off variation is still one command.
+    /// </summary>
+    private static JobOptions JobFor(string[] args, MillBurnProject? project)
+    {
+        string[] flags = ["--blank", "--blank-size", "--blank-have", "--mill-holes", "--mill-tool", "--mill-above"];
+
+        if (project is not null && !flags.Any(f => args.Contains(f, StringComparer.OrdinalIgnoreCase)))
+        {
+            return project.Settings.Job;
+        }
+
+        return new JobOptions
+        {
+            Blank = Blank(args),
+            MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
+            MillDrillToolId = Argument(args, "--mill-tool") is { } named
+                ? ToolLibrary.LoadOrDefault().Find(named)?.Id
+                : null,
+            MillAboveMm = Number(args, "--mill-above", 0),
+        };
     }
 
     /// <summary>

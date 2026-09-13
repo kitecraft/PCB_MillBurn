@@ -485,7 +485,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
         try
         {
-            var (text, report) = ProbeRoutine.Generate(_board.Bounds, new ProbeRoutineOptions
+            // The frame the programs are written in, not the board. On a blank the grid covers the
+            // blank and is referenced to its corner; referenced to the board's corner instead, the
+            // map is measured a border's width away from where every correction is applied.
+            var frame = Frame;
+            var onBlank = frame != _board.Bounds;
+
+            var (text, report) = ProbeRoutine.Generate(frame, new ProbeRoutineOptions
             {
                 SpacingMm = Settings.Probe.SpacingMm,
                 FeedMmPerMin = Settings.Probe.FeedMmPerMin,
@@ -493,6 +499,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 MarginMm = Settings.Probe.MarginMm,
                 MaxPoints = Settings.Probe.MaxPoints,
                 SafeHeightMm = Settings.Machine.SafeZMm > 5 ? Settings.Machine.SafeZMm : 5,
+                OnBlank = onBlank,
             });
             File.WriteAllText(path, text);
 
@@ -501,7 +508,7 @@ public sealed partial class MainViewModel : ViewModelBase
             StatusMessage = string.Create(
                 System.Globalization.CultureInfo.InvariantCulture,
                 $"Wrote a {report.Columns} x {report.Rows} probing grid ({report.PointCount} touches, "
-                + $"about {minutes:F0} min) to {path}.");
+                + $"about {minutes:F0} min{(onBlank ? ", covering the blank" : string.Empty)}) to {path}.");
 
             return true;
         }
@@ -599,13 +606,19 @@ public sealed partial class MainViewModel : ViewModelBase
                 return null;
             }
 
-            // The board in work coordinates: its own corner is the origin, as in every export.
+            // The board in work coordinates: offset from the frame's corner, which is the origin of
+            // every export — the blank's when there is one. A map probed before the blank existed,
+            // or by a routine that ignored it, sits a border's width off and is caught here.
+            var frame = Frame;
+            var x = _board.Bounds.MinX - frame.MinX;
+            var y = _board.Bounds.MinY - frame.MinY;
+
             var corners = new[]
             {
-                Point2.Origin,
-                new Point2(_board.Bounds.Width, 0),
-                new Point2(0, _board.Bounds.Height),
-                new Point2(_board.Bounds.Width, _board.Bounds.Height),
+                new Point2(x, y),
+                new Point2(x + _board.Bounds.Width, y),
+                new Point2(x, y + _board.Bounds.Height),
+                new Point2(x + _board.Bounds.Width, y + _board.Bounds.Height),
             };
 
             var outside = corners.Max(map.OutsideByMm);

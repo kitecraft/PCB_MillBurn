@@ -23,6 +23,9 @@ public sealed record DrillGuideContext
 
     /// <summary>Anything the export wanted the operator to know.</summary>
     public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>Whether work zero is a blank's corner rather than the board's.</summary>
+    public bool OnBlank { get; init; }
 }
 
 /// <summary>One bit, and the run it does.</summary>
@@ -287,12 +290,24 @@ public static class DrillGuide
         }
     }
 
+    /// <summary>
+    /// Where work zero is, as a list item — shared with the routing page so the two cannot drift.
+    ///
+    /// Both pages said "the lower-left corner of the board" unconditionally, and on a job built on a
+    /// blank every program beside them is referenced to the blank's corner instead. Zeroing on the
+    /// board's corner as the page said puts every hole a border's width out.
+    /// </summary>
+    public static string WorkZero(bool onBlank) => onBlank
+        ? "<li>Work zero is the <strong>lower-left corner of the blank</strong>, not of the board "
+            + "— the same as every other file in this export.</li>\n"
+        : "<li>Work zero is the <strong>lower-left corner of the board</strong>, the same as every "
+            + "other file in this export.</li>\n";
+
     private static void Before(StringBuilder page, DrillGuideContext context)
     {
         page.Append("<h2>Before you start</h2>\n<ul>\n");
 
-        page.Append("<li>Work zero is the <strong>lower-left corner of the board</strong>, the same "
-            + "as every other file in this export.</li>\n");
+        page.Append(WorkZero(context.OnBlank));
 
         if (context.BreakThroughNm > 0)
         {
