@@ -60,6 +60,18 @@ public static class LayerRoleInfo
         role is LayerRole.PlatedDrill or LayerRole.NonPlatedDrill;
 
     /// <summary>
+    /// Whether the layer describes something that ends up on the finished board, as opposed to a
+    /// picture of the board drawn for a person to read.
+    ///
+    /// The distinction matters wherever geometry is used as evidence rather than as a target. A
+    /// drill map traces the board profile as part of its drawing, so anything asking "is there
+    /// something here worth keeping?" gets the answer "yes, everywhere" if a drill map is in the
+    /// pile — including inside the routed channels that are meant to be cut away.
+    /// </summary>
+    public static bool IsFabricated(LayerRole role) =>
+        role is not (LayerRole.DrillMap or LayerRole.Documentation);
+
+    /// <summary>
     /// Back-to-front paint order. Bottom-side layers first, then copper, then what is printed on
     /// top of it, then the holes, and the outline last so it frames everything. Painting copper
     /// over silk would hide the legend it is printed on.

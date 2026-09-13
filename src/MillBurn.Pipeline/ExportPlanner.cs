@@ -1176,8 +1176,14 @@ public static class ExportPlanner
         //
         // A profile with none of this inside it encloses nothing worth keeping, which is what a
         // slot, a window, or the routed channel between the boards of a panel is.
+        //
+        // Drawings are left out, and that is not tidiness. A KiCad drill map draws the board
+        // profile as the backdrop to its symbols, so it contributes a copy of every outline —
+        // including the channels — to the pile of "things worth keeping". Every channel on a panel
+        // then looks occupied, is called a piece, and is cut around instead of down: two grooves
+        // through the boards either side and a channel still joining them.
         var keep = new Paths64(board.Layers
-            .Where(l => l.Role != LayerRole.Outline)
+            .Where(l => l.Role != LayerRole.Outline && LayerRoleInfo.IsFabricated(l.Role))
             .SelectMany(l => l.Area)
             .Where(r => Clipper.Area(r) > 0));
 
