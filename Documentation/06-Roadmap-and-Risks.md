@@ -1892,6 +1892,7 @@ the left and right borders differ.
 - **Tabs: where, how many, how big.** See 6.4.
 - **A picture on the companion pages**, with the holes and slots numbered in run order. See 6.5.
 - **The tool library, once it has more than a handful in it** — filter, sort, copy. See 6.6.
+- **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2201,6 +2202,89 @@ on, and a filter you cannot see is how somebody concludes their tools have vanis
 **Done when** a library of thirty tools can be sorted by diameter and filtered to end mills, a tool
 can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
 byte-identical after a session that only looked at it.
+
+#### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **scheduled, needs research**
+
+Requested from the workshop, and the reasoning behind the request is the useful part:
+
+> *"I really like how MillBurn uses the status messages in the footer of the window. However, it's
+> not a common thing. Saving a project does not pop up a dialog (cause that's annoying) and instead
+> just puts the message into the status. I like it, but it can be a bit hard to get used to at
+> first."*
+
+**That is not a request for a tutorial. It is a request to teach one convention.** The app
+deliberately does not interrupt for routine success — a modal that says "saved" is a modal you
+learn to dismiss without reading — and the cost of that choice is that a successful save is silent
+to somebody who does not yet know where the app talks. The gap is narrow and specific, and the fix
+should be too.
+
+So two features, and the smaller one is the one that pays:
+
+##### The coachmark — a pill, an arrow, and one sentence, the first time an action happens
+
+Press Save for the first time; the window dims, a callout appears beside the status bar saying
+*this is where the app tells you things*, and it goes away on the next click. The save already
+happened — the overlay is never in the way of the thing it is explaining.
+
+Worth having on a handful of moments and no more. A coachmark on everything is a tutorial nobody
+finishes:
+
+- **First save** → the status bar. The one that prompted this.
+- **First preview** → the toolpath is parsed back out of the emitted G-code, not drawn from the
+  toolpath that made it. That is the app's most load-bearing idea and nothing on screen says it.
+- **First refusal** → the checks panel, because a refusal that is not read is a refusal that did
+  not work.
+- **First export** → the review list, which exists to be read before anything is written.
+
+##### The walkthrough — the same overlay, driven by next and back
+
+For the first run. Same machinery, a scripted sequence rather than a trigger.
+
+**The trap that decides whether it is any good: on a first run there is no board open.** Most of
+what a tour wants to point at — the layer list, Preview, Export, the viewport — is empty, disabled,
+or not there. A tour of greyed-out controls teaches nothing and reads as a broken feature. Two ways
+out, and the second is better:
+
+1. Wait until a board is loaded before offering the tour, which means it is not really a first-run
+   experience any more.
+2. **Have it load the test board itself.** `Millburn_Test_Board` is being built in the workshop as
+   exactly this — a board that covers the scenarios a user meets, meant to be a tutorial as much as
+   a fixture. A walkthrough that opens it has something real to point at from its first step, and
+   the board and the tour are then worth maintaining together rather than separately.
+
+##### What needs researching, because none of it is decided
+
+- **How to draw it in Avalonia.** An overlay that dims the window and cuts a hole around one
+  control needs the control's bounds in window coordinates (`TranslatePoint`) and a layer above
+  everything — `OverlayLayer`, an `AdornerLayer`, or a top-level `Panel` in the window's own grid.
+  Which of those behaves when the target is inside a `ScrollViewer`, or scrolled out of view, is
+  the question that will decide the implementation.
+- **What happens when the target moves.** The status bar is fixed; a layer row is not. A callout
+  anchored to something that scrolls, resizes or disappears has to follow it or dismiss itself, and
+  "points at empty space" is worse than not pointing.
+- **Escape, focus and keyboard.** It must dismiss on Esc and on any click, must not trap focus, and
+  must not swallow the keystroke that dismissed it.
+- **Reduced motion**, and no animation that cannot be turned off.
+
+##### What is already decided, because this codebase has rules about it
+
+- **It has to be checkable from a screenshot.** Every dialog here can be rendered headlessly —
+  `--settings`, `--tools`, `--test-cuts`, `--paste`. A coachmark that can only be seen by being a
+  new user is the one piece of UI nobody can review. It needs `--tip <key>` to force one open, and
+  the walkthrough needs a way to open at a given step.
+- **It must never fire in an automated run.** Otherwise every screenshot in the repository grows a
+  dimmed overlay, and the tools used to check the app start lying about it.
+- **The "seen" flags live in `AppSettings`**, one per coachmark rather than a single "new user"
+  boolean — a flag per moment is what lets a new moment be added later without re-teaching the old
+  ones. With a **Reset tips** button beside them in Settings, which is also how anybody reviews the
+  feature after the first day.
+- **The walkthrough suppresses the coachmarks it has already covered**, or the first save after
+  finishing a tour re-explains the status bar to somebody who has just been told.
+
+**Done when** a fresh profile gets a walkthrough that has a real board to point at, the first save
+after that does *not* re-explain the status bar, every coachmark can be forced open from the
+command line for a screenshot, no automated run ever draws one, and Esc closes anything this puts
+on screen.
 
 ### Phase 7 — User documentation — **started**
 
