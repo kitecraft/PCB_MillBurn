@@ -59,6 +59,7 @@ internal static class Program
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
+            Console.WriteLine("                                 --blank / --blank-size / --blank-have / --mill-holes as for export");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none records what a layer becomes");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
@@ -696,6 +697,17 @@ internal static class Program
             Console.Error.WriteLine($"No Gerber or drill files in '{folder}'.");
             return 1;
         }
+
+        // Job options too, for the same reason: a project configured from a script is a project
+        // somebody can check without clicking through the window to build it.
+        project.Settings = project.Settings with
+        {
+            Job = project.Settings.Job with
+            {
+                Blank = Blank(args),
+                MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
+            },
+        };
 
         // Layer outputs can be set here too, so a configured project is scriptable rather than
         // only clickable — and so the round trip can be checked without a person in the loop.

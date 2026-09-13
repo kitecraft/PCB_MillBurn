@@ -25,9 +25,9 @@ test, a measurement — so that "done" means something a reader can check.
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
 | 02 Gerber & geometry | 22 | 15 | 0 | 6 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
-| 04 Machines & laser | 28 | 8 | 2 | 18 | 0 |
+| 04 Machines & laser | 29 | 9 | 2 | 18 | 0 |
 | 05 Viewer & export | 16 | 6 | 2 | 7 | 1 |
-| **Requirements** | **91** | **44** | **5** | **39** | **3** |
+| **Requirements** | **92** | **45** | **5** | **39** | **3** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 11 physical
 capabilities (5 proven, 2 wanting a re-run, 4 never cut).
@@ -116,7 +116,8 @@ one block is most of what is left.
 | M10 | Use Case 1 (etch-resist then mill) end to end | §3 | **Not started** | Phase 5 "done when" — unmet |
 | M11 | Use Case 2 (mill, mask, outline, laser pads) end to end | §3 | **Not started** | Phase 5 "done when" — unmet |
 | M12 | Corner-stop fixture generator — the recommended default | §4.1 | **Not started** | — |
-| M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Not started** | pre-cut stock is the ordinary case, not the exotic one |
+| M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Done** | `Blanks`, `BlankOperation`; work zero, page and mirror axis all follow it |
+| M29 | Laser verification: burn into the blank's border and measure | 06 §5.6.5 | **Not started** | the mill defines its datum; the laser only trusts one |
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |
@@ -204,7 +205,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 4 Laser output (SVG) | in progress | **Parked** — M4, V11, V12, M7 outstanding |
 | 5 Jobs, setups, alignment | started | **Partial** — levelling done, M9–M20 untouched |
 | 5.5 Drilling, finished | scheduled | **Done — jumped the queue** |
-| 5.6 The blank | scheduled | **Not started** |
+| 5.6 The blank | scheduled | **Built** — 5.6.5 laser verification open |
 | 6.1 Rulers | scheduled | **Not started** |
 | 6.2 Climb or conventional | scheduled | **Not started** |
 | 6.3 Staying down between passes | scheduled | **Done — jumped the queue** |

@@ -395,4 +395,65 @@ public sealed class BlankTests(ITestOutputHelper output)
     private static bool Near(double a, double b) => Math.Abs(a - b) < 0.01;
 
     private static bool Inside(double v, double lo, double hi) => v > lo + 1 && v < hi - 1;
+
+    // ------------------------------------------------------------------ it travels with the project
+
+    /// <summary>
+    /// A board reopened next year has to cut the way it cut, and the blank is the setting that most
+    /// obviously must: it decides where work zero is, so a project that forgot it would put every
+    /// program a border's width out from the one before.
+    /// </summary>
+    [Fact]
+    public void TheBlankIsSavedWithTheProject()
+    {
+        var folder = Directory.CreateDirectory(
+            Path.Combine(Path.GetTempPath(), "millburn-blank-" + Guid.NewGuid().ToString("N"))).FullName;
+
+        try
+        {
+            var path = Path.Combine(folder, "board.millburn");
+
+            var project = MillBurnProject.FromSources(
+                ProjectFile.ImportFolder(RealBoards.Directory(RealBoards.PogoTest1)),
+                RealBoards.Directory(RealBoards.PogoTest1));
+
+            project.Settings = project.Settings with
+            {
+                Job = project.Settings.Job with
+                {
+                    Blank = new BlankOptions
+                    {
+                        Enabled = true,
+                        Sizing = BlankSizing.Stated,
+                        WidthMm = 183,
+                        HeightMm = 122,
+                        Cut = false,
+                    },
+                },
+            };
+
+            ProjectFile.Save(project, path);
+
+            var reopened = ProjectFile.Open(path).Settings.Job.Blank;
+
+            output.WriteLine($"{reopened.Sizing} {reopened.WidthMm} x {reopened.HeightMm}, cut={reopened.Cut}");
+
+            Assert.True(reopened.Enabled);
+            Assert.Equal(BlankSizing.Stated, reopened.Sizing);
+            Assert.Equal(183, reopened.WidthMm);
+            Assert.Equal(122, reopened.HeightMm);
+            Assert.False(reopened.Cut);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A temp directory that outlives the test is not a test failure.
+            }
+        }
+    }
 }

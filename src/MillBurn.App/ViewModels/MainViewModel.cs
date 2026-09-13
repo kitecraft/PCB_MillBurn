@@ -1174,6 +1174,11 @@ public sealed partial class MainViewModel : ViewModelBase
         var board = ProjectFile.ToBoard(_project);
         _board = board;
 
+        // The blank is described against the board's own bounds, and the board only exists here —
+        // a project that carries one arrives with its fields filled in and its summary blank until
+        // this runs.
+        DescribeBlank(_project.Settings.Job.Blank);
+
         var scene = BoardSceneBuilder.Build(
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
             board.Bounds,
@@ -1678,6 +1683,102 @@ public sealed partial class MainViewModel : ViewModelBase
         OnOutputChanged();
     }
 
+    // ------------------------------------------------------------------ the blank
+
+    /// <summary>
+    /// Cut or declare the piece of stock the job is built on.
+    ///
+    /// It moves work zero, so it is off until somebody asks for it.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool UseBlank { get; set; }
+
+    /// <summary>True when the blank is a stated rectangle rather than a border round the board.</summary>
+    [ObservableProperty]
+    public partial bool BlankIsStated { get; set; }
+
+    /// <summary>False when the stock is already this size and nothing needs cutting.</summary>
+    [ObservableProperty]
+    public partial bool CutTheBlank { get; set; } = true;
+
+    [ObservableProperty]
+    public partial double BlankWidthMm { get; set; }
+
+    [ObservableProperty]
+    public partial double BlankHeightMm { get; set; }
+
+    [ObservableProperty]
+    public partial double BlankBorderMm { get; set; } = 10;
+
+    /// <summary>What the blank works out to, or why it does not. Shown under the fields.</summary>
+    [ObservableProperty]
+    public partial string BlankSummary { get; set; } = string.Empty;
+
+    partial void OnUseBlankChanged(bool value) => SaveBlank();
+
+    partial void OnBlankIsStatedChanged(bool value) => SaveBlank();
+
+    partial void OnCutTheBlankChanged(bool value) => SaveBlank();
+
+    partial void OnBlankWidthMmChanged(double value) => SaveBlank();
+
+    partial void OnBlankHeightMmChanged(double value) => SaveBlank();
+
+    partial void OnBlankBorderMmChanged(double value) => SaveBlank();
+
+    private void SaveBlank()
+    {
+        if (_loadingJob)
+        {
+            return;
+        }
+
+        var blank = new BlankOptions
+        {
+            Enabled = UseBlank,
+            Sizing = BlankIsStated ? BlankSizing.Stated : BlankSizing.GrownFromBoard,
+            LeftMm = BlankBorderMm,
+            RightMm = BlankBorderMm,
+            BottomMm = BlankBorderMm,
+            TopMm = BlankBorderMm,
+            WidthMm = BlankWidthMm,
+            HeightMm = BlankHeightMm,
+            Cut = CutTheBlank,
+        };
+
+        _project.Settings = _project.Settings with { Job = _project.Settings.Job with { Blank = blank } };
+        _project.Touch();
+
+        DescribeBlank(blank);
+        OnOutputChanged();
+    }
+
+    /// <summary>
+    /// Says what the blank came to, right under the fields that decide it.
+    ///
+    /// Because the interesting answer is usually a refusal — a panel 1.4 mm too wide for the sheet
+    /// it was laid out for — and a refusal that only appears in the export list is one somebody
+    /// meets after they have stopped thinking about the number that caused it.
+    /// </summary>
+    private void DescribeBlank(BlankOptions blank)
+    {
+        if (_board is null || !blank.Enabled)
+        {
+            BlankSummary = string.Empty;
+            return;
+        }
+
+        var mirrors = Layers.Any(r => r.Layer is not null && r.Mirrored);
+        var cutter = LayerOperations.DefaultToolFor(OperationKind.Outline, Library.Tools);
+        var plan = Blanks.Resolve(blank, _board.Bounds, cutter.DiameterNm, mirrors);
+
+        BlankSummary = plan.Resolved
+            ? string.Create(CultureInfo.InvariantCulture,
+                $"{Nm.ToMillimetreString(plan.Bounds.Width, 2)} × {Nm.ToMillimetreString(plan.Bounds.Height, 2)} mm · ")
+                + string.Join(" ", plan.Notes)
+            : string.Join(" ", plan.Refusals);
+    }
+
     /// <summary>Reads the job options back out of a project that has just been opened.</summary>
     private void ApplyJobOptions()
     {
@@ -1691,12 +1792,20 @@ public sealed partial class MainViewModel : ViewModelBase
             MillDrillTool = job.MillDrillToolId is { } id
                 ? Library.Tools.FirstOrDefault(t => t.Id == id)
                 : null;
+
+            UseBlank = job.Blank.Enabled;
+            BlankIsStated = job.Blank.Sizing == BlankSizing.Stated;
+            CutTheBlank = job.Blank.Cut;
+            BlankWidthMm = job.Blank.WidthMm;
+            BlankHeightMm = job.Blank.HeightMm;
+            BlankBorderMm = job.Blank.LeftMm;
         }
         finally
         {
             _loadingJob = false;
         }
 
+        DescribeBlank(job.Blank);
         OnPropertyChanged(nameof(MillDrillTools));
     }
 

@@ -1729,7 +1729,7 @@ the export list. And it does not guess a cutter you have not entered into the li
 
 <a id="phase-56"></a>
 
-### Phase 5.6 — The blank — **scheduled, not started**
+### Phase 5.6 — The blank — **built; 5.6.5 open**
 
 The app cuts you a piece of stock, and the edges of that piece are the datum for every machine and
 every step after it.
@@ -1908,7 +1908,7 @@ wrong way seats perfectly and cuts a mirror image. §4.3 already wants an asymme
 reason; here the keying in 5.6.3 is not a nicety, it is the mitigation, and the export should say
 which corner the key must be in for the side being cut.
 
-#### 5.6.5 Verification: the border is a test coupon
+#### 5.6.5 Verification: the border is a test coupon — **not started**
 
 The mill cuts the blank, so on the mill the datum is *defined* and nothing needs checking — the same
 argument §4.1 makes for fixtures. **The laser cuts nothing and verifies nothing.** It trusts that its

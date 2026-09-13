@@ -309,6 +309,55 @@
                                     </Grid>
 
                                     <!--
+                                        The blank: the piece of stock this job is built on, and the
+                                        datum for every machine after it. Off by default because it
+                                        moves work zero.
+                                    -->
+                                    <CheckBox IsChecked="{Binding UseBlank, Mode=TwoWay}"
+                                              Margin="0,6,0,0"
+                                              ToolTip.Tip="Reference every file to a piece of stock rather than to the board. Work zero becomes the blank's lower-left corner, the SVG page becomes the blank, and a mirrored layer flips about the blank's centreline.">
+                                        <TextBlock Text="Build on a blank" Classes="caption" />
+                                    </CheckBox>
+
+                                    <StackPanel Spacing="4" IsVisible="{Binding UseBlank}" Margin="18,0,0,0">
+                                        <CheckBox IsChecked="{Binding BlankIsStated, Mode=TwoWay}"
+                                                  ToolTip.Tip="Give the blank's own size instead of a border round the board. This is the one for pre-cut stock.">
+                                            <TextBlock Text="A stated size" Classes="caption" />
+                                        </CheckBox>
+
+                                        <Grid ColumnDefinitions="Auto,*,Auto,*" IsVisible="{Binding BlankIsStated}">
+                                            <TextBlock Grid.Column="0" Classes="caption" VerticalAlignment="Center" Text="W" Margin="0,0,4,0" />
+                                            <TextBox Grid.Column="1" Text="{Binding BlankWidthMm, Mode=TwoWay}" />
+                                            <TextBlock Grid.Column="2" Classes="caption" VerticalAlignment="Center" Text="H" Margin="8,0,4,0" />
+                                            <TextBox Grid.Column="3" Text="{Binding BlankHeightMm, Mode=TwoWay}" />
+                                        </Grid>
+
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                            <Grid.IsVisible>
+                                                <Binding Path="BlankIsStated" Converter="{x:Static BoolConverters.Not}" />
+                                            </Grid.IsVisible>
+                                            <TextBlock Grid.Column="0" Classes="caption" Width="92"
+                                                       VerticalAlignment="Center" Text="Border" />
+                                            <Slider Grid.Column="1" Minimum="3" Maximum="30"
+                                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                                    Value="{Binding BlankBorderMm, Mode=TwoWay}"
+                                                    Margin="6,0" />
+                                            <TextBlock Grid.Column="2" Classes="fact" VerticalAlignment="Center"
+                                                       Text="{Binding BlankBorderMm, StringFormat='{}{0:F0} mm'}" />
+                                        </Grid>
+
+                                        <CheckBox IsChecked="{Binding CutTheBlank, Mode=TwoWay}"
+                                                  ToolTip.Tip="Off when the stock is already this size — nothing is cut, and the app is simply told what is on the table.">
+                                            <TextBlock Text="Cut it on the mill" Classes="caption" />
+                                        </CheckBox>
+
+                                        <TextBlock Text="{Binding BlankSummary}"
+                                                   Classes="caption"
+                                                   TextWrapping="Wrap"
+                                                   IsVisible="{Binding BlankSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    </StackPanel>
+
+                                    <!--
                                         Job options: choices about this board rather than about the
                                         machine or one layer. Off by default, because turning it on
                                         changes a hole from drilled to milled and that should be a
