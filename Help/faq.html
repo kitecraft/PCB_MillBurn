@@ -31,6 +31,7 @@
     <li><a href="#vbit">Why does the isolation depth change the cut width?</a></li>
     <li><a href="#through">What is &ldquo;through the back&rdquo;?</a></li>
     <li><a href="#tabs">Tabs, and what happens if you use none</a></li>
+    <li><a href="#project-page">The page that describes the whole export</a></li>
     <li><a href="#staydown">&ldquo;Stayed down for 13 of 17 pass links&rdquo;</a></li>
     <li><a href="#simplified">Why the file is so much smaller than the board looks</a></li>
     <li><a href="#levelling"><strong>The board is not flat: probing and height mapping</strong></a></li>
@@ -568,6 +569,26 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <p>
     Cut-outs never do this: an outline goes through the stock and there is nothing cleared beside
     it. Neither does a pass at a different depth, which has to plunge whatever is around it.
+  </p>
+</div>
+
+<h2 id="project-page">The page that describes the whole export</h2>
+
+<p>
+  Every export writes <code>Board.project.html</code> beside the files. It is short on purpose: what
+  to run first, what each file is, where work zero is, how to place the SVGs, and anything worth
+  checking. Nothing on it is new &mdash; it is the things the export window said, in the folder, on
+  the day you open it rather than the day you made it.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>The SVG one is the trap.</strong> Every SVG in an export shares one page, and that page
+    is the stock rather than the artwork &mdash; so there is an empty border round the drawing. Some
+    laser software imports the <em>drawing</em> and throws the border away, which puts the artwork at
+    the origin instead of where it belongs. <strong>Place by the page, not by the content</strong>,
+    and do not centre. If your software cannot do that, the project page gives you the offset to
+    type in.
   </p>
 </div>
 

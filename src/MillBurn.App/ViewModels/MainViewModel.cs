@@ -708,6 +708,13 @@ public sealed partial class MainViewModel : ViewModelBase
                 }
             }
 
+            // One page for the whole export, beside the files it describes.
+            if (plan.Page is { } overview)
+            {
+                File.WriteAllText(Path.Combine(folder, overview.TargetName), overview.Content);
+                pages++;
+            }
+
             var extra = pages;
 
             // Collected as a file and a reason rather than as finished sentences, so identical

@@ -72,6 +72,15 @@ public sealed record ExportPlan
     public BlankPlan Blank { get; init; } = BlankPlan.None;
 
     /// <summary>
+    /// One page describing the whole export, or null when there is nothing to describe.
+    ///
+    /// Belongs to the export rather than to any file in it, which is why it is here rather than on
+    /// an item: what it says — run these in this order, work zero is here, place the SVGs by the
+    /// page — is true of the set and of no member of it.
+    /// </summary>
+    public ExportCompanion? Page { get; init; }
+
+    /// <summary>
     /// The rectangle every program in this plan is referenced to: the blank's, or the board's when
     /// there is no blank.
     ///
@@ -224,7 +233,29 @@ public static class ExportPlanner
             skipped.Add("Blank: " + refusal);
         }
 
-        return new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
+        var plan = new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
+
+        // One page for the whole export, written last because it describes everything above it.
+        //
+        // Every fact on it is said somewhere already — in the export window, in a program's
+        // comments, on a drilling page — and each of those is a different place, none of which is
+        // open when somebody opens the folder next week.
+        return items.Count == 0
+            ? plan
+            : plan with
+            {
+                Page = new ExportCompanion(
+                    Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".project.html",
+                    ProjectPage.Build(plan, new ProjectPageContext
+                    {
+                        BoardName = Path.GetFileName(board.Source ?? "board"),
+                        Board = board.Bounds,
+                        BoardThicknessNm = boardThicknessNm,
+                        Blank = blank,
+                        Skipped = skipped,
+                    }),
+                    Invariant($"{items.Count} file(s), what to run first, and where work zero is")),
+            };
     }
 
     /// <summary>
@@ -295,9 +326,21 @@ public static class ExportPlanner
         // object, which turns a board into hundreds of them.
         var svg = SvgWriter.Write(artwork, page, new SvgExportOptions { SingleLayer = true });
 
+        // Where the artwork sits on the page, which is the number somebody needs if their laser
+        // software imports by the *content* rather than by the page.
+        //
+        // Plenty of it does: it drops the empty border and lands the drawing at the origin, which
+        // is right for a picture and wrong for a board — the art is then out by the border, and the
+        // border is the whole reason the page is bigger than the artwork. Saying the offset here
+        // means nobody has to work it out from two dimensions and a memory of what they typed.
+        var inset = new Point2(board.Bounds.MinX - frame.MinX, board.Bounds.MinY - frame.MinY);
+
         var summary = new List<string>
         {
             Invariant($"{page.WidthMm:F2} × {page.HeightMm:F2} mm page, shared by every layer in this export"),
+            inset.X == 0 && inset.Y == 0
+                ? "The artwork starts at the page's lower-left corner."
+                : Invariant($"The artwork sits {Nm.ToMillimetreString(inset.X, 2)} mm right and {Nm.ToMillimetreString(inset.Y, 2)} mm up from the page's lower-left corner. If your laser software imports by content rather than by page, that is the offset to add."),
             // Measured from what is going into the file, not from the layer it came from. Mirroring
             // leaves both alone, but inverting replaces the geometry entirely — and reporting the
             // source layer's 18 shapes and 112 mm² for a drawing that is now the board minus those

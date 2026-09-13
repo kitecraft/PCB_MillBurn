@@ -1706,7 +1706,12 @@ internal static class Program
             }
         }
 
-        Line($"  files       {plan.Count + plan.Items.Count(i => i.Companion is not null) + dryRuns.Count + extras.Count}");
+        Line($"  files       {plan.Count + plan.Items.Count(i => i.Companion is not null) + dryRuns.Count + extras.Count + (plan.Page is null ? 0 : 1)}");
+
+        if (plan.Page is { } summaryPage)
+        {
+            Line($"  overview    {summaryPage.TargetName} · {summaryPage.Description}");
+        }
 
         if (probeGrid is { } grid)
         {
@@ -1804,7 +1809,13 @@ internal static class Program
             File.WriteAllText(Path.Combine(outDir, name), text);
         }
 
-        var written = plan.Count + plan.Items.Count(i => i.Companion is not null) + dryRuns.Count + extras.Count;
+        if (plan.Page is { } overview)
+        {
+            File.WriteAllText(Path.Combine(outDir, overview.TargetName), overview.Content);
+        }
+
+        var written = plan.Count + plan.Items.Count(i => i.Companion is not null)
+            + dryRuns.Count + extras.Count + (plan.Page is null ? 0 : 1);
         Line($"  wrote       {written} file(s) to {outDir}");
         return plan.HasWarnings ? 2 : 0;
     }

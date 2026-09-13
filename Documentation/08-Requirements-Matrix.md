@@ -26,8 +26,8 @@ test, a measurement — so that "done" means something a reader can check.
 | 02 Gerber & geometry | 22 | 15 | 0 | 6 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 29 | 9 | 2 | 18 | 0 |
-| 05 Viewer & export | 16 | 6 | 2 | 7 | 1 |
-| **Requirements** | **92** | **45** | **5** | **39** | **3** |
+| 05 Viewer & export | 16 | 6 | 3 | 6 | 1 |
+| **Requirements** | **92** | **45** | **6** | **38** | **3** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 11 physical
 capabilities (5 proven, 2 wanting a re-run, 4 never cut).
@@ -153,7 +153,7 @@ one block is most of what is left.
 | V13 | PNG at a specified DPI | §3.4 | **Partial** | `--png` renders; DPI is not a parameter |
 | V14 | PDF for the documentation profile | §3.4 | **Not started** | — |
 | V15 | Gerber/Excellon round-trip of the modified board | §3.4 | **Superseded** | its purpose was panelisation, which was dropped |
-| V16 | Job Runbook: printable checklist, persisted state, PDF export | §4 | **Not started** | — |
+| V16 | Job Runbook: printable checklist, persisted state, PDF export | §4 | **Partial** | `ProjectPage` covers the order and the caveats; no state, no PDF |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
