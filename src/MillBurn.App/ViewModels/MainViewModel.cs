@@ -1195,9 +1195,14 @@ public sealed partial class MainViewModel : ViewModelBase
         // this runs.
         DescribeBlank(_project.Settings.Job.Blank);
 
+        // Fitted to the stock rather than to the board, when there is stock. The board outline is a
+        // better answer than the union of whatever happens to be drawn, and the blank is a better
+        // answer still: it is the piece on the table, and the cut that makes it lies outside the
+        // board — so fitting to the board put the blank's own toolpath just off screen, which is
+        // the one thing you would want to look at before running it.
         var scene = BoardSceneBuilder.Build(
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
-            board.Bounds,
+            Frame.IsEmpty ? board.Bounds : Frame,
             Palette,
             _backplot.Count > 0 ? Recoloured(_backplot) : null,
             SceneStyle(BoardSceneBuilder.SubstrateId, BoardPalette.Substrate));

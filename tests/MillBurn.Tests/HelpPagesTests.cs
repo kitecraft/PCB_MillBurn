@@ -187,4 +187,28 @@ public sealed class HelpPagesTests(ITestOutputHelper output)
 
         Assert.Contains("Help", project, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Every anchor a companion page links into actually exists in the FAQ.
+    ///
+    /// The pages written beside a program deep-link into the help, and those links leave the repo:
+    /// they end up in an export folder on somebody's machine, where a broken one is a dead end with
+    /// no way back. Asserted here because the two halves live in different projects and nothing
+    /// else would notice them drifting apart.
+    /// </summary>
+    [Fact]
+    public void EveryAnchorTheCompanionPagesLinkToExists()
+    {
+        var faq = Anchors(Pages()["faq.html"]);
+
+        // The sections GuideFooter points at, by the names the pages use.
+        string[] linked = ["drilling", "drills", "project-page", "testcuts", "levelling", "staydown"];
+
+        output.WriteLine(string.Join(", ", faq.Order(StringComparer.Ordinal)));
+
+        foreach (var anchor in linked)
+        {
+            Assert.Contains(anchor, faq);
+        }
+    }
 }
