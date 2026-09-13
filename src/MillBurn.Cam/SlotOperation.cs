@@ -15,6 +15,15 @@ public sealed record SlotOptions
 
     public long SagittaNm { get; init; } = Tessellate.DefaultSagittaNm;
 
+    /// <summary>
+    /// The end mill the project says to use, or null to take the widest in the library that fits.
+    ///
+    /// Checked against every feature it is asked to make rather than assumed to suit them all: a
+    /// cutter chosen for a 3 mm hole is too wide for a 1 mm slot, and the honest answer there is a
+    /// refusal naming the width.
+    /// </summary>
+    public Guid? ToolId { get; init; }
+
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
 }
 
@@ -72,6 +81,30 @@ public static class SlotOperation
     /// <summary>Builds a routing program for every slot in a drill file that can be cut.</summary>
     public static SlotPlan Build(
         IReadOnlyList<DrillSlotTarget> slots, ToolLibrary library, SlotOptions options, string label = "Slots")
+        => Build(slots, library, options, label, holes: false);
+
+    /// <summary>
+    /// Spirals out holes no drill can make: the same machinery pointed at a circle instead of a
+    /// line.
+    ///
+    /// A hole *is* a slot whose two ends coincide, and the geometry falls out of that rather than
+    /// being written again — inflating a zero-length line by the clearance gives a circle, and a
+    /// circle in a ramped pass is a helix. Which is what milling a hole out is.
+    ///
+    /// The only real difference is the refusal. A slot wants a cutter that fits; a hole wants one
+    /// that fits <em>and leaves room to spiral</em>, because a cutter the size of the hole is a
+    /// drill being asked to be a mill.
+    /// </summary>
+    public static SlotPlan Holes(
+        IReadOnlyList<DrillSlotTarget> holes, ToolLibrary library, SlotOptions options, string label = "Milled holes")
+        => Build(holes, library, options, label, holes: true);
+
+    private static SlotPlan Build(
+        IReadOnlyList<DrillSlotTarget> slots,
+        ToolLibrary library,
+        SlotOptions options,
+        string label,
+        bool holes)
     {
         ArgumentNullException.ThrowIfNull(slots);
         ArgumentNullException.ThrowIfNull(library);
@@ -94,7 +127,11 @@ public static class SlotOperation
         foreach (var group in slots.GroupBy(s => s.WidthNm).OrderBy(g => g.Key))
         {
             var width = group.Key;
-            var choice = ToolChooser.ForWidth(library, width, depth);
+            var choice = options.ToolId is { } wanted
+                ? Named(library, wanted, width, depth, holes)
+                : holes
+                    ? ToolChooser.ForHole(library, width, depth)
+                    : ToolChooser.ForWidth(library, width, depth);
 
             if (choice.Tool is not { } tool)
             {
@@ -123,12 +160,12 @@ public static class SlotOperation
                 Passes = passes,
                 Notes =
                 [
-                    Invariant($"{Count(group.Count())} {Mm(width)} mm wide, cut with the {tool.Name}."),
-                    Invariant($"{Mm(depth)} mm deep in {Mm(tool.StepdownNm > 0 ? tool.StepdownNm : depth)} mm steps, ramping along the slot rather than plunging."),
+                    Invariant($"{Count(group.Count(), holes)} {Mm(width)} mm {(holes ? "across" : "wide")}, cut with the {tool.Name}."),
+                    Invariant($"{Mm(depth)} mm deep in {Mm(tool.StepdownNm > 0 ? tool.StepdownNm : depth)} mm steps, {(holes ? "spiralling down" : "ramping along the slot")} rather than plunging."),
                 ],
             });
 
-            summary.Add(Invariant($"{Count(group.Count())} {Mm(width)} mm wide · {tool.Name}"));
+            summary.Add(Invariant($"{Count(group.Count(), holes)} {Mm(width)} mm {(holes ? "across" : "wide")} · {tool.Name}"));
         }
 
         return new SlotPlan
@@ -241,6 +278,26 @@ public static class SlotOperation
                 : [new ArtSegment(ArtSweep.Linear, slot.From, slot.To, Point2.Origin)];
         }
 
+        if (slot.From == slot.To)
+        {
+            // A hole: the cutter orbits at the clearance radius. Built as a circle rather than by
+            // inflating a zero-length line, because Clipper is entitled to discard a degenerate
+            // path and a silently empty toolpath is a hole that does not get made.
+            var orbit = Tessellate.Circle(slot.From, clearance, options.SagittaNm, containing: false);
+            var loop = new List<ArtSegment>(orbit.Count);
+
+            for (var i = 0; i < orbit.Count; i++)
+            {
+                loop.Add(new ArtSegment(
+                    ArtSweep.Linear,
+                    new Point2(orbit[i].X, orbit[i].Y),
+                    new Point2(orbit[(i + 1) % orbit.Count].X, orbit[(i + 1) % orbit.Count].Y),
+                    Point2.Origin));
+            }
+
+            return loop;
+        }
+
         var inflated = Clipper.InflatePaths(
             new Paths64 { new Path64 { new Point64(slot.From.X, slot.From.Y), new Point64(slot.To.X, slot.To.Y) } },
             clearance,
@@ -270,7 +327,36 @@ public static class SlotOperation
         return segments;
     }
 
-    private static string Count(int n) => n == 1 ? "1 slot" : Invariant($"{n} slots");
+    /// <summary>
+    /// The cutter the operator named, checked against this feature rather than trusted.
+    ///
+    /// A named tool that does not fit is refused exactly as an absent one is: the point of choosing
+    /// from a library is that the program cannot depend on a cutter that will not do the job, and
+    /// that is no less true when the choice was deliberate.
+    /// </summary>
+    private static ToolChoice Named(ToolLibrary library, Guid id, long width, long depth, bool holes)
+    {
+        var tool = library.Tools.FirstOrDefault(t => t.Id == id);
+
+        if (tool is null)
+        {
+            return ToolChoice.Refused("the end mill this project was set to use is no longer in the library");
+        }
+
+        var only = new ToolLibrary { Tools = [tool] };
+
+        return holes
+            ? ToolChooser.ForHole(only, width, depth)
+            : ToolChooser.ForWidth(only, width, depth);
+    }
+
+    private static string Count(int n, bool holes = false) => (n, holes) switch
+    {
+        (1, false) => "1 slot",
+        (1, true) => "1 hole",
+        (_, false) => Invariant($"{n} slots"),
+        (_, true) => Invariant($"{n} holes"),
+    };
 
     private static string Mm(long nm) => Nm.ToMillimetreString(nm, 2);
 

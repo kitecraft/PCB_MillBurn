@@ -149,6 +149,16 @@ public sealed record ProjectSettings
     /// </summary>
     public ProgramFraming Framing { get; init; } = ProgramFraming.None;
 
+    /// <summary>
+    /// Choices about this job: how it is allowed to make a feature, rather than which feature.
+    ///
+    /// Project-level rather than machine-level because the answer depends on the board. Whether a
+    /// 3.2 mm hole should be spiralled out with an end mill is a question about *this* design and
+    /// what the operator is willing to have happen to it, not about the machine — the same machine
+    /// cuts the next board where the same hole is a mounting slot and wants a different answer.
+    /// </summary>
+    public JobOptions Job { get; init; } = new();
+
     /// <summary>Which of <see cref="Tools"/> does what. Null falls back to the built-in default.</summary>
     public Guid? IsolationToolId { get; init; }
 

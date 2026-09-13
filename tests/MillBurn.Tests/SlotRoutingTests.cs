@@ -266,4 +266,122 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
         Assert.True(first.MovesInPlane || first.ToZNm >= 0,
             $"the first descent was straight down to {Nm.ToMillimetreString(-first.ToZNm, 2)} mm");
     }
+
+    // ------------------------------------------------------------------ mill-drill
+
+    /// <summary>
+    /// A hole is a slot whose two ends coincide, and the geometry falls out of that: inflating a
+    /// zero-length line by the clearance gives a circle, and a circle in a ramped pass is a helix.
+    /// </summary>
+    [Fact]
+    public void AHoleIsSpiralledOutAsACircle()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(1.0)] };
+        var hole = new DrillSlotTarget(0, new Point2(0, 0), new Point2(0, 0), Nm.FromMillimetres(3.2));
+
+        var pass = SlotOperation.Holes([hole], library, Options).Toolpaths[0].Passes[0];
+
+        Assert.True(pass.Closed);
+        Assert.True(pass.Ramps);
+
+        // Every point orbits at (3.2 - 1.0) / 2 from the centre.
+        var radii = pass.Path
+            .Select(seg => Math.Sqrt((seg.From.X * (double)seg.From.X) + (seg.From.Y * (double)seg.From.Y))
+                / Nm.PerMillimetre)
+            .ToList();
+
+        output.WriteLine($"{pass.Path.Count} segments, radius {radii.Min():F3}..{radii.Max():F3} mm");
+        Assert.Equal(1.1, radii.Max(), 2);
+        Assert.Equal(1.1, radii.Min(), 2);
+    }
+
+    /// <summary>
+    /// A cutter needs room to spiral. One the same size as the hole is a drill being asked to be a
+    /// mill — it would descend on its own axis with every flute buried, which is the plunge this
+    /// exists to avoid.
+    /// </summary>
+    [Fact]
+    public void AHoleBarelyWiderThanTheCutterIsRefused()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(1.0)] };
+        var hole = new DrillSlotTarget(0, Point2.Origin, Point2.Origin, Nm.FromMillimetres(1.05));
+
+        var refusal = Assert.Single(SlotOperation.Holes([hole], library, Options).Refusals);
+
+        output.WriteLine(refusal.Reason);
+
+        Assert.Contains("too big to drill and too small to mill", refusal.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Off by default. Turning it on changes a hole from drilled to milled — a different tool, a
+    /// different motion and a different finish — and it must not happen to somebody who never asked.
+    /// </summary>
+    [Fact]
+    public void NothingIsMilledUnlessTheProjectSaysSo()
+    {
+        var plan = PlanBoard(RealBoards.ArduinoUno, JobOptions.Default);
+
+        Assert.DoesNotContain(plan.Items, i =>
+            i.Summary.Any(s => s.Contains("across", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// With it on, holes bigger than the largest drill in the library leave the drilling program and
+    /// arrive in the routing one. The threshold is the library because the library is already a
+    /// claim about what is in the drawer.
+    /// </summary>
+    [Fact]
+    public void LargeHolesMoveFromTheDrillProgramToTheRoutingOne()
+    {
+        // The stock library's only drill is 1.0 mm, so PogoTest1's 1.7 mm and 2.2 mm holes are both
+        // bigger than anything the operator has listed.
+        var off = PlanBoard(RealBoards.PogoTest1, JobOptions.Default);
+        var on = PlanBoard(RealBoards.PogoTest1, new JobOptions { MillLargeHoles = true });
+
+        var drilledOff = Drilled(off);
+        var drilledOn = Drilled(on);
+
+        output.WriteLine($"drilled with it off: {drilledOff}, on: {drilledOn}");
+
+        Assert.True(drilledOn < drilledOff, "milling large holes should leave fewer to drill");
+
+        var routed = on.Items
+            .Where(i => i.TargetName.EndsWith(".slots.nc", StringComparison.Ordinal))
+            .ToList();
+
+        foreach (var file in routed)
+        {
+            output.WriteLine(file.TargetName + ": " + string.Join(" · ", file.Summary));
+        }
+
+        Assert.NotEmpty(routed);
+        Assert.All(routed, r => Assert.Contains(r.Summary, s => s.Contains("mm across", StringComparison.Ordinal)));
+
+        // The non-plated file's only size is 2.20 mm, so once that is milled it has nothing left to
+        // drill at all. It must still get its routing program rather than being written off as
+        // "nothing to cut" — which is about the drilling program, not about the layer.
+        Assert.Contains(routed, r => r.TargetName.Contains("NPTH", StringComparison.Ordinal));
+    }
+
+    private static int Drilled(ExportPlan plan) => plan.Items
+        .Where(i => i.Operation == OperationKind.Drilling)
+        .Sum(i => GcodeParser.Parse(i.Content).Moves.Count(m => !m.IsRapid && m.ToZNm < 0 && !m.MovesInPlane));
+
+    private static ExportPlan PlanBoard(string board, JobOptions job)
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(board));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings
+            {
+                FileName = l.FileName,
+                Output = LayerOperations.DefaultFor(l.Role),
+            },
+            StringComparer.Ordinal);
+
+        return ExportPlanner.Plan(
+            loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode, job: job);
+    }
 }

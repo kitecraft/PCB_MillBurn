@@ -126,7 +126,7 @@ the condition a workshop is usually in.
 | Layer | Set it to | You get |
 |---|---|---|
 | Top / bottom copper | G-code | Isolation routing around every trace and pad |
-| Plated / non-plated holes | G-code | A drilling program with tool changes, plus its HTML guide — and a `.slots.nc` beside it for any routed slots |
+| Plated / non-plated holes | G-code | A drilling program with tool changes, plus its HTML guide — and a `.slots.nc` beside it for slots and for holes too big to drill |
 | Board outline | G-code | Cut-out with tabs, in depth passes |
 | Soldermask | G-code | Mask relief — mills the mask off the pads only |
 
@@ -327,10 +327,7 @@ simplification and arc fitting (a panel's isolation goes from 301,097 lines to 1
 settings read from a controller's own `$` dump, custom start/end G-code, the standalone G-code
 viewer.
 
-Next: **mill-drill** — a hole too big for any drill you own, spiralled out with an end mill.
-Slots and library-aware tool selection landed with it in mind: an end mill moving sideways at depth
-is a slot and is also a hole too big to drill, and the cutter for both now comes from the library.
-Then **the blank** — the app cuts you a piece of stock and its edges become the datum for every
+Next: **the blank** — the app cuts you a piece of stock and its edges become the datum for every
 machine and every step after it, which removes fiducials, dowel pins and the design rule that goes
 with them. Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
 output, a LightBurn layer preset, and **rulers** down the edges of the viewport so a board's size can be read rather than guessed at. Also planned: an **MCP server** over the same libraries, so an assistant can

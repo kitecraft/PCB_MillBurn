@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MillBurn.App.ViewModels"
         xmlns:ctl="using:MillBurn.App.Controls"
+        xmlns:core="using:MillBurn.Core"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
@@ -305,6 +306,36 @@
                                         <TextBlock Grid.Column="2" Classes="fact"
                                                    VerticalAlignment="Center"
                                                    Text="{Binding BoardThicknessMm, StringFormat='{}{0:F1} mm'}" />
+                                    </Grid>
+
+                                    <!--
+                                        Job options: choices about this board rather than about the
+                                        machine or one layer. Off by default, because turning it on
+                                        changes a hole from drilled to milled and that should be a
+                                        decision somebody made rather than one they inherited.
+                                    -->
+                                    <CheckBox IsChecked="{Binding MillLargeHoles, Mode=TwoWay}"
+                                              Margin="0,2,0,0"
+                                              ToolTip.Tip="Holes bigger than the largest drill in your tool library are spiralled out with an end mill instead of being refused. They go in the routing file beside the drilling program.">
+                                        <TextBlock Text="Mill holes too big to drill" Classes="caption" />
+                                    </CheckBox>
+
+                                    <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding MillLargeHoles}">
+                                        <TextBlock Grid.Column="0" Classes="caption" Width="92"
+                                                   VerticalAlignment="Center"
+                                                   Text="Spiral with" />
+                                        <ComboBox Grid.Column="1"
+                                                  ItemsSource="{Binding MillDrillTools}"
+                                                  SelectedItem="{Binding MillDrillTool, Mode=TwoWay}"
+                                                  HorizontalAlignment="Stretch"
+                                                  PlaceholderText="Widest that fits"
+                                                  ToolTip.Tip="Leave unset to take the widest end mill in the library that fits the hole and reaches through the board.">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate x:DataType="core:Tool">
+                                                    <TextBlock Text="{Binding Name}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
                                     </Grid>
 
                                     <Grid ColumnDefinitions="*,6,*">

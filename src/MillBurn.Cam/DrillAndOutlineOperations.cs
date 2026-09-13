@@ -22,6 +22,16 @@ public sealed record DrillOptions
     public long PeckNm { get; init; } = Nm.FromMillimetres(0.8);
 
     public long DepthNm => BoardThicknessNm + BreakThroughNm;
+
+    /// <summary>
+    /// Hole diameters this program must leave alone, because something else is making them.
+    ///
+    /// A hole bigger than any drill the operator owns is milled out instead, in the routing
+    /// program. Filtering here rather than deleting afterwards keeps one rule: the drilling file
+    /// contains exactly what a drill makes, and the companion page that lists the bits stays true
+    /// without knowing anything about end mills.
+    /// </summary>
+    public IReadOnlyCollection<long> MilledNm { get; init; } = [];
 }
 
 /// <summary>How to cut the board out.</summary>
@@ -91,6 +101,11 @@ public static class DrillOperation
 
         foreach (var (tool, _) in drill.ByTool())
         {
+            if (options.MilledNm.Any(d => Math.Abs(d - tool.DiameterNm) <= Nm.FromMillimetres(0.001)))
+            {
+                continue;
+            }
+
             // Coincident hits are dropped. A drill file that lists the same position twice for the
             // same bit — which real ones do, and the IceZUM board does eight times — otherwise
             // drills the hole, then drills the empty hole again. The second pass cuts nothing, and

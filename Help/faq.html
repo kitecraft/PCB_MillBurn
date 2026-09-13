@@ -1243,6 +1243,8 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   A slot &mdash; an oval pad, or any routed hole &mdash; is not a plunge. A twist drill cuts on its
   point and will not travel sideways, so a slot is an <strong>end mill</strong> job, and it is
   written as <code>Board-PTH.slots.nc</code> beside the drilling program rather than folded into it.
+  That file carries anything else an end mill makes, including holes
+  <a href="#drills">too big to drill</a>.
   Two reasons: a run that alternates drills and cutters is a tool change the drilling page cannot
   describe honestly, and the two want different feeds.
 </p>
@@ -1277,6 +1279,38 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   Worth knowing because the picture gives you no clue. The slots appear on the board exactly as your
   EDA tool drew them, so there is nothing to notice until a part will not go in. Every KiCad board
   with a slotted pad has some &mdash; an Arduino Mega has seven.
+</p>
+
+<h3>A hole too big for any drill you own</h3>
+
+<p>
+  A 3.2 mm mounting hole on a machine whose largest drill is 2 mm has no correct answer &mdash; so
+  by default the export says so rather than picking one. Tick <strong>Mill holes too big to
+  drill</strong> in Project info and those holes are <em>spiralled out</em> with an end mill
+  instead: a helix down to depth, in the same routing file as the slots.
+</p>
+
+<p>
+  <strong>The threshold is your tool library.</strong> Anything bigger than the largest drill you
+  have listed is milled; everything else is drilled as before. No new number to keep true &mdash;
+  the library is already a claim about what is in the drawer. The summary says which sizes moved.
+</p>
+
+<div class="note">
+  <p>
+    <strong>The cutter has to be at most three quarters of the hole.</strong> A 2.0 mm end mill in a
+    2.2 mm hole leaves a tenth of a millimetre to orbit in: every flute buried, nothing evacuating,
+    and a helix that is really a plunge. So a hole that cannot give a cutter room to spiral is
+    refused by name, the same way a slot too narrow for anything is. You can name a specific end
+    mill to spiral with, and it is checked against every hole rather than assumed to suit them all.
+  </p>
+</div>
+
+<p>
+  Off by default on purpose. Turning it on changes a hole from drilled to milled &mdash; a different
+  tool, a different motion and a different finish &mdash; and that should be a decision somebody
+  made rather than one they inherited. The setting lives with the project, so a board reopened next
+  year cuts the way it cut.
 </p>
 
 <h3>Different sizes in one file</h3>

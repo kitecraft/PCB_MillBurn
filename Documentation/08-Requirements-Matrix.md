@@ -23,11 +23,11 @@ test, a measurement — so that "done" means something a reader can check.
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
-| 02 Gerber & geometry | 17 | 12 | 0 | 4 | 1 |
+| 02 Gerber & geometry | 18 | 14 | 0 | 3 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 27 | 8 | 2 | 17 | 0 |
 | 05 Viewer & export | 16 | 6 | 2 | 7 | 1 |
-| **Requirements** | **85** | **41** | **5** | **36** | **3** |
+| **Requirements** | **86** | **43** | **5** | **35** | **3** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 11 physical
 capabilities (5 proven, 2 wanting a re-run, 4 never cut).
@@ -78,7 +78,8 @@ one block is most of what is left.
 | G14 | Tolerance-driven flattening, never a fixed segment count | §4 | **Done** | `Tessellate`, 1 µm sagitta |
 | G15 | Panelisation / array generation | 06 §4 Q5 | **Superseded** | reasoned decision; recorded in the user FAQ |
 | G16 | A cutter chosen from the library rather than synthesised | 06 §5.5.1 | **Done** | `ToolChooser`; widest that fits and reaches |
-| G17 | Mill-drill: a hole too big for any drill, spiralled out | 06 §5.5.3 | **Not started** | machinery in place; the policy wants deciding |
+| G17 | Mill-drill: a hole too big for any drill, spiralled out | 06 §5.5.3 | **Done** | `SlotOperation.Holes`; off unless the project asks |
+| G18 | Job-level options, carried in the project | 06 §5.5.3 | **Done** | `JobOptions`; Project info, and `--mill-holes` on the CLI |
 
 ## 03 — Toolpath optimization
 
@@ -197,7 +198,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 3 The optimizer | — | **Done**, O6 open |
 | 4 Laser output (SVG) | in progress | **Parked** — M4, V11, V12, M7 outstanding |
 | 5 Jobs, setups, alignment | started | **Partial** — levelling done, M9–M20 untouched |
-| 5.5 Drilling, finished | scheduled | **Partial** — slots and tool selection done, mill-drill open |
+| 5.5 Drilling, finished | scheduled | **Done — jumped the queue** |
 | 5.6 The blank | scheduled | **Not started** |
 | 6.1 Rulers | scheduled | **Not started** |
 | 6.2 Climb or conventional | scheduled | **Not started** |

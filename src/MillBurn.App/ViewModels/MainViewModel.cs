@@ -653,7 +653,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         var plan = ExportPlanner.Plan(
             _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter,
-            framing: Framing, machineSettings: Settings.Machine);
+            framing: Framing, machineSettings: Settings.Machine, job: _project.Settings.Job);
 
         if (onlyLayer is null)
         {
@@ -1606,6 +1606,89 @@ public sealed partial class MainViewModel : ViewModelBase
         OnOutputChanged();
     }
 
+    // ------------------------------------------------------------------ job options
+
+    /// <summary>
+    /// Spiral out holes no drill in the library can make.
+    ///
+    /// Project-level, and saved with the project: whether a 3.2 mm hole should be milled is a
+    /// question about this board and what the operator is willing to have happen to it, not about
+    /// the machine — the same machine cuts the next board where the answer differs.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool MillLargeHoles { get; set; }
+
+    /// <summary>Which end mill spirals them, or null for the widest in the library that fits.</summary>
+    [ObservableProperty]
+    public partial Tool? MillDrillTool { get; set; }
+
+    /// <summary>The end mills available to choose from, plus a null entry meaning "pick for me".</summary>
+    public IReadOnlyList<Tool?> MillDrillTools =>
+        [null, .. Library.OfKind(ToolKind.EndMill).OrderBy(t => t.DiameterNm)];
+
+    /// <summary>
+    /// True while a project's own settings are being read into the view model.
+    ///
+    /// Without it, showing a project's saved options marks the project dirty: the setter fires the
+    /// handler, the handler writes the value back and calls Touch, and a project nobody has
+    /// touched asks to be saved on close.
+    /// </summary>
+    private bool _loadingJob;
+
+    partial void OnMillLargeHolesChanged(bool value)
+    {
+        if (_loadingJob)
+        {
+            return;
+        }
+
+        _project.Settings = _project.Settings with
+        {
+            Job = _project.Settings.Job with { MillLargeHoles = value },
+        };
+
+        _project.Touch();
+        OnOutputChanged();
+    }
+
+    partial void OnMillDrillToolChanged(Tool? value)
+    {
+        if (_loadingJob)
+        {
+            return;
+        }
+
+        _project.Settings = _project.Settings with
+        {
+            Job = _project.Settings.Job with { MillDrillToolId = value?.Id },
+        };
+
+        _project.Touch();
+        OnOutputChanged();
+    }
+
+    /// <summary>Reads the job options back out of a project that has just been opened.</summary>
+    private void ApplyJobOptions()
+    {
+        var job = _project.Settings.Job;
+
+        _loadingJob = true;
+
+        try
+        {
+            MillLargeHoles = job.MillLargeHoles;
+            MillDrillTool = job.MillDrillToolId is { } id
+                ? Library.Tools.FirstOrDefault(t => t.Id == id)
+                : null;
+        }
+        finally
+        {
+            _loadingJob = false;
+        }
+
+        OnPropertyChanged(nameof(MillDrillTools));
+    }
+
     private ProjectViewState CaptureViewState() => new()
     {
         HiddenLayers = [.. Layers.Where(l => !l.IsVisible).Select(l => l.Id)],
@@ -1633,6 +1716,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private void AttachProject(MillBurnProject project)
     {
         project.DirtyChanged += OnDirtyChanged;
+        ApplyJobOptions();
         RefreshTitles();
     }
 

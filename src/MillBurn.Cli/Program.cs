@@ -31,6 +31,9 @@ internal static class Program
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
+            Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
+            Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
+            Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
             Console.WriteLine("                                 --level-side top|bottom which face the map was probed on");
@@ -1579,9 +1582,21 @@ internal static class Program
             return 1;
         }
 
+        // The project-level choices. A folder is not a project, so these come from the command line
+        // here and from Project info in the window — the same options either way, which is what
+        // makes a job exported from the CLI identical to one exported from the app.
+        var job = new JobOptions
+        {
+            MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
+            MillDrillToolId = Argument(args, "--mill-tool") is { } named
+                ? ToolLibrary.LoadOrDefault().Find(named)?.Id
+                : null,
+            MillAboveMm = Number(args, "--mill-above", 0),
+        };
+
         var plan = ExportPlanner.Plan(
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
-            framing: framing, machineSettings: app.Machine);
+            framing: framing, machineSettings: app.Machine, job: job);
 
         // Companion programs that trace the same path in the air. Built here rather than at write
         // time so that a plain `export --dry-run` — no --write — still reports whether each one

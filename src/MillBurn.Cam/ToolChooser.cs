@@ -113,7 +113,7 @@ public static class ToolChooser
 
         foreach (var tool in candidates)
         {
-            if (diameterNm - tool.DiameterNm >= MinimumHelixNm * 2)
+            if (Bores(tool, diameterNm))
             {
                 return ToolChoice.Chosen(tool);
             }
@@ -126,16 +126,32 @@ public static class ToolChooser
         return narrowest is null
             ? ToolChoice.Refused(Invariant($"no end mill reaches {Mm(depthNm)} mm"))
             : ToolChoice.Refused(Invariant(
-                $"{Mm(diameterNm)} mm is too big to drill and too small to mill — the narrowest cutter that reaches is {narrowest.Name}, which would leave a helix of {Mm((diameterNm - narrowest.DiameterNm) / 2)} mm"));
+                $"{Mm(diameterNm)} mm is too big to drill and too small to mill — the narrowest cutter that reaches is {narrowest.Name}, and boring needs one no wider than {Mm((long)(diameterNm * MostOfAHole))} mm"));
     }
 
     /// <summary>
-    /// Half the smallest helix worth cutting: 0.1 mm of radius.
+    /// The smallest helix worth cutting: 0.1 mm of orbit radius.
     ///
-    /// Below this the cutter is orbiting inside its own kerf and the "hole" is a plunge with extra
+    /// Below this the cutter is turning inside its own kerf and the "hole" is a plunge with extra
     /// steps.
     /// </summary>
     public static long MinimumHelixNm { get; } = Nm.FromMillimetres(0.1);
+
+    /// <summary>
+    /// The most of a hole one cutter may be and still be boring it rather than plunging it.
+    ///
+    /// **Widest-that-fits is the right rule for a slot and the wrong one for a hole.** A slot is
+    /// constrained by its width and wants the stiffest cutter that will go in. A hole is not: a
+    /// 2.0 mm end mill in a 2.2 mm hole leaves a tenth of a millimetre of orbit, which means every
+    /// flute is buried, nothing evacuates, and the helix is a plunge wearing a disguise. Three
+    /// quarters is the usual working limit for helical boring, and on the real board it is the
+    /// difference between choosing the 2.0 mm cutter and the 1.0 mm one that actually spirals.
+    /// </summary>
+    public const double MostOfAHole = 0.75;
+
+    private static bool Bores(Tool tool, long diameterNm) =>
+        tool.DiameterNm <= diameterNm * MostOfAHole
+        && diameterNm - tool.DiameterNm >= MinimumHelixNm * 2;
 
     /// <summary>
     /// Drill sizes the board asks for that the library has never heard of.

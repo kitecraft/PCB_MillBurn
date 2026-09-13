@@ -5,6 +5,7 @@ using MillBurn.Core;
 using MillBurn.Export;
 using MillBurn.Gcode;
 using MillBurn.Geometry;
+using MillBurn.Gerber.Excellon;
 using MillBurn.Optimize;
 
 namespace MillBurn.Pipeline;
@@ -90,7 +91,8 @@ public static class ExportPlanner
         MachineProfile? machine = null,
         RouteEffort effort = RouteEffort.Balanced,
         ProgramFraming? framing = null,
-        MachineSettings? machineSettings = null)
+        MachineSettings? machineSettings = null,
+        JobOptions? job = null)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(settings);
@@ -138,29 +140,35 @@ public static class ExportPlanner
             var item = setting.Output == OutputKind.Svg
                 ? PlanSvg(board, layer, setting, operation, page)
                 : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort,
-                    framing, machineSettings ?? new MachineSettings());
+                    framing, machineSettings ?? new MachineSettings(), job ?? JobOptions.Default);
 
-            if (item is null)
+            if (item is not null)
             {
-                skipped.Add(Invariant($"{layer.FileName}: nothing to cut."));
-                continue;
+                items.Add(item);
             }
 
-            items.Add(item);
+            // Slots and milled holes get their own file. A run that alternates drills and end mills
+            // is a tool change the drilling companion page cannot describe honestly, and the two are
+            // different operations with different feeds — so `Board-PTH.slots.nc` sits beside the
+            // drilling program with its own line in this list.
+            //
+            // Tried even when the drilling item came out empty, because it can: a layer whose every
+            // hole is too big to drill has nothing left to drill and everything left to route, and
+            // that layer used to lose its routing file to a "nothing to cut" that was about the
+            // wrong program.
+            var routed = operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode
+                ? PlanSlots(board, layer, setting, library, boardThicknessNm, machine, effort,
+                    framing, machineSettings ?? new MachineSettings(), job ?? JobOptions.Default)
+                : null;
 
-            // Slots get their own file. A run that alternates drills and end mills is a tool change
-            // the drilling companion page cannot describe honestly, and the two are different
-            // operations with different feeds — so `Board-PTH.slots.nc` sits beside the drilling
-            // program with its own line in this list.
-            if (operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode)
+            if (routed is not null)
             {
-                var routed = PlanSlots(board, layer, setting, library, boardThicknessNm, machine, effort,
-                    framing, machineSettings ?? new MachineSettings());
+                items.Add(routed);
+            }
 
-                if (routed is not null)
-                {
-                    items.Add(routed);
-                }
+            if (item is null && routed is null)
+            {
+                skipped.Add(Invariant($"{layer.FileName}: nothing to cut."));
             }
         }
 
@@ -296,7 +304,8 @@ public static class ExportPlanner
         MachineProfile? machine,
         RouteEffort effort,
         ProgramFraming? framing,
-        MachineSettings machineSettings)
+        MachineSettings machineSettings,
+        JobOptions job)
     {
         var tool = ResolveTool(setting, operation, library);
         var warnings = new List<string>();
@@ -313,7 +322,7 @@ public static class ExportPlanner
         IReadOnlyList<Toolpath> toolpaths = operation switch
         {
             OperationKind.Isolation => Only(BuildIsolation(layer, setting, tool, summary, warnings)),
-            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, library, summary, warnings),
+            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, library, job, summary, warnings),
             OperationKind.Outline => Only(BuildOutline(board, layer, setting, tool, boardThicknessNm, summary, warnings)),
             OperationKind.Engrave => Only(BuildEngrave(layer, setting, tool, summary)),
             OperationKind.Pocket => Only(BuildPocket(layer, setting, tool, summary, warnings)),
@@ -350,9 +359,17 @@ public static class ExportPlanner
         MachineProfile? machine,
         RouteEffort effort,
         ProgramFraming? framing,
-        MachineSettings machineSettings)
+        MachineSettings machineSettings,
+        JobOptions job)
     {
-        if (layer.Drill is null || layer.Drill.Slots.Count == 0)
+        if (layer.Drill is null)
+        {
+            return null;
+        }
+
+        var milled = MilledSizes(layer.Drill, library, job);
+
+        if (layer.Drill.Slots.Count == 0 && milled.Count == 0)
         {
             return null;
         }
@@ -361,6 +378,7 @@ public static class ExportPlanner
         {
             BoardThicknessNm = boardThicknessNm,
             BreakThroughNm = setting.BreakThroughNm,
+            ToolId = job.MillDrillToolId,
         };
 
         var targets = new List<DrillSlotTarget>(layer.Drill.Slots.Count);
@@ -377,6 +395,27 @@ public static class ExportPlanner
         }
 
         var plan = SlotOperation.Build(targets, library, options, layer.Label);
+
+        // Holes too big for any drill in the library, spiralled out with the same cutter machinery.
+        // They join the slot file rather than getting one of their own: both are an end mill, and a
+        // second routing file would be a second tool change for no reason.
+        var holes = SlotOperation.Holes(
+            [.. layer.Drill.Hits
+                .Select(h => (h.At, D: layer.Drill.Tools.TryGetValue(h.Tool, out var t) ? t.DiameterNm : 0))
+                .Where(h => milled.Contains(h.D))
+                .Select((h, i) => new DrillSlotTarget(1_000_000 + i, h.At, h.At, h.D))],
+            library,
+            options,
+            layer.Label);
+
+        plan = new SlotPlan
+        {
+            Toolpaths = [.. plan.Toolpaths, .. holes.Toolpaths],
+            Summary = [.. plan.Summary, .. holes.Summary],
+            Refusals = [.. plan.Refusals, .. holes.Refusals],
+            CutCount = plan.CutCount + holes.CutCount,
+        };
+
         var summary = new List<string>();
         var warnings = new List<string>();
 
@@ -400,6 +439,12 @@ public static class ExportPlanner
         var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
         summary.Add(Invariant($"{depth} mm deep ({through} mm through the back), ramped not plunged"));
 
+        if (milled.Count > 0)
+        {
+            summary.Add(Invariant(
+                $"{string.Join(", ", milled.Order().Select(m => Nm.ToMillimetreString(m, 2) + " mm"))} milled rather than drilled — no drill that size in the library"));
+        }
+
         if (plan.RefusedCount > 0)
         {
             summary.Add(Invariant(
@@ -415,6 +460,34 @@ public static class ExportPlanner
             Path.GetFileNameWithoutExtension(layer.FileName) + ".slots.nc",
             "Routed slots",
             boardThicknessNm, machine, effort, framing, machineSettings, companion: false);
+    }
+
+    /// <summary>
+    /// Hole sizes this board asks for that no drill in the library can make, when the project has
+    /// said to mill those out.
+    ///
+    /// The threshold is the largest drill the operator has listed, because the library is already a
+    /// claim about what is in the drawer and a second number would be one more thing to keep true.
+    /// A library with no drills in it says nothing about what is too big, so nothing is milled —
+    /// the alternative is milling every hole on the board the first time somebody opens the app.
+    /// </summary>
+    private static IReadOnlyCollection<long> MilledSizes(ExcellonFile drill, ToolLibrary library, JobOptions job)
+    {
+        if (!job.MillLargeHoles)
+        {
+            return [];
+        }
+
+        var threshold = job.MillAboveMm > 0
+            ? Nm.FromMillimetres(job.MillAboveMm)
+            : ToolChooser.LargestDrill(library);
+
+        return threshold <= 0
+            ? []
+            : [.. drill.Tools.Values
+                .Select(t => t.DiameterNm)
+                .Where(d => d > threshold + ToolChooser.SlackNm)
+                .Distinct()];
     }
 
     /// <summary>
@@ -717,6 +790,7 @@ public static class ExportPlanner
         Tool tool,
         long thicknessNm,
         ToolLibrary library,
+        JobOptions job,
         List<string> summary,
         List<string> warnings)
     {
@@ -725,10 +799,13 @@ public static class ExportPlanner
             return [];
         }
 
+        var milled = MilledSizes(layer.Drill, library, job);
+
         var options = new DrillOptions
         {
             BoardThicknessNm = thicknessNm,
             BreakThroughNm = setting.BreakThroughNm,
+            MilledNm = milled,
         };
 
         var depth = Nm.ToMillimetreString(options.DepthNm, 2);
@@ -761,7 +838,10 @@ public static class ExportPlanner
         // have entered it — but the export window is where somebody would want to find out that
         // the run stops for a size they have never listed.
         var missing = ToolChooser.DrillsNotInLibrary(
-            library, layer.Drill.Hits.Select(h => layer.Drill.Tools.TryGetValue(h.Tool, out var t) ? t.DiameterNm : 0).Where(d => d > 0));
+            library,
+            layer.Drill.Hits
+                .Select(h => layer.Drill.Tools.TryGetValue(h.Tool, out var t) ? t.DiameterNm : 0)
+                .Where(d => d > 0 && !milled.Contains(d)));
 
         if (missing.Count > 0)
         {

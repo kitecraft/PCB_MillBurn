@@ -1566,7 +1566,7 @@ found by a person looking at a real result rather than by anything in the suite.
 
 <a id="phase-55"></a>
 
-### Phase 5.5 — Drilling, finished — **two of three built**
+### Phase 5.5 — Drilling, finished — **done**
 
 Three features that belong to Phase 2 and were left behind when it closed. Numbered 5.5 because
 that is when they were scheduled, not where their subject lives — the same reason Phase 1.5 sits
@@ -1623,7 +1623,7 @@ pad has some. Currently read, drawn, reported and **not made**, which is the sta
 - **Arcs.** An arc-shaped slot is currently dropped at the parser rather than straightened. It can
   come through as an arc once there is something that can cut one.
 
-#### 5.5.3 Mill-drill for holes too big for any bit — **not started**
+#### 5.5.3 Mill-drill for holes too big for any bit — **done**
 
 The same machinery pointed at a circle instead of a line. Helical interpolation with a proper
 lead-in — not pcb2gcode's plunge-and-circle, which
@@ -1635,7 +1635,7 @@ rather than in the drill file, so they are cut as outline profiles and the drill
 a hole it cannot make. A board that puts a 3.2 mm mounting hole in the drill file, on a machine
 whose largest drill is 2 mm, has no correct answer today.
 
-#### 5.5.4 What it refuses — **done for slots**
+#### 5.5.4 What it refuses — **done**
 
 This is the part that decides whether the phase is worth having, and it is the reason all three
 belong together: each one introduces a case where **there is no correct program to write**.
@@ -1654,7 +1654,7 @@ belong together: each one introduces a case where **there is no correct program 
   four — not an all-or-nothing failure. The export list already shows one item per file and one
   warning per problem; this fits it.
 
-#### Done when — **met for slots**
+#### Done when — **met**
 
 The acceptance test ran exactly as written. With the shipped library the Arduino Uno exports
 `Arduino UNO-PTH-drl.slots.nc` cutting **three of its seven slots** with the 1.0 mm end mill, and
@@ -1685,13 +1685,33 @@ What it turned into, beyond the specification:
   out that the run stops for a 0.30 mm bit. PogoTest1 says it for 2.20 mm and 1.70 mm; the Mega for
   five sizes.
 
-**Still open: 5.5.3.** Neither committed board has a hole too big to drill — both Arduinos put their
-mounting holes on `Edge_Cuts`, so they are cut as outline profiles and the drilling path never sees
-one. The machinery it needs now exists (the chooser, the ramp, helical arcs through the emitter and
-the leveller), and what it needs decided is the *policy*: when does a hole stop being drilled and
-start being milled? The defensible rule is "larger than the largest drill in your library", which is
-derived from something the operator curates rather than invented — but it changes a program
-silently, so it wants saying out loud before it is built.
+**5.5.3 came almost free, once the rest existed.** A hole *is* a slot whose two ends coincide, so
+`SlotOperation.Holes` is the same machinery pointed at a circle: inflating a zero-length line by the
+clearance gives a circle, a circle in a ramped pass is a helix, and the arc fitter turns it back
+into a single `G3` with a Z word. On PogoTest1 the 2.20 mm holes come out as one block each —
+`G3 X4.911 Y13.957 I-0.600 J0.000 Z-1.000`, a full turn of 0.6 mm radius descending a millimetre.
+
+Two things it needed that the specification did not name.
+
+**A project-level option**, requested from the workshop, because the *policy* had no right answer.
+When does a hole stop being drilled and start being milled? Off by default, and when on the
+threshold is the largest drill in the library — a claim the operator already curates, rather than a
+new number to keep true. `JobOptions` is the container, and it is the third place a setting can
+live: the machine's numbers describe the machine, a layer's output describes that file, and between
+them sits a small set of decisions about *this job*. It travels in the project, so a board reopened
+next year cuts the way it cut.
+
+**A different rule for a hole than for a slot.** "Widest that fits" is right for a slot, whose
+constraint is its width, and wrong for a hole: a 2.0 mm end mill in a 2.2 mm hole leaves a tenth of
+a millimetre of orbit, every flute buried and nothing evacuating — a plunge wearing a disguise. A
+cutter may be at most three quarters of the hole, which on the real board is the difference between
+picking the 2.0 mm cutter and the 1.0 mm one that actually spirals. Found by reading the emitted
+file rather than by any test.
+
+And one bug, found the same way: a layer whose *every* hole is too big to drill has nothing left to
+drill and everything left to route, and it was being written off as "nothing to cut" — a sentence
+about the drilling program applied to the whole layer. PogoTest1's non-plated file is exactly that
+shape, and it now gets its routing program.
 
 #### Original acceptance test
 
