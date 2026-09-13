@@ -28,6 +28,7 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 | 05 | [Viewer & Export](05-Viewer-and-Export.md) | Real-time backplot viewer (UGS-informed), and the **SVG writer that is the entire laser output path** |
 | 06 | [Roadmap & Risks](06-Roadmap-and-Risks.md) | Phased milestones, acceptance metrics, open questions |
 | 07 | [UI Framework Decision](07-UI-Framework-Decision.md) | MAUI vs. Avalonia vs. WPF for this app, and why it's a cheap decision |
+| 08 | [Requirements Matrix](08-Requirements-Matrix.md) | Every requirement in 01-07 traced to what exists in the tree, with the queue-order analysis |
 
 ## Reference checkouts in this workspace
 

@@ -181,7 +181,11 @@ you also find out it is a ninety-minute job.
 0.1–0.2 mm out of flat. That one comparison is the most common reason PCB milling disappoints
 people. So: generate a `G38.2` probing grid, run it, feed your sender's log back in, and every
 program is bent to the measured surface — thin-plate spline, clamped to the probed area, degrading
-to a tilt or an offset when the measurements cannot justify a surface.
+to a tilt or an offset when the measurements cannot justify a surface. One rule comes with it, said
+on the probing file itself because that is what you are looking at when it matters: **mark the spot
+you zero Z on and use it every time**. A map holds heights relative to wherever Z zero was, so
+touching off the next tool 0.03 mm higher puts every correction in it 0.03 mm out, across the whole
+board, in the same direction — and nothing about the file looks any different.
 
 **Refuse rather than guess.** A dry run that is wrong is worse than no dry run, because it is the
 thing you trust just before committing a board. So incremental mode is refused, not guessed at. A
@@ -300,15 +304,26 @@ the machine rather than from a guess. With it right, four programs predicted 0:1
 0:32–3:10 and 1:56–8:52 ran in 0:30, 0:48, 2:22 and 4:35 — three inside the bracket, and the miss
 is the shortest program, where the sender's own start-up is most of the three seconds.
 
+**Two more things the board taught, after that.** Levelling was flattening arcs into chords at a
+segment length meant to bound *depth* error, so a 1.7 mm pad's isolation ring left the app as an
+eight-sided figure lying 0.09 mm inside the circle — visible on the finished board without a loupe.
+An arc now stays an arc when it is split, because a `G2` with a Z word is a helix and every
+controller that runs the arcs already in the file runs those. And the tool now **stays down between
+passes that touch**: thirteen of the twenty-five links in that isolation program were exactly one
+stepover apart, lap-to-lap on the same pad across material the previous lap had already cleared, so
+thirteen of its twenty-six plunges were pure cost — about 13 % of the run on a machine whose Z
+traverse is a twentieth of its XY rate.
+
 **What has still not touched copper:** drilling with tool changes, double-sided work and its
-mirror, soldermask relief, and the routed channel between the boards of a panel. 791 tests pass
-with zero warnings under `TreatWarningsAsErrors`, but those four paths are "believed correct", not
-"proven".
+mirror, soldermask relief, and the routed channel between the boards of a panel. Two more want a
+re-run rather than a first run: the tab fix, and the links now cut at depth. 805 tests pass with
+zero warnings under `TreatWarningsAsErrors`, but those paths are "believed correct", not "proven".
 
 Done: reading and drawing boards, projects, toolpaths and G-code, the travel optimizer,
 simplification and arc fitting (a panel's isolation goes from 301,097 lines to 15,191, within a
-2 µm bound), isolation width, dry runs, height mapping, test cuts for dialling a bit in, machine settings read
-from a controller's own `$` dump, custom start/end G-code, the standalone G-code viewer.
+2 µm bound), isolation width, dry runs, height mapping, test cuts for dialling a bit in, machine
+settings read from a controller's own `$` dump, custom start/end G-code, the standalone G-code
+viewer.
 
 Next: **slots, mill-drill and library-aware tool selection** — an end mill moving sideways at
 depth is a slot and is also a hole too big to drill, and neither can pick its own cutter today.
@@ -371,8 +386,8 @@ Publishing on Linux sets the bit itself. On a fresh Debian or Ubuntu the app may
 
 | Target | Publish output | Archive |
 |---|---|---|
-| `win-x64` | `out/windows/`, 296 files, 214 MB | `out/millburn-win-x64.zip`, 75 MB |
-| `linux-x64` | `out/linux/`, 293 files, 111 MB | `out/millburn-linux-x64.tar.gz`, 46 MB |
+| `win-x64` | `out/windows/`, 296 files, 215 MB | `out/millburn-win-x64.zip`, 76 MB |
+| `linux-x64` | `out/linux/`, 293 files, 112 MB | `out/millburn-linux-x64.tar.gz`, 47 MB |
 
 ---
 
@@ -381,23 +396,23 @@ Publishing on Linux sets the bit itself. On a fresh Debian or Ubuntu the app may
 ```
 src/
   MillBurn.Core       units, transforms, project model, settings
-  MillBurn.Gerber     Gerber X2/X3 + Excellon parsing
-  MillBurn.Geometry   Clipper2 + NetTopologySuite: tessellation, booleans, offsets, pocketing
+  MillBurn.Gerber     Gerber RS-274X + X2, Excellon drill and route
+  MillBurn.Geometry   Clipper2: tessellation, booleans, offsets, area
   MillBurn.Cam        isolation, drilling, outline, mask and silkscreen generators
-  MillBurn.Optimize   travel optimizer and the motion time model
-  MillBurn.Gcode      mill only: emitter, parser, processor chain, backplot, dry runs
-  MillBurn.Post       mill only: machine profiles and post-processors
-  MillBurn.Align      height maps (probe-log import, TPS), G-code levelling, fiducial fits
-  MillBurn.Export     SVG / DXF / PDF / PNG — the whole laser output path
+  MillBurn.Optimize   travel optimizer, motion time model, simplification, pass linking
+  MillBurn.Gcode      mill only: emitter, parser, backplot, dry runs, probing, test cuts
+  MillBurn.Post       mill only: post-processor templates — empty, scheduled
+  MillBurn.Align      height maps (probe-log import, TPS) and G-code levelling
+  MillBurn.Export     SVG. DXF and PDF are scheduled
   MillBurn.Viewer     scene, level of detail, spatial culling, Skia renderer
-  MillBurn.Pipeline   the cached, cancellable stage graph tying it together
+  MillBurn.Pipeline   the stage graph tying it together
   MillBurn.App        Avalonia shell (UI only)
   MillBurn.Cli        headless batch driver
 tests/
   MillBurn.Tests        unit and property tests
   MillBurn.GoldenTests  golden-file and determinism regression
-  boards/               real KiCad exports, committed
-  corpus/               Gerber test files from the specification
+  boards/               six real KiCad exports, committed
+  corpus/               empty — where a pcb2gcode test-data checkout is looked for
 ```
 
 Every algorithm lives in a UI-free `net10.0` library; only `MillBurn.App` references a UI framework.
@@ -409,18 +424,25 @@ changelog.
 | Doc | Subject |
 |---|---|
 | [01](Documentation/01-Architecture.md) | Solution layout, incremental pipeline, scope boundary, licensing |
-| [02](Documentation/02-Gerber-and-Geometry-Pipeline.md) | Gerber X2/X3 parsing, Clipper2/NTS geometry, isolation, DRC |
+| [02](Documentation/02-Gerber-and-Geometry-Pipeline.md) | Gerber X2 parsing, Clipper2 geometry, isolation, drilling, the outline |
 | [03](Documentation/03-Toolpath-Optimization.md) | Why pcb2gcode's travel is bad, and the replacement |
 | [04](Documentation/04-Machines-Laser-and-Mixed-Workflows.md) | Laser output, the Job model, board re-alignment |
-| [05](Documentation/05-Viewer-and-Export.md) | The G-code viewer, SVG/DXF export |
+| [05](Documentation/05-Viewer-and-Export.md) | The G-code viewer and the SVG writer |
 | [06](Documentation/06-Roadmap-and-Risks.md) | Phases, acceptance metrics, risks, and every bug worth remembering |
 | [07](Documentation/07-UI-Framework-Decision.md) | Avalonia vs. WPF vs. MAUI |
+| [08](Documentation/08-Requirements-Matrix.md) | Every requirement in the other seven, traced to what exists |
 
 Test fixtures come in two kinds, both committed and both run everywhere: hand-written cases from
 the Ucamco specification, and real KiCad board exports in
 [`tests/boards/`](tests/boards/README.md). The first prove the parser handles the specification;
 the second prove it handles what an EDA tool actually writes, which is where the bugs have been.
 Set `MILLBURN_BOARDS` to run the suite against a private board without committing it.
+
+A third kind is **not** committed. `tests/corpus/` is where a checkout of pcb2gcode's test data is
+looked for — 24 more Gerbers, and good ones — but pcb2gcode is GPL-3.0 and redistributing its data
+would carry that licence into this repository. Those cases skip cleanly when it is absent, so a
+fresh clone and CI stay green while a local checkout gets much broader coverage. Point
+`MILLBURN_GERBER_CORPUS` at one if you have it.
 
 ---
 
