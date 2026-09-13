@@ -31,6 +31,9 @@ internal static class Program
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
+            Console.WriteLine("                                 --blank <l,b,r,t mm> cut the stock too, this much bigger than the board");
+            Console.WriteLine("                                 --blank-size <WxH mm> the blank is this rectangle instead");
+            Console.WriteLine("                                 --blank-have the stock is already that size; cut nothing");
             Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
             Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
             Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
@@ -1587,6 +1590,7 @@ internal static class Program
         // makes a job exported from the CLI identical to one exported from the app.
         var job = new JobOptions
         {
+            Blank = Blank(args),
             MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
             MillDrillToolId = Argument(args, "--mill-tool") is { } named
                 ? ToolLibrary.LoadOrDefault().Find(named)?.Id
@@ -1674,6 +1678,22 @@ internal static class Program
 
         Console.WriteLine(board.Source);
         Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
+
+        // Said at the top, because it changes where work zero is for every file underneath it.
+        if (plan.Blank.Resolved)
+        {
+            var b = plan.Blank.Bounds;
+
+            var how = plan.Blank.Cut ? "cut on the mill" : "declared";
+
+            Line($"  blank       {Nm.ToMillimetreString(b.Width, 2)} x {Nm.ToMillimetreString(b.Height, 2)} mm, {how} — work zero is its lower-left corner");
+
+            foreach (var note in plan.Blank.Notes)
+            {
+                Line($"              {note}");
+            }
+        }
+
         Line($"  files       {plan.Count + plan.Items.Count(i => i.Companion is not null) + dryRuns.Count + extras.Count}");
 
         if (probeGrid is { } grid)
@@ -2229,6 +2249,68 @@ internal static class Program
             Console.Error.WriteLine($"Could not read '{input}': {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// The blank, from the command line.
+    ///
+    /// A folder is not a project, so what Project info holds in the window comes from flags here —
+    /// the same options either way, which is what makes a job exported from the CLI identical to
+    /// one exported from the app.
+    /// </summary>
+    private static BlankOptions Blank(string[] args)
+    {
+        var stated = Argument(args, "--blank-size");
+        var grown = Argument(args, "--blank");
+        var declared = args.Contains("--blank-have", StringComparer.OrdinalIgnoreCase);
+
+        if (stated is null && grown is null && !declared)
+        {
+            return new BlankOptions();
+        }
+
+        if (stated is not null)
+        {
+            var parts = stated.Split('x', 'X', ',');
+
+            if (parts.Length != 2
+                || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var w)
+                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var h))
+            {
+                Console.Error.WriteLine($"--blank-size wants WxH in mm, e.g. 183x122 (got '{stated}').");
+                return new BlankOptions();
+            }
+
+            return new BlankOptions
+            {
+                Enabled = true,
+                Sizing = BlankSizing.Stated,
+                WidthMm = w,
+                HeightMm = h,
+                Cut = !declared,
+            };
+        }
+
+        var borders = (grown ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(v => double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : double.NaN)
+            .ToList();
+
+        var options = new BlankOptions { Enabled = true, Cut = !declared };
+
+        return borders.Count switch
+        {
+            // One number is the same border all round, which is what somebody types first.
+            1 when !double.IsNaN(borders[0]) => options with
+            {
+                LeftMm = borders[0], RightMm = borders[0], BottomMm = borders[0], TopMm = borders[0],
+            },
+            4 when borders.TrueForAll(b => !double.IsNaN(b)) => options with
+            {
+                LeftMm = borders[0], BottomMm = borders[1], RightMm = borders[2], TopMm = borders[3],
+            },
+            _ => options,
+        };
     }
 
     private static double Number(string[] args, string name, double fallback) =>

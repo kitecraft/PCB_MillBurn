@@ -45,5 +45,14 @@ public sealed record JobOptions
     /// </summary>
     public double MillAboveMm { get; init; }
 
+    /// <summary>
+    /// The piece of stock this job is built on, and the datum for every machine after it.
+    ///
+    /// Project-level rather than machine-level for the same reason the rest of this record is: the
+    /// sheet a board is laid out to fit is a fact about that board. It is not a layer — no file
+    /// produces it, and every setting a layer row offers is meaningless for it.
+    /// </summary>
+    public BlankOptions Blank { get; init; } = new();
+
     public static JobOptions Default { get; } = new();
 }

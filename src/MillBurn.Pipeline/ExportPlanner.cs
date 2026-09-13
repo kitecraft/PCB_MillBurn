@@ -68,6 +68,9 @@ public sealed record ExportPlan
 
     public IReadOnlyList<string> Skipped { get; init; } = [];
 
+    /// <summary>The stock this job is built on, or <see cref="BlankPlan.None"/> when there is none.</summary>
+    public BlankPlan Blank { get; init; } = BlankPlan.None;
+
     public int Count => Items.Count;
 
     public bool HasWarnings => Items.Any(i => i.Warnings.Count > 0);
@@ -111,11 +114,34 @@ public static class ExportPlanner
         // acceleration.
         machine ??= (machineSettings ?? new MachineSettings()).Profile;
 
+        var options = job ?? JobOptions.Default;
+
+        // The blank, and with it the frame every file in this export is referenced to.
+        //
+        // Three things downstream read the frame rather than the board: work zero is its lower-left
+        // corner, the shared SVG page is its bounds, and a mirrored layer flips about *its*
+        // centreline. Without a blank the frame is the board's own bounding box, which is exactly
+        // what those three used before this existed — so a job with no blank is unchanged.
+        var mirrorsAnything = board.Layers.Any(l =>
+            settings.TryGetValue(l.FileName, out var s) && s.Output != OutputKind.None && s.MirrorFor(l.Role));
+
+        var blank = Blanks.Resolve(
+            options.Blank,
+            board.Bounds,
+            OutlineCutter(settings, library).DiameterNm,
+            mirrorsAnything);
+
+        var frame = blank.Resolved ? blank.Bounds : board.Bounds;
+
         // Every export in one run shares a page, so the layers overlay when imported. Cropping each
         // to its own extents is the mistake that puts the second burn out by the difference.
-        var page = board.Bounds.IsEmpty
+        //
+        // With a blank the page *is* the blank: 04 section 4.3 has always wanted the page fixed to
+        // the stock outline, and until now the app did not know what the stock was, so it fitted a
+        // page to the artwork with an invented 2 mm margin. The blank's border is the margin.
+        var page = frame.IsEmpty
             ? null
-            : SvgPage.ForContent(board.Bounds, Nm.FromMillimetres(2));
+            : SvgPage.ForContent(frame, blank.Resolved ? 0 : Nm.FromMillimetres(2));
 
         foreach (var layer in board.InDrawOrder())
         {
@@ -138,9 +164,9 @@ public static class ExportPlanner
             }
 
             var item = setting.Output == OutputKind.Svg
-                ? PlanSvg(board, layer, setting, operation, page)
-                : PlanGcode(board, layer, setting, operation, library, boardThicknessNm, machine, effort,
-                    framing, machineSettings ?? new MachineSettings(), job ?? JobOptions.Default);
+                ? PlanSvg(board, frame, layer, setting, operation, page)
+                : PlanGcode(board, frame, layer, setting, operation, library, boardThicknessNm, machine,
+                    effort, framing, machineSettings ?? new MachineSettings(), options);
 
             if (item is not null)
             {
@@ -157,8 +183,8 @@ public static class ExportPlanner
             // that layer used to lose its routing file to a "nothing to cut" that was about the
             // wrong program.
             var routed = operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode
-                ? PlanSlots(board, layer, setting, library, boardThicknessNm, machine, effort,
-                    framing, machineSettings ?? new MachineSettings(), job ?? JobOptions.Default)
+                ? PlanSlots(board, frame, layer, setting, library, boardThicknessNm, machine, effort,
+                    framing, machineSettings ?? new MachineSettings(), options)
                 : null;
 
             if (routed is not null)
@@ -172,7 +198,22 @@ public static class ExportPlanner
             }
         }
 
-        return new ExportPlan { Items = items, Skipped = skipped };
+        // First in the list, because everything else is referenced to the piece it makes. There is
+        // no program when the blank is declared: the stock is already that size, and the app is
+        // being told what is on the table rather than asked to make it.
+        if (blank is { Resolved: true, Cut: true } && items.Count > 0)
+        {
+            items.Insert(0, BlankProgram(
+                board, blank, settings, library, machine, framing,
+                machineSettings ?? new MachineSettings(), boardThicknessNm));
+        }
+
+        foreach (var refusal in blank.Refusals)
+        {
+            skipped.Add("Blank: " + refusal);
+        }
+
+        return new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
     }
 
     /// <summary>
@@ -194,7 +235,12 @@ public static class ExportPlanner
     // ------------------------------------------------------------------ SVG
 
     private static ExportItem? PlanSvg(
-        Board board, BoardLayer layer, LayerOutputSettings setting, OperationKind operation, SvgPage? page)
+        Board board,
+        Bounds frame,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        OperationKind operation,
+        SvgPage? page)
     {
         if (page is null || layer.Area.Count == 0)
         {
@@ -206,7 +252,7 @@ public static class ExportPlanner
         // page, which is the whole reason the page exists.
         var mirrored = setting.MirrorFor(layer.Role);
         var area = mirrored
-            ? MirrorX(layer.Area, board.Bounds.MinX + board.Bounds.MaxX)
+            ? MirrorX(layer.Area, frame.MinX + frame.MaxX)
             : layer.Area;
 
         // Inverted: everything inside the board except this layer.
@@ -296,6 +342,7 @@ public static class ExportPlanner
 
     private static ExportItem? PlanGcode(
         Board board,
+        Bounds frame,
         BoardLayer layer,
         LayerOutputSettings setting,
         OperationKind operation,
@@ -340,7 +387,7 @@ public static class ExportPlanner
         }
 
         return Assemble(
-            board, layer, setting, operation, toolpaths, tool, summary, warnings,
+            board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
             TargetNameFor(layer.FileName, operation, OutputKind.Gcode),
             LayerOperations.Label(operation),
             boardThicknessNm, machine, effort, framing, machineSettings, companion: true, repeated);
@@ -355,6 +402,7 @@ public static class ExportPlanner
     /// </summary>
     private static ExportItem? PlanSlots(
         Board board,
+        Bounds frame,
         BoardLayer layer,
         LayerOutputSettings setting,
         ToolLibrary library,
@@ -463,7 +511,7 @@ public static class ExportPlanner
         var stem = Path.GetFileNameWithoutExtension(layer.FileName);
 
         var item = Assemble(
-            board, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
+            board, frame, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
             stem + ".slots.nc",
             "Routed slots",
             boardThicknessNm, machine, effort, framing, machineSettings, companion: false);
@@ -500,6 +548,110 @@ public static class ExportPlanner
                 stem + ".routing.html",
                 html,
                 $"{cutters}, {changes}{missing}"),
+        };
+    }
+
+    /// <summary>
+    /// The cutter that will run the board's outline, which is what sets the blank's minimum border.
+    ///
+    /// Taken from the outline layer's own setting where there is one, so the floor is computed
+    /// against the bit that will actually be beside the blank's edge rather than against a default.
+    /// </summary>
+    private static Tool OutlineCutter(
+        IReadOnlyDictionary<string, LayerOutputSettings> settings, ToolLibrary library)
+    {
+        var outline = settings.Values.FirstOrDefault(s =>
+            s.ToolId is not null && s.Output == OutputKind.Gcode);
+
+        return outline is not null
+            ? ResolveTool(outline, OperationKind.Outline, library)
+            : LayerOperations.DefaultToolFor(OperationKind.Outline, library.Tools);
+    }
+
+    /// <summary>
+    /// The program that cuts the blank out of a larger sheet.
+    ///
+    /// First in the list, because everything else in the export is referenced to the piece this
+    /// makes. It is not a layer — no file produces it — so it is built here rather than coming out
+    /// of the loop over layers, and it carries the layer identity of the outline it will later be
+    /// cut against only so the export list has something to group it under.
+    ///
+    /// **Tabs go on the top and right edges only.** The datum is the lower-left corner, and a tab
+    /// stub on a datum edge stops the blank seating by a few tenths — silently, because a stub that
+    /// small is invisible and a rectangle that is 0.3 mm off seats perfectly well at a slight
+    /// angle. That is the failure this feature exists to prevent, so it must not be the failure it
+    /// introduces.
+    /// </summary>
+    private static ExportItem BlankProgram(
+        Board board,
+        BlankPlan blank,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        ToolLibrary library,
+        MachineProfile? machine,
+        ProgramFraming? framing,
+        MachineSettings machineSettings,
+        long thicknessNm)
+    {
+        var tool = OutlineCutter(settings, library);
+        var summary = new List<string>();
+        var warnings = new List<string>();
+
+        var options = new BlankOutlineOptions
+        {
+            Tool = tool,
+            BoardThicknessNm = thicknessNm,
+        };
+
+        var toolpath = BlankOperation.Build(blank.Bounds, options);
+
+        var shift = new Point2(-blank.Bounds.MinX, -blank.Bounds.MinY);
+
+        var job = new Job
+        {
+            Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — blank",
+            Toolpaths = [Translate(toolpath, shift)],
+            OriginShift = shift,
+            Notes =
+            [
+                Invariant($"Cut this first. Everything else in this export is referenced to the corner it makes."),
+                Invariant($"Blank {Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm. Work zero is its lower-left corner."),
+                "Tabs are on the top and right edges only: a stub on a datum edge stops the blank seating.",
+                "Deburr the two datum edges before first use — a fresh cut leaves a burr underneath.",
+            ],
+        };
+
+        var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions
+        {
+            Framing = framing ?? ProgramFraming.None,
+            SafeZNm = Nm.FromMillimetres(machineSettings.SafeZMm),
+            ApproachZNm = Nm.FromMillimetres(machineSettings.ApproachZMm),
+            Decimals = machineSettings.Decimals,
+            CannedCycles = machineSettings.CannedCycles,
+        });
+
+        var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(GcodeParser.Parse(text)), machine);
+
+        summary.Add(Invariant(
+            $"{Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm from a larger sheet"));
+        summary.Add(Invariant($"{tool.Name} · {Nm.ToMillimetreString(options.TotalDepthNm, 2)} mm deep in {Nm.ToMillimetreString(options.DepthPerPassNm, 2)} mm passes"));
+        summary.Add(Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
+        summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
+        summary.AddRange(blank.Notes);
+
+        warnings.Add("Cut this before anything else, and keep the piece the right way up — the lower-left corner of this rectangle is work zero for every other file in this export.");
+        warnings.AddRange(ToolAdvice.For(tool));
+
+        return new ExportItem
+        {
+            LayerFileName = "(blank)",
+            LayerLabel = "Blank",
+            Role = LayerRole.Unknown,
+            Operation = OperationKind.Outline,
+            Output = OutputKind.Gcode,
+            TargetName = Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".blank.nc",
+            Content = text,
+            Summary = summary,
+            Warnings = warnings,
         };
     }
 
@@ -545,6 +697,7 @@ public static class ExportPlanner
     /// </summary>
     private static ExportItem? Assemble(
         Board board,
+        Bounds frame,
         BoardLayer layer,
         LayerOutputSettings setting,
         OperationKind operation,
@@ -566,15 +719,15 @@ public static class ExportPlanner
 
         // Each file is referenced to the board's own corner, so every one of them shares a work
         // zero the operator can actually touch off on.
-        var shift = board.Bounds.IsEmpty
+        var shift = frame.IsEmpty
             ? Point2.Origin
-            : new Point2(-board.Bounds.MinX, -board.Bounds.MinY);
+            : new Point2(-frame.MinX, -frame.MinY);
 
         // A bottom-side layer is drawn as seen through the board, so cutting it as-is produces a
         // mirror image. The flip is baked in here rather than left to the operator, and the file
         // says which way the stock must be turned — a program that is silently the wrong hand
         // looks completely correct on screen and scraps the board.
-        var notes = new List<string> { OriginNote(board) };
+        var notes = new List<string> { OriginNote(board, frame) };
 
         var mirrored = setting.MirrorFor(layer.Role);
 
@@ -621,7 +774,11 @@ public static class ExportPlanner
             // cut rather than for its mirror image.
             if (mirrored)
             {
-                path = MirrorX(path, board.Bounds.MinX + board.Bounds.MaxX);
+                // About the *blank's* centreline, not the board's. Physically the operator flips
+                // the stock and pushes it back into the same corner, so that is the axis - and with
+                // a blank in play the board's own centreline is simply the wrong line, in the worst
+                // way available: the file looks entirely correct and the board is scrap.
+                path = MirrorX(path, frame.MinX + frame.MaxX);
             }
 
             // Each toolpath picks up where the last one left off. A tool change lifts to safe Z and
@@ -1282,11 +1439,21 @@ public static class ExportPlanner
     /// Repeated into each one because they are handed to the machine separately, and a file that
     /// does not say what its origin means is a file someone will run against the wrong zero.
     /// </summary>
-    private static string OriginNote(Board board)
+    /// <summary>
+    /// Where work zero is, said in the file because that is where somebody at the machine reads it.
+    ///
+    /// With a blank it is the *blank's* corner, not the board's, and the difference is the whole
+    /// point of the feature — a note that still said "the board's corner" would be telling the
+    /// operator to touch off in a place no file in the export is referenced to.
+    /// </summary>
+    private static string OriginNote(Board board, Bounds frame)
     {
         var x = Nm.ToMillimetreString(board.Bounds.MinX, 3);
         var y = Nm.ToMillimetreString(board.Bounds.MinY, 3);
-        return Invariant($"Work zero is the board's lower-left corner; the Gerber origin was at {x}, {y} mm.");
+
+        return frame == board.Bounds
+            ? Invariant($"Work zero is the board's lower-left corner; the Gerber origin was at {x}, {y} mm.")
+            : Invariant($"Work zero is the BLANK's lower-left corner, not the board's. The board sits {Nm.ToMillimetreString(board.Bounds.MinX - frame.MinX, 2)} mm right and {Nm.ToMillimetreString(board.Bounds.MinY - frame.MinY, 2)} mm up from it. The Gerber origin was at {x}, {y} mm.");
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
