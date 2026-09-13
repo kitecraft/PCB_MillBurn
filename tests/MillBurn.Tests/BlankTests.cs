@@ -461,6 +461,190 @@ public sealed class BlankTests(ITestOutputHelper output)
         Assert.Contains("Cut the board out</strong> with the same bit as the blank", page, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The blank is cut with the outline's numbers as well as its bit: the bit's stepdown and the
+    /// outline row's distance through.
+    ///
+    /// Found cutting a real blank. An 0.8 mm board, an 0.8 mm end mill with a 0.5 mm stepdown, and
+    /// the outline row set 0.1 mm through: the board outline took two passes and the blank took
+    /// three, because the blank used built-in values of its own — 0.4 mm passes, 0.3 mm through.
+    /// </summary>
+    [Fact]
+    public void TheBlankCutsWithTheOutlinesStepdownAndDepth()
+    {
+        var plan = PlanWithOutlineBit(EndMill(0.8, stepdownMm: 0.5), breakThroughMm: 0.1, thicknessMm: 0.8);
+        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal)).Content;
+
+        var depths = Moves(blank).Where(m => !m.Rapid && m.Z < 0).Select(m => m.Z).Distinct().Order().ToList();
+
+        output.WriteLine("cutting depths: " + string.Join(", ", depths));
+
+        Assert.Equal([-0.9, -0.5], depths);
+        Assert.Contains("0.90 mm deep in 0.50 mm passes", blank, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A pass breaks only where there is a tab to jump.
+    ///
+    /// Each pass used to be built from separate runs — bottom and left, then each stretch of the top,
+    /// then each stretch of the right — and where one run ended exactly where the next began, at the
+    /// top-left and top-right corners, the tool lifted clear and came straight back down on the same
+    /// spot. Two pointless lifts a pass, and a fresh plunge into the kerf each time.
+    /// </summary>
+    [Fact]
+    public void TheToolNeverLiftsOnlyToComeDownInTheSamePlace()
+    {
+        var plan = PlanWithOutlineBit(EndMill(0.8, stepdownMm: 0.5), breakThroughMm: 0.1, thicknessMm: 0.8);
+        var moves = Moves(plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal)).Content);
+
+        var pointless = 0;
+        Move? lastCut = null;
+        var lifted = false;
+
+        foreach (var move in moves)
+        {
+            if (move.Rapid && move.Z > move.FromZ && move.FromZ < 0)
+            {
+                lifted = true;
+                continue;
+            }
+
+            if (!move.Rapid && move.Z < 0 && move.X == move.FromX && move.Y == move.FromY)
+            {
+                // A plunge. Pointless if it lands where the last cut stopped, at the depth that cut was at.
+                if (lifted && lastCut is { } last && Near(last.X, move.X) && Near(last.Y, move.Y) && Near(last.Z, move.Z))
+                {
+                    output.WriteLine($"lifted and came back down at X{move.X} Y{move.Y} Z{move.Z}");
+                    pointless++;
+                }
+
+                lifted = false;
+                continue;
+            }
+
+            if (!move.Rapid && move.Z < 0)
+            {
+                lastCut = move;
+            }
+        }
+
+        Assert.Equal(0, pointless);
+    }
+
+    /// <summary>
+    /// The chamfer is an edge of the cut, not a cut of its own afterwards.
+    ///
+    /// It used to be cut as separate passes once the rectangle was done — which, at full depth, frees a
+    /// small triangle of board at the corner to be thrown by the cutter. As an edge of the same loop the
+    /// corner stays with the sheet. And it is the size asked for on the piece: offset outward by half
+    /// the cutter like every other edge, so its line in the program sits where a 3 mm chamfer's does.
+    /// </summary>
+    [Fact]
+    public void TheChamferIsCutAsPartOfTheSamePass()
+    {
+        var plan = Plan(new BlankOptions { Enabled = true });
+        var moves = Moves(plan.Items[0].Content);
+
+        var depths = moves.Where(m => !m.Rapid && m.Z < 0).Select(m => m.Z).Distinct().Count();
+        var diagonals = moves
+            .Select((m, i) => (Move: m, Before: i > 0 ? moves[i - 1] : null))
+            .Where(p => !p.Move.Rapid && p.Move.Z < 0
+                && Math.Abs(p.Move.X - p.Move.FromX) > 0.01 && Math.Abs(p.Move.Y - p.Move.FromY) > 0.01)
+            .ToList();
+
+        Assert.Equal(depths, diagonals.Count);
+
+        // A 1.0 mm cutter, so half is 0.5, and a 3 mm chamfer on the piece: its offset line is
+        // x + y = 3 - 0.5 * sqrt(2) in work coordinates, where the blank's corner is zero.
+        var line = 3 - (0.5 * Math.Sqrt(2));
+
+        foreach (var (move, before) in diagonals)
+        {
+            output.WriteLine($"chamfer to X{move.X} Y{move.Y} at Z{move.Z}, arriving by {(before!.Rapid ? "rapid" : "cutting")}");
+
+            // Arrived cutting along the bottom edge, at the same depth — not dropped in on its own.
+            Assert.False(before.Rapid);
+            Assert.True(Near(before.Z, move.Z));
+            Assert.True(Near(before.Y, move.FromY) && Near(move.FromY, -0.5), "comes off the bottom edge");
+
+            Assert.Equal(line, move.FromX + move.FromY, 2);
+            Assert.Equal(line, move.X + move.Y, 2);
+        }
+    }
+
+    private sealed record Move(bool Rapid, double FromX, double FromY, double FromZ, double X, double Y, double Z);
+
+    /// <summary>Every G0 and G1, with where it started from — enough to see lifts, plunges and edges.</summary>
+    private static List<Move> Moves(string program)
+    {
+        var moves = new List<Move>();
+        double x = 0, y = 0, z = 0;
+
+        foreach (var raw in program.Split('\n'))
+        {
+            var line = raw.Trim();
+            var code = Regex.Match(line, @"^G([01])\b");
+
+            if (!code.Success)
+            {
+                continue;
+            }
+
+            double nx = x, ny = y, nz = z;
+
+            foreach (Match word in Regex.Matches(line, "([XYZ])(-?[0-9.]+)"))
+            {
+                var v = double.Parse(word.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+                switch (word.Groups[1].Value)
+                {
+                    case "X": nx = v; break;
+                    case "Y": ny = v; break;
+                    default: nz = v; break;
+                }
+            }
+
+            moves.Add(new Move(code.Groups[1].Value == "0", x, y, z, nx, ny, nz));
+            (x, y, z) = (nx, ny, nz);
+        }
+
+        return moves;
+    }
+
+    private static Tool EndMill(double diameterMm, double stepdownMm) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = Invariant($"{diameterMm:0.0} mm end mill"),
+        Kind = ToolKind.EndMill,
+        DiameterNm = Nm.FromMillimetres(diameterMm),
+        StepdownNm = Nm.FromMillimetres(stepdownMm),
+    };
+
+    private static string Invariant(FormattableString text) => FormattableString.Invariant(text);
+
+    /// <summary>PogoTest1 on a default blank, with the Board outline row set to this bit and depth.</summary>
+    private static ExportPlan PlanWithOutlineBit(Tool cutter, double breakThroughMm, double thicknessMm)
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+        var library = new ToolLibrary { Tools = [.. ToolLibrary.Default.Tools, cutter] };
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l =>
+            {
+                var setting = new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) };
+
+                return l.Role == LayerRole.Outline
+                    ? setting with { ToolId = cutter.Id, BreakThroughNm = Nm.FromMillimetres(breakThroughMm) }
+                    : setting;
+            },
+            StringComparer.Ordinal);
+
+        return ExportPlanner.Plan(
+            loaded, settings, library, Nm.FromMillimetres(thicknessMm),
+            job: new JobOptions { Blank = new BlankOptions { Enabled = true } });
+    }
+
     // ------------------------------------------------------------------ it travels with the project
 
     /// <summary>

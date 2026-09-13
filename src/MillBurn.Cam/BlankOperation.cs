@@ -63,9 +63,9 @@ public static class BlankOperation
 
         // Outside the rectangle by half the cutter, so the piece comes out the size asked for. The
         // whole point is a known dimension; cutting on the line would make it a cutter-width small.
-        var out_ = options.Tool.DiameterNm / 2;
-        var path = new Bounds(
-            blank.MinX - out_, blank.MinY - out_, blank.MaxX + out_, blank.MaxY + out_);
+        var half = options.Tool.DiameterNm / 2;
+        var key = options.KeyNm > 0 ? Math.Min(options.KeyNm, Math.Min(blank.Width, blank.Height) / 4) : 0;
+        var edges = Edges(blank, half, key);
 
         var depth = options.TotalDepthNm;
         var step = options.DepthPerPassNm > 0 ? options.DepthPerPassNm : depth;
@@ -80,26 +80,25 @@ public static class BlankOperation
             var tabbed = options.TabsPerEdge > 0
                 && at > depth - options.TabHeightNm - options.BreakThroughNm;
 
-            foreach (var run in tabbed ? Tabbed(path, options) : [Whole(path)])
+            var runs = Runs(edges, tabbed ? options : null);
+
+            foreach (var run in runs)
             {
                 passes.Add(new ToolpathPass
                 {
                     Path = run,
                     DepthNm = at,
-                    Closed = !tabbed,
+
+                    // A loop with no tab to break it is closed, whether or not tabs were asked for.
+                    Closed = runs.Count == 1 && run[^1].To == run[0].From,
                     Stack = 0,
                 });
             }
         }
 
-        if (options.KeyNm > 0)
-        {
-            passes.AddRange(Key(path, blank, options, depth, step, steps));
-        }
-
         var notes = new List<string>
         {
-            Invariant($"{Mm(blank.Width)} x {Mm(blank.Height)} mm blank, cut {Mm(out_)} mm outside the line so the piece is the size asked for."),
+            Invariant($"{Mm(blank.Width)} x {Mm(blank.Height)} mm blank, cut {Mm(half)} mm outside the line so the piece is the size asked for."),
             Invariant($"{Mm(depth)} mm deep in {Mm(step)} mm passes with the {options.Tool.Name}."),
         };
 
@@ -109,10 +108,10 @@ public static class BlankOperation
                 $"{options.TabsPerEdge} tab(s) on the top and right edges only, {Mm(options.TabWidthNm)} mm wide. The bottom and left edges are the datum and are cut clean."));
         }
 
-        if (options.KeyNm > 0)
+        if (key > 0)
         {
             notes.Add(Invariant(
-                $"The lower-left corner is chamfered {Mm(options.KeyNm)} mm. That corner is the datum: it goes into the stop, and it is how you tell which way up the blank was."));
+                $"The lower-left corner is chamfered {Mm(key)} mm, in the same pass as the edges. That corner is the datum: it goes into the stop, and it is how you tell which way up the blank was."));
         }
 
         return new Toolpath
@@ -125,37 +124,97 @@ public static class BlankOperation
         };
     }
 
-    /// <summary>The whole rectangle, anticlockwise from the lower left.</summary>
-    private static List<ArtSegment> Whole(Bounds r)
-    {
-        var corners = Corners(r);
-        var path = new List<ArtSegment>(4);
+    /// <summary>One edge of the loop the cutter follows, and whether a tab may go on it.</summary>
+    private readonly record struct Edge(Point2 From, Point2 To, bool Tabbed);
 
-        for (var i = 0; i < 4; i++)
+    /// <summary>
+    /// The loop the cutter's centre follows, clockwise from the lower-right corner: bottom, the
+    /// chamfer, left, then the top and right edges — the only two that take tabs.
+    ///
+    /// **The chamfer is an edge of this loop.** It used to be cut as passes of its own after the
+    /// rectangle was finished, which at full depth frees a small triangle of board at the corner for
+    /// the cutter to throw. As part of the loop the corner stays with the sheet.
+    ///
+    /// Every edge is offset outward by half the cutter, the chamfer included, and the corners are
+    /// where the offset edges meet. The chamfer is at 45°, so its offset line crosses the offset
+    /// bottom and left edges short of where an unoffset one would, by half the cutter times
+    /// (√2 − 1). Leaving that out makes the chamfer on the piece a sixth of a millimetre small with
+    /// an 0.8 mm cutter — not much, but this is the piece every dimension is measured from.
+    /// </summary>
+    private static List<Edge> Edges(Bounds blank, long half, long key)
+    {
+        var left = blank.MinX - half;
+        var right = blank.MaxX + half;
+        var bottom = blank.MinY - half;
+        var top = blank.MaxY + half;
+
+        var lowerRight = new Point2(right, bottom);
+        var upperLeft = new Point2(left, top);
+        var upperRight = new Point2(right, top);
+
+        var edges = new List<Edge>(5);
+
+        if (key > 0)
         {
-            path.Add(Line(corners[i], corners[(i + 1) % 4]));
+            var slack = half - (long)Math.Round(half * Math.Sqrt(2));
+            var onBottom = new Point2(blank.MinX + key + slack, bottom);
+            var onLeft = new Point2(left, blank.MinY + key + slack);
+
+            edges.Add(new Edge(lowerRight, onBottom, false));
+            edges.Add(new Edge(onBottom, onLeft, false));
+            edges.Add(new Edge(onLeft, upperLeft, false));
+        }
+        else
+        {
+            var lowerLeft = new Point2(left, bottom);
+
+            edges.Add(new Edge(lowerRight, lowerLeft, false));
+            edges.Add(new Edge(lowerLeft, upperLeft, false));
         }
 
-        return path;
+        edges.Add(new Edge(upperLeft, upperRight, true));
+        edges.Add(new Edge(upperRight, lowerRight, true));
+
+        return edges;
     }
 
     /// <summary>
-    /// The rectangle broken into runs, with gaps on the top and right edges only.
+    /// The loop, broken only where a tab has to be jumped. Null options means no tabs on this pass.
     ///
-    /// The bottom and left edges are cut in one piece each, every pass, because they are the datum.
-    /// A tab stub there is a few tenths of an obstruction that stops the blank seating, and it is
-    /// invisible — the piece sits at a slight angle and everything after it is wrong.
+    /// Built as one walk round the loop rather than a run per edge. Per edge, a run that ended at a
+    /// corner and the next that began there were still two runs, and the tool lifted clear and came
+    /// straight back down on the same spot — at the top-left and top-right corners on every pass.
+    /// The walk also joins its last run to its first, since they meet at the corner it started from.
     /// </summary>
-    private static List<List<ArtSegment>> Tabbed(Bounds r, BlankOutlineOptions options)
+    private static List<List<ArtSegment>> Runs(List<Edge> edges, BlankOutlineOptions? tabs)
     {
-        var c = Corners(r);
+        var runs = new List<List<ArtSegment>> { new() };
 
-        // Bottom then left, uninterrupted: from the lower-right round to the upper-left.
-        var datum = new List<ArtSegment> { Line(c[1], c[0]), Line(c[0], c[3]) };
-        var runs = new List<List<ArtSegment>> { datum };
+        foreach (var edge in edges)
+        {
+            var pieces = tabs is not null && edge.Tabbed
+                ? Gapped(edge.From, edge.To, tabs)
+                : [[Line(edge.From, edge.To)]];
 
-        runs.AddRange(Gapped(c[3], c[2], options));  // top, left to right
-        runs.AddRange(Gapped(c[2], c[1], options));  // right, top to bottom
+            for (var p = 0; p < pieces.Count; p++)
+            {
+                // A tab lies between this piece and the one before it on the same edge.
+                if (p > 0)
+                {
+                    runs.Add([]);
+                }
+
+                runs[^1].AddRange(pieces[p]);
+            }
+        }
+
+        runs.RemoveAll(r => r.Count == 0);
+
+        if (runs.Count > 1 && runs[^1][^1].To == runs[0][0].From)
+        {
+            runs[^1].AddRange(runs[0]);
+            runs.RemoveAt(0);
+        }
 
         return runs;
     }
@@ -200,57 +259,11 @@ public static class BlankOperation
         return runs;
     }
 
-    /// <summary>
-    /// The chamfer across the datum corner, cut to full depth after the outline.
-    ///
-    /// After, because until the outline is through there is nothing for it to chamfer; and at the
-    /// corner the two datum edges meet, so it removes material from both and takes no tab with it.
-    /// </summary>
-    private static IEnumerable<ToolpathPass> Key(
-        Bounds path, Bounds blank, BlankOutlineOptions options, long depth, long step, int steps)
-    {
-        var key = Math.Min(options.KeyNm, Math.Min(blank.Width, blank.Height) / 4);
-
-        if (key <= 0)
-        {
-            yield break;
-        }
-
-        var half = options.Tool.DiameterNm / 2;
-
-        // Across the corner of the blank itself, offset outward by half the cutter so the chamfer
-        // is the size asked for, like the rest of the cut.
-        var a = new Point2(blank.MinX + key, blank.MinY - half);
-        var b = new Point2(blank.MinX - half, blank.MinY + key);
-
-        for (var i = 1; i <= steps; i++)
-        {
-            yield return new ToolpathPass
-            {
-                Path = [Line(a, b)],
-                DepthNm = Math.Min(depth, i * step),
-                Closed = false,
-                Stack = 1,
-            };
-        }
-
-        _ = path;
-    }
-
-    private static Point2[] Corners(Bounds r) =>
-    [
-        new(r.MinX, r.MinY),
-        new(r.MaxX, r.MinY),
-        new(r.MaxX, r.MaxY),
-        new(r.MinX, r.MaxY),
-    ];
-
     private static Point2 At(Point2 from, Point2 to, double t) => new(
         from.X + (long)Math.Round((to.X - from.X) * t),
         from.Y + (long)Math.Round((to.Y - from.Y) * t));
 
-    private static ArtSegment Line(Point2 from, Point2 to) =>
-        new(ArtSweep.Linear, from, to, Point2.Origin);
+    private static ArtSegment Line(Point2 from, Point2 to) => ArtSegment.Line(from, to);
 
     private static Toolpath Empty(BlankOutlineOptions options) => new()
     {

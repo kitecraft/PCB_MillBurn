@@ -649,15 +649,18 @@ public static class ExportPlanner
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(library);
 
-        var outline = board.Layers
-            .Where(l => l.Role == LayerRole.Outline)
-            .Select(l => settings.GetValueOrDefault(l.FileName))
-            .FirstOrDefault(s => s is not null);
-
-        return outline is not null
+        return OutlineSetting(board, settings) is { } outline
             ? ResolveTool(outline, OperationKind.Outline, library)
             : LayerOperations.DefaultToolFor(OperationKind.Outline, library.Tools);
     }
+
+    /// <summary>The Board outline layer's settings, found by role, or null when there is none.</summary>
+    private static LayerOutputSettings? OutlineSetting(
+        Board board, IReadOnlyDictionary<string, LayerOutputSettings> settings) =>
+        board.Layers
+            .Where(l => l.Role == LayerRole.Outline)
+            .Select(l => settings.GetValueOrDefault(l.FileName))
+            .FirstOrDefault(s => s is not null);
 
     /// <summary>
     /// The program that cuts the blank out of a larger sheet.
@@ -690,10 +693,16 @@ public static class ExportPlanner
         var summary = new List<string>();
         var warnings = new List<string>();
 
+        // The outline's own cut, not just its bit: the bit's stepdown and the outline row's distance
+        // through, so the blank and the board it frames come out of one set of numbers. The blank
+        // used built-in values instead — 0.4 mm passes and 0.3 mm through — and cut an 0.8 mm board
+        // in three passes where the outline beside it, with the same bit, took two.
         var options = new BlankOutlineOptions
         {
             Tool = tool,
             BoardThicknessNm = thicknessNm,
+            DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
+            BreakThroughNm = OutlineSetting(board, settings)?.BreakThroughNm ?? new BlankOutlineOptions().BreakThroughNm,
         };
 
         var toolpath = BlankOperation.Build(blank.Bounds, options);
