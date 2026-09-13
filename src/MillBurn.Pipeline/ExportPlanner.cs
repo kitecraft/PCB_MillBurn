@@ -254,7 +254,7 @@ public static class ExportPlanner
                         Blank = blank,
                         Skipped = skipped,
                     }),
-                    Invariant($"{items.Count} file(s), what to run first, and where work zero is")),
+                    Invariant($"{items.Count} file(s), a suggested running order, and where work zero is")),
             };
     }
 

@@ -61,6 +61,67 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// Suggested, and said so. Most of the order is physics, but not all of it — and somebody
+    /// meeting this for the first time must not be able to read a suggestion as an instruction.
+    /// </summary>
+    [Fact]
+    public void TheOrderIsOfferedRatherThanPrescribed()
+    {
+        var html = Plan().Page!.Content;
+
+        Assert.Contains("Suggested running order", html, StringComparison.Ordinal);
+        Assert.Contains("A suggestion, not an instruction", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Run them in this order", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The laser steps are in it too. Missing them made the page read as though a mixed job were a
+    /// milling job with some files left over — and a mixed job is the one where the order is
+    /// hardest to guess and most expensive to get wrong.
+    /// </summary>
+    [Fact]
+    public void TheLaserStepsAreInTheOrderToo()
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1AllLayers));
+
+        // The mixed workflow doc 04 calls Use Case 1: burn the resist, etch it, then drill and cut
+        // out on the mill.
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings
+            {
+                FileName = l.FileName,
+                Output = l.Role switch
+                {
+                    LayerRole.TopCopper => OutputKind.Svg,
+                    LayerRole.TopSilk => OutputKind.Svg,
+                    _ => LayerOperations.DefaultFor(l.Role),
+                },
+            },
+            StringComparer.Ordinal);
+
+        var html = ExportPlanner.Plan(
+            loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6)).Page!.Content;
+
+        var burn = html.IndexOf("burn the copper layer", StringComparison.Ordinal);
+        var etch = html.IndexOf("Etch, then strip", StringComparison.Ordinal);
+        var drill = html.IndexOf("<strong>Drill.", StringComparison.Ordinal);
+        var silk = html.IndexOf("the silkscreen", StringComparison.Ordinal);
+        var outline = html.IndexOf("Cut the board out", StringComparison.Ordinal);
+
+        output.WriteLine($"burn {burn}, etch {etch}, drill {drill}, silk {silk}, outline {outline}");
+
+        Assert.True(burn >= 0, "the laser's copper step is missing");
+        Assert.True(etch > burn, "the etch step should follow the burn");
+        Assert.True(drill > etch, "drilling comes after the copper exists");
+        Assert.True(silk > drill && outline > silk,
+            "silkscreen goes on before the board is cut loose");
+
+        // And it says the work is changing machines, which is the part that has to be got right.
+        Assert.Contains("goes into the same corner stop", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The one it was asked for. An SVG page bigger than its artwork lands at the origin in software
     /// that imports by content, which is out by the border and looks right.
     /// </summary>

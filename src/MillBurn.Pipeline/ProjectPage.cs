@@ -85,12 +85,33 @@ public static class ProjectPage
     /// <summary>
     /// The order things happen in, which is the one thing a folder of files cannot show.
     ///
-    /// Ordering matters physically rather than by preference: a slot cut after the board is free
-    /// moves the board, and a blank cut second is not a datum.
+    /// **Suggested, and labelled as such.** Most of it is physical rather than preference — a blank
+    /// cut second is not a datum, a slot cut after the board is free moves the board — but not all
+    /// of it is, and a board can have a reason to differ that the app cannot see. Somebody meeting
+    /// this for the first time should not be able to read a suggestion as an instruction.
+    ///
+    /// **The laser steps belong here too.** They were missed at first, which made the page read as
+    /// though a mixed job were a milling job with some files left over — and a mixed job is the one
+    /// where the order is hardest to guess and most expensive to get wrong.
     /// </summary>
     private static void Order(StringBuilder page, ExportPlan plan, ProjectPageContext context)
     {
-        page.Append("<h2>Run them in this order</h2>\n<ol>\n");
+        bool Any(Func<ExportItem, bool> match) => plan.Items.Any(match);
+
+        var etch = Any(i => i.Output == OutputKind.Svg
+            && i.Role is LayerRole.TopCopper or LayerRole.BottomCopper);
+
+        var mask = Any(i => i.Output == OutputKind.Svg
+            && i.Role is LayerRole.TopMask or LayerRole.BottomMask);
+
+        var silk = Any(i => i.Output == OutputKind.Svg
+            && i.Role is LayerRole.TopSilk or LayerRole.BottomSilk);
+
+        page.Append("<h2>Suggested running order</h2>\n");
+        page.Append("<p class=\"sub\">A suggestion, not an instruction. Most of it is physics — the "
+            + "blank has to exist before anything is measured from it, and the outline has to be "
+            + "last because after it the board is loose — but your board may have a reason to "
+            + "differ.</p>\n<ol>\n");
 
         if (context.Blank is { Resolved: true, Cut: true })
         {
@@ -103,30 +124,72 @@ public static class ProjectPage
                 + "corner is work zero for every file here.</li>\n");
         }
 
-        if (plan.Items.Any(i => i.Operation == OperationKind.Isolation))
+        // The laser's copper step replaces the mill's, so it comes before everything the mill does
+        // to that side rather than alongside it.
+        if (etch)
         {
-            page.Append("<li><strong>Isolate the copper.</strong></li>\n");
+            page.Append("<li><strong>Laser: burn the copper layer.</strong> This is the resist, not "
+                + "the copper. <em>Moves to the laser.</em></li>\n");
+            page.Append("<li><strong>Etch, then strip the resist.</strong> By hand; nothing here "
+                + "does this part.</li>\n");
         }
 
-        if (plan.Items.Any(i => i.Operation == OperationKind.Drilling))
+        if (Any(i => i.Operation == OperationKind.Isolation))
+        {
+            page.Append("<li><strong>Isolate the copper.</strong>")
+                .Append(etch ? " <em>Back to the mill.</em>" : string.Empty)
+                .Append("</li>\n");
+        }
+
+        if (Any(i => i.Operation == OperationKind.Drilling))
         {
             page.Append("<li><strong>Drill.</strong> The drilling page says which bit, and when it "
                 + "stops to change.</li>\n");
         }
 
-        if (plan.Items.Any(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)))
+        if (Any(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)))
         {
             page.Append("<li><strong>Route the slots.</strong> End mill, not a drill. The routing "
                 + "page says which cutter.</li>\n");
         }
 
-        if (plan.Items.Any(i => i.Operation == OperationKind.Outline
+        if (Any(i => i.Operation == OperationKind.Pocket))
+        {
+            page.Append("<li><strong>Mill the soldermask off the pads.</strong> After the mask is "
+                + "on and cured.</li>\n");
+        }
+
+        if (mask)
+        {
+            page.Append("<li><strong>Laser: the soldermask openings.</strong> After the mask is on "
+                + "and cured. <em>Moves to the laser.</em></li>\n");
+        }
+
+        if (silk)
+        {
+            page.Append("<li><strong>Laser: the silkscreen.</strong> <em>On the laser.</em></li>\n");
+        }
+
+        if (mask || silk)
+        {
+            page.Append("<li><strong>Back to the mill</strong>, into the same corner stop.</li>\n");
+        }
+
+        if (Any(i => i.Operation == OperationKind.Outline
             && !i.TargetName.Contains(".blank.", StringComparison.Ordinal)))
         {
-            page.Append("<li><strong>Cut the board out.</strong> Last: after this it is loose.</li>\n");
+            page.Append("<li><strong>Cut the board out.</strong> Last: after this it is loose, so "
+                + "anything needing it held has to have happened already.</li>\n");
         }
 
         page.Append("</ol>\n");
+
+        if (etch || mask || silk)
+        {
+            page.Append("<div class=\"note\"><p>The work moves between machines here. Each time it "
+                + "goes back, it goes into the same corner stop the same way round — that is what "
+                + "keeps the two machines agreeing.</p></div>\n");
+        }
     }
 
     private static void Files(StringBuilder page, ExportPlan plan)
