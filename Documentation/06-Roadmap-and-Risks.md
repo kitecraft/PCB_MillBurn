@@ -1973,7 +1973,8 @@ than discovered after.
 - **A picture on the companion pages**, with the holes and slots numbered in run order. See 6.5.
 - **The tool library, once it has more than a handful in it** — filter, sort, copy. See 6.6.
 - **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
-- **The viewer leaves a gap in every outline ring.** See 6.8.
+- **The viewer leaves a gap in every outline ring** — done. See 6.8.
+- **Open recent**, off the File menu. See 6.9.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2367,7 +2368,7 @@ after that does *not* re-explain the status bar, every coachmark can be forced o
 command line for a screenshot, no automated run ever draws one, and Esc closes anything this puts
 on screen.
 
-#### 6.8 The viewer leaves a gap in every outline ring — **scheduled, not started, small**
+#### 6.8 The viewer leaves a gap in every outline ring — **done**
 
 Reported from the workshop against the panelised connector board: the board outline is drawn with
 short pieces missing, most visibly at the closed end of each routed channel. The programs are
@@ -2388,13 +2389,44 @@ exactly the segment that would have closed it. One gap per ring, always at whate
 started that ring on — which is why it looks systematic rather than random, and why it lands in the
 same place on all thirty-two cells of a panel.
 
-**The fix is to separate the two meanings**, not to close everything: a backplot must still stay
-open. Something like a `ClosedRings` flag on the style, set true for the board layers and false for
-the backplot, with `Outlined` left to mean only "stroke, do not fill".
+**The fix separated the two meanings** rather than closing everything, because a backplot must
+still stay open. `BoardLayerStyle.ClosedRings` now says whether the rings are areas — true by
+default, since everything realised from a Gerber is one, and false on all five `BackplotPalette`
+styles. `Outlined` means only "stroke, do not fill".
 
-**Done when** a stroked area layer is drawn closed, a backplot is still drawn open, and a test
-asserts both — the ring count and the path's own segment count are enough to tell them apart
-without a screenshot.
+`ClosedRingTests` guards both directions on the panel fixture: one close verb per outline ring, no
+close verb on a backplot run, and a third test asserting the two palettes agree on what their rings
+are — so adding a style and forgetting which it is fails a test rather than producing a picture
+somebody has to notice.
+
+#### 6.9 Open recent — **scheduled, not started, small**
+
+Requested from the workshop: a **Open recent** item in the File menu that opens a submenu on hover,
+listing the last few projects.
+
+**The list already exists and is already being kept.** `AppSettings.RecentProjects` holds ten paths,
+newest first, de-duplicated case-insensitively, and `MainViewModel.OpenProject` and `SaveProject`
+both push to it. Nothing has ever shown it. So this is a menu, not a feature: the work is in the
+view, and the model side is done.
+
+What the implementation has to decide:
+
+- **Unsaved work.** Opening from the menu has to go through the same guard as `Ctrl+O`, not around
+  it. A one-click path to discarding an unsaved job is the way this feature usually goes wrong.
+- **A path that is no longer there.** Boards move, drives unmount. The entry should say so and drop
+  itself from the list rather than raising the same failure every time the menu is opened. Whether
+  a missing entry is greyed or simply gone is a judgement to make while looking at it.
+- **Long paths.** These are full paths to folders several levels deep. The menu wants the file name
+  with enough of the directory to tell two `MillBurn.mbproj` files apart, and the full path in a
+  tooltip.
+- **Keyboard.** Numbered accelerators (`_1`…`_9`) are conventional and free.
+- **Empty and single-entry states.** A submenu with nothing in it should be disabled, not empty.
+- **How many.** The store keeps ten; the menu does not have to show ten. The request said "up to x",
+  which is a setting if anyone ever wants it and a constant until they do.
+
+**Done when** the submenu lists real recent projects, opening one is indistinguishable from opening
+it through the dialog including the unsaved-work guard, a moved project reports itself once and
+leaves, and the whole thing is checkable from a headless screenshot like every other menu here.
 
 ### Phase 7 — User documentation — **started**
 

@@ -44,14 +44,14 @@ public static class BackplotPalette
 
     /// <summary>Yellow: nothing on a board is yellow.</summary>
     public static BoardLayerStyle Cut { get; } =
-        new(new SKColor(0xFF, 0xD7, 0x40), 1f, Outlined: true, StrokePixels: 1.8f);
+        new(new SKColor(0xFF, 0xD7, 0x40), 1f, Outlined: true, StrokePixels: 1.8f, ClosedRings: false);
 
     public static BoardLayerStyle Plunge { get; } =
-        new(new SKColor(0xFF, 0x17, 0x44), 1f, Outlined: true, StrokePixels: 2.5f);
+        new(new SKColor(0xFF, 0x17, 0x44), 1f, Outlined: true, StrokePixels: 2.5f, ClosedRings: false);
 
     /// <summary>Dashed and dim: present so the optimizer's work is visible, not to be read.</summary>
     public static BoardLayerStyle Travel { get; } =
-        new(new SKColor(0xB0, 0xBE, 0xC5), 0.55f, Outlined: true, StrokePixels: 0.9f, DashPixels: 3f);
+        new(new SKColor(0xB0, 0xBE, 0xC5), 0.55f, Outlined: true, StrokePixels: 0.9f, DashPixels: 3f, ClosedRings: false);
 
     /// <summary>
     /// The long ones, in magenta. This is the layer that makes "edge cuts all over the place"
@@ -59,9 +59,9 @@ public static class BackplotPalette
     /// confusable with the copper underneath it.
     /// </summary>
     public static BoardLayerStyle LongTravel { get; } =
-        new(new SKColor(0xFF, 0x4F, 0xD8), 0.95f, Outlined: true, StrokePixels: 1.6f, DashPixels: 4f);
+        new(new SKColor(0xFF, 0x4F, 0xD8), 0.95f, Outlined: true, StrokePixels: 1.6f, DashPixels: 4f, ClosedRings: false);
 
     /// <summary>A rapid at cutting depth. Never legitimate, so it is drawn loud.</summary>
     public static BoardLayerStyle Gouge { get; } =
-        new(new SKColor(0xFF, 0x00, 0x2B), 1f, Outlined: true, StrokePixels: 4f);
+        new(new SKColor(0xFF, 0x00, 0x2B), 1f, Outlined: true, StrokePixels: 4f, ClosedRings: false);
 }
