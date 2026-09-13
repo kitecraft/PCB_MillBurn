@@ -122,11 +122,13 @@ public sealed class DrillGuideTests(ITestOutputHelper output)
         var (_, report) = DrillGuide.Build(item.Content, Context(item));
         var lines = item.Content.Split('\n');
 
-        Assert.Equal(1, report.Steps[0].Line);
-
+        // The line a step points at is the line that *names* its bit, not the top of the file. It
+        // used to be the start of the M0-delimited section, which for the first bit was line 1 —
+        // true, and useless: the point of the number is "scroll to here to see this bit's block".
         foreach (var step in report.Steps)
         {
             Assert.InRange(step.Line, 1, lines.Length);
+            Assert.Contains(step.Bit, lines[step.Line - 1], StringComparison.Ordinal);
         }
 
         // And they go forwards.

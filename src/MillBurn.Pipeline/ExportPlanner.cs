@@ -319,10 +319,13 @@ public static class ExportPlanner
         // A list, because drilling is genuinely several toolpaths: one per hole size, each with its
         // own bit. Every other operation is one. Collapsing them into a single toolpath -- which is
         // what this used to do -- silently drilled every hole with whichever bit came first.
+        var repeated = 0;
+
         IReadOnlyList<Toolpath> toolpaths = operation switch
         {
             OperationKind.Isolation => Only(BuildIsolation(layer, setting, tool, summary, warnings)),
-            OperationKind.Drilling => BuildDrilling(layer, setting, tool, boardThicknessNm, library, job, summary, warnings),
+            OperationKind.Drilling => BuildDrilling(
+                layer, setting, tool, boardThicknessNm, library, job, summary, warnings, out repeated),
             OperationKind.Outline => Only(BuildOutline(board, layer, setting, tool, boardThicknessNm, summary, warnings)),
             OperationKind.Engrave => Only(BuildEngrave(layer, setting, tool, summary)),
             OperationKind.Pocket => Only(BuildPocket(layer, setting, tool, summary, warnings)),
@@ -340,7 +343,7 @@ public static class ExportPlanner
             board, layer, setting, operation, toolpaths, tool, summary, warnings,
             TargetNameFor(layer.FileName, operation, OutputKind.Gcode),
             LayerOperations.Label(operation),
-            boardThicknessNm, machine, effort, framing, machineSettings, companion: true);
+            boardThicknessNm, machine, effort, framing, machineSettings, companion: true, repeated);
     }
 
     /// <summary>
@@ -556,7 +559,8 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
-        bool companion)
+        bool companion,
+        int repeated = 0)
     {
         _ = tool;
 
@@ -731,7 +735,7 @@ public static class ExportPlanner
             Summary = summary,
             Warnings = warnings,
             Companion = companion && operation == OperationKind.Drilling && setting.WriteDrillGuide
-                ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings)
+                ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings, repeated)
                 : null,
         };
     }
@@ -750,12 +754,9 @@ public static class ExportPlanner
         string target,
         string program,
         long thicknessNm,
-        List<string> warnings)
+        List<string> warnings,
+        int repeats)
     {
-        var repeats = layer.Drill is { } drill
-            ? drill.Hits.Count - drill.Hits.DistinctBy(h => (h.Tool, h.At)).Count()
-            : 0;
-
         var (html, report) = DrillGuide.Build(program, new DrillGuideContext
         {
             BoardName = Path.GetFileName(board.Source),
@@ -834,8 +835,11 @@ public static class ExportPlanner
         ToolLibrary library,
         JobOptions job,
         List<string> summary,
-        List<string> warnings)
+        List<string> warnings,
+        out int repeated)
     {
+        repeated = 0;
+
         if (layer.Drill is null)
         {
             return [];
@@ -854,14 +858,25 @@ public static class ExportPlanner
         var through = Nm.ToMillimetreString(setting.BreakThroughNm, 2);
         // Sizes the *holes* come in, not tools in the file. A slot's width is a tool too, and
         // counting it here claimed a size that no hole is drilled at.
-        var drilled = layer.Drill.Hits.Select(h => h.Tool).Distinct().Count();
-        var sizes = drilled == 1 ? "1 size" : Invariant($"{drilled} sizes");
-
         var built = DrillOperation.Build(layer.Drill, options, tool);
-        var repeats = layer.Drill.Hits.Count - built.Sum(p => p.Drills.Count);
+
+        // Counted from the program rather than from the file, like everything else here that
+        // describes a program. Counting sizes out of the drill file said "4 sizes" on a board whose
+        // file carried 1.00000 and 1.00076 mm as separate apertures and whose program — rightly —
+        // drills them with one bit; and with milling on it called the six holes that had gone to
+        // the routing file "repeated", because they were missing from a subtraction that assumed
+        // every hole in the file ends up in this program.
+        var wanted = layer.Drill.Hits
+            .Where(h => !milled.Contains(layer.Drill.Tools.TryGetValue(h.Tool, out var t) ? t.DiameterNm : 0))
+            .ToList();
+
+        var sizes = built.Count == 1 ? "1 size" : Invariant($"{built.Count} sizes");
+        var repeats = wanted.Count - built.Sum(p => p.Drills.Count);
+        repeated = repeats;
+
         var holes = repeats > 0
-            ? Invariant($"{layer.Drill.Hits.Count} holes in {sizes}, {repeats} of them repeated")
-            : Invariant($"{layer.Drill.Hits.Count} holes in {sizes}");
+            ? Invariant($"{wanted.Count} holes in {sizes}, {repeats} of them repeated")
+            : Invariant($"{wanted.Count} holes in {sizes}");
 
         summary.Add(Invariant($"{holes} · {depth} mm deep ({through} mm through the back)"));
 

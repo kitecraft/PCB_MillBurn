@@ -91,6 +91,58 @@ public static class DrillOperation
     /// hobby machine, so the ordering that minimises regret is the one where the delicate bits go
     /// in last and spend the least time in the spindle.
     /// </summary>
+    /// <summary>
+    /// How far apart two diameters can be and still be the same bit: 10 µm.
+    ///
+    /// Real drill sets step in tenths of a millimetre at this size; nothing distinguishes 1.00 from
+    /// 1.01. What this absorbs is not a design choice but an arithmetic one — a board laid out in
+    /// inches and written in millimetres produces sizes like 1.00076 mm, which is 0.0394".
+    /// </summary>
+    public static long SameBitNm { get; } = Nm.FromMillimetres(0.01);
+
+    /// <summary>
+    /// The sizes actually in the file, with near-identical ones merged, biggest first.
+    ///
+    /// A real board found this: a KiCad export carried <c>1.00000</c> and <c>1.00076</c> mm as two
+    /// apertures — 0.76 µm apart, the residue of a 0.0394" pad — and they became two toolpaths, two
+    /// blocks of G-code and two entries in the drilling guide, both reading "Drill 1.00 mm". The
+    /// operator is told to change to a bit they already have in the spindle, and the guide's step
+    /// numbering slips out of step with the program's for every bit after it.
+    ///
+    /// Merged to the <b>larger</b> of the group. A hole a micron over is a hole; a hole a micron
+    /// under is a part that does not fit.
+    /// </summary>
+    private static List<(DrillTool Tool, HashSet<int> Numbers)> SizesOf(ExcellonFile drill)
+    {
+        var groups = new List<(long Smallest, DrillTool Tool, HashSet<int> Numbers)>();
+
+        // Ascending, and each candidate is measured against the *smallest* member of its group
+        // rather than against the group's current representative. Comparing against the
+        // representative — which grows as the group takes larger members — lets a run of sizes
+        // creeping upward chain into one group spanning far more than the tolerance.
+        foreach (var (tool, _) in drill.ByTool().OrderBy(x => x.Tool.DiameterNm))
+        {
+            var at = groups.FindIndex(g => tool.DiameterNm - g.Smallest <= SameBitNm);
+
+            if (at < 0)
+            {
+                groups.Add((tool.DiameterNm, tool, [tool.Number]));
+                continue;
+            }
+
+            groups[at].Numbers.Add(tool.Number);
+
+            if (tool.DiameterNm > groups[at].Tool.DiameterNm)
+            {
+                groups[at] = (groups[at].Smallest, tool, groups[at].Numbers);
+            }
+        }
+
+        groups.Reverse();
+
+        return [.. groups.Select(g => (g.Tool, g.Numbers))];
+    }
+
     public static IReadOnlyList<Toolpath> Build(
         ExcellonFile drill, DrillOptions options, Tool? template = null)
     {
@@ -99,7 +151,7 @@ public static class DrillOperation
 
         var toolpaths = new List<Toolpath>();
 
-        foreach (var (tool, _) in drill.ByTool())
+        foreach (var (tool, numbers) in SizesOf(drill))
         {
             if (options.MilledNm.Any(d => Math.Abs(d - tool.DiameterNm) <= Nm.FromMillimetres(0.001)))
             {
@@ -115,7 +167,7 @@ public static class DrillOperation
             // opened out, which is a deliberate thing somebody might mean.
             var seen = new HashSet<Point2>();
             var hits = drill.Hits
-                .Where(h => h.Tool == tool.Number)
+                .Where(h => numbers.Contains(h.Tool))
                 .Where(h => seen.Add(h.At))
                 .ToList();
 
@@ -124,7 +176,7 @@ public static class DrillOperation
                 continue;
             }
 
-            var repeats = drill.Hits.Count(h => h.Tool == tool.Number) - hits.Count;
+            var repeats = drill.Hits.Count(h => numbers.Contains(h.Tool)) - hits.Count;
             var notes = new List<string>();
 
             if (repeats > 0)

@@ -82,52 +82,63 @@ public static class DrillGuide
     }
 
     /// <summary>
-    /// Splits the program at its tool changes and measures each section.
+    /// Splits the program at its bit labels and measures each section.
     ///
-    /// <c>M0</c> is the boundary: the emitter writes safe-Z, spindle off, a comment naming the next
-    /// bit, then the stop. Measuring the sections separately gives an honest time for each, which is
-    /// the number that decides whether this is something to start now or after lunch.
+    /// **Split on the labels, not on <c>M0</c>.** It used to split on the tool stop and then zip the
+    /// labels onto the sections by index, on the reasoning that the emitter writes a toolpath's
+    /// label before the tool-change sequence that precedes it — so the two lists line up. They line
+    /// up exactly as long as there is one stop per label, and a real board proved there need not
+    /// be: a KiCad export carried 1.00000 and 1.00076 mm as separate sizes, they became separate
+    /// toolpaths with the same printed name, the emitter saw no change of tool between them and
+    /// emitted no stop. Four labels, three sections, and every entry after the collision named the
+    /// wrong bit — the page told the operator to fit a 1.00 mm drill for fifteen 0.40 mm holes.
+    ///
+    /// Splitting on the labels cannot come apart that way: a section *is* whatever follows the
+    /// comment that names it. Adjacent sections naming the same bit are then merged, which is what
+    /// the program does anyway by not stopping between them.
     /// </summary>
     private static List<DrillGuideStep> Read(string program)
     {
         var lines = program.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var labels = new List<int>();
 
-        // The bits, in the order the program uses them.
-        //
-        // Collected across the whole file rather than out of each section, because the emitter
-        // writes a toolpath's label *before* the tool-change sequence that precedes it — so
-        // splitting at M0 leaves every label at the tail of the section before the one it names.
-        // Taken in file order and zipped with the sections, the two line up.
-        var bits = lines
-            .Select(l => l.Trim())
-            .Where(l => l.StartsWith("( Drill ", StringComparison.Ordinal))
-            .Select(Name)
-            .ToList();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Trim().StartsWith("( Drill ", StringComparison.Ordinal))
+            {
+                labels.Add(i);
+            }
+        }
 
         var steps = new List<DrillGuideStep>();
-        var start = 0;
 
-        for (var i = 0; i <= lines.Length; i++)
+        for (var k = 0; k < labels.Count; k++)
         {
-            var boundary = i == lines.Length || Code(lines[i]) == "M0";
+            var from = labels[k];
+            var to = k + 1 < labels.Count ? labels[k + 1] : lines.Length;
 
-            if (!boundary)
+            if (Describe(lines[from..to], from) is not { } step)
             {
                 continue;
             }
 
-            var section = lines[start..Math.Min(i + 1, lines.Length)];
+            var bit = Name(lines[from].Trim());
 
-            if (Describe(section, start) is { } step)
+            // The same bit twice running is one trip to the spindle, however many toolpaths the
+            // geometry took. Merging here keeps the page's count of tool changes equal to the
+            // number of times the program actually stops.
+            if (steps.Count > 0 && string.Equals(steps[^1].Bit, bit, StringComparison.Ordinal))
             {
-                steps.Add(step with
+                steps[^1] = steps[^1] with
                 {
-                    Order = steps.Count + 1,
-                    Bit = steps.Count < bits.Count ? bits[steps.Count] : step.Bit,
-                });
+                    Holes = steps[^1].Holes + step.Holes,
+                    Seconds = steps[^1].Seconds + step.Seconds,
+                };
+
+                continue;
             }
 
-            start = i + 1;
+            steps.Add(step with { Order = steps.Count + 1, Bit = bit });
         }
 
         return steps;
