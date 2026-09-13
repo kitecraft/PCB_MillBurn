@@ -362,9 +362,13 @@ public sealed partial class MainViewModel : ViewModelBase
         // Drawn against the board when there is one, so a program opened over the board it came
         // from lands on it. On its own it stands in work coordinates, which is where it was
         // written.
+        //
+        // Against the *frame* rather than the board, because a project with a blank writes its
+        // programs to the blank's corner — and a file opened over the board it came from has to
+        // land where it was cut, not where the artwork happens to sit.
         var shift = _board is null
             ? Point2.Origin
-            : new Point2(_board.Bounds.MinX, _board.Bounds.MinY);
+            : new Point2(Frame.MinX, Frame.MinY);
 
         _backplot = BackplotBuilder.Build(classified, shift);
         _programBounds = WithAir(parsed.Bounds);
@@ -809,7 +813,12 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var shift = new Point2(_board.Bounds.MinX, _board.Bounds.MinY);
+        // The frame the plan used, not the board's own corner. With a blank the programs are
+        // written to the blank's lower-left, so undoing the board's shift instead draws every
+        // toolpath a border's width up and to the right of the copper it cuts — a picture that is
+        // wrong in a way the file is not, which is the worst kind of wrong a viewer can be.
+        var frame = plan.FrameFor(_board.Bounds);
+        var shift = new Point2(frame.MinX, frame.MinY);
         var programs = new List<BackplotBuilder.Program>();
         var cut = 0.0;
         var travel = 0.0;
@@ -838,7 +847,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // drawing: what the picture is being asked is where the cuts land on *this* board, and a
         // bottom-copper path drawn straight lands on the mirror image of the traces it isolates.
         _backplot = BackplotBuilder.BuildPerProgram(
-            programs, shift, mirrorSumXNm: _board.Bounds.MinX + _board.Bounds.MaxX);
+            programs, shift, mirrorSumXNm: frame.MinX + frame.MaxX);
 
         GcodeSummary = string.Create(
             CultureInfo.InvariantCulture,
@@ -1684,6 +1693,29 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     // ------------------------------------------------------------------ the blank
+
+    /// <summary>
+    /// The rectangle this project's programs are referenced to — the blank's, or the board's.
+    ///
+    /// One place, because three things have to agree about it: where a program is drawn over the
+    /// board, which axis a mirrored program is flipped back about, and what the exporter shifted by.
+    /// </summary>
+    private Bounds Frame
+    {
+        get
+        {
+            if (_board is null)
+            {
+                return Bounds.Empty;
+            }
+
+            var cutter = LayerOperations.DefaultToolFor(OperationKind.Outline, Library.Tools);
+            var mirrors = Layers.Any(r => r.Layer is not null && r.Mirrored);
+            var blank = Blanks.Resolve(_project.Settings.Job.Blank, _board.Bounds, cutter.DiameterNm, mirrors);
+
+            return blank.Resolved ? blank.Bounds : _board.Bounds;
+        }
+    }
 
     /// <summary>
     /// Cut or declare the piece of stock the job is built on.

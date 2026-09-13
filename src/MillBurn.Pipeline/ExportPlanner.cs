@@ -71,6 +71,17 @@ public sealed record ExportPlan
     /// <summary>The stock this job is built on, or <see cref="BlankPlan.None"/> when there is none.</summary>
     public BlankPlan Blank { get; init; } = BlankPlan.None;
 
+    /// <summary>
+    /// The rectangle every program in this plan is referenced to: the blank's, or the board's when
+    /// there is no blank.
+    ///
+    /// Exposed because anything that draws these programs back over the board has to undo the same
+    /// shift that was applied to them, and getting it from the plan is the only way to be sure it
+    /// is the same one. Drawing a blank-referenced program against the board's corner puts it out
+    /// by the border — a picture that is wrong in a way the file is not.
+    /// </summary>
+    public Bounds FrameFor(Bounds board) => Blank.Resolved ? Blank.Bounds : board;
+
     public int Count => Items.Count;
 
     public bool HasWarnings => Items.Any(i => i.Warnings.Count > 0);
