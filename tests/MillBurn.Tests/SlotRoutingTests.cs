@@ -384,4 +384,84 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
         return ExportPlanner.Plan(
             loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode, job: job);
     }
+
+    // ------------------------------------------------------------------ the named cutter
+
+    /// <summary>
+    /// The cutter named in the project is for milled *holes*. A slot never consults it.
+    ///
+    /// Reported from the workshop, and it is the obvious situation rather than a corner: "I want
+    /// holes larger than 2 mm milled with a 2 mm end mill. But the slots on the board are less than
+    /// 2 mm, so when I choose the mill-drill option with a 2 mm end mill, the slots are left out."
+    ///
+    /// They were, and that was wrong. A slot's width is fixed by the design and the cutter has to
+    /// fit inside it; an opinion about which cutter suits a 3 mm mounting hole says nothing
+    /// whatsoever about a 0.8 mm slot on the same board.
+    /// </summary>
+    [Fact]
+    public void NamingACutterForHolesDoesNotStarveTheSlots()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(0.8), EndMill(2.0)] };
+        var big = library.Tools[1];
+
+        var options = Options with { ToolId = big.Id };
+
+        var slots = SlotOperation.Build([Slot(1.0)], library, options);
+        var holes = SlotOperation.Holes(
+            [new DrillSlotTarget(0, Point2.Origin, Point2.Origin, Nm.FromMillimetres(3.0))],
+            library,
+            options);
+
+        output.WriteLine($"slot: {(slots.Toolpaths.Count > 0 ? slots.Toolpaths[0].Tool.Name : "refused")}");
+        output.WriteLine($"hole: {(holes.Toolpaths.Count > 0 ? holes.Toolpaths[0].Tool.Name : "refused")}");
+
+        Assert.Empty(slots.Refusals);
+        Assert.Equal(Nm.FromMillimetres(0.8), Assert.Single(slots.Toolpaths).Tool.DiameterNm);
+        Assert.Equal(Nm.FromMillimetres(2.0), Assert.Single(holes.Toolpaths).Tool.DiameterNm);
+    }
+
+    /// <summary>
+    /// And it is a preference, not a rule. A 2 mm cutter cannot bore a 2.2 mm hole — boring wants a
+    /// cutter no more than three quarters of the hole — and refusing to make the hole at all
+    /// because of a preference is worse than making it with a narrower cutter. The page beside the
+    /// file lists a row per cutter, so the fallback is visible rather than silent.
+    /// </summary>
+    [Fact]
+    public void ANamedCutterThatCannotBoreThisHoleFallsBack()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(1.0), EndMill(2.0)] };
+        var big = library.Tools[1];
+        var options = Options with { ToolId = big.Id };
+
+        var tight = SlotOperation.Holes(
+            [new DrillSlotTarget(0, Point2.Origin, Point2.Origin, Nm.FromMillimetres(2.2))],
+            library, options);
+
+        var roomy = SlotOperation.Holes(
+            [new DrillSlotTarget(0, Point2.Origin, Point2.Origin, Nm.FromMillimetres(3.0))],
+            library, options);
+
+        output.WriteLine($"2.2 mm hole: {Assert.Single(tight.Toolpaths).Tool.Name}");
+        output.WriteLine($"3.0 mm hole: {Assert.Single(roomy.Toolpaths).Tool.Name}");
+
+        Assert.Equal(Nm.FromMillimetres(1.0), tight.Toolpaths[0].Tool.DiameterNm);
+        Assert.Equal(Nm.FromMillimetres(2.0), roomy.Toolpaths[0].Tool.DiameterNm);
+
+        Assert.Empty(tight.Refusals);
+    }
+
+    /// <summary>A named cutter that has since left the library is not a refusal either.</summary>
+    [Fact]
+    public void ACutterNoLongerInTheLibraryFallsBack()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(1.0)] };
+        var options = Options with { ToolId = Guid.NewGuid() };
+
+        var plan = SlotOperation.Holes(
+            [new DrillSlotTarget(0, Point2.Origin, Point2.Origin, Nm.FromMillimetres(3.0))],
+            library, options);
+
+        Assert.Empty(plan.Refusals);
+        Assert.Equal(Nm.FromMillimetres(1.0), Assert.Single(plan.Toolpaths).Tool.DiameterNm);
+    }
 }

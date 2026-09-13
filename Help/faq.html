@@ -1305,8 +1305,27 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     <strong>The cutter has to be at most three quarters of the hole.</strong> A 2.0 mm end mill in a
     2.2 mm hole leaves a tenth of a millimetre to orbit in: every flute buried, nothing evacuating,
     and a helix that is really a plunge. So a hole that cannot give a cutter room to spiral is
-    refused by name, the same way a slot too narrow for anything is. You can name a specific end
-    mill to spiral with, and it is checked against every hole rather than assumed to suit them all.
+    refused by name, the same way a slot too narrow for anything is.
+  </p>
+</div>
+
+<p>
+  <strong>&ldquo;Spiral with&rdquo; is a preference, and it is about holes only.</strong> Two things
+  follow from that, both of them what you would want. A slot never consults it &mdash; a slot's
+  width is fixed by the design and the cutter has to fit inside it, so naming a 2 mm end mill for
+  your mounting holes leaves the 0.8 mm slots on the same board to be cut with something that fits
+  them. And where the named cutter cannot bore a particular hole, the widest one that can is used
+  instead, rather than the hole going unmade because of a preference. The page beside the file lists
+  a row per cutter, so you can see which did what.
+</p>
+
+<div class="note">
+  <p>
+    <strong>The number to change is your tool library, not a threshold.</strong> Holes bigger than
+    the largest drill you have listed get milled. So if you own drills up to 2 mm, enter them
+    &mdash; then everything up to 2 mm is drilled and everything above it is milled, with no other
+    setting involved. The same list is what tells you, before a run starts, that the program is
+    about to ask for a bit you have not got.
   </p>
 </div>
 

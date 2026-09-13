@@ -16,11 +16,21 @@ public sealed record SlotOptions
     public long SagittaNm { get; init; } = Tessellate.DefaultSagittaNm;
 
     /// <summary>
-    /// The end mill the project says to use, or null to take the widest in the library that fits.
+    /// The end mill to spiral a milled hole with **where it fits**, or null to take the widest in
+    /// the library that does.
     ///
-    /// Checked against every feature it is asked to make rather than assumed to suit them all: a
-    /// cutter chosen for a 3 mm hole is too wide for a 1 mm slot, and the honest answer there is a
-    /// refusal naming the width.
+    /// A *preference*, not a constraint, and it applies to holes only. Both halves of that were
+    /// learned from a real board. Applying it to slots is simply wrong: a slot's width is fixed by
+    /// the design, the cutter has to fit inside it, and an operator who picks a 2 mm cutter for
+    /// their 3 mm mounting holes has said nothing whatsoever about the 0.8 mm slots on the same
+    /// board — which were then refused for being too narrow for a choice that was never about
+    /// them.
+    ///
+    /// And treating it as a constraint on holes is nearly as bad. A hole needs a cutter no more
+    /// than three quarters of its width, so a named 2 mm cutter cannot bore a 2.2 mm hole. Refusing
+    /// to make the hole at all, because of a preference, is worse than making it with a narrower
+    /// cutter and saying which — and the guide's table shows one row per cutter, so saying which is
+    /// already built.
     /// </summary>
     public Guid? ToolId { get; init; }
 
@@ -127,11 +137,15 @@ public static class SlotOperation
         foreach (var group in slots.GroupBy(s => s.WidthNm).OrderBy(g => g.Key))
         {
             var width = group.Key;
-            var choice = options.ToolId is { } wanted
-                ? Named(library, wanted, width, depth, holes)
-                : holes
-                    ? ToolChooser.ForHole(library, width, depth)
-                    : ToolChooser.ForWidth(library, width, depth);
+
+            // A slot never consults the preference. Its width is the constraint and the widest
+            // cutter that fits inside it is the only sensible answer; a preference expressed about
+            // milled holes has nothing to say here.
+            var choice = !holes
+                ? ToolChooser.ForWidth(library, width, depth)
+                : options.ToolId is { } wanted
+                    ? Preferred(library, wanted, width, depth)
+                    : ToolChooser.ForHole(library, width, depth);
 
             if (choice.Tool is not { } tool)
             {
@@ -328,26 +342,23 @@ public static class SlotOperation
     }
 
     /// <summary>
-    /// The cutter the operator named, checked against this feature rather than trusted.
+    /// The cutter the operator named, if it suits this feature; otherwise the best one that does.
     ///
-    /// A named tool that does not fit is refused exactly as an absent one is: the point of choosing
-    /// from a library is that the program cannot depend on a cutter that will not do the job, and
-    /// that is no less true when the choice was deliberate.
+    /// Falling back rather than refusing, because the setting is a preference. Somebody who picks a
+    /// 2 mm end mill for their mounting holes has expressed an opinion about 3 mm holes, not a rule
+    /// that a 2.2 mm hole must go unmade — and the page beside the file lists a row per cutter, so
+    /// a fallback is visible rather than silent.
     /// </summary>
-    private static ToolChoice Named(ToolLibrary library, Guid id, long width, long depth, bool holes)
+    private static ToolChoice Preferred(ToolLibrary library, Guid id, long width, long depth)
     {
         var tool = library.Tools.FirstOrDefault(t => t.Id == id);
 
-        if (tool is null)
+        if (tool is not null && ToolChooser.ForHole(new ToolLibrary { Tools = [tool] }, width, depth) is { Found: true } named)
         {
-            return ToolChoice.Refused("the end mill this project was set to use is no longer in the library");
+            return named;
         }
 
-        var only = new ToolLibrary { Tools = [tool] };
-
-        return holes
-            ? ToolChooser.ForHole(only, width, depth)
-            : ToolChooser.ForWidth(only, width, depth);
+        return ToolChooser.ForHole(library, width, depth);
     }
 
     private static string Count(int n, bool holes = false) => (n, holes) switch

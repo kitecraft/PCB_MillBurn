@@ -1068,6 +1068,17 @@ public sealed partial class MainViewModel : ViewModelBase
     public void ReloadLibrary()
     {
         Library = ToolLibrary.LoadOrDefault();
+
+        // The job options offer a list *derived* from the library, so a tool bought and entered
+        // between two exports has to reach them. Without this the cutter list is whatever the
+        // library held when the project was opened, and a freshly added end mill is missing from
+        // the one place somebody just went looking for it.
+        //
+        // The selection is re-resolved rather than kept: a tool is matched by id, and an id that is
+        // no longer in the library has to clear rather than hold a stale object that nothing else
+        // in the app can see any more.
+        ApplyJobOptions();
+
         Rebuild(TimeSpan.Zero);
     }
 
