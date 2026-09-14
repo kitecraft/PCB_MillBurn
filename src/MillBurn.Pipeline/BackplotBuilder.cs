@@ -130,6 +130,9 @@ public static class BackplotBuilder
         return layers;
     }
 
+    /// <summary>The role layers' ids, in the order <see cref="Build(IReadOnlyList{BackplotMove}, Placement, long)"/> adds them.</summary>
+    private static readonly string[] RoleOrder = ["gcode-travel", "gcode-long-travel", "gcode-cut", "gcode-gouge"];
+
     /// <summary>One program's moves, and which layer they came from.</summary>
     /// <param name="Source">The layer's file name — the id the panel knows it by.</param>
     /// <param name="Label">The layer's own name, for the scene.</param>
@@ -149,13 +152,22 @@ public static class BackplotBuilder
     /// backplot. Each program gets its own layers, with ids that carry the source and colour keys
     /// that carry the role, so the two axes stay independent: *which layer* and *what kind of move*.
     /// </summary>
-    /// <param name="programs">The classified programs, one per source layer.</param>
+    /// <param name="programs">The classified programs. A source layer may have more than one.</param>
     /// <param name="offset">Added to every point, to undo the shift to the board's corner.</param>
     /// <param name="sagittaNm">Flattening tolerance for arcs, or zero for the default.</param>
     /// <param name="mirrorSumXNm">
     /// <c>MinX + MaxX</c> of the board, used to unflip the programs that were mirrored. Zero draws
     /// every program straight, which is right only when there is no board to place them on.
     /// </param>
+    /// <remarks>
+    /// **One set of layers per source layer, not per program.** A drilling layer writes two
+    /// programs — the drilling and the routing — and both used to be given the same ids, because the
+    /// id carries the source. The scene finds a layer by id and takes the first, so the routing
+    /// program's layers were reached by no control at all: its long rapids stayed on with the Long
+    /// rapids chip off, and stayed on with the layer's own row off. Merging a source's programs
+    /// keeps every id unique by construction. The runs stay separate, so nothing is drawn joining
+    /// the end of one program to the start of the next.
+    /// </remarks>
     public static IReadOnlyList<BackplotLayer> BuildPerProgram(
         IReadOnlyList<Program> programs,
         Point2 offset = default,
@@ -166,18 +178,36 @@ public static class BackplotBuilder
 
         var layers = new List<BackplotLayer>();
 
-        foreach (var program in programs)
+        foreach (var source in programs.GroupBy(p => p.Source, StringComparer.Ordinal))
         {
-            var placement = new Placement(offset, program.Mirrored ? mirrorSumXNm : 0);
+            var byRole = new Dictionary<string, BackplotLayer>(StringComparer.Ordinal);
 
-            foreach (var layer in Build(program.Moves, placement, sagittaNm))
+            foreach (var program in source)
             {
+                var placement = new Placement(offset, program.Mirrored ? mirrorSumXNm : 0);
+
+                foreach (var layer in Build(program.Moves, placement, sagittaNm))
+                {
+                    byRole[layer.Id] = byRole.TryGetValue(layer.Id, out var so)
+                        ? so with { Runs = [.. so.Runs, .. layer.Runs] }
+                        : layer;
+                }
+            }
+
+            var label = source.First().Label;
+
+            // In the order Build draws them, so a kind first seen in a later program still paints
+            // under the cuts rather than over them.
+            foreach (var id in RoleOrder.Where(byRole.ContainsKey))
+            {
+                var layer = byRole[id];
+
                 layers.Add(layer with
                 {
-                    Id = layer.Id + ":" + program.Source,
-                    Label = program.Label + " · " + layer.Label,
-                    ColourKey = layer.Id,
-                    Source = program.Source,
+                    Id = id + ":" + source.Key,
+                    Label = label + " · " + layer.Label,
+                    ColourKey = id,
+                    Source = source.Key,
                 });
             }
         }
