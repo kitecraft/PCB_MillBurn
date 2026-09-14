@@ -295,7 +295,7 @@ bounds any scale error across 165 mm at **0.061%**.
 **The mill half has now cut a board.** Top-copper isolation with a 30° V-bit dialled in by the test
 cuts, a probed height map bending every pass to the real surface, then the outline routed out with
 tabs. Generated, dry-run, and run on a real CNC: no hand-editing at any step, no complaint from the
-sender, and the board came out of the blank.
+sender, and the board came out of the stock.
 
 **What the first real board shook out** is worth more than the test suite that passed before it.
 The time model was wrong by the machine's own numbers — the defaults assumed 200 mm/s² and
@@ -328,9 +328,9 @@ simplification and arc fitting (a panel's isolation goes from 301,097 lines to 1
 settings read from a controller's own `$` dump, custom start/end G-code, the standalone G-code
 viewer.
 
-Next: **the blank** — the app cuts you a piece of stock and its edges become the datum for every
+Built since: **stock** — the app cuts a piece of copper-clad to size and its edges become the datum for every
 machine and every step after it, which removes fiducials, dowel pins and the design rule that goes
-with them. Then fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
+with them. Next: fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
 output, a LightBurn layer preset, **rulers** down the edges of the viewport so a board's size can be
 read rather than guessed at, and **a picture on the drilling and routing pages** with every hole and
 slot numbered in the order the machine reaches them. Also planned: an **MCP server** over the same libraries, so an assistant can

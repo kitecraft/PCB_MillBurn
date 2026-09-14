@@ -207,7 +207,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 4 Laser output (SVG) | in progress | **Parked** — M4, V11, V12, M7 outstanding |
 | 5 Jobs, setups, alignment | started | **Partial** — levelling done, M9–M20 untouched |
 | 5.5 Drilling, finished | scheduled | **Done — jumped the queue** |
-| 5.6 The blank | scheduled | **Built** — 5.6.5 laser verification open |
+| 5.6 The blank ("stock" in the app) | scheduled | **Built** — 5.6.5 laser verification open |
 | 6.1 Rulers | scheduled | **Not started** |
 | 6.2 Climb or conventional | scheduled | **Not started** |
 | 6.3 Staying down between passes | scheduled | **Done — jumped the queue** |

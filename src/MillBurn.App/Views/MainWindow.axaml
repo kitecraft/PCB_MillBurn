@@ -188,11 +188,11 @@
                         <MenuItem Header="_Export…" Click="OnExportClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <!--
-                            Just the blank, because it is cut on its own schedule: first, and often
-                            before the rest of the job is ready. Off unless the project is built on a
-                            blank that is cut on the mill — a declared blank has nothing to cut.
+                            Just the stock, because it is cut on its own schedule: first, and often
+                            before the rest of the job is ready. Off unless the project is built on
+                            stock the mill cuts to size — pre-cut stock has nothing to cut.
                         -->
-                        <MenuItem Header="Write _blank program…" Click="OnWriteBlankClicked"
+                        <MenuItem Header="Cut _stock to size…" Click="OnWriteBlankClicked"
                                   IsEnabled="{Binding CanWriteBlank}" />
                         <Separator />
                         <MenuItem Header="_Reset layers to defaults…" Click="OnResetLayersClicked"
@@ -316,20 +316,20 @@
                                     </Grid>
 
                                     <!--
-                                        The blank: the piece of stock this job is built on, and the
+                                        The stock: the piece of copper-clad this job is built on, and the
                                         datum for every machine after it. Off by default because it
                                         moves work zero.
                                     -->
                                     <CheckBox IsChecked="{Binding UseBlank, Mode=TwoWay}"
                                               Margin="0,6,0,0"
-                                              ToolTip.Tip="Reference every file to a piece of stock rather than to the board. Work zero becomes the blank's lower-left corner, the SVG page becomes the blank, and a mirrored layer flips about the blank's centreline.">
-                                        <TextBlock Text="Build on a blank" Classes="caption" />
+                                              ToolTip.Tip="Reference every file to a piece of stock rather than to the board. Work zero becomes the stock's lower-left corner, the SVG page becomes the stock, and a mirrored layer flips about the stock's centreline.">
+                                        <TextBlock Text="Build on stock" Classes="caption" />
                                     </CheckBox>
 
                                     <StackPanel Spacing="4" IsVisible="{Binding UseBlank}" Margin="18,0,0,0">
                                         <CheckBox IsChecked="{Binding BlankIsStated, Mode=TwoWay}"
-                                                  ToolTip.Tip="Give the blank's own size instead of a border round the board. This is the one for pre-cut stock.">
-                                            <TextBlock Text="A stated size" Classes="caption" />
+                                                  ToolTip.Tip="Give the stock's own size instead of a border round the board — for stock that is already cut.">
+                                            <TextBlock Text="Pre-cut size" Classes="caption" />
                                         </CheckBox>
 
                                         <Grid ColumnDefinitions="Auto,*,Auto,*" IsVisible="{Binding BlankIsStated}">
@@ -354,8 +354,8 @@
                                         </Grid>
 
                                         <CheckBox IsChecked="{Binding CutTheBlank, Mode=TwoWay}"
-                                                  ToolTip.Tip="Cut with the bit chosen for the Board outline layer, so the blank and the board need no tool change. Off when the stock is already this size — nothing is cut, and the app is simply told what is on the table.">
-                                            <TextBlock Text="Cut it on the mill" Classes="caption" />
+                                                  ToolTip.Tip="Cut with the bit chosen for the Board outline layer, so the stock and the board need no tool change. Off when the stock is already this size — nothing is cut, and the app is simply told what is on the table.">
+                                            <TextBlock Text="Cut the stock to size on the mill" Classes="caption" />
                                         </CheckBox>
 
                                         <TextBlock Text="{Binding BlankSummary}"

@@ -24,16 +24,16 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
-            Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode|blank, --write, -o <dir>");
+            Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode|stock, --write, -o <dir>");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none  (svg- inverts)");
             Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
             Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
-            Console.WriteLine("                                 --blank <l,b,r,t mm> cut the stock too, this much bigger than the board");
-            Console.WriteLine("                                 --blank-size <WxH mm> the blank is this rectangle instead");
-            Console.WriteLine("                                 --blank-have the stock is already that size; cut nothing");
+            Console.WriteLine("                                 --stock <l,b,r,t mm> cut the stock to size too, this much bigger than the board");
+            Console.WriteLine("                                 --stock-size <WxH mm> the stock is this rectangle instead");
+            Console.WriteLine("                                 --stock-have the stock is already that size; cut nothing");
             Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
             Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
             Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
@@ -59,7 +59,7 @@ internal static class Program
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
-            Console.WriteLine("                                 --blank / --blank-size / --blank-have / --mill-holes as for export");
+            Console.WriteLine("                                 --stock / --stock-size / --stock-have / --mill-holes as for export");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none records what a layer becomes");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
@@ -1453,7 +1453,8 @@ internal static class Program
 
         if (Argument(args, "--only") is { } filter)
         {
-            blankOnly = filter.Equals("blank", StringComparison.OrdinalIgnoreCase);
+            blankOnly = filter.Equals("stock", StringComparison.OrdinalIgnoreCase)
+                || filter.Equals("blank", StringComparison.OrdinalIgnoreCase);
 
             only = filter.ToLowerInvariant() switch
             {
@@ -1464,7 +1465,7 @@ internal static class Program
 
             if (only is null && !blankOnly)
             {
-                Console.Error.WriteLine("--only takes svg, gcode or blank.");
+                Console.Error.WriteLine("--only takes svg, gcode or stock.");
                 return 1;
             }
         }
@@ -1696,9 +1697,9 @@ internal static class Program
         {
             var b = plan.Blank.Bounds;
 
-            var how = plan.Blank.Cut ? "cut on the mill" : "declared";
+            var how = plan.Blank.Cut ? "cut to size on the mill" : "pre-cut";
 
-            Line($"  blank       {Nm.ToMillimetreString(b.Width, 2)} x {Nm.ToMillimetreString(b.Height, 2)} mm, {how} — work zero is its lower-left corner");
+            Line($"  stock       {Nm.ToMillimetreString(b.Width, 2)} x {Nm.ToMillimetreString(b.Height, 2)} mm, {how} — work zero is its lower-left corner");
 
             foreach (var note in plan.Blank.Notes)
             {
@@ -1827,7 +1828,7 @@ internal static class Program
 
     /// <summary>
     /// A plan holding only the blank's program — the same file a full export puts first — without
-    /// planning the rest of the job. The same as Job › Write blank program… in the window.
+    /// planning the rest of the job. The same as Job › Cut stock to size… in the window.
     /// </summary>
     private static ExportPlan BlankOnlyPlan(
         Board board,
@@ -1840,13 +1841,13 @@ internal static class Program
         var (item, blank) = ExportPlanner.PlanBlank(
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), framing, app.Machine, job);
 
-        var skipped = blank.Refusals.Select(r => "Blank: " + r).ToList();
+        var skipped = blank.Refusals.Select(r => "Stock: " + r).ToList();
 
         if (item is null && skipped.Count == 0)
         {
             skipped.Add(blank.Resolved
-                ? "Blank: declared rather than cut, so there is nothing to write."
-                : "Blank: this job is not built on a blank. Add --blank, or turn it on in Project info.");
+                ? "Stock: pre-cut, so there is nothing to cut."
+                : "Stock: this job is not built on stock. Add --stock, or tick Build on stock in Project info.");
         }
 
         return new ExportPlan { Items = item is null ? [] : [item], Skipped = skipped, Blank = blank };
@@ -2146,7 +2147,7 @@ internal static class Program
 
         if (blank.Resolved)
         {
-            Line($"  blank       {Nm.ToMillimetreString(frame.Width, 2)} x {Nm.ToMillimetreString(frame.Height, 2)} mm — work zero is its corner; the board is probed, not the border");
+            Line($"  stock       {Nm.ToMillimetreString(frame.Width, 2)} x {Nm.ToMillimetreString(frame.Height, 2)} mm — work zero is its corner; the board is probed, not the border");
         }
 
         Line($"  grid        {report.Columns} x {report.Rows} = {report.PointCount} touches, {report.SpacingMm:F1} mm apart");
@@ -2342,7 +2343,7 @@ internal static class Program
     /// </summary>
     private static JobOptions JobFor(string[] args, MillBurnProject? project)
     {
-        string[] flags = ["--blank", "--blank-size", "--blank-have", "--mill-holes", "--mill-tool", "--mill-above"];
+        string[] flags = ["--stock", "--stock-size", "--stock-have", "--blank", "--blank-size", "--blank-have", "--mill-holes", "--mill-tool", "--mill-above"];
 
         if (project is not null && !flags.Any(f => args.Contains(f, StringComparer.OrdinalIgnoreCase)))
         {
@@ -2369,9 +2370,11 @@ internal static class Program
     /// </summary>
     private static BlankOptions Blank(string[] args)
     {
-        var stated = Argument(args, "--blank-size");
-        var grown = Argument(args, "--blank");
-        var declared = args.Contains("--blank-have", StringComparer.OrdinalIgnoreCase);
+        // "--blank..." were the names before the word on screen became "stock". Kept, so a script
+        // written against them still runs.
+        var stated = Argument(args, "--stock-size") ?? Argument(args, "--blank-size");
+        var grown = Argument(args, "--stock") ?? Argument(args, "--blank");
+        var declared = HasOption(args, "--stock-have", "--blank-have");
 
         if (stated is null && grown is null && !declared)
         {
@@ -2386,7 +2389,7 @@ internal static class Program
                 || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var w)
                 || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var h))
             {
-                Console.Error.WriteLine($"--blank-size wants WxH in mm, e.g. 183x122 (got '{stated}').");
+                Console.Error.WriteLine($"--stock-size wants WxH in mm, e.g. 183x122 (got '{stated}').");
                 return new BlankOptions();
             }
 

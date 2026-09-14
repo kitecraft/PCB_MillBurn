@@ -1121,7 +1121,7 @@ public partial class MainWindow : Window
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Write blank program",
+            Title = "Cut stock to size",
             SuggestedFileName = vm.BlankProgramName,
             DefaultExtension = "nc",
             FileTypeChoices = [GcodeFileType],

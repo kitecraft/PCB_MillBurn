@@ -115,8 +115,8 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <h2 id="zero">Where is work zero?</h2>
 
 <p>
-  The <strong>lower-left corner of the board</strong> — or of the <strong>blank</strong>, when the
-  job is built on one (<em>Project info &rsaquo; Build on a blank</em>). Never wherever the board
+  The <strong>lower-left corner of the board</strong> — or of the <strong>stock</strong>, when the
+  job is built on it (<em>Project info &rsaquo; Build on stock</em>). Never wherever the board
   happened to sit on the EDA canvas. Every file in one export shares it, and every file says so in
   its header.
 </p>
@@ -129,7 +129,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  So: jog to the lower-left corner of where the board will be &mdash; or of the blank &mdash; zero X
+  So: jog to the lower-left corner of where the board will be &mdash; or of the stock &mdash; zero X
   and Y there, and load any of the files. They all agree.
 </p>
 
@@ -583,23 +583,23 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  <strong>The order is a suggestion.</strong> Most of it is physics — the blank has to exist before
+  <strong>The order is a suggestion.</strong> Most of it is physics — the stock has to be cut before
   anything is measured from it, and the outline has to be last because after it the board is loose
   — but your board may have a reason to differ.
 </p>
 
 <p>
-  <strong>The blank is cut with the Board outline layer&rsquo;s bit.</strong> There is no separate
+  <strong>The stock is cut to size with the Board outline layer&rsquo;s bit.</strong> There is no separate
   choice for it, so the first program and the last need no tool change between them. To use a
-  different bit for both, change it on the Board outline row. The blank&rsquo;s line in Project info,
-  the export window, this page and the blank&rsquo;s own program all name it.
+  different bit for both, change it on the Board outline row. The stock&rsquo;s line in Project info,
+  the export window, this page and the stock&rsquo;s own program all name it.
 </p>
 
 <p>
-  <strong>To cut the blank before the rest of the job is ready</strong>, use
-  <em>Job &rsaquo; Write blank program&hellip;</em>. It writes just that file &mdash; the same one a
-  full export puts first &mdash; and is available once the project is built on a blank with
-  <em>Cut it on the mill</em> ticked.
+  <strong>To cut the stock before the rest of the job is ready</strong>, use
+  <em>Job &rsaquo; Cut stock to size&hellip;</em>. It writes just that file &mdash; the same one a
+  full export puts first &mdash; and is available once the project is built on stock with
+  <em>Cut the stock to size on the mill</em> ticked.
 </p>
 
 <p>
@@ -661,9 +661,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     <strong>Job &rsaquo; Write probing routine&hellip;</strong> Put a probe on the tool and a clip
     on the copper, set work zero exactly as you would for the real job, and run the file. It touches
     off a grid over the board &mdash; ten millimetres apart by default, about four seconds a touch.
-    On a job built on a blank, <strong>cut the blank first</strong> and zero on its corner: the grid
-    still covers only the board, but measured from the blank&rsquo;s corner like every other file.
-    The border is not probed &mdash; the blank is cut through, so nothing there needs levelling.
+    On a job built on stock, <strong>cut the stock first</strong> and zero on its corner: the grid
+    still covers only the board, but measured from the stock&rsquo;s corner like every other file.
+    The border is not probed &mdash; the stock is cut through, so nothing there needs levelling.
   </li>
   <li>
     <strong>Save your sender's log</strong>, then <strong>Job &rsaquo; Import height map&hellip;</strong>
@@ -674,7 +674,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   </li>
   <li>
     <strong>Export</strong> with <em>Level to the imported height map</em> ticked. Each program gets
-    a <code>.levelled.nc</code> beside it whose depth follows the surface &mdash; except the blank,
+    a <code>.levelled.nc</code> beside it whose depth follows the surface &mdash; except the stock,
     which was cut before there was anything to probe.
   </li>
 </ol>

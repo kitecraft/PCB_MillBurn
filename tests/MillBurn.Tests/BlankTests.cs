@@ -301,7 +301,7 @@ public sealed class BlankTests(ITestOutputHelper output)
         });
 
         Assert.True(plan.Blank.Resolved);
-        Assert.DoesNotContain(plan.Items, i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal));
+        Assert.DoesNotContain(plan.Items, i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal));
     }
 
     /// <summary>A cut blank comes first, because everything else is referenced to what it makes.</summary>
@@ -311,7 +311,7 @@ public sealed class BlankTests(ITestOutputHelper output)
         var plan = Plan(new BlankOptions { Enabled = true });
 
         Assert.StartsWith("PogoTest1", plan.Items[0].TargetName, StringComparison.Ordinal);
-        Assert.EndsWith(".blank.nc", plan.Items[0].TargetName, StringComparison.Ordinal);
+        Assert.EndsWith(".stock.nc", plan.Items[0].TargetName, StringComparison.Ordinal);
         Assert.Contains(plan.Items[0].Warnings, w => w.Contains("before anything else", StringComparison.Ordinal));
     }
 
@@ -445,7 +445,7 @@ public sealed class BlankTests(ITestOutputHelper output)
             loaded, settings, library, Nm.FromMillimetres(1.6),
             job: new JobOptions { Blank = new BlankOptions { Enabled = true } });
 
-        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal));
+        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal));
         var outline = plan.Items.Single(i => i.Role == LayerRole.Outline);
         var page = plan.Page!.Content;
 
@@ -457,8 +457,8 @@ public sealed class BlankTests(ITestOutputHelper output)
 
         Assert.Contains("with the 2.0 mm end mill", outline.Content, StringComparison.Ordinal);
 
-        Assert.Contains("Cut the blank</strong> with the <strong>2.0 mm end mill</strong>", page, StringComparison.Ordinal);
-        Assert.Contains("Cut the board out</strong> with the same bit as the blank", page, StringComparison.Ordinal);
+        Assert.Contains("Cut the stock to size</strong> with the <strong>2.0 mm end mill</strong>", page, StringComparison.Ordinal);
+        Assert.Contains("Cut the board out</strong> with the same bit as the stock", page, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -473,7 +473,7 @@ public sealed class BlankTests(ITestOutputHelper output)
     public void TheBlankCutsWithTheOutlinesStepdownAndDepth()
     {
         var plan = PlanWithOutlineBit(EndMill(0.8, stepdownMm: 0.5), breakThroughMm: 0.1, thicknessMm: 0.8);
-        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal)).Content;
+        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal)).Content;
 
         var depths = Moves(blank).Where(m => !m.Rapid && m.Z < 0).Select(m => m.Z).Distinct().Order().ToList();
 
@@ -495,7 +495,7 @@ public sealed class BlankTests(ITestOutputHelper output)
     public void TheToolNeverLiftsOnlyToComeDownInTheSamePlace()
     {
         var plan = PlanWithOutlineBit(EndMill(0.8, stepdownMm: 0.5), breakThroughMm: 0.1, thicknessMm: 0.8);
-        var moves = Moves(plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal)).Content);
+        var moves = Moves(plan.Items.Single(i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal)).Content);
 
         var pointless = 0;
         Move? lastCut = null;
@@ -584,7 +584,7 @@ public sealed class BlankTests(ITestOutputHelper output)
     {
         var plan = Plan(new BlankOptions { Enabled = true });
 
-        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".blank.nc", StringComparison.Ordinal));
+        var blank = plan.Items.Single(i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal));
 
         Assert.False(blank.Levellable);
         Assert.All(plan.Items.Where(i => i != blank && i.Output == OutputKind.Gcode), i => Assert.True(i.Levellable, i.TargetName));

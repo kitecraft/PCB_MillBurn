@@ -1734,6 +1734,11 @@ the export list. And it does not guess a cutter you have not entered into the li
 The app cuts you a piece of stock, and the edges of that piece are the datum for every machine and
 every step after it.
 
+**Called "stock" in the app.** Since 2026-09-14 the window, the files and the pages say *Build on
+stock*, *Cut stock to size…* and `Board.stock.nc`. "Blank" also means empty, and *Write blank
+program…* read as "write an empty program". This document, the code (`BlankOptions`,
+`BlankOperation`) and the project file keep the old name.
+
 Numbered beside Phase 5 because it changes what that phase recommends, not because it was scheduled
 then. It arrived from the workshop, the day after the first dry run ran on the machine.
 

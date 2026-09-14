@@ -52,7 +52,7 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
     {
         var html = Plan(new BlankOptions { Enabled = true }).Page!.Content;
 
-        var blank = html.IndexOf("Cut the blank", StringComparison.Ordinal);
+        var blank = html.IndexOf("Cut the stock", StringComparison.Ordinal);
         var isolate = html.IndexOf("Isolate the copper", StringComparison.Ordinal);
         var outline = html.IndexOf("Cut the board out", StringComparison.Ordinal);
 

@@ -311,6 +311,6 @@ public sealed class RoutingGuideTests(ITestOutputHelper output)
         Assert.Equal(plain.Length, blank.Length);
 
         Assert.All(plain, p => Assert.Contains("lower-left corner of the board", p, StringComparison.Ordinal));
-        Assert.All(blank, p => Assert.Contains("lower-left corner of the blank", p, StringComparison.Ordinal));
+        Assert.All(blank, p => Assert.Contains("lower-left corner of the stock", p, StringComparison.Ordinal));
     }
 }

@@ -176,14 +176,14 @@ public static class Blanks
         if (mirrored && Math.Abs(left - right) > Nm.FromMillimetres(0.01))
         {
             notes.Add(Invariant(
-                $"The left and right borders differ ({Mm(left)} and {Mm(right)} mm) and this job has a mirrored layer. The flip is about the blank's centreline, so the design lands {Mm(Math.Abs(left - right))} mm from where equal borders would put it. Equalise them unless you have checked the arithmetic."));
+                $"The left and right borders differ ({Mm(left)} and {Mm(right)} mm) and this job has a mirrored layer. The flip is about the stock's centreline, so the design lands {Mm(Math.Abs(left - right))} mm from where equal borders would put it. Equalise them unless you have checked the arithmetic."));
         }
 
         // Deliberately not a "Blank W x H" note: the caller leads with that, and a note that
         // repeats the headline pushes the ones that say something new further down the page.
         if (!options.Cut)
         {
-            notes.Add("A declared blank is a claim rather than a measurement: it fixes work zero, the shared page and the mirror axis, and guarantees nothing about the stock's size or squareness. Enter measured dimensions, and mark the datum corner yourself — nothing cuts a key into a piece it did not make.");
+            notes.Add("Pre-cut stock is a claim rather than a measurement: it fixes work zero, the shared page and the mirror axis, and guarantees nothing about the stock's size or squareness. Enter measured dimensions, and mark the datum corner yourself — nothing cuts a key into a piece it did not make.");
         }
 
         notes.Add(Invariant(
@@ -219,7 +219,7 @@ public static class Blanks
 
         if (width <= 0 || height <= 0)
         {
-            refusals.Add("The blank's size has not been given.");
+            refusals.Add("The stock's size has not been given.");
             return Bounds.Empty;
         }
 
@@ -243,7 +243,7 @@ public static class Blanks
 
         if (options.PlaceXMm is null && options.PlaceYMm is null)
         {
-            notes.Add("The board is centred in the blank.");
+            notes.Add("The board is centred on the stock.");
         }
 
         return new Bounds(board.MinX - x, board.MinY - y, board.MinX - x + width, board.MinY - y + height);
@@ -256,7 +256,7 @@ public static class Blanks
         if (needed > blank)
         {
             refusals.Add(Invariant(
-                $"The board is {Mm(needed - blank)} mm too {way} for a {Mm(blank)} mm blank — it needs {Mm(floor)} mm of border on each side and there is only {Mm((blank - board) / 2)} mm."));
+                $"The board is {Mm(needed - blank)} mm too {way} for a {Mm(blank)} mm stock — it needs {Mm(floor)} mm of border on each side and there is only {Mm((blank - board) / 2)} mm."));
         }
     }
 
@@ -265,7 +265,7 @@ public static class Blanks
         if (have < floor)
         {
             refusals.Add(Invariant(
-                $"The {side} border is {Mm(have)} mm; {Mm(floor)} mm is the floor for a {Mm(cutterNm)} mm cutter (its own width, plus 2 mm to hold the blank down and to keep a sliver from breaking away)."));
+                $"The {side} border is {Mm(have)} mm; {Mm(floor)} mm is the floor for a {Mm(cutterNm)} mm cutter (its own width, plus 2 mm to hold the stock down and to keep a sliver from breaking away)."));
         }
     }
 

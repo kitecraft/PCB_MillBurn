@@ -219,11 +219,11 @@ public static class ProbeRoutine
         lines.Add(Boxed(howLong));
         if (options.OnBlank)
         {
-            lines.Add(Boxed("Work zero is the BLANK's lower-left corner, the same"));
+            lines.Add(Boxed("Work zero is the STOCK's lower-left corner, the same"));
             lines.Add(Boxed("as every other file in this export."));
             lines.Add(Boxed(string.Empty));
-            lines.Add(Boxed("The grid covers the board, not the blank's border:"));
-            lines.Add(Boxed("the blank is cut through, and needs no levelling."));
+            lines.Add(Boxed("The grid covers the board, not the stock's border:"));
+            lines.Add(Boxed("the stock is cut through, and needs no levelling."));
         }
         else
         {

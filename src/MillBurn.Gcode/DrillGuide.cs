@@ -298,7 +298,7 @@ public static class DrillGuide
     /// board's corner as the page said puts every hole a border's width out.
     /// </summary>
     public static string WorkZero(bool onBlank) => onBlank
-        ? "<li>Work zero is the <strong>lower-left corner of the blank</strong>, not of the board "
+        ? "<li>Work zero is the <strong>lower-left corner of the stock</strong>, not of the board "
             + "— the same as every other file in this export.</li>\n"
         : "<li>Work zero is the <strong>lower-left corner of the board</strong>, the same as every "
             + "other file in this export.</li>\n";

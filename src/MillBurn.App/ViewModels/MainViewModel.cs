@@ -511,7 +511,7 @@ public sealed partial class MainViewModel : ViewModelBase
             StatusMessage = string.Create(
                 System.Globalization.CultureInfo.InvariantCulture,
                 $"Wrote a {report.Columns} x {report.Rows} probing grid ({report.PointCount} touches, "
-                + $"about {minutes:F0} min{(onBlank ? ", zeroed on the blank's corner" : string.Empty)}) to {path}.");
+                + $"about {minutes:F0} min{(onBlank ? ", zeroed on the stock's corner" : string.Empty)}) to {path}.");
 
             return true;
         }
@@ -523,14 +523,14 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Whether Job › Write blank program… has something to write: a board, built on a blank that the
+    /// Whether Job › Cut stock to size… has something to write: a board, built on a blank that the
     /// mill cuts. A declared blank is stock already on the table, and has no program.
     /// </summary>
     public bool CanWriteBlank => _board is not null && UseBlank && CutTheBlank;
 
     /// <summary>The name the blank program is offered under, without its extension.</summary>
     public string BlankProgramName => _board is null
-        ? "blank"
+        ? "stock"
         : Path.GetFileNameWithoutExtension(ExportPlanner.BlankFileName(_board));
 
     /// <summary>
@@ -564,8 +564,8 @@ public sealed partial class MainViewModel : ViewModelBase
                 // Said, not silently skipped: the item can be reached a moment after the border was
                 // narrowed below what the cutter needs, and then the refusal is the answer.
                 StatusMessage = blank.Refusals.Count > 0
-                    ? "No blank program: " + string.Join(" ", blank.Refusals)
-                    : "No blank program: this project is not built on a blank that the mill cuts.";
+                    ? "Nothing to cut: " + string.Join(" ", blank.Refusals)
+                    : "Nothing to cut: this project is not built on stock that the mill cuts to size.";
                 return false;
             }
 
@@ -574,7 +574,7 @@ public sealed partial class MainViewModel : ViewModelBase
             StatusMessage = string.Create(
                 CultureInfo.InvariantCulture,
                 $"Wrote {Path.GetFileName(path)}: a {Nm.ToMillimetreString(blank.Bounds.Width, 2)} × "
-                + $"{Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm blank, cut with the "
+                + $"{Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm stock, cut with the "
                 + $"{ExportPlanner.OutlineCutter(_board, settings, Library).Name}.");
 
             return true;

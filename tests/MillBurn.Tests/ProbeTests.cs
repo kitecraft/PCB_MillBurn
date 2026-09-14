@@ -156,8 +156,8 @@ public sealed class ProbeTests(ITestOutputHelper output)
     {
         var text = ProbeRoutine.Generate(Board(80, 60), new ProbeRoutineOptions { OnBlank = true }).Text;
 
-        Assert.Contains("BLANK's lower-left corner", text, StringComparison.Ordinal);
-        Assert.Contains("not the blank's border", text, StringComparison.Ordinal);
+        Assert.Contains("STOCK's lower-left corner", text, StringComparison.Ordinal);
+        Assert.Contains("not the stock's border", text, StringComparison.Ordinal);
         Assert.DoesNotContain("board's lower-left", text, StringComparison.Ordinal);
     }
 

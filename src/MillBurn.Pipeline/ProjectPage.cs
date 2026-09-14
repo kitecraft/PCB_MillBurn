@@ -115,7 +115,7 @@ public static class ProjectPage
 
         page.Append("<h2>Suggested running order</h2>\n");
         page.Append("<p class=\"sub\">A suggestion, not an instruction. Most of it is physics — the "
-            + "blank has to exist before anything is measured from it, and the outline has to be "
+            + "stock has to be cut before anything is measured from it, and the outline has to be "
             + "last because after it the board is loose — but your board may have a reason to "
             + "differ.</p>\n<ol>\n");
 
@@ -123,7 +123,7 @@ public static class ProjectPage
 
         if (cutsBlank)
         {
-            page.Append("<li><strong>Cut the blank</strong>");
+            page.Append("<li><strong>Cut the stock to size</strong>");
 
             // Named, and said where it comes from: nothing next to the blank's settings picks a bit,
             // so without this the page leaves somebody standing at the machine guessing.
@@ -193,14 +193,14 @@ public static class ProjectPage
         }
 
         if (Any(i => i.Operation == OperationKind.Outline
-            && !i.TargetName.Contains(".blank.", StringComparison.Ordinal)))
+            && !i.TargetName.Contains(".stock.", StringComparison.Ordinal)))
         {
             page.Append("<li><strong>Cut the board out</strong>");
 
             if (context.OutlineCutter is { } cutter)
             {
                 page.Append(cutsBlank
-                    ? " with the same bit as the blank"
+                    ? " with the same bit as the stock"
                     : " with the <strong>" + Escape(cutter) + "</strong>");
             }
 
@@ -321,7 +321,7 @@ public static class ProjectPage
 
     private static string What(ExportItem item) => item.TargetName switch
     {
-        var n when n.Contains(".blank.", StringComparison.Ordinal) => "Cuts the stock to size",
+        var n when n.Contains(".stock.", StringComparison.Ordinal) => "Cuts the stock to size",
         var n when n.Contains(".slots.", StringComparison.Ordinal) => "Slots and milled holes",
         var n when n.Contains(".dryrun.", StringComparison.Ordinal) => "The same path, in the air",
         var n when n.Contains(".levelled.", StringComparison.Ordinal) => "Bent to the probed surface",

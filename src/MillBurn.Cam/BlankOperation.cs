@@ -98,7 +98,7 @@ public static class BlankOperation
 
         var notes = new List<string>
         {
-            Invariant($"{Mm(blank.Width)} x {Mm(blank.Height)} mm blank, cut {Mm(half)} mm outside the line so the piece is the size asked for."),
+            Invariant($"{Mm(blank.Width)} x {Mm(blank.Height)} mm stock, cut {Mm(half)} mm outside the line so the piece is the size asked for."),
             Invariant($"{Mm(depth)} mm deep in {Mm(step)} mm passes with the {options.Tool.Name}."),
         };
 
@@ -111,13 +111,13 @@ public static class BlankOperation
         if (key > 0)
         {
             notes.Add(Invariant(
-                $"The lower-left corner is chamfered {Mm(key)} mm, in the same pass as the edges. That corner is the datum: it goes into the stop, and it is how you tell which way up the blank was."));
+                $"The lower-left corner is chamfered {Mm(key)} mm, in the same pass as the edges. That corner is the datum: it goes into the stop, and it is how you tell which way up the stock was."));
         }
 
         return new Toolpath
         {
             Kind = ToolpathKind.Outline,
-            Label = "Blank",
+            Label = "Stock",
             Tool = options.Tool,
             Passes = passes,
             Notes = notes,
@@ -268,10 +268,10 @@ public static class BlankOperation
     private static Toolpath Empty(BlankOutlineOptions options) => new()
     {
         Kind = ToolpathKind.Outline,
-        Label = "Blank",
+        Label = "Stock",
         Tool = options.Tool,
         Passes = [],
-        Notes = ["No blank: the board has no extent."],
+        Notes = ["No stock: the board has no extent."],
     };
 
     private static string Mm(long nm) => Nm.ToMillimetreString(nm, 2);

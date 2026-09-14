@@ -233,7 +233,7 @@ public static class ExportPlanner
 
         foreach (var refusal in blank.Refusals)
         {
-            skipped.Add("Blank: " + refusal);
+            skipped.Add("Stock: " + refusal);
         }
 
         var plan = new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
@@ -713,7 +713,7 @@ public static class ExportPlanner
     {
         ArgumentNullException.ThrowIfNull(board);
 
-        return Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".blank.nc";
+        return Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".stock.nc";
     }
 
     /// <summary>
@@ -765,15 +765,15 @@ public static class ExportPlanner
 
         var job = new Job
         {
-            Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — blank",
+            Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — stock",
             Toolpaths = [Translate(toolpath, shift)],
             OriginShift = shift,
             Notes =
             [
                 Invariant($"Cut this first. Everything else in this export is referenced to the corner it makes."),
-                Invariant($"Fit the {tool.Name}: the Board outline layer's bit, which cuts the blank as well as the board."),
-                Invariant($"Blank {Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm. Work zero is its lower-left corner."),
-                "Tabs are on the top and right edges only: a stub on a datum edge stops the blank seating.",
+                Invariant($"Fit the {tool.Name}: the Board outline layer's bit, which cuts the stock to size as well as cutting out the board."),
+                Invariant($"Stock {Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm. Work zero is its lower-left corner."),
+                "Tabs are on the top and right edges only: a stub on a datum edge stops the stock seating.",
                 "Deburr the two datum edges before first use — a fresh cut leaves a burr underneath.",
             ],
         };
@@ -801,9 +801,9 @@ public static class ExportPlanner
 
         return new ExportItem
         {
-            LayerFileName = "(blank)",
+            LayerFileName = "(stock)",
             Levellable = false,
-            LayerLabel = "Blank",
+            LayerLabel = "Stock",
             Role = LayerRole.Unknown,
             Operation = OperationKind.Outline,
             Output = OutputKind.Gcode,
@@ -1620,7 +1620,7 @@ public static class ExportPlanner
 
         return frame == board.Bounds
             ? Invariant($"Work zero is the board's lower-left corner; the Gerber origin was at {x}, {y} mm.")
-            : Invariant($"Work zero is the BLANK's lower-left corner, not the board's. The board sits {Nm.ToMillimetreString(board.Bounds.MinX - frame.MinX, 2)} mm right and {Nm.ToMillimetreString(board.Bounds.MinY - frame.MinY, 2)} mm up from it. The Gerber origin was at {x}, {y} mm.");
+            : Invariant($"Work zero is the STOCK's lower-left corner, not the board's. The board sits {Nm.ToMillimetreString(board.Bounds.MinX - frame.MinX, 2)} mm right and {Nm.ToMillimetreString(board.Bounds.MinY - frame.MinY, 2)} mm up from it. The Gerber origin was at {x}, {y} mm.");
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
