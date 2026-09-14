@@ -1775,7 +1775,9 @@ public sealed partial class MainViewModel : ViewModelBase
 
     partial void OnMillDrillToolChanged(Tool? value)
     {
-        if (_loadingJob)
+        // Choosing the tool the project already has is not a change. Said explicitly because a
+        // combo re-selects its item whenever its list is rebuilt, and each of those used to count.
+        if (_loadingJob || value?.Id == _project.Settings.Job.MillDrillToolId)
         {
             return;
         }
@@ -1958,6 +1960,13 @@ public sealed partial class MainViewModel : ViewModelBase
             BlankWidthMm = job.Blank.WidthMm;
             BlankHeightMm = job.Blank.HeightMm;
             BlankBorderMm = job.Blank.LeftMm;
+
+            // Inside the guard, not after it. A new list is a new source for the "Spiral with"
+            // combo, and a combo given a new source clears its selection and then restores it —
+            // pushing null and then the same tool back through the two-way binding. Both writes
+            // used to land after loading had finished, so opening any project with a spiral tool
+            // chosen marked it changed and asked to be saved on close, with nothing touched.
+            OnPropertyChanged(nameof(MillDrillTools));
         }
         finally
         {
@@ -1965,7 +1974,6 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         DescribeBlank(job.Blank);
-        OnPropertyChanged(nameof(MillDrillTools));
     }
 
     private ProjectViewState CaptureViewState() => new()

@@ -577,6 +577,15 @@ public partial class MainWindow : Window
                     bitmap.Save(file, new PngBitmapEncoderOptions());
 
                     Console.WriteLine($"shot: {path} ({size.Width}x{size.Height})");
+
+                    // Whether showing the window left the project marked as changed. Opening a project
+                    // and touching nothing must never do that — a prompt that appears for no reason
+                    // teaches people to click through it — and the title-bar asterisk is outside
+                    // what a shot captures, so this is how a script checks it.
+                    if (DataContext is MainViewModel shown)
+                    {
+                        Console.WriteLine($"unsaved changes: {(shown.Project.IsDirty ? "yes" : "no")}");
+                    }
                 }
                 catch (Exception ex) when (ex is IOException or InvalidOperationException)
                 {
