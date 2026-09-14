@@ -24,7 +24,7 @@ internal static class Program
             Console.WriteLine();
             Console.WriteLine("  inspect <file-or-directory>   Parse Gerber files and report what was understood");
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
-            Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode, --write, -o <dir>");
+            Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode|blank, --write, -o <dir>");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none  (svg- inverts)");
             Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
             Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
@@ -1449,8 +1449,12 @@ internal static class Program
             dryRun = true;
         }
 
+        var blankOnly = false;
+
         if (Argument(args, "--only") is { } filter)
         {
+            blankOnly = filter.Equals("blank", StringComparison.OrdinalIgnoreCase);
+
             only = filter.ToLowerInvariant() switch
             {
                 "svg" => OutputKind.Svg,
@@ -1458,9 +1462,9 @@ internal static class Program
                 _ => null,
             };
 
-            if (only is null)
+            if (only is null && !blankOnly)
             {
-                Console.Error.WriteLine("--only takes svg or gcode.");
+                Console.Error.WriteLine("--only takes svg, gcode or blank.");
                 return 1;
             }
         }
@@ -1599,9 +1603,11 @@ internal static class Program
 
         var job = JobFor(args, project);
 
-        var plan = ExportPlanner.Plan(
-            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
-            framing: framing, machineSettings: app.Machine, job: job);
+        var plan = blankOnly
+            ? BlankOnlyPlan(board, settings, thicknessMm, framing, app, job)
+            : ExportPlanner.Plan(
+                board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
+                framing: framing, machineSettings: app.Machine, job: job);
 
         // Companion programs that trace the same path in the air. Built here rather than at write
         // time so that a plain `export --dry-run` — no --write — still reports whether each one
@@ -1817,6 +1823,33 @@ internal static class Program
             + dryRuns.Count + extras.Count + (plan.Page is null ? 0 : 1);
         Line($"  wrote       {written} file(s) to {outDir}");
         return plan.HasWarnings ? 2 : 0;
+    }
+
+    /// <summary>
+    /// A plan holding only the blank's program — the same file a full export puts first — without
+    /// planning the rest of the job. The same as Job › Write blank program… in the window.
+    /// </summary>
+    private static ExportPlan BlankOnlyPlan(
+        Board board,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        double thicknessMm,
+        ProgramFraming? framing,
+        AppSettings app,
+        JobOptions job)
+    {
+        var (item, blank) = ExportPlanner.PlanBlank(
+            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), framing, app.Machine, job);
+
+        var skipped = blank.Refusals.Select(r => "Blank: " + r).ToList();
+
+        if (item is null && skipped.Count == 0)
+        {
+            skipped.Add(blank.Resolved
+                ? "Blank: declared rather than cut, so there is nothing to write."
+                : "Blank: this job is not built on a blank. Add --blank, or turn it on in Project info.");
+        }
+
+        return new ExportPlan { Items = item is null ? [] : [item], Skipped = skipped, Blank = blank };
     }
 
     /// <summary>

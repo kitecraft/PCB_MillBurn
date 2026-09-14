@@ -673,6 +673,50 @@ public static class ExportPlanner
             .FirstOrDefault(s => s is not null);
 
     /// <summary>
+    /// The program that cuts the blank, on its own — the same file <see cref="Plan"/> puts first in a
+    /// full export.
+    ///
+    /// For cutting the blank on a different day from the rest of the job, which is the usual order
+    /// rather than an odd one: the blank is cut and the stock seated before anything is probed, and
+    /// planning every layer of a big panel just to write one rectangle is most of an export's time.
+    ///
+    /// The item is null when there is nothing to cut — no blank, a blank declared rather than cut,
+    /// or one that was refused. The blank plan says which.
+    /// </summary>
+    public static (ExportItem? Item, BlankPlan Blank) PlanBlank(
+        Board board,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        ToolLibrary library,
+        long boardThicknessNm,
+        ProgramFraming? framing = null,
+        MachineSettings? machineSettings = null,
+        JobOptions? job = null)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(library);
+
+        var blank = BlankFor(board, settings, library, job);
+
+        if (blank is not { Resolved: true, Cut: true })
+        {
+            return (null, blank);
+        }
+
+        var machine = machineSettings ?? new MachineSettings();
+
+        return (BlankProgram(board, blank, settings, library, machine.Profile, framing, machine, boardThicknessNm), blank);
+    }
+
+    /// <summary>The blank program's file name, which the full export and the Job menu both use.</summary>
+    public static string BlankFileName(Board board)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+
+        return Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".blank.nc";
+    }
+
+    /// <summary>
     /// The program that cuts the blank out of a larger sheet.
     ///
     /// First in the list, because everything else in the export is referenced to the piece this
@@ -763,7 +807,7 @@ public static class ExportPlanner
             Role = LayerRole.Unknown,
             Operation = OperationKind.Outline,
             Output = OutputKind.Gcode,
-            TargetName = Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".blank.nc",
+            TargetName = BlankFileName(board),
             Content = text,
             Summary = summary,
             Warnings = warnings,

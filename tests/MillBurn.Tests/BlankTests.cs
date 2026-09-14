@@ -590,6 +590,55 @@ public sealed class BlankTests(ITestOutputHelper output)
         Assert.All(plan.Items.Where(i => i != blank && i.Output == OutputKind.Gcode), i => Assert.True(i.Levellable, i.TargetName));
     }
 
+    /// <summary>
+    /// Written on its own, the blank is the same file the full export writes — byte for byte, under
+    /// the same name — so cutting it early and exporting the rest later cannot give two versions.
+    /// </summary>
+    [Fact]
+    public void TheBlankOnItsOwnIsTheSameFileAsInTheFullExport()
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        var job = new JobOptions { Blank = new BlankOptions { Enabled = true } };
+        var thickness = Nm.FromMillimetres(1.6);
+
+        var full = ExportPlanner.Plan(loaded, settings, ToolLibrary.Default, thickness, job: job).Items[0];
+        var (alone, blank) = ExportPlanner.PlanBlank(loaded, settings, ToolLibrary.Default, thickness, job: job);
+
+        Assert.True(blank.Resolved);
+        Assert.NotNull(alone);
+        Assert.Equal(full.TargetName, alone.TargetName);
+        Assert.Equal(ExportPlanner.BlankFileName(loaded), alone.TargetName);
+        Assert.Equal(full.Content, alone.Content);
+    }
+
+    /// <summary>Nothing to write for a blank that is declared rather than cut, or for no blank at all.</summary>
+    [Fact]
+    public void ADeclaredBlankOrNoBlankHasNoProgramOnItsOwn()
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        var declared = new JobOptions { Blank = new BlankOptions { Enabled = true, Cut = false } };
+
+        var (none, noBlank) = ExportPlanner.PlanBlank(loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6));
+        var (notCut, declaredBlank) = ExportPlanner.PlanBlank(loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), job: declared);
+
+        Assert.Null(none);
+        Assert.False(noBlank.Resolved);
+        Assert.Null(notCut);
+        Assert.True(declaredBlank.Resolved);
+    }
+
     private sealed record Move(bool Rapid, double FromX, double FromY, double FromZ, double X, double Y, double Z);
 
     /// <summary>Every G0 and G1, with where it started from — enough to see lifts, plunges and edges.</summary>

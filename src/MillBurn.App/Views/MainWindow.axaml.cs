@@ -1103,6 +1103,27 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnWriteBlankClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !vm.CanWriteBlank)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Write blank program",
+            SuggestedFileName = vm.BlankProgramName,
+            DefaultExtension = "nc",
+            FileTypeChoices = [GcodeFileType],
+        });
+
+        if (file?.TryGetLocalPath() is { } path)
+        {
+            vm.WriteBlankProgram(path);
+        }
+    }
+
     private async void OnImportHeightMapClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)

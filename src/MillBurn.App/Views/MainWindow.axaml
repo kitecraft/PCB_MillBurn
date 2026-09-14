@@ -187,6 +187,13 @@
                                   IsEnabled="{Binding HasBoard}" />
                         <MenuItem Header="_Export…" Click="OnExportClicked"
                                   IsEnabled="{Binding HasBoard}" />
+                        <!--
+                            Just the blank, because it is cut on its own schedule: first, and often
+                            before the rest of the job is ready. Off unless the project is built on a
+                            blank that is cut on the mill — a declared blank has nothing to cut.
+                        -->
+                        <MenuItem Header="Write _blank program…" Click="OnWriteBlankClicked"
+                                  IsEnabled="{Binding CanWriteBlank}" />
                         <Separator />
                         <MenuItem Header="_Reset layers to defaults…" Click="OnResetLayersClicked"
                                   IsEnabled="{Binding HasBoard}" />

@@ -57,6 +57,7 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         _ = value;
         OnPropertyChanged(nameof(ShowingNothing));
+        OnPropertyChanged(nameof(CanWriteBlank));
     }
 
     [ObservableProperty]
@@ -511,6 +512,70 @@ public sealed partial class MainViewModel : ViewModelBase
                 System.Globalization.CultureInfo.InvariantCulture,
                 $"Wrote a {report.Columns} x {report.Rows} probing grid ({report.PointCount} touches, "
                 + $"about {minutes:F0} min{(onBlank ? ", zeroed on the blank's corner" : string.Empty)}) to {path}.");
+
+            return true;
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not write '{path}': {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether Job › Write blank program… has something to write: a board, built on a blank that the
+    /// mill cuts. A declared blank is stock already on the table, and has no program.
+    /// </summary>
+    public bool CanWriteBlank => _board is not null && UseBlank && CutTheBlank;
+
+    /// <summary>The name the blank program is offered under, without its extension.</summary>
+    public string BlankProgramName => _board is null
+        ? "blank"
+        : Path.GetFileNameWithoutExtension(ExportPlanner.BlankFileName(_board));
+
+    /// <summary>
+    /// Writes just the program that cuts the blank — the same file a full export puts first.
+    ///
+    /// The blank is cut on its own schedule: first, and often before the rest of the job is ready.
+    /// Planning every layer to write one rectangle would make that wait on the slowest layer.
+    /// </summary>
+    public bool WriteBlankProgram(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        if (_board is null)
+        {
+            return false;
+        }
+
+        RecordOutputs();
+
+        var settings = _project.Settings.LayerOutputs.ToDictionary(
+            o => o.FileName, o => o, StringComparer.Ordinal);
+
+        try
+        {
+            var (item, blank) = ExportPlanner.PlanBlank(
+                _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm),
+                Framing, Settings.Machine, _project.Settings.Job);
+
+            if (item is null)
+            {
+                // Said, not silently skipped: the item can be reached a moment after the border was
+                // narrowed below what the cutter needs, and then the refusal is the answer.
+                StatusMessage = blank.Refusals.Count > 0
+                    ? "No blank program: " + string.Join(" ", blank.Refusals)
+                    : "No blank program: this project is not built on a blank that the mill cuts.";
+                return false;
+            }
+
+            File.WriteAllText(path, item.Content);
+
+            StatusMessage = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Wrote {Path.GetFileName(path)}: a {Nm.ToMillimetreString(blank.Bounds.Width, 2)} × "
+                + $"{Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm blank, cut with the "
+                + $"{ExportPlanner.OutlineCutter(_board, settings, Library).Name}.");
 
             return true;
         }
@@ -1778,11 +1843,19 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string BlankSummary { get; set; } = string.Empty;
 
-    partial void OnUseBlankChanged(bool value) => SaveBlank();
+    partial void OnUseBlankChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanWriteBlank));
+        SaveBlank();
+    }
 
     partial void OnBlankIsStatedChanged(bool value) => SaveBlank();
 
-    partial void OnCutTheBlankChanged(bool value) => SaveBlank();
+    partial void OnCutTheBlankChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanWriteBlank));
+        SaveBlank();
+    }
 
     partial void OnBlankWidthMmChanged(double value) => SaveBlank();
 
