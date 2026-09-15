@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Exporting from KiCad · PCB_MillBurn</title>
+<!--
+  One guide, one file. The styles are inside so the page can be printed, copied or mailed on its own.
+  Pictures live beside it in images/. Each "Screenshot to come" figure names the file it is waiting
+  for: replace its placeholder div with an img tag pointing at that file, with alt text saying what
+  it shows. (Written without the attribute itself: the help tests read every src in the page,
+  comments included.)
+-->
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --text: #1c1f24;
+    --muted: #5b6470;
+    --rule: #dcdfe4;
+    --accent: #0b5fa5;
+    --warn-bg: #fff4e5;
+    --warn-rule: #d98324;
+    --code-bg: #f1f2f4;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --surface: #1a1e24;
+      --text: #e6e8ec;
+      --muted: #99a3b0;
+      --rule: #2b313a;
+      --accent: #6db3f2;
+      --warn-bg: #2a2115;
+      --warn-rule: #d98324;
+      --code-bg: #22272f;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .page { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  header.masthead { border-bottom: 1px solid var(--rule); padding-bottom: 1rem; margin-bottom: 2rem; }
+  header.masthead .eyebrow {
+    font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  header.masthead .eyebrow a { color: inherit; }
+  header.masthead h1 { font-size: 1.6rem; font-weight: 650; margin: 0.15rem 0 0.2rem; text-wrap: balance; }
+  header.masthead .sub { color: var(--muted); font-size: 0.98rem; }
+
+  a { color: var(--accent); }
+
+  h2 {
+    font-size: 1.15rem; margin: 2.75rem 0 0.25rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--rule); text-wrap: balance;
+  }
+  h3 { font-size: 1.02rem; margin: 2rem 0 0.25rem; }
+
+  .lead { color: var(--muted); font-size: 1.02rem; }
+
+  code, kbd {
+    background: var(--code-bg); border-radius: 3px; padding: 0.1em 0.35em;
+    font-family: ui-monospace, Consolas, "SF Mono", Menlo, monospace; font-size: 0.88em;
+    overflow-wrap: anywhere;
+  }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td:nth-child(2) { white-space: nowrap; font-weight: 600; }
+  tr.key td:first-child { font-weight: 600; }
+
+  .note, .warn {
+    background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+    padding: 0.8rem 1rem; margin: 1.25rem 0; font-size: 0.95rem;
+  }
+  .warn { background: var(--warn-bg); border-left-color: var(--warn-rule); }
+  .note p:first-child, .warn p:first-child { margin-top: 0; }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  figure { margin: 1.5rem 0; }
+  figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 0.45rem; }
+
+  .placeholder {
+    aspect-ratio: 5 / 3; max-width: 100%; border: 2px dashed var(--rule); border-radius: 6px;
+    display: grid; place-content: center; gap: 0.3rem; text-align: center; padding: 1rem;
+    color: var(--muted); background: var(--surface); font-size: 0.92rem;
+  }
+  .placeholder strong { color: var(--text); font-weight: 600; }
+
+  footer {
+    margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: 0.85rem;
+  }
+
+  @media print {
+    :root { --bg: #fff; --surface: #fff; --text: #000; --muted: #444; --rule: #bbb; }
+    .page { max-width: none; padding: 0; }
+    h2, h3 { page-break-after: avoid; }
+    table, figure, .note, .warn { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="eyebrow"><a href="../index.html">PCB_MillBurn help</a> &rsaquo; Guide</div>
+  <h1>Exporting from KiCad</h1>
+  <div class="sub">The plot and drill settings that tell PCB_MillBurn what every file is, so nothing has to be guessed.</div>
+</header>
+
+<p class="lead">
+  PCB_MillBurn reads the files KiCad writes, not the KiCad project. Almost everything it knows about
+  your board comes from how those files were exported: which one is the top copper, which holes are
+  plated, and where the origin is.
+</p>
+
+<p>
+  Most of KiCad&rsquo;s defaults are already right. The settings below are the ones that matter, with
+  the reason for each. Labels are as they appear in KiCad 8 to 10; older versions word some of them
+  differently.
+</p>
+
+<h2>The short version</h2>
+
+<h3>Plot: File &rsaquo; Fabrication Outputs &rsaquo; Gerbers (.gbr)&hellip;</h3>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Setting</th><th>Set to</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr class="key">
+      <td>Use extended X2 format</td><td>On</td>
+      <td>Every file states what it is. <strong>The most important one.</strong></td>
+    </tr>
+    <tr>
+      <td>Include layers</td><td>See below</td>
+      <td>Copper, mask, silkscreen and Edge.Cuts are what a board is made from.</td>
+    </tr>
+    <tr>
+      <td>Plot on All Layers</td><td>Nothing</td>
+      <td>An outline plotted onto the copper would be isolated like a trace.</td>
+    </tr>
+    <tr>
+      <td>Use drill/place file origin</td><td>Off</td>
+      <td>Any origin works, as long as the drill files use the same one. See below.</td>
+    </tr>
+    <tr>
+      <td>Include netlist attributes</td><td>On</td>
+      <td>Pads and nets are named in the files.</td>
+    </tr>
+    <tr>
+      <td>Disable aperture macros</td><td>Off</td>
+      <td>Macros are read; turning them off only makes the files larger.</td>
+    </tr>
+    <tr>
+      <td>Use Protel filename extensions</td><td>Off</td>
+      <td>Both are read. KiCad&rsquo;s own names (<code>-F_Cu.gbr</code>) still help if a file is ever renamed.</td>
+    </tr>
+    <tr>
+      <td>Coordinate format</td><td>4.6, unit mm</td>
+      <td>KiCad&rsquo;s default. 4.5 is read too.</td>
+    </tr>
+    <tr>
+      <td>Check zone fills before plotting</td><td>On</td>
+      <td>The copper pours in the files match the board you are looking at.</td>
+    </tr>
+    <tr>
+      <td>Generate Gerber job file</td><td>Either</td>
+      <td>KiCad writes it; PCB_MillBurn does not read it.</td>
+    </tr>
+    <tr>
+      <td>Output directory</td><td>One folder</td>
+      <td>One folder per board, the same one every time.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  <strong>Layers to include:</strong> F.Cu, B.Cu, F.Mask, B.Mask, F.Silkscreen, B.Silkscreen and
+  Edge.Cuts. Add F.Paste and B.Paste if you like: they are read and drawn, and will matter once solder
+  paste is supported. User layers come in as <em>Unknown</em> and cannot be exported, so leave them
+  out unless you want to look at them.
+</p>
+
+<figure>
+  <div class="placeholder" role="img" aria-label="Screenshot to come: KiCad's Plot dialog with these settings">
+    <strong>Screenshot to come</strong>
+    <span>KiCad&rsquo;s Plot dialog, set up as above.</span>
+    <code>images/kicad-plot-dialog.png</code>
+  </div>
+</figure>
+
+<h3>Drill files: Generate Drill Files&hellip; in the same dialog</h3>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Setting</th><th>Set to</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Drill file format</td><td>Excellon or Gerber X2</td>
+      <td>Both are read.</td>
+    </tr>
+    <tr class="key">
+      <td>PTH and NPTH in single file</td><td>Off</td>
+      <td>Plated and non-plated holes come in as separate layers, so each gets its own settings and files.</td>
+    </tr>
+    <tr class="key">
+      <td>Minimal header</td><td>Off</td>
+      <td>The header is where an Excellon file says whether its holes are plated.</td>
+    </tr>
+    <tr>
+      <td>Mirror Y axis</td><td>Off</td>
+      <td>The app mirrors bottom-side work itself.</td>
+    </tr>
+    <tr>
+      <td>Oval holes drill mode</td><td>Use route command</td>
+      <td>KiCad&rsquo;s recommendation. Slots written the other way (G85) are read too.</td>
+    </tr>
+    <tr class="key">
+      <td>Drill origin</td><td>Absolute</td>
+      <td>The same origin as the Gerbers. See below.</td>
+    </tr>
+    <tr>
+      <td>Drill units</td><td>Millimeters</td>
+      <td>Matches the Gerbers.</td>
+    </tr>
+    <tr>
+      <td>Zeros format</td><td>Decimal format</td>
+      <td>KiCad&rsquo;s recommendation. The zero-suppressed formats are read too.</td>
+    </tr>
+    <tr>
+      <td>Map file format</td><td>Gerber X2</td>
+      <td>Only a Gerber map is read; it shows as a <em>Drill map</em> layer. Optional.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Then <strong>Generate Drill File</strong>, and <strong>Generate Map File</strong> if you want the
+  maps. The report file is not read.
+</p>
+
+<figure>
+  <div class="placeholder" role="img" aria-label="Screenshot to come: KiCad's Generate Drill Files dialog with these settings">
+    <strong>Screenshot to come</strong>
+    <span>KiCad&rsquo;s Generate Drill Files dialog, set up as above.</span>
+    <code>images/kicad-drill-dialog.png</code>
+  </div>
+</figure>
+
+<h2>Why these matter</h2>
+
+<h3>X2: every file says what it is</h3>
+
+<p>
+  With X2 on, the top of every Gerber carries a line such as
+  <code>%TF.FileFunction,Copper,L1,Top*%</code>. That line is how PCB_MillBurn knows a file is the top
+  copper, the board outline or the plated holes. Getting that wrong would route the wrong geometry to
+  the wrong operation.
+</p>
+
+<p>
+  Without it, the app falls back to the file name (<code>F_Cu</code>, <code>Edge_Cuts</code> and so on).
+  That usually works, but it is a guess, and the app labels it as one in the checks panel. Rename a
+  file to something tidier and the guess changes with it. Older KiCad versions write the same
+  information as comments rather than attributes, and both forms are read.
+</p>
+
+<h3>One origin for the Gerbers and the drill files</h3>
+
+<p>
+  The Gerbers and the drill files must be measured from the same point. If the plot uses the
+  drill/place file origin and the drill files use <em>Absolute</em>, or the other way round, every hole
+  lands a fixed distance away from its pad. The mismatch is easy to miss, because each file looks right
+  on its own.
+</p>
+
+<p>
+  Which origin you choose does not matter to PCB_MillBurn: it moves everything to the board&rsquo;s
+  lower-left corner, or the stock&rsquo;s, before writing a single program. Only the agreement matters.
+  Leaving both at their defaults (plot origin off, drill origin Absolute) is the simplest way to get it.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Check it once after importing:</strong> turn on the copper and the plated holes, and look
+    at a few pads. Every hole should sit in the middle of its pad. If they are all shifted the same way,
+    the two origins disagree; export again with both set the same.
+  </p>
+</div>
+
+<h3>Plated and non-plated holes in separate files</h3>
+
+<p>
+  PCB_MillBurn treats plated and non-plated holes as two layers, each with its own settings, drilling
+  files and page. It knows which is which from the file: Gerber X2 drill files say so in their
+  <code>FileFunction</code>, and Excellon files say so in a comment in their header, such as
+  <code>; #@! TF.FileFunction,Plated,1,2,PTH</code>. Putting both in one file, or turning on
+  <em>Minimal header</em>, removes that information.
+</p>
+
+<h3>Drill maps</h3>
+
+<p>
+  A drill map is a drawing: one symbol per drill size at every hole, and a table of sizes and counts.
+  Exported as Gerber, it comes in as a <em>Drill map</em> layer, hidden until you turn it on, and is
+  never exported. It is a quick way to see which holes are which size.
+</p>
+
+<p>
+  KiCad writes one map for the plated holes and one for the non-plated, and puts both tables in the
+  same place below the board. Turn on one map at a time, or the two tables print over each other.
+</p>
+
+<h3>What PCB_MillBurn does not read</h3>
+
+<ul>
+  <li><strong>The Gerber job file</strong> (<code>.gbrjob</code>). It includes a board thickness, but that
+    is KiCad&rsquo;s stackup setting, not a measurement of your stock. Set the thickness in
+    <em>Project info</em>; it is saved with the project.</li>
+  <li><strong>The drill report</strong>, and drill maps in PDF, PostScript, DXF or SVG.</li>
+  <li><strong>The KiCad project</strong> itself. Everything comes from the exported files.</li>
+</ul>
+
+<h2>After exporting</h2>
+
+<ol>
+  <li><strong>File &rsaquo; Import Gerber folder&hellip;</strong> and pick the folder, or drag it onto
+    the window. Drill files come in with it.</li>
+  <li>Look at the <strong>checks panel</strong>. A layer whose role was guessed, a file that could not be
+    read, or anything else worth a look is listed there.</li>
+  <li>Check a few holes against their pads, as above.</li>
+  <li><strong>Save the project.</strong> It keeps copies of the files, so it still opens if the folder
+    moves.</li>
+</ol>
+
+<p>
+  <strong>After a design change</strong>, export into the same folder again and use
+  <strong>File &rsaquo; Refresh from source</strong>. It compares the project with the folder and shows
+  what actually changed before applying anything. KiCad stamps a new date into every file on every
+  export, so it compares the geometry, not the bytes, and an unchanged layer is reported as unchanged.
+</p>
+
+<div class="note">
+  <p>
+    <strong>Using another EDA tool?</strong> The same three things matter: turn on X2 attributes if the
+    tool offers them, keep plated and non-plated holes apart, and give the Gerbers and the drill files
+    the same origin.
+  </p>
+</div>
+
+<footer>
+  PCB_MillBurn &mdash; MIT licensed. <a href="../index.html">Help contents</a> &middot;
+  <a href="../faq.html">Questions and answers</a> &middot;
+  <a href="drill-alignment.html">Drill alignment guide</a>
+</footer>
+
+</div>
+</body>
+</html>

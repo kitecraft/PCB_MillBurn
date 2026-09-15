@@ -156,7 +156,7 @@ one block is most of what is left.
 | V16 | Job Runbook: printable checklist, persisted state, PDF export | §4 | **Partial** | `ProjectPage` covers the order and the caveats; no state, no PDF |
 | V17 | A stroked area layer is drawn closed | 06 §6.8 | **Done** | `ClosedRings` split from `Outlined`; `ClosedRingTests` |
 | V18 | Open recent, off the File menu | 06 §6.9 | **Not started** | `AppSettings.RecentProjects` is already kept; nothing shows it |
-| V19 | Drill hits drawn as an X, with their own toolpath toggle | 06 §6.10 | **Not started** | plunges are counted, never drawn; `G81`/`G83` are not interpreted at all |
+| V19 | Drill hits drawn as an X, with their own toolpath toggle | 06 §6.10 | **Superseded** | KiCad's Gerber drill maps already mark every hole by size; the program preview still draws no mark where a drilling program plunges |
 | V20 | A layer needing several bits is one file per bit, and its page lists them in order | 06 §6.11 | **Done** | `AssembleEach`; an `M0` stop leaves GRBL on hold, where it will not jog or probe |
 | V21 | Choose one file per bit or one file with custom tool-change G-code | 06 §6.11 | **Not started** | for tool-change macros and automatic changers |
 | V22 | Drill alignment: hover test over a real hole, then aligned drilling, routing and outline files | 06 §6.12 | **Done** | `AlignmentTest`, `DrillAlignment`; Job › Drill alignment, `align`, `export --align [--align-outline]` |
@@ -224,7 +224,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.7 Coachmarks and a first-run walkthrough | scheduled | **Not started** — needs research |
 | 6.8 The viewer's gap in every outline ring | workshop | **Done** |
 | 6.9 Open recent | workshop | **Not started** — the list is already kept |
-| 6.10 Drill hits drawn as an X | workshop | **Not started** |
+| 6.10 Drill hits drawn as an X | workshop | **Superseded** — drill map layers cover it |
 | 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
 | 6.12 Drill alignment | workshop | **Done** |
 | 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Partial** — lifts and floor lap fixed; settings not started |

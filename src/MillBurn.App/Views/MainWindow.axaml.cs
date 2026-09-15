@@ -1363,6 +1363,9 @@ public partial class MainWindow : Window
     private void OnDrillAlignmentGuideClicked(object? sender, RoutedEventArgs e) =>
         OpenHelp(Path.Combine("guides", "drill-alignment.html"));
 
+    private void OnKiCadExportGuideClicked(object? sender, RoutedEventArgs e) =>
+        OpenHelp(Path.Combine("guides", "kicad-export.html"));
+
     /// <summary>
     /// Opens a shipped help page in the user's own browser.
     ///

@@ -53,7 +53,8 @@ UGS, Candle, LightBurn and LinuxCNC already do that well.
    for Windows or Linux, unpack it anywhere, and run `MillBurn.App`. It is self-contained — you do not
    need .NET installed. (On a fresh Debian or Ubuntu you may need `sudo apt install libfontconfig1`.)
 2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
-   folder…`. Drill files come along with it.
+   folder…`. Drill files come along with it. Exporting from KiCad? The
+   [export guide](Help/guides/kicad-export.html) lists the settings that work best.
 3. **Set the board thickness** in Project info. Everything that cuts through uses it, and it is saved
    with the project.
 4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG

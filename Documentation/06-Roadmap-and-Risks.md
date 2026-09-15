@@ -1980,7 +1980,7 @@ than discovered after.
 - **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
 - **The viewer leaves a gap in every outline ring** — done. See 6.8.
 - **Open recent**, off the File menu. See 6.9.
-- **Drill hits drawn as an X**, with their own toggle under Toolpath moves. See 6.10.
+- **Drill hits drawn as an X**, with their own toggle under Toolpath moves — superseded by KiCad's drill map layers. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
@@ -2453,10 +2453,18 @@ What the implementation has to decide:
 it through the dialog including the unsaved-work guard, a moved project reports itself once and
 leaves, and the whole thing is checkable from a headless screenshot like every other menu here.
 
-#### 6.10 Drill hits drawn as an X — **scheduled, not started**
+#### 6.10 Drill hits drawn as an X — **superseded**
 
 Requested from the workshop: show each drilled hole in the viewer as an X, with its own toggle
 under *Toolpath moves*.
+
+**Superseded after v0.1.0, by the workshop's own call.** KiCad's Gerber drill maps already draw a
+symbol per drill size at every hole, with a table of sizes and counts, and they come in as *Drill map*
+layers with their own toggles — hidden by default, and drawn faintly as a drawing. The KiCad export
+guide (`Help/guides/kicad-export.html`) now says to export them. What that leaves uncovered, recorded
+so it is not lost: a drill map shows the *design's* holes, not the *program's* plunges, so the program
+preview below still draws nothing where a drilling program drills, and a board exported without maps
+shows no symbols. Revisit if either is missed. The analysis stays as written.
 
 **Today a drilling program previews as almost nothing.** A drill hit is a plunge and a retract at
 one XY, and the backplot draws only moves that travel in plan — plunges are counted and never drawn.
@@ -2658,7 +2666,7 @@ the standalone G-code viewer, the machine settings, and the board pane, all of w
 finish, with its pictures in `Help/guides/images/`. Styles are inside each page so a guide can be
 printed or passed on alone. Reached from Help ▸ Guides and from the help contents. Real-world
 photos are the author's to supply; until then each is a labelled placeholder naming the file it is
-waiting for, so a missing picture is visible rather than a broken image. First: **Drill alignment**
+waiting for, so a missing picture is visible rather than a broken image. So far: **Exporting from KiCad** (the plot and drill settings, and why each matters) and **Drill alignment**
 (6.12).
 
 **`Help/` is not `Documentation/`.** This directory is design documentation — why the code is

@@ -213,6 +213,7 @@
                         <MenuItem Header="_Help contents" Click="OnHelpClicked" InputGesture="F1" />
                         <MenuItem Header="_Questions and answers" Click="OnFaqClicked" />
                         <MenuItem Header="_Guides">
+                            <MenuItem Header="_Exporting from KiCad" Click="OnKiCadExportGuideClicked" />
                             <MenuItem Header="_Drill alignment" Click="OnDrillAlignmentGuideClicked" />
                         </MenuItem>
                         <Separator />
