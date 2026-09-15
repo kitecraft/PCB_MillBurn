@@ -124,12 +124,19 @@ public sealed class ExportWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this[!BackgroundProperty] = new DynamicResourceExtension("PageBackground");
 
+        // One line, trimmed from the middle of the path so the folder's own name — the end, and the
+        // part that says where the files are going — stays in view. Trimmed from the end, a long path
+        // showed the drive and the first few folders and hid exactly that. Widen the window to see
+        // more, or hover for all of it.
         _folderText = new TextBlock
         {
             Text = folder,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.PathSegmentEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
+
+        ToolTip.SetTip(_folderText, folder);
 
         Content = BuildBody();
     }
@@ -448,6 +455,7 @@ public sealed class ExportWindow : Window
         {
             _folder = path;
             _folderText.Text = path;
+            ToolTip.SetTip(_folderText, path);
         }
     }
 
