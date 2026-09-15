@@ -1980,6 +1980,7 @@ than discovered after.
 - **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
 - **The viewer leaves a gap in every outline ring** — done. See 6.8.
 - **Open recent**, off the File menu. See 6.9.
+- **Drill hits drawn as an X**, with their own toggle under Toolpath moves. See 6.10.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2448,6 +2449,40 @@ What the implementation has to decide:
 **Done when** the submenu lists real recent projects, opening one is indistinguishable from opening
 it through the dialog including the unsaved-work guard, a moved project reports itself once and
 leaves, and the whole thing is checkable from a headless screenshot like every other menu here.
+
+#### 6.10 Drill hits drawn as an X — **scheduled, not started**
+
+Requested from the workshop: show each drilled hole in the viewer as an X, with its own toggle
+under *Toolpath moves*.
+
+**Today a drilling program previews as almost nothing.** A drill hit is a plunge and a retract at
+one XY, and the backplot draws only moves that travel in plan — plunges are counted and never drawn.
+So a drilling preview is the rapids between the holes and nothing at the holes themselves, which is
+the part worth checking.
+
+**With canned cycles turned on it is worse.** The program then drills with `G81`/`G83`, which the
+G-code reader does not interpret: it reports "those holes are not shown" and moves on. The X has to
+come from both forms, or it is missing for exactly the people who turned that setting on.
+
+What the implementation has to decide:
+
+- **What counts as a hit.** Not every plunge — every milling pass starts with one. A hit is a
+  plunge below the surface that comes back up at the same XY with no cutting move in between, or
+  each XY a `G81`/`G83` names.
+- **How big the X is.** Either a fixed size on screen, like the other toolpath lines, so it is
+  findable at any zoom; or the bit's own diameter, read from the program's `( Drill 1.00 mm … )`
+  section labels, so a wrong bit shows as an X that does not fit its pad. The second is the more
+  useful, and needs a fallback for programs without the labels.
+- **Its colour**, chosen from the hues the board does not use, like the rest of the backplot — not
+  yellow (cuts), magenta (long rapids) or red (rapids at depth).
+- **Its toggle comes free.** The *Toolpath moves* chips are built from whatever kinds of move the
+  backplot produced, so a new kind gets its chip and follows the layer rows with no extra wiring —
+  provided its ids are unique per source layer, which the routing-rapids fix
+  (`BackplotSourceTests`) now guarantees.
+
+**Done when** a drilling program previews with an X at every hole, from plain plunges and from
+canned cycles alike; the X hides with its own chip and with its layer's row; and a milling program's
+plunges do not grow Xs.
 
 ### Phase 7 — User documentation — **started**
 

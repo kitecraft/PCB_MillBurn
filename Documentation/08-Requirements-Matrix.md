@@ -156,6 +156,7 @@ one block is most of what is left.
 | V16 | Job Runbook: printable checklist, persisted state, PDF export | §4 | **Partial** | `ProjectPage` covers the order and the caveats; no state, no PDF |
 | V17 | A stroked area layer is drawn closed | 06 §6.8 | **Done** | `ClosedRings` split from `Outlined`; `ClosedRingTests` |
 | V18 | Open recent, off the File menu | 06 §6.9 | **Not started** | `AppSettings.RecentProjects` is already kept; nothing shows it |
+| V19 | Drill hits drawn as an X, with their own toolpath toggle | 06 §6.10 | **Not started** | plunges are counted, never drawn; `G81`/`G83` are not interpreted at all |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -217,6 +218,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.7 Coachmarks and a first-run walkthrough | scheduled | **Not started** — needs research |
 | 6.8 The viewer's gap in every outline ring | workshop | **Done** |
 | 6.9 Open recent | workshop | **Not started** — the list is already kept |
+| 6.10 Drill hits drawn as an X | workshop | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |
