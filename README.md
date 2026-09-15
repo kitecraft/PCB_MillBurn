@@ -20,9 +20,9 @@
   </p>
 </div>
 
-<img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with isolation toolpaths drawn over the copper">
+<img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with its isolation and cut-out toolpaths drawn over the copper">
 
-<sub>A 66-up panel — 11,414 objects, 198 copper islands — with the emitted isolation program drawn back over the copper it was made from.</sub>
+<sub>A 66-up panel — 11,414 objects, 198 copper islands — with the emitted isolation and cut-out programs drawn back over the copper they were made from.</sub>
 
 ---
 
