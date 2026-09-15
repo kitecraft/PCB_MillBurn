@@ -30,8 +30,8 @@ public sealed class AlignmentWindow : Window
     private readonly List<ExportItem> _files;
     private List<AlignmentTarget> _targets = [];
 
-    private readonly ComboBox _file = new() { Width = 400 };
-    private readonly ComboBox _hole = new() { Width = 400 };
+    private readonly ComboBox _file = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ComboBox _hole = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly NumericUpDown _x = Number(-10, 10, 0.01, "F3");
     private readonly NumericUpDown _y = Number(-10, 10, 0.01, "F3");
     private readonly NumericUpDown _hover = Number(0.02, 5, 0.05, "F2");
@@ -64,9 +64,12 @@ public sealed class AlignmentWindow : Window
 
         Title = "Drill alignment";
         AppIcon.Apply(this);
+        // Resizable, because the folder at the bottom can be a long path; the lists and the path widen
+        // with the window. Height still fits the content until the window is dragged.
         Width = 640;
+        MinWidth = 560;
         SizeToContent = SizeToContent.Height;
-        CanResize = false;
+        CanResize = true;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this[!BackgroundProperty] = new DynamicResourceExtension("PageBackground");
 
@@ -151,13 +154,20 @@ public sealed class AlignmentWindow : Window
         var change = new Button { Content = "Change…", FontSize = 11, Padding = new Thickness(8, 2) };
         change.Click += async (_, _) => await ChooseFolderAsync();
 
+        // One line, trimmed from the middle of the path so the folder's own name — the end — stays in
+        // view; widen the window to see more, or hover for all of it.
         _where.VerticalAlignment = VerticalAlignment.Center;
-        _where.TextTrimming = TextTrimming.CharacterEllipsis;
+        _where.TextWrapping = TextWrapping.NoWrap;
+        _where.TextTrimming = TextTrimming.PathSegmentEllipsis;
 
-        body.Children.Add(Row("Files go to", new StackPanel
+        // A grid rather than a horizontal stack: a stack gives the path unlimited width, so it never
+        // trims and runs off the edge instead.
+        Grid.SetColumn(_where, 1);
+        _where.Margin = new Thickness(8, 0, 0, 0);
+
+        body.Children.Add(Row("Files go to", new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
+            ColumnDefinitions = new ColumnDefinitions("Auto,*"),
             Children = { change, _where },
         }));
 
@@ -216,6 +226,7 @@ public sealed class AlignmentWindow : Window
     private void Refresh()
     {
         _where.Text = _folder;
+        ToolTip.SetTip(_where, _folder);
         _test.IsEnabled = Target is not null;
         _write.IsEnabled = _files.Count > 0;
 
