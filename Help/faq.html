@@ -1445,13 +1445,14 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </div>
 
 <p>
-  <strong>&ldquo;Spiral with&rdquo; is a preference, and it is about holes only.</strong> Two things
-  follow from that, both of them what you would want. A slot never consults it &mdash; a slot's
-  width is fixed by the design and the cutter has to fit inside it, so naming a 2 mm end mill for
-  your mounting holes leaves the 0.8 mm slots on the same board to be cut with something that fits
+  <strong>&ldquo;Spiral with&rdquo; is used on every hole and slot it fits.</strong> Pick a 0.8 mm
+  end mill, and the 1 mm slots are routed with it as well as the big holes &mdash; one routing file,
+  no tool change. It is a preference, though, not a rule, so it never costs you a feature. A slot's
+  width is fixed by the design and the cutter has to fit inside it: name a 2 mm end mill for your
+  mounting holes and the 0.8 mm slots on the same board are cut with the widest cutter that fits
   them. And where the named cutter cannot bore a particular hole, the widest one that can is used
-  instead, rather than the hole going unmade because of a preference. The page beside the file lists
-  a row per cutter, so you can see which did what.
+  instead. Each cutter is a file of its own, and the page beside them lists a row per cutter, so you
+  can see which did what.
 </p>
 
 <div class="note">

@@ -16,21 +16,23 @@ public sealed record SlotOptions
     public long SagittaNm { get; init; } = Tessellate.DefaultSagittaNm;
 
     /// <summary>
-    /// The end mill to spiral a milled hole with **where it fits**, or null to take the widest in
-    /// the library that does.
+    /// The end mill the operator chose for routing, used on every hole and slot **it fits**, or null
+    /// to take the widest in the library that does.
     ///
-    /// A *preference*, not a constraint, and it applies to holes only. Both halves of that were
-    /// learned from a real board. Applying it to slots is simply wrong: a slot's width is fixed by
-    /// the design, the cutter has to fit inside it, and an operator who picks a 2 mm cutter for
-    /// their 3 mm mounting holes has said nothing whatsoever about the 0.8 mm slots on the same
-    /// board — which were then refused for being too narrow for a choice that was never about
-    /// them.
+    /// A *preference*, not a constraint. Each half of that was learned from a real board.
     ///
-    /// And treating it as a constraint on holes is nearly as bad. A hole needs a cutter no more
-    /// than three quarters of its width, so a named 2 mm cutter cannot bore a 2.2 mm hole. Refusing
-    /// to make the hole at all, because of a preference, is worse than making it with a narrower
-    /// cutter and saying which — and the guide's table shows one row per cutter, so saying which is
-    /// already built.
+    /// It never refuses a feature. A slot's width is fixed by the design and the cutter has to fit
+    /// inside it: an operator who picks a 2 mm cutter for their 3 mm mounting holes has said nothing
+    /// whatsoever about the 0.8 mm slots on the same board, which were once refused for being too
+    /// narrow for a choice that was never about them. Likewise a hole needs a cutter no more than
+    /// three quarters of its width, so a named 2 mm cutter cannot bore a 2.2 mm hole, and making it
+    /// with a narrower cutter and saying which beats not making it. A feature the chosen cutter does
+    /// not suit takes the best one that does.
+    ///
+    /// But it is used wherever it fits, slots included. Routing is one file per cutter, and slots
+    /// that ignored the choice took the widest cutter that fitted — a 1 mm end mill for 1 mm slots,
+    /// beside the chosen 0.8 mm one for the holes — which split one routing job into two files and
+    /// a tool change the chosen cutter would have saved.
     /// </summary>
     public Guid? ToolId { get; init; }
 
@@ -138,14 +140,16 @@ public static class SlotOperation
         {
             var width = group.Key;
 
-            // A slot never consults the preference. Its width is the constraint and the widest
-            // cutter that fits inside it is the only sensible answer; a preference expressed about
-            // milled holes has nothing to say here.
-            var choice = !holes
-                ? ToolChooser.ForWidth(library, width, depth)
-                : options.ToolId is { } wanted
-                    ? Preferred(library, wanted, width, depth)
-                    : ToolChooser.ForHole(library, width, depth);
+            // The chosen cutter wherever it suits this width, so one cutter does the whole file when
+            // it can; otherwise the best that does — the widest that fits a slot, or the widest that
+            // can bore a hole. The preference never refuses a feature the library could cut.
+            var choice = (holes, options.ToolId) switch
+            {
+                (false, { } wanted) => PreferredForSlot(library, wanted, width, depth),
+                (false, null) => ToolChooser.ForWidth(library, width, depth),
+                (true, { } wanted) => PreferredForHole(library, wanted, width, depth),
+                (true, null) => ToolChooser.ForHole(library, width, depth),
+            };
 
             if (choice.Tool is not { } tool)
             {
@@ -349,7 +353,7 @@ public static class SlotOperation
     /// that a 2.2 mm hole must go unmade — and the page beside the file lists a row per cutter, so
     /// a fallback is visible rather than silent.
     /// </summary>
-    private static ToolChoice Preferred(ToolLibrary library, Guid id, long width, long depth)
+    private static ToolChoice PreferredForHole(ToolLibrary library, Guid id, long width, long depth)
     {
         var tool = library.Tools.FirstOrDefault(t => t.Id == id);
 
@@ -359,6 +363,25 @@ public static class SlotOperation
         }
 
         return ToolChooser.ForHole(library, width, depth);
+    }
+
+    /// <summary>
+    /// For a slot: the cutter the operator named, if it fits inside this width and reaches the
+    /// depth; otherwise the widest one in the library that does.
+    ///
+    /// A narrower cutter than the slot runs a racetrack inside it rather than a line down the
+    /// middle, which cuts the same slot — so fitting is the only test, not being the widest.
+    /// </summary>
+    private static ToolChoice PreferredForSlot(ToolLibrary library, Guid id, long width, long depth)
+    {
+        var tool = library.Tools.FirstOrDefault(t => t.Id == id);
+
+        if (tool is not null && ToolChooser.ForWidth(new ToolLibrary { Tools = [tool] }, width, depth) is { Found: true } named)
+        {
+            return named;
+        }
+
+        return ToolChooser.ForWidth(library, width, depth);
     }
 
     private static string Count(int n, bool holes = false) => (n, holes) switch

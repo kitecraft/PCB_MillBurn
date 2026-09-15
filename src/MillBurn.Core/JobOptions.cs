@@ -27,11 +27,13 @@ public sealed record JobOptions
     public bool MillLargeHoles { get; init; }
 
     /// <summary>
-    /// Which end mill to spiral with, or null to take the widest in the library that fits.
+    /// Which end mill to route with — milled holes and slots alike, wherever it fits — or null to
+    /// take the widest in the library that fits each one.
     ///
     /// Named rather than always automatic because the automatic answer optimises for time — the
     /// widest cutter that leaves a helix — and the operator may be optimising for the finish on the
-    /// hole wall, or for the one cutter they trust at depth.
+    /// hole wall, for the one cutter they trust at depth, or for not changing tools: routing is one
+    /// file per cutter, so one cutter that fits everything is one file.
     /// </summary>
     public Guid? MillDrillToolId { get; init; }
 

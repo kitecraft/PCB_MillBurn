@@ -392,7 +392,7 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ the named cutter
 
     /// <summary>
-    /// The cutter named in the project is for milled *holes*. A slot never consults it.
+    /// A cutter named in the project that is too wide for a slot does not starve it.
     ///
     /// Reported from the workshop, and it is the obvious situation rather than a corner: "I want
     /// holes larger than 2 mm milled with a 2 mm end mill. But the slots on the board are less than
@@ -452,6 +452,34 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
         Assert.Equal(Nm.FromMillimetres(2.0), roomy.Toolpaths[0].Tool.DiameterNm);
 
         Assert.Empty(tight.Refusals);
+    }
+
+    /// <summary>
+    /// But a named cutter that fits the slot cuts it.
+    ///
+    /// Reported from the workshop: with a 0.8 mm end mill chosen, the 1 mm slots still took the
+    /// library's 1 mm cutter, and since routing is one file per cutter, one routing job became two
+    /// files and a tool change that the chosen cutter would have saved.
+    /// </summary>
+    [Fact]
+    public void ANamedCutterThatFitsTheSlotCutsIt()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(0.8), EndMill(1.0)] };
+        var chosen = library.Tools[0];
+
+        var named = SlotOperation.Build([Slot(1.0)], library, Options with { ToolId = chosen.Id });
+        var unnamed = SlotOperation.Build([Slot(1.0)], library, Options);
+
+        output.WriteLine($"named: {Assert.Single(named.Toolpaths).Tool.Name}, unnamed: {Assert.Single(unnamed.Toolpaths).Tool.Name}");
+
+        Assert.Empty(named.Refusals);
+        Assert.Equal(chosen.Id, named.Toolpaths[0].Tool.Id);
+
+        // Narrower than the slot, so it runs a racetrack inside it rather than a line down the middle.
+        Assert.All(named.Toolpaths[0].Passes, p => Assert.True(p.Closed));
+
+        // Left to itself, the widest that fits, as before.
+        Assert.Equal(Nm.FromMillimetres(1.0), unnamed.Toolpaths[0].Tool.DiameterNm);
     }
 
     /// <summary>A named cutter that has since left the library is not a refusal either.</summary>

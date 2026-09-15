@@ -295,6 +295,69 @@ public sealed class RoutingGuideTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// With a chosen cutter that fits every slot and hole, each layer's routing is one file, all of it
+    /// cut with that cutter.
+    ///
+    /// Found on this board in the workshop: a 0.8 mm end mill chosen, and the plated layer still came
+    /// out as <c>slots.bit1-1.00mm.nc</c> for the 1 mm slots and <c>slots.bit2-0.80mm.nc</c> for the
+    /// holes — a tool change the chosen cutter did not need.
+    /// </summary>
+    [Fact]
+    public void OnTheTestBoardAChosenCutterThatFitsEverythingIsOneFilePerLayer()
+    {
+        var endMill = new Tool
+        {
+            Id = Guid.NewGuid(),
+            Name = "0.8 mm end mill",
+            Kind = ToolKind.EndMill,
+            DiameterNm = Nm.FromMillimetres(0.8),
+            StepdownNm = Nm.FromMillimetres(0.5),
+        };
+
+        var library = new ToolLibrary { Tools = [.. ToolLibrary.Default.Tools, endMill] };
+        var job = new JobOptions { MillLargeHoles = true, MillDrillToolId = endMill.Id };
+
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.MillburnTestBoard));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        var plan = ExportPlanner.Plan(
+            loaded, settings, library, Nm.FromMillimetres(1.6), OutputKind.Gcode, job: job);
+
+        var routed = plan.Items
+            .Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal))
+            .GroupBy(i => i.LayerFileName)
+            .ToList();
+
+        Assert.NotEmpty(routed);
+
+        foreach (var layer in routed)
+        {
+            var file = Assert.Single(layer);
+
+            var cutters = file.Content.Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => l.StartsWith('(') && l.Contains(", cut with the ", StringComparison.Ordinal))
+                .Select(l => l[(l.IndexOf(", cut with the ", StringComparison.Ordinal) + ", cut with the ".Length)..].TrimEnd(')', ' ', '.'))
+                .Distinct()
+                .ToList();
+
+            output.WriteLine($"{file.TargetName}: {string.Join(", ", cutters)} — {file.Companion?.Description}");
+
+            Assert.Equal(Path.GetFileNameWithoutExtension(layer.Key) + ".slots.nc", file.TargetName);
+            Assert.Equal([endMill.Name], cutters);
+            Assert.DoesNotContain(file.Warnings, w => w.Contains("are NOT cut", StringComparison.Ordinal));
+        }
+
+        // The plated layer is the one that has slots as well as milled holes.
+        Assert.Contains(routed, l => l.Single().Content.Contains("slot", StringComparison.OrdinalIgnoreCase)
+            && l.Single().Content.Contains("hole", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// On a blank the pages say the blank's corner, because every program beside them uses it.
     /// Zeroing on the board's corner, as the pages used to say, puts every hole a border's width out.
     /// </summary>

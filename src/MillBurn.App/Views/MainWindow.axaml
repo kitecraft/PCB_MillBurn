@@ -390,7 +390,7 @@
                                                   SelectedItem="{Binding MillDrillTool, Mode=TwoWay}"
                                                   HorizontalAlignment="Stretch"
                                                   PlaceholderText="Widest that fits"
-                                                  ToolTip.Tip="Leave unset to take the widest end mill in the library that fits the hole and reaches through the board.">
+                                                  ToolTip.Tip="Used for the milled holes and the slots wherever it fits, so they share one routing file. Anything it does not fit gets the widest end mill that does. Leave unset to take the widest that fits each one.">
                                             <ComboBox.ItemTemplate>
                                                 <DataTemplate x:DataType="core:Tool">
                                                     <TextBlock Text="{Binding Name}" />
