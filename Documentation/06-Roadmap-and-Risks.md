@@ -2609,6 +2609,13 @@ even that: it uses its own 1.6 mm unless given `--thickness`, so the same projec
 CLI while checking this cut 1.90 mm deep where the app's file cut 1.10. Thickness belongs in the
 project with the rest of the job, read by both.
 
+**Fixed after v0.1.0.** `ProjectSettings.BoardThicknessMm` holds it, null for a project that never
+recorded one (and not written, so an older project reads back the same way). The window shows the
+project's thickness when one is opened, falls back to the last one set otherwise and says so under the
+slider, and records it whenever the outputs are recorded — on every change and on save. The CLI's
+`export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
+`project info` print which; `project save --thickness` records one.
+
 ### Phase 7 — User documentation — **started**
 
 Plain HTML in `Help/`, shipped with the app, opened in the user's browser from a Help menu. No

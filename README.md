@@ -54,7 +54,8 @@ UGS, Candle, LightBurn and LinuxCNC already do that well.
    need .NET installed. (On a fresh Debian or Ubuntu you may need `sudo apt install libfontconfig1`.)
 2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
    folder…`. Drill files come along with it.
-3. **Set the board thickness** in Project info. Everything that cuts through uses it.
+3. **Set the board thickness** in Project info. Everything that cuts through uses it, and it is saved
+   with the project.
 4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG
    (laser)**, or **Not exported**. The pill on the collapsed row shows what you chose.
 5. **Press Preview** (F5). The programs are drawn back over your board.
@@ -302,8 +303,6 @@ down between touching passes want a re-run.
 
 - Routed holes and slots lift to safe height between every depth lap, and cut a finishing lap under a
   through cut. Correct, and slow. Settings for how it routes are coming.
-- Board thickness is an app setting rather than part of the project, so check it when you switch
-  between boards of different thickness. The CLI takes `--thickness`.
 
 877 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next after the rough edges: rulers down the viewport, open recent, drill hits drawn as

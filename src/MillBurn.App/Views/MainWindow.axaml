@@ -314,11 +314,16 @@
                                                 TickFrequency="0.1" IsSnapToTickEnabled="True"
                                                 Value="{Binding BoardThicknessMm, Mode=TwoWay}"
                                                 Margin="6,0"
-                                                ToolTip.Tip="Stock thickness. Drilling and the outline go through this; isolation does not." />
+                                                ToolTip.Tip="Stock thickness, saved with the project. Drilling and the outline go through this; isolation does not." />
                                         <TextBlock Grid.Column="2" Classes="fact"
                                                    VerticalAlignment="Center"
                                                    Text="{Binding BoardThicknessMm, StringFormat='{}{0:F1} mm'}" />
                                     </Grid>
+
+                                    <TextBlock Text="{Binding ThicknessNote}"
+                                               Classes="caption"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding ThicknessNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
                                     <!--
                                         The stock: the piece of copper-clad this job is built on, and the

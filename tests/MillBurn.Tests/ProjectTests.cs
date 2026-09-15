@@ -61,6 +61,38 @@ public sealed class ProjectTests : IDisposable
 
     // ------------------------------------------------------------------ round trip
 
+    /// <summary>
+    /// The board's thickness is the project's. It used to be the app's, so the last board worked on
+    /// set the depth of the next one, and a 1.6 mm board opened after a 0.8 mm one cut 0.8 mm short.
+    /// </summary>
+    [Fact]
+    public void TheBoardThicknessIsSavedWithTheProject()
+    {
+        var project = Load(CopyBoard());
+        project.Settings = project.Settings with { BoardThicknessMm = 0.8 };
+        var path = Scratch("thin" + ProjectFile.Extension);
+
+        ProjectFile.Save(project, path);
+
+        Assert.Equal(0.8, ProjectFile.Open(path).Settings.BoardThicknessMm);
+    }
+
+    /// <summary>
+    /// A project that never recorded a thickness reopens with none — not a made-up 1.6 — so the app
+    /// can say so and fall back to the last one set. Null is not written, so this is also exactly
+    /// what a project saved before thickness was kept reads back as.
+    /// </summary>
+    [Fact]
+    public void AProjectThatNeverRecordedAThicknessReopensWithNone()
+    {
+        var project = Load(CopyBoard());
+        var path = Scratch("unrecorded" + ProjectFile.Extension);
+
+        ProjectFile.Save(project, path);
+
+        Assert.Null(ProjectFile.Open(path).Settings.BoardThicknessMm);
+    }
+
     [Fact]
     public void AProjectSurvivesASaveAndReopen()
     {

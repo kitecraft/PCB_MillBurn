@@ -159,6 +159,21 @@ public sealed record ProjectSettings
     /// </summary>
     public JobOptions Job { get; init; } = new();
 
+    /// <summary>
+    /// How thick this board's stock is, in millimetres, or null for a project that has never
+    /// recorded one.
+    ///
+    /// The project's, not the app's. It used to be an app setting, which meant the last board worked
+    /// on decided the depth of the next: open a 1.6 mm project after cutting a 0.8 mm board and every
+    /// hole and outline came out 0.8 mm short, with nothing on screen to say so. And the CLI read
+    /// neither, so the same project cut to different depths from the window and from a script.
+    ///
+    /// Null is kept apart from any number, and is not written to the file: a project saved before
+    /// this existed reads back exactly like one that never set it, and both are told apart from one
+    /// that says 1.6.
+    /// </summary>
+    public double? BoardThicknessMm { get; init; }
+
     /// <summary>Which of <see cref="Tools"/> does what. Null falls back to the built-in default.</summary>
     public Guid? IsolationToolId { get; init; }
 

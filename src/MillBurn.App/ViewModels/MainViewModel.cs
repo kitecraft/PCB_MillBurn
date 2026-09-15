@@ -1834,14 +1834,39 @@ public sealed partial class MainViewModel : ViewModelBase
             settings = settings.WithOutput(row.ToSettings());
         }
 
-        _project.Settings = settings;
+        // The thickness on screen is the project's, and goes into it with everything else — on
+        // every change and on save, so a project that never recorded one gains it the first time
+        // it is saved.
+        _project.Settings = settings with { BoardThicknessMm = BoardThicknessMm };
+        DescribeThickness();
     }
 
     partial void OnBoardThicknessMmChanged(double value)
     {
+        // Showing an opened project's own thickness is neither a change to that project nor a new
+        // default for the next one.
+        if (_loadingJob)
+        {
+            return;
+        }
+
+        // Still remembered app-wide, but only as where the next new board starts.
         SaveSettings(Settings with { BoardThicknessMm = value });
         OnOutputChanged();
     }
+
+    /// <summary>
+    /// Said under the thickness slider while the project has no thickness of its own: a project saved
+    /// before it was kept, or a board just imported. The number shown then is only the last one set,
+    /// which is exactly the value that used to cut a new board to the old board's depth.
+    /// </summary>
+    [ObservableProperty]
+    public partial string ThicknessNote { get; set; } = string.Empty;
+
+    private void DescribeThickness() =>
+        ThicknessNote = _project.Sources.Length > 0 && _project.Settings.BoardThicknessMm is null
+            ? "Not saved in this project yet: this is the last thickness you set. Check it; saving keeps it with the project."
+            : string.Empty;
 
     // ------------------------------------------------------------------ job options
 
@@ -2064,6 +2089,10 @@ public sealed partial class MainViewModel : ViewModelBase
 
         try
         {
+            // The project's own thickness, or — for one that never recorded it — the last one set,
+            // which the note under the slider then points out.
+            BoardThicknessMm = _project.Settings.BoardThicknessMm ?? Settings.BoardThicknessMm;
+
             MillLargeHoles = job.MillLargeHoles;
             MillDrillTool = job.MillDrillToolId is { } id
                 ? Library.Tools.FirstOrDefault(t => t.Id == id)
@@ -2089,6 +2118,7 @@ public sealed partial class MainViewModel : ViewModelBase
         }
 
         DescribeBlank(job.Blank);
+        DescribeThickness();
     }
 
     private ProjectViewState CaptureViewState() => new()

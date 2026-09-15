@@ -162,6 +162,7 @@ one block is most of what is left.
 | V22 | Drill alignment: hover test over a real hole, then aligned drilling, routing and outline files | 06 §6.12 | **Done** | `AlignmentTest`, `DrillAlignment`; Job › Drill alignment, `align`, `export --align [--align-outline]` |
 | V23 | Routed holes and slots: one continuous ramp per feature, no lift between laps, no floor lap under a through cut | 06 §6.13 | **Not started — priority** | four laps and three lifts per feature on a 0.8 mm board |
 | V24 | Routing settings: depth per lap, short last lap, break-through, finishing lap, ramp feed | 06 §6.13 | **Not started — priority** | defaults from the cutter and the layer |
+| V25 | Board thickness saved with the project, and read by the CLI | 06 §6.13 | **Done** | `ProjectSettings.BoardThicknessMm`; `ProjectTests.TheBoardThicknessIsSavedWithTheProject`; CLI `ThicknessFor` |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 

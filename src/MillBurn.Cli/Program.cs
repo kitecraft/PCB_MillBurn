@@ -26,6 +26,7 @@ internal static class Program
             Console.WriteLine("  svg <silkscreen.gbr> [options] Export a silk layer as laser-ready SVG");
             Console.WriteLine("  export <folder-or-project>     One file per layer: --only svg|gcode|stock, --write, -o <dir>");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none  (svg- inverts)");
+            Console.WriteLine("                                 --thickness <mm> the board's thickness (default: the project's, then the app's)");
             Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
             Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
@@ -63,7 +64,7 @@ internal static class Program
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
-            Console.WriteLine("                                 --stock / --stock-size / --stock-have / --mill-holes as for export");
+            Console.WriteLine("                                 --stock / --stock-size / --stock-have / --mill-holes / --thickness as for export");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none records what a layer becomes");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
@@ -703,6 +704,12 @@ internal static class Program
             return 1;
         }
 
+        if (ThicknessFor(args, null, AppSettings.LoadOrDefault()) is not { } thickness)
+        {
+            Console.Error.WriteLine("--thickness needs a positive number of millimetres.");
+            return 1;
+        }
+
         // Job options too, for the same reason: a project configured from a script is a project
         // somebody can check without clicking through the window to build it.
         project.Settings = project.Settings with
@@ -712,6 +719,7 @@ internal static class Program
                 Blank = Blank(args),
                 MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
             },
+            BoardThicknessMm = thickness.Mm,
         };
 
         // Layer outputs can be set here too, so a configured project is scriptable rather than
@@ -726,6 +734,7 @@ internal static class Program
         Console.WriteLine(output);
         Line($"  sources     {project.Sources.Length} files embedded");
         Line($"  origin      {project.OriginFolder}");
+        Line($"  thickness   {thickness.Mm:0.0##} mm, {thickness.From}");
 
         if (project.Settings.LayerOutputs.Length > 0)
         {
@@ -812,6 +821,7 @@ internal static class Program
         Line($"  origin      {project.OriginFolder ?? "(none recorded)"}");
         Line($"  sources     {project.Sources.Length} files, {board.TotalObjects} objects, {board.TotalRings} rings");
         Line($"  extents     {board.Bounds}");
+        Line($"  thickness   {(project.Settings.BoardThicknessMm is { } mm ? FormattableString.Invariant($"{mm:0.0##} mm") : "not recorded — saved before projects kept it; the app's setting is used")}");
         Console.WriteLine();
 
         foreach (var source in project.Sources.OrderBy(s => LayerRoleInfo.DrawOrder(s.Role)).ThenBy(s => s.FileName, StringComparer.Ordinal))
@@ -1091,7 +1101,7 @@ internal static class Program
         var tipMm = 0.1;
         var toolMm = 1.0;
         var tabs = 4;
-        var thicknessMm = 1.6;
+        var thicknessMm = 0.0; // not given: resolved once the input is known
         var side = BoardSide.Top;
         string? png = null;
 
@@ -1196,6 +1206,16 @@ internal static class Program
         {
             Console.Error.WriteLine($"No board files in '{input}'.");
             return 1;
+        }
+
+        // Not given: the project's own thickness, then the app's — never a fixed 1.6.
+        if (thicknessMm <= 0)
+        {
+            var saved = input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
+                ? ProjectFile.Open(input)
+                : null;
+
+            thicknessMm = ThicknessFor([], saved, app)!.Value.Mm;
         }
 
         // A named tool from the library wins; otherwise the geometry flags build one, which is
@@ -1436,7 +1456,6 @@ internal static class Program
             return 1;
         }
 
-        var thicknessMm = 1.6;
         var write = args.Contains("--write", StringComparer.OrdinalIgnoreCase);
         var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
         var dryRunHeightMm = AppSettings.LoadOrDefault().DryRun.HeightMm;
@@ -1475,12 +1494,6 @@ internal static class Program
             }
         }
 
-        if (Argument(args, "--thickness") is { } thickness
-            && double.TryParse(thickness, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
-        {
-            thicknessMm = parsed;
-        }
-
         Board board;
         MillBurnProject? project = null;
 
@@ -1503,6 +1516,14 @@ internal static class Program
         }
 
         var app = AppSettings.LoadOrDefault();
+
+        if (ThicknessFor(args, project, app) is not { } thickness)
+        {
+            Console.Error.WriteLine("--thickness needs a positive number of millimetres.");
+            return 1;
+        }
+
+        var (thicknessMm, thicknessFrom) = thickness;
 
         // A project's own settings first, then defaults per role for anything it never recorded.
         //
@@ -1719,6 +1740,9 @@ internal static class Program
 
         Console.WriteLine(board.Source);
         Line($"  board       {Nm.ToMillimetreString(board.Bounds.Width, 2)} x {Nm.ToMillimetreString(board.Bounds.Height, 2)} mm");
+
+        // Said, with where it came from, because it sets the depth of everything that goes through.
+        Line($"  thickness   {thicknessMm:0.0##} mm, {thicknessFrom}");
 
         // Said at the top, because it changes where work zero is for every file underneath it.
         if (plan.Blank.Resolved)
@@ -2383,8 +2407,14 @@ internal static class Program
                 ?? new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role, app.Import) },
             StringComparer.Ordinal);
 
+        if (ThicknessFor(args, project, app) is not { } thickness)
+        {
+            Console.Error.WriteLine("--thickness needs a positive number of millimetres.");
+            return 1;
+        }
+
         var plan = ExportPlanner.Plan(
-            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(Number(args, "--thickness", app.BoardThicknessMm)),
+            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thickness.Mm),
             OutputKind.Gcode, machineSettings: app.Machine, job: JobFor(args, project));
 
         var files = plan.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
@@ -2471,6 +2501,33 @@ internal static class Program
 
         Line($"  wrote       {output} · {target.Kind} {target.Number}, moved X{AlignmentTest.FormatOffset(offset.XNm)} Y{AlignmentTest.FormatOffset(offset.YNm)} mm, {hover:0.00} mm above the surface");
         return 0;
+    }
+
+    /// <summary>
+    /// The board thickness for a job, and where it came from: <c>--thickness</c>, else the project's
+    /// own, else the app's last-used value. Null when <c>--thickness</c> was given and is not a
+    /// positive number.
+    ///
+    /// Never a fixed default. Export used to assume 1.6 mm unless told otherwise, so a 0.8 mm
+    /// project exported from the CLI cut 0.8 mm deeper than the same project from the window.
+    /// </summary>
+    private static (double Mm, string From)? ThicknessFor(string[] args, MillBurnProject? project, AppSettings app)
+    {
+        if (Argument(args, "--thickness") is { } text)
+        {
+            return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var given) && given > 0
+                ? (given, "from --thickness")
+                : null;
+        }
+
+        if (project?.Settings.BoardThicknessMm is { } saved)
+        {
+            return (saved, "saved in the project");
+        }
+
+        return (app.BoardThicknessMm, project is null
+            ? "the app's setting"
+            : "the app's setting — this project does not record one yet");
     }
 
     /// <summary>"0.12,-0.05" as a drill alignment, or null if it is not two numbers.</summary>
