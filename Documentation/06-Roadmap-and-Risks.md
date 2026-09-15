@@ -1984,6 +1984,7 @@ than discovered after.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
+- **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2553,7 +2554,7 @@ has copper on it and the outline has to go round that copper — and closes. The
 - The test refuses a hover height at or below the surface.
 
 Not done: remembering the offset in the project, so a later full export stays aligned; and checking
-two holes at once to tell a shift from a stock that is not square. The help page says to hover over a
+two holes at once to tell a shift from a stock that is not square. Both are now part of 6.14. The help page says to hover over a
 hole at the far side too.
 
 #### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority; lifts and floor lap fixed, settings not started**
@@ -2634,6 +2635,53 @@ project's thickness when one is opened, falls back to the last one set otherwise
 slider, and records it whenever the outputs are recorded — on every change and on save. The CLI's
 `export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
 `project info` print which; `project save --thickness` records one.
+
+#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **scheduled, not started; build together**
+
+Requested from the workshop, after the first boards cut on stock. The stock (5.6) gives every setup a
+datum and helps alignment a great deal, but small amounts of play in jigs and clamps can still throw the
+accuracy off — enough to be annoying at best, and to lose a board at worst. Drill alignment (6.12)
+corrects a *shift*, measured at one hole, and assumes the board sits square to the machine; it cannot
+correct stock that has been clamped a fraction of a degree turned.
+
+**Part 1 — alignment holes in the stock's waste.** Options under *Build on stock*: one small hole in the
+bottom waste border and one in the left. Cut in the same program and the same setup as the stock's
+edges, they sit at exactly known coordinates in the stock's own frame, in material that is thrown away,
+so every later setup can be checked against them before anything is cut into the board.
+
+To decide when it is built:
+
+- **What cuts them.** The stock program already has the Board outline's end mill in the spindle, so a
+  hole that end mill can make — a plunge its own width, or a short helix — needs no bit change and stays
+  in `Board.stock.nc`. A drilled hole would mean a second file and a bit change.
+- **Where exactly.** Centred across the border, clear of the board, of the outline cutter's path and of
+  the tabs. Along each edge, as far apart as the stock allows: the angle two holes can resolve is their
+  measuring error divided by their separation, so near the right-hand end of the bottom border and the
+  top of the left one beats two holes near the same corner.
+- **Size.** Small enough to fit the border and to centre a tip over, large enough to see. Defaulting from
+  the cutter that makes it; a setting.
+- **Refuse rather than guess** when the border is too narrow to hold a hole with clearance, saying by how
+  much.
+- **Where the options live.** *Project info* is getting crowded, and the stock's options are likely to
+  move to a dialog of their own. To examine when this is built.
+
+**Part 2 — rotation in Drill alignment.** The alignment test hovers over the two stock holes in turn —
+the natural targets, though any two holes far apart would do. Two measured positions against two known
+ones give a translation and a rotation: the two-point case of the fit already designed for fiducials in
+04 §4.2 (Kabsch/SVD, and MathNet.Numerics is already a dependency).
+
+- **The separation is a free check.** The measured distance between the holes against the known one: a
+  difference beyond the measuring error means one was misread, and is refused rather than fitted.
+- **Baked into the G-code.** GRBL has no `G68` (04), so the rotation is applied to the programs'
+  coordinates — arc centres included — the way the offset is today, in work coordinates after any
+  mirroring.
+- **What moves** stays as it is today: drilling, routing and, when asked, the outline; never the copper
+  the measurement was taken against, and never the stock.
+- **Saved with the project** this time — 6.12's other open item — because a correction describes that
+  setup, and a later export that forgot it would undo it silently.
+
+Built together because each is half of the other: the holes exist to be measured, and a rotation needs
+two known places to measure.
 
 ### Phase 7 — User documentation — **started**
 
