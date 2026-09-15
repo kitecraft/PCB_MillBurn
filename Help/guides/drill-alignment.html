@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Drill alignment · PCB_MillBurn</title>
+<!--
+  One guide, one file. The styles are inside so the page can be printed, copied or mailed on its own.
+  Pictures live beside it in images/. Each "Photo to come" figure names the file it is waiting for:
+  replace its placeholder div with an img tag pointing at that file, with alt text saying what it shows.
+  (Written without the attribute itself: the help tests read every src in the page, comments included.)
+-->
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --text: #1c1f24;
+    --muted: #5b6470;
+    --rule: #dcdfe4;
+    --accent: #0b5fa5;
+    --warn-bg: #fff4e5;
+    --warn-rule: #d98324;
+    --code-bg: #f1f2f4;
+    --copper: #c7864a;
+    --board: #e9ece4;
+    --yes: #2f7d4f;
+    --no: #9a4a3c;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --surface: #1a1e24;
+      --text: #e6e8ec;
+      --muted: #99a3b0;
+      --rule: #2b313a;
+      --accent: #6db3f2;
+      --warn-bg: #2a2115;
+      --warn-rule: #d98324;
+      --code-bg: #22272f;
+      --copper: #b77a43;
+      --board: #20252b;
+      --yes: #6cc48f;
+      --no: #e09a8a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .page { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+  header.masthead { border-bottom: 1px solid var(--rule); padding-bottom: 1rem; margin-bottom: 2rem; }
+  header.masthead .eyebrow {
+    font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  header.masthead .eyebrow a { color: inherit; }
+  header.masthead h1 { font-size: 1.6rem; font-weight: 650; margin: 0.15rem 0 0.2rem; text-wrap: balance; }
+  header.masthead .sub { color: var(--muted); font-size: 0.98rem; }
+
+  a { color: var(--accent); }
+
+  h2 {
+    font-size: 1.15rem; margin: 2.75rem 0 0.25rem; padding-top: 1.25rem;
+    border-top: 1px solid var(--rule); text-wrap: balance;
+  }
+  h3 { font-size: 1.02rem; margin: 2rem 0 0.25rem; }
+  h4 { font-size: 0.95rem; margin: 1.25rem 0 0.1rem; }
+
+  .step-number {
+    display: inline-block; min-width: 1.6rem; height: 1.6rem; margin-right: 0.5rem;
+    border-radius: 50%; background: var(--accent); color: var(--bg);
+    font-size: 0.85rem; line-height: 1.6rem; text-align: center; font-variant-numeric: tabular-nums;
+  }
+
+  .lead { color: var(--muted); font-size: 1.02rem; }
+
+  code, kbd {
+    background: var(--code-bg); border-radius: 3px; padding: 0.1em 0.35em;
+    font-family: ui-monospace, Consolas, "SF Mono", Menlo, monospace; font-size: 0.88em;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    background: var(--code-bg); border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto;
+    font-family: ui-monospace, Consolas, "SF Mono", Menlo, monospace; font-size: 0.85rem; line-height: 1.5;
+  }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .chip {
+    display: inline-block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.03em;
+    border-radius: 999px; padding: 0.05rem 0.55rem; border: 1px solid currentColor; white-space: nowrap;
+  }
+  .chip.yes { color: var(--yes); }
+  .chip.no { color: var(--no); }
+
+  .note, .warn {
+    background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+    padding: 0.8rem 1rem; margin: 1.25rem 0; font-size: 0.95rem;
+  }
+  .warn { background: var(--warn-bg); border-left-color: var(--warn-rule); }
+  .note p:first-child, .warn p:first-child { margin-top: 0; }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  figure { margin: 1.5rem 0; }
+  figure img { display: block; max-width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--rule); }
+  figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 0.45rem; }
+
+  /* A portrait photo at full column width would fill the screen; keep it to a readable size. */
+  figure.photo img { max-width: min(100%, 26rem); margin: 0 auto; }
+  figure.photo figcaption { max-width: 34rem; margin: 0.6rem auto 0; text-align: center; }
+
+  pre.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .placeholder {
+    aspect-ratio: 5 / 2; max-width: 100%; border: 2px dashed var(--rule); border-radius: 6px;
+    display: grid; place-content: center; gap: 0.3rem; text-align: center; padding: 1rem;
+    color: var(--muted); background: var(--surface); font-size: 0.92rem;
+  }
+  .placeholder strong { color: var(--text); font-weight: 600; }
+
+  .diagram { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0.5rem; }
+  .diagram svg { display: block; width: 100%; height: auto; }
+  .d-board { fill: var(--board); }
+  .d-copper { fill: var(--copper); }
+  .d-tip { fill: var(--accent); }
+  .d-line { stroke: var(--text); stroke-width: 1.5; fill: none; }
+  .d-dash { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 4; fill: none; opacity: 0.7; }
+  .d-move { stroke: var(--accent); stroke-width: 2.5; fill: none; }
+  .d-head { fill: var(--accent); }
+  .d-axis-head { fill: var(--text); }
+  .d-text { fill: var(--text); font: 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .d-muted { fill: var(--muted); font: 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .d-strong {
+    fill: var(--accent); font: 600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    paint-order: stroke; stroke: var(--board); stroke-width: 4px; stroke-linejoin: round;
+  }
+
+  ul.checklist { list-style: none; padding-left: 0; }
+  ul.checklist li { position: relative; padding-left: 1.7rem; margin: 0.45rem 0; }
+  ul.checklist li::before {
+    content: ""; position: absolute; left: 0.1rem; top: 0.3rem; width: 0.95rem; height: 0.95rem;
+    border: 1.5px solid var(--muted); border-radius: 3px;
+  }
+
+  footer {
+    margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule);
+    color: var(--muted); font-size: 0.85rem;
+  }
+
+  @media print {
+    :root { --bg: #fff; --surface: #fff; --text: #000; --muted: #444; --rule: #bbb; --board: #eee; }
+    .page { max-width: none; padding: 0; }
+    h2, h3 { page-break-after: avoid; }
+    pre, table, figure, .note, .warn { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="eyebrow"><a href="../index.html">PCB_MillBurn help</a> &rsaquo; Guide</div>
+  <h1>Drill alignment</h1>
+  <div class="sub">Land the holes, the slots and the board outline on copper that is already there.</div>
+</header>
+
+<p class="lead">
+  A 0.8&nbsp;mm hole in a 1.6&nbsp;mm pad leaves a ring of copper 0.4&nbsp;mm wide. Set work zero
+  0.3&nbsp;mm out, and one side of that ring is down to 0.1&nbsp;mm.
+</p>
+
+<p>
+  This guide finds that error by looking at it, with the spindle off, before anything is drilled.
+  Bring the bit down just above a real pad, see how far off centre it is, enter that as an offset,
+  and look again. When it sits dead centre, write the files again with the offset built in. Two or
+  three tries is usually enough.
+</p>
+
+<figure class="photo">
+  <img src="images/drill-alignment-before-after.jpg" width="614" height="816"
+       alt="A row of pads on a real board, drilled twice. The first holes, labelled Pre Alignment, sit off to the lower left of each pad. The second holes, labelled Post Alignment, sit in the middle of every pad.">
+  <figcaption>
+    The same pads, drilled twice. <strong>Pre alignment:</strong> drilled from the plain files, every
+    hole lands off to the lower left of its pad. <strong>Post alignment:</strong> drilled from the
+    aligned files after a few tests, every hole lands in the middle.
+  </figcaption>
+</figure>
+
+<h2>When to use it</h2>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Step</th><th>Use it?</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Top and bottom copper</td>
+      <td><span class="chip no">No</span></td>
+      <td>These make the copper. There is nothing on the board yet to line up with; they are what
+        everything after them lines up to.</td>
+    </tr>
+    <tr>
+      <td>Drilling and slots</td>
+      <td><span class="chip yes">Yes</span></td>
+      <td>The holes have to land in pads that are already on the board, however they got there, and
+        especially if the board has been off the machine since.</td>
+    </tr>
+    <tr>
+      <td>Board outline</td>
+      <td><span class="chip yes">Yes</span></td>
+      <td>The outline has to go round the same copper. If the board was unclamped after drilling,
+        test again before cutting it out.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  If the board never left the machine after the copper was cut and work zero was not touched, the
+  holes should already line up. One test at 0,&nbsp;0 confirms it in a minute.
+</p>
+
+<h2>Before you start</h2>
+
+<ul class="checklist">
+  <li>The board is clamped for this step, as square to the machine&rsquo;s X and Y axes as you can
+    get it.</li>
+  <li>X and Y work zero are set where this project always has them: the stock&rsquo;s lower-left
+    corner if the project cuts stock to size, otherwise the board&rsquo;s.</li>
+  <li>The bit for this step is fitted (the drill for drilling, the end mill for the outline), and Z
+    is zeroed on your usual spot.</li>
+  <li>You have something to look closely with: a loupe, a phone camera zoomed in, or a USB
+    microscope. A tenth of a millimetre is easy to see up close and hard to see from standing
+    height.</li>
+</ul>
+
+<figure>
+  <div class="placeholder" role="img" aria-label="Photo to come: the board clamped on the mill for drilling">
+    <strong>Photo to come</strong>
+    <span>The board clamped on the mill for drilling, bit fitted.</span>
+    <code>images/drill-alignment-board-on-mill.jpg</code>
+  </div>
+</figure>
+
+<h2>What the test does</h2>
+
+<p>The test file cuts nothing. With the spindle off, it:</p>
+
+<ol>
+  <li>rises to safe height,</li>
+  <li>moves over the hole you chose, plus any offset you have entered,</li>
+  <li>comes down quickly to 1&nbsp;mm above the stopping height, then slowly the rest of the way,</li>
+  <li>stops 0.1&nbsp;mm above the surface (or whatever <em>Stop above the surface</em> is set to)
+    and stays there.</li>
+</ol>
+
+<p>
+  <strong>Where it aims.</strong> For a hole, the centre. For a slot, the middle of the slot: halfway
+  along its length and halfway across its width. The dialog lists each one as <em>Hole</em> or
+  <em>Slot</em>, with the position it aims at.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>If the bit touches the copper, stop the machine.</strong> Z zero is below the surface.
+    Zero Z again and rerun the test. The last millimetre is slow to give you time to stop it.
+  </p>
+</div>
+
+<h2>Step by step</h2>
+
+<h3 id="step-1"><span class="step-number">1</span>Open the dialog</h3>
+
+<p>
+  <strong>Job &rsaquo; Drill alignment&hellip;</strong> It works from the project as it stands; you
+  do not need to have exported first.
+</p>
+
+<figure>
+  <img src="images/drill-alignment-dialog.png" width="640" height="590"
+       alt="The Drill alignment dialog: a file and a hole to test with, Move X by and Move Y by, the stopping height, Board outline too, and the folder the files go to.">
+  <figcaption>The dialog stays open while you test, and closes when the aligned files are
+    written.</figcaption>
+</figure>
+
+<p>
+  Check <strong>Files go to</strong>. The test file and the aligned files are written there. By
+  default that is the folder you last exported to; <em>Change&hellip;</em> picks another. A long
+  path is shortened in the middle: hover over it to see all of it, or widen the window.
+</p>
+
+<h3 id="step-2"><span class="step-number">2</span>Pick a file and a hole</h3>
+
+<p>
+  <strong>Test with</strong> lists every drilling and slot file the project writes.
+  <strong>Hole</strong> lists what is in the chosen file, in the order the file reaches them. Pick a
+  pad you can see clearly. It does not matter which file you test with: the offset you find goes into
+  all of them.
+</p>
+
+<p>
+  The line under the file name says which bit that file uses. At the outline step, leave the end mill
+  in and pick any hole that has already been drilled.
+</p>
+
+<h3 id="step-3"><span class="step-number">3</span>Test at 0, 0</h3>
+
+<p>
+  Leave <strong>Move X by</strong> and <strong>Move Y by</strong> at <code>0.000</code> and press
+  <strong>Write test</strong>. The file is <code>YourProject.align-test.nc</code>. Open it in your
+  sender and run it.
+</p>
+
+<figure>
+  <div class="placeholder" role="img" aria-label="Photo to come: the bit hovering just off the centre of a pad">
+    <strong>Photo to come</strong>
+    <span>Close-up: the bit hovering just above a pad, off centre.</span>
+    <code>images/drill-alignment-off-centre.jpg</code>
+  </div>
+</figure>
+
+<h3 id="step-4"><span class="step-number">4</span>Look, and measure</h3>
+
+<p>
+  If the tip sits dead centre, you are done: the files as exported already line up, and there is
+  nothing to write. Otherwise, work out how far the tip has to travel to reach the centre, in X and
+  in Y.
+</p>
+
+<figure class="diagram">
+  <svg viewBox="0 0 560 300" role="img"
+       aria-label="Seen from above: the bit tip sits left of and slightly above the pad's centre. To reach the centre it has to move +0.15 mm in X and -0.05 mm in Y.">
+    <defs>
+      <marker id="head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="d-head"/>
+      </marker>
+      <marker id="axis" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="d-axis-head"/>
+      </marker>
+    </defs>
+
+    <rect x="0" y="0" width="560" height="300" rx="4" class="d-board"/>
+
+    <!-- The pad, and its centre -->
+    <circle cx="300" cy="160" r="96" class="d-copper"/>
+    <line x1="300" y1="50" x2="300" y2="270" class="d-dash"/>
+    <line x1="190" y1="160" x2="410" y2="160" class="d-dash"/>
+    <circle cx="300" cy="160" r="4" class="d-line"/>
+    <text x="418" y="178" class="d-text">Pad centre</text>
+
+    <!-- Where the tip is -->
+    <line x1="222" y1="112" x2="296" y2="112" class="d-move" marker-end="url(#head)"/>
+    <line x1="300" y1="112" x2="300" y2="153" class="d-move" marker-end="url(#head)"/>
+    <circle cx="218" cy="112" r="11" class="d-tip"/>
+    <text x="118" y="92" class="d-text">Bit tip</text>
+    <line x1="160" y1="96" x2="206" y2="106" class="d-line"/>
+
+    <text x="234" y="95" class="d-strong">Move X by +0.15</text>
+    <text x="310" y="140" class="d-strong">Move Y by −0.05</text>
+
+    <!-- Which way is which -->
+    <line x1="34" y1="264" x2="84" y2="264" class="d-line" marker-end="url(#axis)"/>
+    <line x1="34" y1="264" x2="34" y2="214" class="d-line" marker-end="url(#axis)"/>
+    <text x="92" y="268" class="d-text">+X</text>
+    <text x="24" y="206" class="d-text">+Y</text>
+    <text x="548" y="286" text-anchor="end" class="d-muted">Seen from above · not to scale</text>
+  </svg>
+  <figcaption>
+    The offset is how far the tip has to <em>go</em>: from where it is to where it should be. Here
+    it is short of the centre in X and past it in Y.
+  </figcaption>
+</figure>
+
+<p>
+  <strong>Which way is plus?</strong> A positive number moves the tip towards the machine&rsquo;s +X
+  or +Y. If you are not sure which way that is over the board, jog 1&nbsp;mm in +X and watch where
+  the tip goes.
+</p>
+
+<h4>By eye</h4>
+
+<p>
+  Use something whose size you know as a ruler. The pad&rsquo;s size is in your design, and the
+  bit&rsquo;s diameter is on the bit. If a 1.0&nbsp;mm drill sits about a quarter of its own width
+  left of centre, that is about 0.25&nbsp;mm. A guess gets you close, and the next test shows what
+  is left.
+</p>
+
+<h4>By jogging, for an exact number</h4>
+
+<p>When the test has finished the machine is idle, so the jog controls work.</p>
+
+<ol>
+  <li>Jog X and Y only, in 0.01&nbsp;mm steps, until the tip sits on the centre. Leave Z where it
+    is, or raise it a little first if the board is not flat. Raising Z does not change X or Y.</li>
+  <li>Read the <em>work</em> position in your sender.</li>
+  <li>Subtract the hole&rsquo;s position from the dialog&rsquo;s <strong>Hole</strong> list. The
+    result is the offset to enter, whatever you had entered before.</li>
+</ol>
+
+<pre>                          X          Y
+Hole 3, from the list     55.625     58.305
+Work position, centred    55.795     58.255
+                          ------     ------
+Move X by / Move Y by     +0.170     -0.050</pre>
+
+<h3 id="step-5"><span class="step-number">5</span>Enter the offset and test again</h3>
+
+<p>
+  Type the numbers into <strong>Move X by</strong> and <strong>Move Y by</strong>. Enter the
+  <strong>whole offset</strong> from where the test started, not just the extra since your last
+  try. Press <strong>Write test</strong> again. It overwrites the same file, so reload it in your
+  sender (most senders keep the copy they first opened), then run it.
+</p>
+
+<div class="note">
+  <p>
+    There is no need to send the head back to 0,&nbsp;0 between tests. Every test rises to safe height
+    first and then moves straight to the hole.
+  </p>
+</div>
+
+<p>
+  Repeat until you are happy with it. The dialog keeps your numbers until you close MillBurn, so
+  closing and reopening the dialog in between loses nothing.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Test</th><th>Move X by</th><th>Move Y by</th><th>What you see</th><th>Next</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="num">1</td><td class="num">0.000</td><td class="num">0.000</td>
+      <td>Tip about 0.15&nbsp;mm short of centre in X, and 0.05&nbsp;mm past it in Y</td>
+      <td>Enter +0.15 and &minus;0.05</td>
+    </tr>
+    <tr>
+      <td class="num">2</td><td class="num">+0.150</td><td class="num">&minus;0.050</td>
+      <td>Still a hair short in X, about 0.02&nbsp;mm</td>
+      <td>Enter +0.17 (the whole offset, not +0.02)</td>
+    </tr>
+    <tr>
+      <td class="num">3</td><td class="num">+0.170</td><td class="num">&minus;0.050</td>
+      <td>Dead centre</td>
+      <td>Check a hole on the far side</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="step-6"><span class="step-number">6</span>Check a hole on the far side</h3>
+
+<p>
+  Pick a hole near the opposite corner of the board and write a test with the same offset. If that
+  one is centred too, the offset is right everywhere on the board.
+</p>
+
+<p>
+  If it is out by a different amount, the board is not square to the machine. An offset moves every
+  hole by the same amount, so it cannot correct a board that is sitting at an angle. Square the board
+  up and start again from step 3.
+</p>
+
+<figure>
+  <div class="placeholder" role="img" aria-label="Photo to come: the bit hovering dead centre over a pad">
+    <strong>Photo to come</strong>
+    <span>Close-up: the bit dead centre over a pad.</span>
+    <code>images/drill-alignment-centred.jpg</code>
+  </div>
+</figure>
+
+<h3 id="step-7"><span class="step-number">7</span>Write the aligned files</h3>
+
+<p>
+  Press <strong>Write aligned files</strong>. Every drilling and slot file is written again with
+  the offset built in, and so is the board outline unless you untick <strong>Board outline
+  too</strong>. The dialog closes. For the test board, that is:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>File</th><th>What it is</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>Millburn_Test_Board-PTH-drl.bit1-1.00mm.aligned.nc</code><br>
+      <code>…-PTH-drl.bit2-0.50mm.aligned.nc</code>, <code>…bit3…</code></td>
+      <td>Drilling, one file per bit, as usual</td></tr>
+    <tr><td><code>…-PTH-drl.slots.aligned.nc</code><br><code>…-NPTH-drl.slots.aligned.nc</code></td>
+      <td>Routed slots and milled holes</td></tr>
+    <tr><td><code>…-Edge_Cuts.aligned.nc</code></td>
+      <td>The board outline, when <em>Board outline too</em> is ticked</td></tr>
+    <tr><td><code>…-PTH-drl.drilling.aligned.html</code><br><code>…slots.aligned.html</code></td>
+      <td>The pages that go with them, listing the aligned files</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The copper files and the stock are never moved. The copper is what you lined everything up with,
+  and the stock is cut before there is any copper on it.
+</p>
+
+<p>Each aligned file says so near the top:</p>
+
+<pre class="wrap">( Aligned with the drill alignment test: every move shifted X+0.170 Y-0.050 mm from the plain export. )</pre>
+
+<h3 id="step-8"><span class="step-number">8</span>Run the aligned files</h3>
+
+<p>
+  Run the <code>.aligned.nc</code> files instead of the originals, in the order the drilling page
+  suggests. Change bits and set Z as you normally would. X and Y zero stay where they are, and the
+  offset is already in every file, so you do not need to test again for each bit.
+</p>
+
+<p>
+  Consider moving the original, un-aligned files into another folder, so that neither you nor your
+  sender&rsquo;s recent-files list can pick one by mistake.
+</p>
+
+<h2>Worth knowing</h2>
+
+<ul>
+  <li>
+    <strong>The offset is not saved in the project.</strong> A later Export writes the plain files,
+    without the offset. To get aligned files again, reopen the dialog and write them; the numbers are
+    still there until you close MillBurn.
+  </li>
+  <li>
+    <strong>The outline step, after re-clamping.</strong> If the board came off the machine after
+    drilling, run the test again with the end mill fitted, over a drilled hole. Writing the aligned
+    files again rewrites the drilling files too, with the new offset. Once the drilling is done that
+    makes no difference: run only the outline.
+  </li>
+  <li>
+    <strong>Stop above the surface</strong> is remembered between sessions. 0.1&nbsp;mm is close
+    enough to judge the centre by eye, and high enough that a Z zero a few hundredths out does not put
+    the tip into the copper.
+  </li>
+  <li>
+    <strong>From the command line:</strong> <code>align &lt;project&gt; --hole 3 --offset 0.17,-0.05</code>
+    writes the test file, and <code>export &lt;project&gt; --align 0.17,-0.05 --align-outline --write</code>
+    writes the aligned files.
+  </li>
+</ul>
+
+<footer>
+  PCB_MillBurn &mdash; MIT licensed. <a href="../index.html">Help contents</a> &middot;
+  <a href="../faq.html">Questions and answers</a>
+</footer>
+
+</div>
+</body>
+</html>

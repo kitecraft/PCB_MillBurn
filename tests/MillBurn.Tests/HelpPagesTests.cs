@@ -54,9 +54,29 @@ public sealed class HelpPagesTests(ITestOutputHelper output)
 
     private const string SrcPattern = "src=\"([^\"]+)\"";
 
+    /// <summary>
+    /// Every page, keyed by its path under `Help/` with forward slashes: <c>faq.html</c>,
+    /// <c>guides/drill-alignment.html</c>. Guides live a folder down, and link back up with <c>../</c>.
+    /// </summary>
     private static Dictionary<string, string> Pages() =>
-        System.IO.Directory.GetFiles(Directory, "*.html")
-            .ToDictionary(p => Path.GetFileName(p)!, File.ReadAllText, StringComparer.OrdinalIgnoreCase);
+        System.IO.Directory.GetFiles(Directory, "*.html", SearchOption.AllDirectories)
+            .ToDictionary(Relative, File.ReadAllText, StringComparer.OrdinalIgnoreCase);
+
+    private static string Relative(string path) =>
+        Path.GetRelativePath(Directory, path).Replace('\\', '/');
+
+    /// <summary>
+    /// Where a reference from a page lands, as a path under `Help/` — resolved from the page's own
+    /// folder, the way a browser does. Null when it climbs out of `Help/`, which cannot ship.
+    /// </summary>
+    private static string? Resolve(string page, string reference)
+    {
+        var folder = Path.GetDirectoryName(Path.Combine(Directory, page))!;
+        var full = Path.GetFullPath(Path.Combine(folder, reference));
+        var relative = Relative(full);
+
+        return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative) ? null : relative;
+    }
 
     private static List<string> Anchors(string html) =>
         [.. Regex.Matches(html, IdPattern).Select(m => m.Groups[1].Value)];
@@ -104,9 +124,9 @@ public sealed class HelpPagesTests(ITestOutputHelper output)
                 var hash = href.IndexOf('#', StringComparison.Ordinal);
                 var file = hash < 0 ? href : href[..hash];
                 var fragment = hash < 0 ? string.Empty : href[(hash + 1)..];
-                var target = file.Length == 0 ? name : file;
+                var target = file.Length == 0 ? name : Resolve(name, file);
 
-                if (!pages.ContainsKey(target) && !File.Exists(Path.Combine(Directory, target)))
+                if (target is null || (!pages.ContainsKey(target) && !File.Exists(Path.Combine(Directory, target))))
                 {
                     broken.Add($"{name} → {href} (no such file)");
                     continue;
@@ -140,7 +160,7 @@ public sealed class HelpPagesTests(ITestOutputHelper output)
                     continue;
                 }
 
-                if (!File.Exists(Path.Combine(Directory, src)))
+                if (Resolve(name, src) is not { } shipped || !File.Exists(Path.Combine(Directory, shipped)))
                 {
                     missing.Add($"{name} → {src}");
                 }
@@ -148,6 +168,30 @@ public sealed class HelpPagesTests(ITestOutputHelper output)
         }
 
         Assert.True(missing.Count == 0, string.Join("\n", missing));
+    }
+
+    /// <summary>
+    /// A guide nobody can find is not help. Every page under `guides/` is listed in the help contents
+    /// and has an entry in the app's Help menu.
+    /// </summary>
+    [Fact]
+    public void EveryGuideIsListedInTheContentsAndTheMenu()
+    {
+        var pages = Pages();
+        var guides = pages.Keys.Where(k => k.StartsWith("guides/", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var menu = File.ReadAllText(Path.Combine(
+            Path.GetDirectoryName(Directory)!, "src", "MillBurn.App", "Views", "MainWindow.axaml.cs"));
+
+        output.WriteLine(string.Join(", ", guides));
+
+        Assert.NotEmpty(guides);
+
+        foreach (var guide in guides)
+        {
+            Assert.Contains($"href=\"{guide}\"", pages["index.html"], StringComparison.Ordinal);
+            Assert.Contains($"\"{Path.GetFileName(guide)}\"", menu, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>

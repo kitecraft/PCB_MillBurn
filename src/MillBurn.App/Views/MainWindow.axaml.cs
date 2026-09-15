@@ -1360,6 +1360,9 @@ public partial class MainWindow : Window
 
     private void OnFaqClicked(object? sender, RoutedEventArgs e) => OpenHelp("faq.html");
 
+    private void OnDrillAlignmentGuideClicked(object? sender, RoutedEventArgs e) =>
+        OpenHelp(Path.Combine("guides", "drill-alignment.html"));
+
     /// <summary>
     /// Opens a shipped help page in the user's own browser.
     ///

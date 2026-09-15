@@ -212,6 +212,9 @@
                     <MenuItem Header="_Help">
                         <MenuItem Header="_Help contents" Click="OnHelpClicked" InputGesture="F1" />
                         <MenuItem Header="_Questions and answers" Click="OnFaqClicked" />
+                        <MenuItem Header="_Guides">
+                            <MenuItem Header="_Drill alignment" Click="OnDrillAlignmentGuideClicked" />
+                        </MenuItem>
                         <Separator />
                         <MenuItem Header="_About PCB_MillBurn" Click="OnAboutClicked" />
                     </MenuItem>

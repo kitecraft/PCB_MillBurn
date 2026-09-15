@@ -2574,6 +2574,13 @@ Anything not built is labelled as such on the page rather than described as if i
 sections on dry runs, probing and levelling, the drilling companion, custom start and end G-code,
 the standalone G-code viewer, the machine settings, and the board pane, all of which now exist.
 
+**Guides** sit beside the FAQ in `Help/guides/`: one self-contained HTML file per job, start to
+finish, with its pictures in `Help/guides/images/`. Styles are inside each page so a guide can be
+printed or passed on alone. Reached from Help ▸ Guides and from the help contents. Real-world
+photos are the author's to supply; until then each is a labelled placeholder naming the file it is
+waiting for, so a missing picture is visible rather than a broken image. First: **Drill alignment**
+(6.12).
+
 **`Help/` is not `Documentation/`.** This directory is design documentation — why the code is
 shaped the way it is, written for whoever maintains it. User help is a different audience, a
 different lifecycle, and mixing the two makes both worse.
