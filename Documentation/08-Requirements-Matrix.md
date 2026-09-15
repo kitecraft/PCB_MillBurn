@@ -160,6 +160,8 @@ one block is most of what is left.
 | V20 | A layer needing several bits is one file per bit, and its page lists them in order | 06 §6.11 | **Done** | `AssembleEach`; an `M0` stop leaves GRBL on hold, where it will not jog or probe |
 | V21 | Choose one file per bit or one file with custom tool-change G-code | 06 §6.11 | **Not started** | for tool-change macros and automatic changers |
 | V22 | Drill alignment: hover test over a real hole, then aligned drilling, routing and outline files | 06 §6.12 | **Done** | `AlignmentTest`, `DrillAlignment`; Job › Drill alignment, `align`, `export --align [--align-outline]` |
+| V23 | Routed holes and slots: one continuous ramp per feature, no lift between laps, no floor lap under a through cut | 06 §6.13 | **Not started — priority** | four laps and three lifts per feature on a 0.8 mm board |
+| V24 | Routing settings: depth per lap, short last lap, break-through, finishing lap, ramp feed | 06 §6.13 | **Not started — priority** | defaults from the cutter and the layer |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -224,6 +226,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.10 Drill hits drawn as an X | workshop | **Not started** |
 | 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
 | 6.12 Drill alignment | workshop | **Done** |
+| 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Not started — priority** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

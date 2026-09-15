@@ -1983,6 +1983,7 @@ than discovered after.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
+- **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp, no floor lap on a through cut, and settings of its own. See 6.13.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2546,6 +2547,67 @@ has copper on it and the outline has to go round that copper — and closes. The
 Not done: remembering the offset in the project, so a later full export stays aligned; and checking
 two holes at once to tell a shift from a stock that is not square. The help page says to hover over a
 hole at the far side too.
+
+#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority, not started**
+
+Found on the test board at the machine: 0.8 mm board, "Spiral with" a 0.8 mm end mill (0.5 mm
+stepdown), the layer's 0.3 mm break-through, so 1.10 mm deep. Every milled hole and every slot was
+cut in **four laps, lifting to safe height between each**, and the third lap visibly came through
+the bottom. From the emitted `NPTH-drl.slots.nc`, per 2.2 mm hole:
+
+```
+lap 1   0.00 → 0.50 mm   ramping
+lap 2   0.50 → 1.00 mm   ramping   the underside, 0.80, is reached part-way round
+lap 3   1.00 → 1.10 mm   ramping   a 0.10 mm sliver; it is all through already
+lap 4   1.10 mm          flat      flattening a floor that is below the board
+```
+
+and before laps 2–4: `G0 Z2.000` twice (the previous lap's retract and this lap's own), a rapid back
+to the XY it is already at, `G0 Z0.500`, and a feed at the *plunge* rate down through the lap it
+just cut. Slot racetracks do exactly the same.
+
+What is wrong, most expensive first:
+
+1. **A lift between laps.** A lap ends where the next begins, at the depth the next starts from, so
+   a feature's laps are one continuous helix — or one continuous racetrack ramp — with nothing to lift
+   for. The cause: `SlotOperation.PassesFor` yields one `ToolpathPass` per lap and none is
+   `LinkedFromPrevious`, so `GcodeEmitter.EmitPass` does its "up, across, down" for every one.
+   Linking them (or emitting one pass that ramps the whole depth) retracts once, at the end, and
+   also removes the doubled `G0 Z` and the slow feed through cleared air.
+2. **A floor lap under a through cut.** The flat lap exists because a ramp leaves its floor sloping
+   by one step. When the last ramp starts at or below the underside, that floor is spoilboard: skip
+   it. Keep it for anything that stops inside the material.
+3. **A sliver lap.** 1.10 mm in 0.50 mm steps is 0.50 + 0.50 + 0.10. Either spread the depth evenly
+   (three laps of 0.367) or fold a remainder under some fraction of a step into the last lap (two of
+   0.55, 10 % over the stepdown). That is the operator's call, so it wants a setting rather than a
+   constant.
+4. **Break-through that costs a lap.** 0.30 mm under a 0.8 mm board is 37 % of its thickness again,
+   and on a small cutter every 0.1 mm of it is time. It is the layer's setting; it should be visible
+   where the routing is set up, not only on the outline.
+
+**The settings asked for** — "a better way to define how the MillDrill will work" — beside "Mill
+holes too big to drill" and "Spiral with", defaulting from the tool and the layer so nothing changes
+until touched:
+
+- **Depth per lap** (default: the cutter's stepdown), and what to do with a short last lap.
+- **Break-through** below the board (default: the layer's).
+- **Finishing lap**: off for through cuts (default), on.
+- **Ramp feed** (default: the cutter's feed). No separate plunge feed, because nothing plunges.
+
+And the file header, the export summary and the routing page saying what that comes to per feature:
+"2.2 turns, one helix, lifts once".
+
+**Done looks like**, on the test board with the settings above: each hole and slot is one approach,
+one continuous descent to 1.10 mm, one retract. Tests: exactly one `G0` to safe height per feature;
+depth descends monotonically with no feed through cleared air; no flat lap when the last ramp starts
+below the underside; the total descent equals board thickness plus break-through.
+
+**Found alongside: board thickness is not the project's.** It is an app setting
+(`AppSettings.BoardThicknessMm`), so a project for a 1.6 mm board opened after working on a 0.8 mm
+one is exported 0.8 mm shallow, with nothing on screen saying so. And the CLI `export` does not read
+even that: it uses its own 1.6 mm unless given `--thickness`, so the same project exported from the
+CLI while checking this cut 1.90 mm deep where the app's file cut 1.10. Thickness belongs in the
+project with the rest of the job, read by both.
 
 ### Phase 7 — User documentation — **started**
 
