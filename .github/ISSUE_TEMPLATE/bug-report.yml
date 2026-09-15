@@ -1,0 +1,60 @@
+name: Something is wrong
+description: A file came out wrong, the app did something unexpected, or it crashed
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The most useful bug report here is one with **the files**: the
+        Gerber folder (zipped), the `.millburn` project if you saved one, and the `.nc` or `.svg` that
+        came out wrong. With those, the problem can usually be reproduced exactly.
+
+        **This tracker is public.** Only attach a board you are happy for anyone to see. If you cannot
+        share it, a description and a screenshot still help.
+
+        A probe log that will not import has [its own form](?template=probe-log.yml).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what came out. If a cut went wrong on the machine, say what the machine did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: >
+        Drag them in. Gerbers as a zip; the project; the output file. For G-code, the header comment
+        lines at the top say which settings made it, so the whole file is best.
+  - type: input
+    id: version
+    attributes:
+      label: PCB_MillBurn version
+      description: Help ▸ About shows it. Say whether it is a release download or built from source.
+      placeholder: e.g. v0.1.0, Windows download
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Windows 11, Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: machine
+    attributes:
+      label: Machine, controller and sender (if it is about a cut)
+      placeholder: e.g. 3018 with GRBL 1.1h, Universal G-code Sender 2.1
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, the EDA tool and version that wrote the Gerbers, or anything you tried.

@@ -1399,11 +1399,27 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// The version comes first: it is the one thing a bug report needs from here, and the issue form
+    /// sends people to this window for it.
+    /// </summary>
     private async void OnAboutClicked(object? sender, RoutedEventArgs e) =>
         await ConfirmWindow.NoteAsync(
             this,
             "PCB_MillBurn",
-            "Gerber to G-code for the mill and SVG for the laser. MIT licensed.");
+            $"Version {AppVersion()}. Gerber to G-code for the mill and SVG for the laser. MIT licensed.");
+
+    /// <summary>"0.1.0", without the "+commit" a build may append to the informational version.</summary>
+    private static string AppVersion()
+    {
+        var informational = System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(MainWindow).Assembly)
+            ?.InformationalVersion;
+
+        return informational?.Split('+')[0]
+            ?? typeof(MainWindow).Assembly.GetName().Version?.ToString(3)
+            ?? "unknown";
+    }
 
     private void OnApplyRefreshClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainViewModel)?.ApplyRefresh();

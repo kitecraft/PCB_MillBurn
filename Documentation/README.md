@@ -53,7 +53,9 @@ travel ordering that ignores half the available freedom, debug-grade SVG, no pre
 concept of a *job* that spans two machines. PCB_MillBurn keeps the good geometry ideas, rebuilds
 them on Clipper2 + NetTopologySuite in .NET, and adds the three things that actually matter for
 the target workflows: **a real travel optimizer**, **laser output as production-grade SVG, true to
-the design at 1:1**, and **a Job model that automatically plants registration marks
-and re-registers the work when the board moves between the laser and the mill**. A live SkiaSharp
-backplot viewer makes all of it verifiable before a single chip is cut. It stays a converter
+the design at 1:1**, and **a job that spans both machines** — one shared origin, stock whose edges
+are the datum for every step, and a drill alignment test for landing holes on copper made on the
+other machine. Automatic fiducials and a fitted re-registration are designed in
+[04 §4](04-Machines-Laser-and-Mixed-Workflows.md#4-board-re-alignment--the-hard-problem) and not
+built yet. A live SkiaSharp backplot viewer makes all of it verifiable before a single chip is cut. It stays a converter
 throughout — files in, files out, and someone else's software runs them.

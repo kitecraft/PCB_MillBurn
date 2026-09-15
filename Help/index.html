@@ -59,8 +59,9 @@
 </ol>
 
 <p>
-  Run order on the machine: <strong>isolate, drill, cut out</strong>. Work zero is the
-  board&rsquo;s lower-left corner, shared by every file in an export.
+  Run order on the machine: <strong>isolate, drill, cut out</strong> &mdash; with the stock cut to
+  size first, when the job is built on stock. Work zero is the board&rsquo;s lower-left corner, or
+  the stock&rsquo;s, and every file in an export shares it.
 </p>
 
 <h2>Two things worth doing before you cut</h2>
@@ -129,10 +130,11 @@
 
 <ul>
   <li>
-    <strong><a href="faq.html#drilling">Drilling gets a page of its own.</a></strong> Every drill
-    program is written with an HTML page beside it listing the bits in the order they go in, their
-    hole counts, and when the run stops to change them. It is the only operation with tool changes
-    in it, so it is the only one where the file alone does not tell you what to do.
+    <strong><a href="faq.html#drilling">Drilling is one file per bit, with a page of its own.</a></strong>
+    A layer that needs three bits is three files, and the HTML page beside them lists them in the
+    suggested order, with the bit and hole count for each. Fit the bit and set Z before each file;
+    X and Y keep their zero. When the holes have to land on copper that is already there,
+    <a href="guides/drill-alignment.html">the drill alignment guide</a> lines them up first.
   </li>
   <li>
     <strong><a href="faq.html#panel">The board pane has two toggles per layer, not one.</a></strong>

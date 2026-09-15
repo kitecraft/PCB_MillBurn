@@ -6,17 +6,19 @@
     G-code for the mill. SVG for the laser. One app, one board, no guesswork.
   </p>
   <p>
+    <a href="https://github.com/kitecraft/PCB_MillBurn/releases/latest"><img src="https://img.shields.io/github/v/release/kitecraft/PCB_MillBurn?label=download" alt="Latest release"></a>
+    <a href="https://github.com/kitecraft/PCB_MillBurn/actions/workflows/build.yml"><img src="https://github.com/kitecraft/PCB_MillBurn/actions/workflows/build.yml/badge.svg" alt="Build"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue.svg" alt="Licence: MIT"></a>
-    <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-10-512BD4.svg" alt=".NET 10"></a>
     <a href="#build-it-yourself"><img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Linux-informational.svg" alt="Runs on Windows and Linux"></a>
     <a href="THIRD-PARTY-NOTICES.md"><img src="https://img.shields.io/badge/dependencies-permissive%20only-success.svg" alt="Permissively licensed dependencies only"></a>
   </p>
+  <p>
+    <a href="https://github.com/kitecraft/PCB_MillBurn/releases/latest"><b>Download</b></a> ·
+    <a href="#quick-start">Quick start</a> ·
+    <a href="#status">What has been proven on metal</a> ·
+    <a href="Documentation/README.md">Design docs</a>
+  </p>
 </div>
-
-<!--
-  Once this is pushed to GitHub, add the build badge beside the others — replace OWNER/REPO:
-  <a href="../../actions/workflows/build.yml"><img src="https://github.com/OWNER/REPO/actions/workflows/build.yml/badge.svg" alt="build"></a>
--->
 
 <img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with isolation toolpaths drawn over the copper">
 
@@ -29,38 +31,146 @@
 Drop a folder of Gerbers on the window. The board appears. Tell each layer what it should become.
 Press Export.
 
-- **Mill it.** Isolation routing, drilling, soldermask relief, cut-out with tabs. Real G-code.
+- **Mill it.** Isolation routing, drilling one file per bit, slots and oversized holes routed with an
+  end mill, soldermask relief, cut-out with tabs — and, if you like, the copper-clad cut to size first
+  so its edges become the datum for everything after.
 - **Burn it.** Laser-ready SVG at true 1:1 millimetres, for LightBurn or Inkscape.
-- **Or both.** Etch the traces with the laser, drill and cut the outline on the mill. Same board,
-  same origin, same export.
+- **Or both.** Make the copper with the laser, then drill and cut out on the mill. Same board, same
+  origin, same export — and a drill alignment test that lands the holes in the pads.
 
-Every file is one layer. Every file shares the board's lower-left corner as work zero. Nothing is
-written until you have seen a list of exactly what is about to be written.
+Every file is one layer. Every file in an export shares one work zero — the board's lower-left
+corner, or the stock's. Nothing is written until you have seen a list of exactly what is about to be
+written, and every export comes with an HTML page saying what to run, in what order, with which bit.
 
 **It writes files. It does not drive machines.** No serial port, no jogging, no streaming — gSender,
 UGS, Candle, LightBurn and LinuxCNC already do that well.
 
 ---
 
-## 🔍 It is also just a really good Gerber viewer
+## Quick start
 
-**Use it for nothing else and it still earns its place on your machine.**
+1. **Get it.** Download the latest [release](https://github.com/kitecraft/PCB_MillBurn/releases/latest)
+   for Windows or Linux, unpack it anywhere, and run `MillBurn.App`. It is self-contained — you do not
+   need .NET installed. (On a fresh Debian or Ubuntu you may need `sudo apt install libfontconfig1`.)
+2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
+   folder…`. Drill files come along with it.
+3. **Set the board thickness** in Project info. Everything that cuts through uses it.
+4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG
+   (laser)**, or **Not exported**. The pill on the collapsed row shows what you chose.
+5. **Press Preview** (F5). The programs are drawn back over your board.
+6. **Press Export…** (Ctrl+E). Read the list. Choose a folder. Open `YourBoard.project.html` beside
+   the files for the run order.
 
-Point it at any Gerber export folder and look at your board — fast, correct, and offline.
+Press **F1** at any point. The help, the questions-and-answers page and the step-by-step guides ship
+with the app and work with no network, which is the condition a workshop is usually in.
 
-- **Reads what your EDA tool actually writes.** Gerber RS-274X and X2, aperture macros, negative
-  polarity, step-and-repeat, arcs kept as arcs. Excellon drill files including the zero-suppressed
-  dialects, G85 slots and routed slots.
-- **Knows what each file is** from its X2 `.FileFunction` — not from its filename — and *says so*
-  when it had to guess.
-- **Fast.** The viewport holds **98 fps** through a full fit → 40× → fit zoom sweep on 500,247
-  segments. A board renders in 0.04 ms.
-- **Every layer independently toggleable**, with colours you pick and it remembers.
-- **Opens anybody's G-code too.** `File ▸ Open G-code…`, or drag a `.nc` onto the window. It parses
-  the text, so a program from any CAM tool draws the same way.
-- **Light and dark**, and it means it.
+---
 
-<img src="art/screenshots/viewer-light.png" alt="The board viewer in light theme showing copper, silkscreen, holes and outline">
+## How to
+
+### Mill a board
+
+| Layer | Set it to | You get |
+|---|---|---|
+| Top / bottom copper | G-code | Isolation routing around every trace and pad |
+| Plated / non-plated holes | G-code | One drilling file per bit, a `.slots.nc` for slots and holes too big to drill, and a page listing them in the suggested order |
+| Board outline | G-code | Cut-out with tabs, in depth passes |
+| Soldermask | G-code | Mask relief — mills the mask off the pads only |
+| *Project info ▸ Build on stock* | — | A `.stock.nc` that cuts the copper-clad to size first; its corner becomes work zero for every file |
+
+Run order on the machine: **stock (if you use it), isolate, drill, cut out.** Between drilling files
+you fit the next bit and set Z again on the same spot; X and Y never move.
+
+Per layer you set the tool, cut depth, **isolation width**, break-through past the underside, and tab
+count, picking tools from your saved library (`Edit ▸ Tool library…`).
+
+**Isolation width is a width, not a lap count.** You say how wide a moat you want around every trace
+— 0.4 mm by default — and the app works out how many passes that takes with your bit at your depth,
+and shows the sum: *4 passes of 0.127 mm clears 0.450 mm*. One lap of a 30° V-bit separates the nets
+and is also a gap you cannot see, cannot solder across without bridging, and can close by handling
+the board.
+
+### Burn a board
+
+| Layer | Set it to | You get |
+|---|---|---|
+| Copper | SVG | The traces, ready to burn as a resist |
+| Copper, **inverted** | SVG | Everything inside the board edge *except* the traces — burn the resist *off* a painted board |
+| Silkscreen | SVG | Centrelines straight from the strokes, bucketed by whether they fit your beam |
+| Soldermask | SVG | The openings, which is exactly what gets lasered |
+
+Every SVG in one export shares **one page origin and size**, so layers land on top of each other in
+the laser software without a single alignment step. Bottom-side layers are mirrored for you, and the
+export says which way to flip the stock.
+
+### Both machines, one board
+
+Set the copper layers to SVG and the drill and outline layers to G-code, and export once. Same board,
+same origin. When the board moves from the laser to the mill, the holes still have to land in pads
+that are already there — which is what drill alignment is for.
+
+---
+
+## Drill alignment
+
+<table>
+<tr>
+<td width="44%" valign="top">
+<img src="Help/guides/images/drill-alignment-before-after.jpg" alt="The same row of pads drilled twice: the first holes sit off to the lower left of each pad, the holes drilled after alignment sit in the middle of every pad.">
+</td>
+<td valign="top">
+
+**A 0.8 mm hole in a 1.6 mm pad leaves 0.4 mm of copper either side.** Put work zero 0.3 mm out and
+one side of that ring is gone.
+
+`Job ▸ Drill alignment…` writes a test that brings the bit down over a real pad with the spindle
+off and stops it a tenth of a millimetre above the copper. You look, you type how far off it is, you
+test again. When the tip sits dead centre, one button writes every drilling and slot file again —
+and the outline, so it cuts round the same copper — with that shift built in.
+
+The photo is the same pads drilled twice: the first holes from the plain files, the second from the
+aligned ones, a couple of tests later.
+
+The [drill alignment guide](Help/guides/drill-alignment.html) walks through it, including how to
+measure the offset exactly by jogging. It also ships with the app, under `Help ▸ Guides`.
+
+</td>
+</tr>
+</table>
+
+---
+
+## The parts that stop you ruining boards
+
+This is the half that does not show up in a feature list, and it is the half worth having.
+
+**Watch the job in the air first.** Any program can be rewritten to trace the same path 5 mm up with
+the spindle never started. It rewrites *the emitted file*, not the toolpath, and re-parses its own
+output to prove nothing moving sideways does so below that height. Feeds are kept, so you also find
+out it is a ninety-minute job.
+
+**Follow the board that is actually on your table.** Isolation cuts 0.05 mm deep; clamped copper-clad
+is 0.1–0.2 mm out of flat. So: generate a `G38.2` probing grid, run it in your sender, feed its log
+back in, and every program is bent to the measured surface — degrading to a tilt or an offset when
+the measurements cannot justify a surface. One rule comes with it, printed on the probing file
+itself: **mark the spot you zero Z on and use it every time.**
+
+**Dial the bit in before you trust it.** `Job ▸ Test cuts…` cuts a few bands on scrap — one per depth,
+or one per feed — plus a width ladder, and writes a page explaining how to read them with nothing but
+a loupe. Every number the app computes about a cut comes from your tool library; this is how you check
+the library is telling the truth.
+
+**Say what to do at the machine.** Every export writes a project page with the run order, and every
+drill layer a page listing its files in the suggested order with the bit and hole count for each.
+Routing pages name any slot that has no cutter and will not be made.
+
+**Refuse rather than guess.** A dry run that is wrong is worse than none, because it is the thing you
+trust just before committing a board. So incremental mode is refused, not guessed at. A levelling
+job that runs outside the probed area is refused. A slot too narrow for any cutter you own is refused
+by name. Settings that contradict each other are refused rather than quietly clamped.
+
+**Say what changed.** `File ▸ Refresh from source` compares the project against the folder it came
+from and shows you what moved before it applies anything.
 
 ---
 
@@ -82,16 +192,16 @@ it simplified, and anything worth checking — before a single byte lands on dis
 </tr>
 <tr>
 <td width="50%" valign="top">
-<img src="art/screenshots/drill-guide.png" alt="The drilling companion page listing bits in order with hole counts">
-<p><b>Drilling gets a page of its own.</b> The bits in the order they go in, hole counts, when the
-run stops to change them, and what you have to re-zero. Written beside the program, as HTML. Routed
-slots get one too — including which features have no cutter and will not be made.</p>
+<img src="art/screenshots/drill-guide.png" alt="The drilling page listing one file per bit in the suggested order with hole counts">
+<p><b>Drilling gets a page of its own.</b> One file per bit, in the suggested order, with the hole
+count for each and what you have to set again between them. Written beside the programs, as HTML.
+Routed slots get one too.</p>
 </td>
 <td width="50%" valign="top">
 <img src="art/screenshots/settings.png" alt="The settings window showing machine, dry run and probing values">
 <p><b>The machine's numbers are yours.</b> Safe height, approach, rapid rate, decimals, canned
-cycles, dry-run height, probing grid, levelling. Checked for contradictions, and refused rather
-than silently clamped.</p>
+cycles, dry-run height, probing grid, levelling — or read straight from your controller's GRBL `$`
+dump. Checked for contradictions, and refused rather than silently clamped.</p>
 </td>
 </tr>
 </table>
@@ -101,165 +211,50 @@ than silently clamped.</p>
 <sub>The actual exported SVG, opened in a browser. Real millimetres, named layers, LightBurn's
 palette. This artwork has been laser-engraved onto copper-clad and measured true to within 0.1 mm.</sub>
 
----
+### It is also just a really good Gerber viewer
 
-## Quick start
+Point it at any Gerber export folder and look at your board — fast, correct, and offline.
 
-1. **Get it.** Download a release, or [build it yourself](#build-it-yourself). Self-contained —
-   you do not need .NET installed.
-2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
-   folder…`. Drill files come along with it.
-3. **Set the board thickness** in Project info. Everything that cuts through uses it.
-4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG
-   (laser)**, or **Not exported**. The pill on the collapsed row shows what you chose.
-5. **Press Preview** (F5). The programs are drawn back over your board.
-6. **Press Export…** (Ctrl+E). Read the list. Choose a folder. Done.
+- **Reads what your EDA tool actually writes.** Gerber RS-274X and X2, aperture macros, negative
+  polarity, step-and-repeat, arcs kept as arcs. Excellon drill files including the zero-suppressed
+  dialects, G85 slots and routed slots, and drill files written as Gerber.
+- **Knows what each file is** from its X2 `.FileFunction` — not from its filename — and *says so*
+  when it had to guess.
+- **Fast.** The viewport holds **98 fps** through a full zoom sweep on 500,247 segments.
+- **Opens anybody's G-code too.** `File ▸ Open G-code…`, or drag a `.nc` onto the window. It parses
+  the text, so a program from any CAM tool draws the same way.
+- **Light and dark**, with layer colours you pick and it remembers.
 
-Press **F1** at any point — the help pages ship with the app and work with no network, which is
-the condition a workshop is usually in.
-
----
-
-## How to
-
-### Mill a board
-
-| Layer | Set it to | You get |
-|---|---|---|
-| Top / bottom copper | G-code | Isolation routing around every trace and pad |
-| Plated / non-plated holes | G-code | A drilling program with tool changes and its HTML guide — plus a `.slots.nc` for slots and holes too big to drill, with a guide of its own |
-| Board outline | G-code | Cut-out with tabs, in depth passes |
-| Soldermask | G-code | Mask relief — mills the mask off the pads only |
-
-Run order on the machine: **isolate, drill, cut out.** Work zero is the board's lower-left corner,
-shared by every file in the export.
-
-Per layer you can set the tool, cut depth, **isolation width**, break-through past the underside,
-and tab count. Pick tools from your saved library (`Edit ▸ Tool library…`) — diameter, tip and
-included angle for V-bits, feeds, plunge rate, RPM, max depth, stepdown, flutes.
-
-**Isolation width is a width, not a lap count.** You say how wide a moat you want around every
-trace — 0.4 mm by default — and the app works out how many passes that takes with your bit at your
-depth, and shows the sum: *4 passes of 0.127 mm clears 0.450 mm*. One lap of a 30° V-bit is 0.127 mm,
-which separates the nets and is also a gap you cannot see, cannot solder across without bridging, and
-can close by handling the board.
-
-### Burn a board
-
-| Layer | Set it to | You get |
-|---|---|---|
-| Copper | SVG | The traces, ready to burn as a resist |
-| Copper, **inverted** | SVG | Everything inside the board edge *except* the traces — burn the resist *off* a painted board |
-| Silkscreen | SVG | Centrelines straight from the strokes, bucketed by whether they fit your beam |
-| Soldermask | SVG | The openings, which is exactly what gets lasered |
-
-Every SVG in one export shares **one page origin and size**, so layers land on top of each other
-in the laser software without a single alignment step. Bottom-side layers are mirrored for you, and
-the export says which way to flip the stock.
-
-### Both machines, one board
-
-Etch the copper with the laser, then drill and cut the outline on the mill — set the copper layers
-to SVG and the drill and outline layers to G-code, and export once. Same board, same origin.
-
-For **double-sided** work there is a recipe rather than a feature: drill every hole in the first
-setup while the stock is still located, into a scrap plate underneath, then pin through both. It
-reaches 20–50 µm and nothing is ever measured, so nothing can be measured wrong. It does put one
-rule on your layout, so read the help page before you route.
-
----
-
-## The parts that stop you ruining boards
-
-This is the half that does not show up in a feature list, and it is the half worth having.
-
-**Watch the job in the air first.** Any program can be rewritten to trace the same path 5 mm up
-with the spindle never started. It rewrites *the emitted file*, not the toolpath, and it re-parses
-its own output to prove that nothing moving sideways does so below the height. Feeds are kept, so
-you also find out it is a ninety-minute job.
-
-**Follow the board that is actually on your table.** Isolation cuts 0.05 mm deep; clamped FR4 is
-0.1–0.2 mm out of flat. That one comparison is the most common reason PCB milling disappoints
-people. So: generate a `G38.2` probing grid, run it, feed your sender's log back in, and every
-program is bent to the measured surface — thin-plate spline, clamped to the probed area, degrading
-to a tilt or an offset when the measurements cannot justify a surface. One rule comes with it, said
-on the probing file itself because that is what you are looking at when it matters: **mark the spot
-you zero Z on and use it every time**. A map holds heights relative to wherever Z zero was, so
-touching off the next tool 0.03 mm higher puts every correction in it 0.03 mm out, across the whole
-board, in the same direction — and nothing about the file looks any different.
-
-**Refuse rather than guess.** A dry run that is wrong is worse than no dry run, because it is the
-thing you trust just before committing a board. So incremental mode is refused, not guessed at. A
-levelling job that runs outside the probed area is refused. Settings that contradict each other are
-refused rather than quietly clamped. Every one of those is a case where being helpful would mean
-being wrong silently.
-
-**Dial the bit in before you trust it.** *Job ▸ Test cuts…* writes a short program that cuts a few
-bands on scrap — one per depth, or one line per feed — and an HTML page explaining how to read them.
-A depth band is twenty passes stepped sideways, because a single pass of a V-bit is 0.15 mm wide and
-no caliper can read that; you measure a 2 mm band and subtract a number the app computed exactly.
-It ends with a **width ladder** — bands whose stepover climbs past what your library claims — so the
-first one with copper left standing in it tells you what the bit really cuts, and which way to move
-the number, using nothing but a loupe. Every
-number the app computes about a cut comes from your tool library, and the library is a claim about a
-physical object; this is how you check it. Both tests cut the first line twice, at opposite ends of
-the coupon, so you can tell whether the stock moved before you believe anything else on it. Each
-test also writes its own settings beside it, so probing the coupon first — which takes two visits —
-does not mean setting the second half up from memory.
-
-**Say what changed.** `File ▸ Refresh from source` compares the project against the folder it came
-from and shows you what moved before it applies anything.
+<img src="art/screenshots/viewer-light.png" alt="The board viewer in light theme showing copper, silkscreen, holes and outline">
 
 ---
 
 ## The CLI
 
-The whole pipeline is scriptable, and it is the same code the window runs — a job exported either
-way comes out identical.
-
-The executable is `MillBurn.Cli`; it is called `millburn` below for brevity. From a source tree,
-`dotnet run --project src/MillBurn.Cli --` takes its place.
+The whole pipeline is scriptable, and it is the same code the window runs. The executable is
+`MillBurn.Cli`, called `millburn` below; from a source tree, `dotnet run --project src/MillBurn.Cli --`
+takes its place. Run it with no arguments for the full list.
 
 ```sh
-millburn board   <gerber-folder>              # detect layers, realise geometry, report
-millburn board   <folder> --png board.png     # render the board headlessly
-millburn inspect <folder>                     # parse report: what was understood, what was not
-millburn render  <layer.gbr> --svg out.svg    # realise one layer's geometry
-```
+millburn board   <gerber-folder> --png board.png          # detect layers, render headlessly
+millburn inspect <folder>                                  # what was understood, and what was not
 
-**Make the files:**
+millburn export  <folder-or-project> --write -o out/       # every layer, one file each
+millburn export  <folder> --set F_Cu.gbr=svg- --write      # svg- inverts
+millburn export  <folder> --dry-run --write                # + a .dryrun.nc beside each program
+millburn export  <folder> --stock 10,10,10,10 --write      # cut the stock to size, 10 mm border
 
-```sh
-millburn export <folder> --write -o out/
-millburn export <folder> --set F_Cu.gbr=gcode --set F_Mask.gbr=svg- --write   # svg- inverts
-millburn export <folder> --only gcode --write
-millburn export <folder> --dry-run --write            # + a .dryrun.nc beside each program
-millburn export <folder> --start-gcode preamble.nc --end-gcode shutdown.nc
-millburn mill   <folder> --isolation-width 0.4 --isolation-tool "30°" --png cut.png
-millburn svg    <silkscreen.gbr> --flavour lightburn --spot 0.1
-```
+millburn testcut depth --tool "30°" --from 0.02 --step 0.02
+millburn probe   <folder> --spacing 8                      # a G38.2 grid to run and log
+millburn export  <folder> --level probe.log --write        # bend every program to the surface
+millburn level   anyones.nc --map probe.log                # works on any G-code, not just ours
 
-**Probe and level:**
+millburn align   <project> --hole 3 --offset 0.12,-0.05    # the drill alignment test
+millburn export  <project> --align 0.12,-0.05 --align-outline --write
 
-```sh
-millburn testcut depth --tool "30°" --from 0.02 --step 0.02 # lines on scrap, plus a page on reading them
-millburn testcut feed --depth 0.05 --step 50 --probe        # + a probing routine for the coupon
-millburn testcut --reopen depth-test.testcut.json           # the same test again, same numbers
-millburn probe  <folder> --spacing 8 --depth 2 --feed 30   # a G38.2 grid to run and log
-millburn export <folder> --level probe.log --write         # bend every program to the surface
-millburn level  anyones.nc --map probe.log                 # works on any G-code, not just ours
-```
-
-**Projects:**
-
-```sh
-millburn project save    <folder> -o board.millburn
-millburn project info    board.millburn
-millburn project refresh board.millburn --apply   # take changes from the source folder
+millburn project save <folder> -o board.millburn
 millburn tools list
 ```
-
-Run `millburn` with no arguments for the full list.
 
 ---
 
@@ -269,78 +264,61 @@ Deliberate, all of it.
 
 - **Drive your machine.** No serial port, ever. That is a solved problem and not this one.
 - **Panelise.** Do it in your EDA tool — [KiKit](https://github.com/yaqwsx/KiKit) for KiCad — and
-  this will cut the panel. A panelising tool that does not know your design rules is a worse
-  panelising tool.
-- **Compensate for kerf or etch bias.** Kerf is a function of power, speed, focus, lens and
-  material, all of which live in your laser software beside a calibrated material library. A number
-  held here would go stale the moment any of them changed, with nothing to say so — and two tools
-  each applying an offset gives you a doubly compensated board that looks wrong in neither.
-- **Invent a cutter you do not own.** Slots are routed from your tool library, never from a
-  synthesised bit: the widest end mill that fits the slot and reaches through the board. If nothing
-  in the library fits, that slot is refused by name — how wide it is, and the narrowest cutter you
-  have listed — while the slots that *can* be cut still are. A program that depends on a tool you do
-  not own is a file written for a machine that cannot run it.
-- **Guess.** Where the honest answer is "this file does something I cannot safely handle", it says
-  so and hands the file back unchanged.
+  this will cut the panel.
+- **Compensate for kerf or etch bias.** Kerf depends on power, speed, focus, lens and material, all of
+  which live in your laser software beside a calibrated material library. Two tools each applying an
+  offset gives you a doubly compensated board that looks wrong in neither.
+- **Invent a cutter you do not own.** Slots and oversized holes are routed with end mills from your
+  tool library: the one you chose, wherever it fits, otherwise the widest that does. If nothing fits,
+  that feature is refused by name while the ones that *can* be cut still are.
+- **Guess.** Where the honest answer is "this file does something I cannot safely handle", it says so
+  and hands the file back unchanged.
 
 ---
 
 ## Status
 
-**The laser half is physically verified.** A 66-up panel — the hardest artwork in the test corpus,
-not the easiest — was exported as front-copper SVG and laser-engraved onto copper-clad. Traces,
-pads and outer dimensions all measure true to within the ~0.1 mm the caliper is good for, which
-bounds any scale error across 165 mm at **0.061%**.
+**Version 0.1.0 — the first public release.** Solid enough that its author makes boards with it;
+young enough that you should run the dry run first and read the pages beside the files.
 
-**The mill half has now cut a board.** Top-copper isolation with a 30° V-bit dialled in by the test
-cuts, a probed height map bending every pass to the real surface, then the outline routed out with
-tabs. Generated, dry-run, and run on a real CNC: no hand-editing at any step, no complaint from the
-sender, and the board came out of the stock.
+**Proven on metal:**
 
-**What the first real board shook out** is worth more than the test suite that passed before it.
-The time model was wrong by the machine's own numbers — the defaults assumed 200 mm/s² and
-600 mm/min on Z against a real 20 and 100. The backplot read a levelled pass above Z=0 as "not
-cutting" and under-reported the distance with it. And four tabs came out as two, in opposing
-corners, because the tab split tested one point per segment and an offset rectangle's edge is one
-segment. All three are fixed, and Settings will now read a GRBL `$` dump so the profile comes from
-the machine rather than from a guess. With it right, four programs predicted 0:10–0:27, 0:40–2:07,
-0:32–3:10 and 1:56–8:52 ran in 0:30, 0:48, 2:22 and 4:35 — three inside the bracket, and the miss
-is the shortest program, where the sender's own start-up is most of the three seconds.
+- **The laser half.** A 66-up panel exported as front-copper SVG and laser-engraved onto copper-clad:
+  traces, pads and outer dimensions true to within the ~0.1 mm the caliper can read, which bounds any
+  scale error across 165 mm at **0.061 %**.
+- **Isolation and cut-out.** Top copper with a 30° V-bit dialled in by the test cuts, bent to a probed
+  height map, then the outline routed out with tabs. No hand-editing at any step, and predicted run
+  times landed inside their brackets.
+- **Stock, drilling, slots and alignment.** The project's own test board, double-sided, with its copper
+  made by the laser: the stock cut to size on the mill, then drilled one file per bit, 1 mm slots and
+  2.2–3.5 mm holes routed with an end mill, and every hole lined up on its pad with the drill alignment
+  test.
 
-**Two more things the board taught, after that.** Levelling was flattening arcs into chords at a
-segment length meant to bound *depth* error, so a 1.7 mm pad's isolation ring left the app as an
-eight-sided figure lying 0.09 mm inside the circle — visible on the finished board without a loupe.
-An arc now stays an arc when it is split, because a `G2` with a Z word is a helix and every
-controller that runs the arcs already in the file runs those. And the tool now **stays down between
-passes that touch**: thirteen of the twenty-five links in that isolation program were exactly one
-stepover apart, lap-to-lap on the same pad across material the previous lap had already cleared, so
-thirteen of its twenty-six plunges were pure cost — about 13 % of the run on a machine whose Z
-traverse is a twentieth of its XY rate.
+**Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
+isolation, and the routed channel between the boards of a panel. The tab-placement fix and staying
+down between touching passes want a re-run.
 
-**What has still not touched copper:** drilling with tool changes, double-sided work and its
-mirror, soldermask relief, and the routed channel between the boards of a panel. Two more want a
-re-run rather than a first run: the tab fix, and the links now cut at depth. 805 tests pass with
-zero warnings under `TreatWarningsAsErrors`, but those paths are "believed correct", not "proven".
+**Known rough edges, next in line:**
 
-Done: reading and drawing boards, projects, toolpaths and G-code, the travel optimizer,
-simplification and arc fitting (a panel's isolation goes from 301,097 lines to 15,191, within a
-2 µm bound), isolation width, dry runs, height mapping, test cuts for dialling a bit in, machine
-settings read from a controller's own `$` dump, custom start/end G-code, the standalone G-code
-viewer.
+- Routed holes and slots lift to safe height between every depth lap, and cut a finishing lap under a
+  through cut. Correct, and slow. Settings for how it routes are coming.
+- Board thickness is an app setting rather than part of the project, so check it when you switch
+  between boards of different thickness. The CLI takes `--thickness`.
 
-Built since: **stock** — the app cuts a piece of copper-clad to size and its edges become the datum for every
-machine and every step after it, which removes fiducials, dowel pins and the design rule that goes
-with them. Next: fiducial fitting and fixture generators, pad selection from X2 attributes, DXF
-output, a LightBurn layer preset, **rulers** down the edges of the viewport so a board's size can be
-read rather than guessed at, and **a picture on the drilling and routing pages** with every hole and
-slot numbered in the order the machine reaches them. Also planned: an **MCP server** over the same libraries, so an assistant can
-load a board, render it, and say what a job would cut — read-only unless you launch it otherwise.
-And **solder paste** — the paste layer is already read and drawn, and a paste aperture is a
-stencil's hole, so the deposit it wants is its area times the foil thickness. That makes every pad's
-volume fall straight out of the Gerber, in the right proportions, for a syringe on the Z axis.
+877 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+every push. Up next after the rough edges: rulers down the viewport, open recent, drill hits drawn as
+an X, a numbered picture on the drilling and routing pages, better tab placement — then an MCP server
+over the same libraries, and solder paste. The full picture, including every bug worth remembering and
+what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
 
-The full picture — including the bugs, and what each one taught — is in
-[Documentation/06](Documentation/06-Roadmap-and-Risks.md).
+---
+
+## Found a bug?
+
+You will. Please [open an issue](https://github.com/kitecraft/PCB_MillBurn/issues/new/choose) — and
+if you can share them, attach **the files**: the Gerber folder zipped, the `.millburn` project, and the
+output that came out wrong. A board plus a file is usually enough to reproduce a problem exactly. The
+tracker is public, so only attach a board you are happy for anyone to see.
 
 ---
 
@@ -359,38 +337,21 @@ warning is a failed build, which is the point.
 
 ### Publishing
 
-Self-contained, so nothing has to be installed on the target — not even .NET. The app and the CLI
-go to the same directory and share their runtime.
+Self-contained, so nothing has to be installed on the target. The app and the CLI go to the same
+directory and share their runtime.
 
 ```sh
-dotnet publish src/MillBurn.App -c Release -r win-x64 --self-contained -o out/windows
-dotnet publish src/MillBurn.Cli -c Release -r win-x64 --self-contained -o out/windows
-```
+dotnet publish src/MillBurn.App -c Release -r win-x64   --self-contained -o out/windows
+dotnet publish src/MillBurn.Cli -c Release -r win-x64   --self-contained -o out/windows
 
-```sh
 dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/linux
 dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
 ```
 
-Either target can be published from either host; only the runtime identifier changes.
-
-**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves the two
-launchers non-executable: NTFS has no execute bit, so the ELF files come out `rw-r--r--` and simply
-will not start. Either `chmod +x MillBurn.App MillBurn.Cli` after copying them across, or package
-them from a filesystem that can hold the permission:
-
-```sh
-tar --owner=0 --group=0 -czf out/millburn-linux-x64.tar.gz -C out/linux .
-```
-
-Publishing on Linux sets the bit itself. On a fresh Debian or Ubuntu the app may want
-`sudo apt install -y libfontconfig1`; everything else it needs ships in the output, including
-`libSkiaSharp.so` and the `Help/` pages, so the Help menu and F1 work offline.
-
-| Target | Publish output | Archive |
-|---|---|---|
-| `win-x64` | `out/windows/`, 296 files, 215 MB | `out/millburn-win-x64.zip`, 76 MB |
-| `linux-x64` | `out/linux/`, 293 files, 112 MB | `out/millburn-linux-x64.tar.gz`, 47 MB |
+**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves the launchers
+non-executable — NTFS has no execute bit — so either `chmod +x MillBurn.App MillBurn.Cli` after copying
+them across, or publish on Linux. Pushing a `v*` tag runs [`release.yml`](.github/workflows/release.yml),
+which does exactly that and attaches both archives to the release.
 
 ---
 
@@ -401,28 +362,28 @@ src/
   MillBurn.Core       units, transforms, project model, settings
   MillBurn.Gerber     Gerber RS-274X + X2, Excellon drill and route
   MillBurn.Geometry   Clipper2: tessellation, booleans, offsets, area
-  MillBurn.Cam        isolation, drilling, outline, mask and silkscreen generators
+  MillBurn.Cam        isolation, drilling, slots, outline, stock, mask and silkscreen generators
   MillBurn.Optimize   travel optimizer, motion time model, simplification, pass linking
-  MillBurn.Gcode      mill only: emitter, parser, backplot, dry runs, probing, test cuts
+  MillBurn.Gcode      mill only: emitter, parser, backplot, dry runs, probing, test cuts, alignment
   MillBurn.Post       mill only: post-processor templates — empty, scheduled
   MillBurn.Align      height maps (probe-log import, TPS) and G-code levelling
   MillBurn.Export     SVG. DXF and PDF are scheduled
   MillBurn.Viewer     scene, level of detail, spatial culling, Skia renderer
-  MillBurn.Pipeline   the stage graph tying it together
+  MillBurn.Pipeline   the export planner and companion pages tying it together
   MillBurn.App        Avalonia shell (UI only)
   MillBurn.Cli        headless batch driver
 tests/
   MillBurn.Tests        unit and property tests
   MillBurn.GoldenTests  golden-file and determinism regression
-  boards/               six real KiCad exports, committed
-  corpus/               empty — where a pcb2gcode test-data checkout is looked for
+  boards/               seven real KiCad exports, committed
+Help/                   the offline help, FAQ and guides the app ships with
+design/                 KiCad sources of the project's own test board
 ```
 
 Every algorithm lives in a UI-free `net10.0` library; only `MillBurn.App` references a UI framework.
 
 **Design documentation is in [`Documentation/`](Documentation/README.md)** — why the code is shaped
-the way it is, written for whoever maintains it. It is considerably more interesting than a
-changelog.
+the way it is, written for whoever maintains it. It is considerably more interesting than a changelog.
 
 | Doc | Subject |
 |---|---|
@@ -435,17 +396,15 @@ changelog.
 | [07](Documentation/07-UI-Framework-Decision.md) | Avalonia vs. WPF vs. MAUI |
 | [08](Documentation/08-Requirements-Matrix.md) | Every requirement in the other seven, traced to what exists |
 
-Test fixtures come in two kinds, both committed and both run everywhere: hand-written cases from
-the Ucamco specification, and real KiCad board exports in
-[`tests/boards/`](tests/boards/README.md). The first prove the parser handles the specification;
-the second prove it handles what an EDA tool actually writes, which is where the bugs have been.
-Set `MILLBURN_BOARDS` to run the suite against a private board without committing it.
+Test fixtures come in two kinds, both committed and both run everywhere: hand-written cases from the
+Ucamco specification, and real KiCad board exports in [`tests/boards/`](tests/boards/README.md). The
+first prove the parser handles the specification; the second prove it handles what an EDA tool
+actually writes, which is where the bugs have been. Set `MILLBURN_BOARDS` to run the suite against a
+private board without committing it.
 
-A third kind is **not** committed. `tests/corpus/` is where a checkout of pcb2gcode's test data is
-looked for — 24 more Gerbers, and good ones — but pcb2gcode is GPL-3.0 and redistributing its data
-would carry that licence into this repository. Those cases skip cleanly when it is absent, so a
-fresh clone and CI stay green while a local checkout gets much broader coverage. Point
-`MILLBURN_GERBER_CORPUS` at one if you have it.
+A third kind is **not** committed: pcb2gcode's test data is GPL-3.0, and redistributing it would carry
+that licence into this repository. Point `MILLBURN_GERBER_CORPUS` at a checkout of it for 24 more
+Gerbers; those cases skip cleanly when it is absent, so a fresh clone and CI stay green.
 
 ---
 
@@ -455,10 +414,10 @@ fresh clone and CI stay green while a local checkout gets much broader coverage.
 
 **[pcb2gcode](https://github.com/pcb2gcode/pcb2gcode) is the reason this project knows what it is
 for.** For the better part of two decades it has been the answer to "how do I mill a PCB at home",
-and an enormous number of boards exist because of it — mine among them. It solved the hard, unglamorous
-problems first: isolation from real Gerbers, V-bit geometry, break-through, tabs, the whole shape of
-the job. Everything here starts from a problem statement that tool worked out and then proved, in
-copper, on thousands of benches.
+and an enormous number of boards exist because of it — mine among them. It solved the hard,
+unglamorous problems first: isolation from real Gerbers, V-bit geometry, break-through, tabs, the
+whole shape of the job. Everything here starts from a problem statement that tool worked out and then
+proved, in copper, on thousands of benches.
 
 Where this project does something differently, that is a difference of goals and of what is cheap in
 2026 — not a criticism of a tool that got there twenty years earlier with far less to build on. The
@@ -472,42 +431,43 @@ credited here, and the code stays where its authors put it.
 ### To Universal G-code Sender
 
 **[UGS](https://github.com/winder/Universal-G-Code-Sender)** and its visualizer taught this project
-what a G-code viewer owes the person reading it — the decomposition into renderable layers, the
-honest time model, the idea that seeing the rapids is what makes a problem obvious. Also GPL-3.0,
-also read and never copied, also given away free for years. Thank you.
+what a G-code viewer owes the person reading it — the decomposition into renderable layers, the honest
+time model, the idea that seeing the rapids is what makes a problem obvious. It is also the sender
+this project's output is run through. Also GPL-3.0, also read and never copied, also given away free
+for years. Thank you.
 
 ### To the libraries this is built on
 
 None of this would exist without work other people gave away:
 
 [**Clipper2**](https://github.com/AngusJohnson/Clipper2) (Angus Johnson) — every boolean and every
-offset in this project, on exact Int64 coordinates. It is the single most load-bearing dependency
-here and it has never once been wrong. ·
+offset in this project, on exact Int64 coordinates. It is the single most load-bearing dependency here
+and it has never once been wrong. ·
 [**NetTopologySuite**](https://github.com/NetTopologySuite/NetTopologySuite) — Voronoi, spatial
 indexing, validity. ·
 [**SkiaSharp**](https://github.com/mono/SkiaSharp) and the Skia team — the viewport draws half a
 million segments at 98 fps because of it. ·
-[**Avalonia**](https://github.com/AvaloniaUI/Avalonia) — the reason one codebase is a real desktop
-app on Windows and Linux with no per-platform branch. Plus
+[**Avalonia**](https://github.com/AvaloniaUI/Avalonia) — the reason one codebase is a real desktop app
+on Windows and Linux with no per-platform branch. Plus
 [**AvaloniaEdit**](https://github.com/AvaloniaUI/AvaloniaEdit) and
 [**Dock.Avalonia**](https://github.com/wieslawsoltes/Dock). ·
 [**MathNet.Numerics**](https://github.com/mathnet/mathnet-numerics) — the SVD behind the height-map
 fit. ·
 [**CommunityToolkit.Mvvm**](https://github.com/CommunityToolkit/dotnet) ·
 [**Scriban**](https://github.com/scriban/scriban) ·
-[**xUnit**](https://github.com/xunit/xunit) and [**Verify**](https://github.com/VerifyTests/Verify)
-— 716 tests' worth. ·
-And **.NET** itself, which is why the build instructions are two lines long.
+[**xUnit**](https://github.com/xunit/xunit) and [**Verify**](https://github.com/VerifyTests/Verify). ·
+And **.NET** itself, which is why the build instructions are three lines long.
 
 ### And to the people who made the inputs make sense
 
 **[Ucamco](https://www.ucamco.com/en/gerber)**, for publishing the Gerber specification openly and
 keeping it readable — X2's `.FileFunction` is why this app knows what your files *are* instead of
-guessing from their names. · **[KiCad](https://www.kicad.org/)**, for being free, excellent, and
-the source of every real board in the test suite. · **[KiKit](https://github.com/yaqwsx/KiKit)**,
-which panelises so much better than this ever would that panelising is deliberately not here. ·
-And the **gSender**, **Candle**, **LinuxCNC** and **LightBurn** communities, who make the machines
-actually run — this app only writes the files.
+guessing from their names. · **[KiCad](https://www.kicad.org/)**, for being free, excellent, and the
+source of every real board in the test suite. · **[KiKit](https://github.com/yaqwsx/KiKit)**, which
+panelises so much better than this ever would that panelising is deliberately not here. · Camilo
+Sabogal's [**KiCad-Arduino-Boards**](https://github.com/sabogalc/KiCad-Arduino-Boards), two of the
+test boards. · And the **gSender**, **Candle**, **LinuxCNC** and **LightBurn** communities, who make the
+machines actually run — this app only writes the files.
 
 ---
 
@@ -517,14 +477,14 @@ actually run — this app only writes the files.
 majority of the code, the tests, and this documentation. It was not used as an autocomplete; it was
 used as the thing doing the writing, over many long sessions, under direction.
 
-That direction mattered more than it might sound. Every decision about what the app should *do*
-came from the person whose mill and laser this was built for, and most of the bugs worth finding
-were found the same way: by cutting a board, measuring it, and coming back with the measurement.
-An AI will happily produce a G-code file that passes every test and ruins a piece of copper-clad.
-The corrective is a real machine, and a person watching it.
+That direction mattered more than it might sound. Every decision about what the app should *do* came
+from the person whose mill and laser this was built for, and most of the bugs worth finding were found
+the same way: by cutting a board, measuring it, and coming back with the measurement. An AI will
+happily produce a G-code file that passes every test and ruins a piece of copper-clad. The corrective
+is a real machine, and a person watching it.
 
-So: written with Claude, driven by a human, and checked against metal. Read the code before you
-trust it with a spindle — which is good advice whoever wrote it.
+So: written with Claude, driven by a human, and checked against metal. Read the code before you trust
+it with a spindle — which is good advice whoever wrote it.
 
 ---
 
@@ -533,9 +493,9 @@ trust it with a spindle — which is good advice whoever wrote it.
 **[MIT](LICENSE).** Use it for anything, including commercially; keep the copyright notice.
 
 Every dependency is permissively licensed as well — MIT, BSD, BSL-1.0, Apache-2.0 — so there is no
-copyleft anywhere in the graph and a build can be shipped by anyone, in any product. The full list
-is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+copyleft anywhere in the graph and a build can be shipped by anyone, in any product. The full list is
+in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-The two GPL-3.0 projects credited above were read for approach and never copied — no line of either
-is in this repository. That is a live constraint on how this project is written, not a formality:
-it is what keeps this licence honest and everyone else's work unencumbered.
+The two GPL-3.0 projects credited above were read for approach and never copied — no line of either is
+in this repository. That is a live constraint on how this project is written, not a formality: it is
+what keeps this licence honest and everyone else's work unencumbered.

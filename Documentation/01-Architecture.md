@@ -21,7 +21,7 @@
   xdg-desktop-portal on Linux — and G-code saved from the Linux build loaded into gSender.
 
   macOS is likely and unverified; nothing is known to be in the way.
-- **UI shell: Avalonia UI recommended** over the existing MAUI scaffold — see
+- **UI shell: Avalonia UI**, chosen over MAUI and WPF — see
   [07 — UI Framework Decision](07-UI-Framework-Decision.md) for the full argument. Short version:
   Avalonia *is* SkiaSharp underneath (so the 500k-segment viewport is native, not a composited
   bitmap), `AvaloniaEdit` gives the synced G-code editor for free, and `Dock.Avalonia` gives real

@@ -44,8 +44,8 @@ transliterated into this repository.
 
 | Path | What it is | Licence |
 |---|---|---|
-| `pcb2gcode/` | The original C++ tool | GPL-3.0 |
-| `Universal-G-Code-Sender/` | UGS, the G-code sender whose visualizer informed ours | GPL-3.0 |
+| `WorkingFolder/pcb2gcode/` | The original C++ tool | GPL-3.0 |
+| `WorkingFolder/Universal-G-Code-Sender/` | UGS, the G-code sender whose visualizer informed ours | GPL-3.0 |
 
 ## Committed test data
 
@@ -70,12 +70,6 @@ written fresh. See [Documentation/01 §9](Documentation/01-Architecture.md#9-lic
 pcb2gcode's Gerber test corpus is likewise *referenced from that checkout* by the tests, never
 copied into this repository; those tests skip cleanly when the checkout is absent.
 
-## Board files in this repository
-
-`tests/boards/` holds two real KiCad 10 exports — `GridStripConnector` and `PogoTest1` — used as
-regression fixtures. They are the repository owner's own designs, contributed under the same MIT
-licence as the rest of the project. See `tests/boards/README.md` for what each one exercises and
-the bar for adding another.
-
-Scratch board folders beside the repository (`MyGerbers/`, `MyGerbers2/`) are git-ignored and are
-not project content.
+See [`tests/boards/README.md`](tests/boards/README.md) for what each committed board exercises and
+the bar for adding another. Scratch boards live in `WorkingFolder/`, which is git-ignored and is not
+project content.

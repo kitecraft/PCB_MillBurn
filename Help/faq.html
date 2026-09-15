@@ -60,11 +60,15 @@
   something like:
 </p>
 
-<pre><code>MyBoard-F_Cu.nc            top copper, isolation routing
-MyBoard-PTH.nc             plated holes
-MyBoard-NPTH.nc            non-plated holes
-MyBoard-Edge_Cuts.nc       board outline, with tabs
-MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
+<pre><code>MyBoard.stock.nc                 the stock cut to size, when the job is built on stock
+MyBoard-F_Cu.nc                  top copper, isolation routing
+MyBoard-PTH.bit1-1.00mm.nc       plated holes, first bit
+MyBoard-PTH.bit2-0.80mm.nc       plated holes, second bit
+MyBoard-PTH.slots.nc             slots, and holes too big for any drill
+MyBoard-NPTH.nc                  non-plated holes, one bit
+MyBoard-Edge_Cuts.nc             board outline, with tabs
+MyBoard-F_Silkscreen.svg         legend, for the laser
+MyBoard.project.html             the whole export, on one page</code></pre>
 
 <p>
   The name keeps the layer&rsquo;s own stem, so the output sorts next to the file it came from, and
@@ -81,9 +85,10 @@ MyBoard-F_Silkscreen.svg   legend, for the laser</code></pre>
 MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</code></pre>
 
 <p>
-  Drill programs also get a <code>MyBoard-PTH.drilling.html</code>, which is a page rather than a
-  program: the bits in order, their hole counts, and when the run stops to change them. See
-  <a href="#drilling">Drilling: which bit, and when it stops</a>.
+  Drilling also gets a <code>MyBoard-PTH.drilling.html</code>, which is a page rather than a
+  program: the layer&rsquo;s files in the suggested order, the bit each one wants, and their hole
+  counts. Slots and milled holes get <code>MyBoard-PTH.slots.html</code> in the same way. See
+  <a href="#drilling">Drilling: one file per bit</a>.
 </p>
 
 <p>
@@ -101,8 +106,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  A sensible order is <strong>isolate, drill, cut out</strong>. The outline goes last because
-  once the board is free of the stock it is no longer held.
+  A sensible order is <strong>isolate, drill, cut out</strong>, with the stock cut to size first
+  when the job is built on stock. The outline goes last because once the board is free of the stock
+  it is no longer held. The project page lists the order for your export.
 </p>
 
 <div class="note">

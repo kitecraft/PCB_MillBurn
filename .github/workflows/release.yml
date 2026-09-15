@@ -1,0 +1,103 @@
+name: release
+
+# Push a tag like v0.2.0 and this builds the self-contained Windows and Linux downloads and attaches
+# them to that tag's GitHub release, creating the release if it does not exist yet.
+#
+# Linux is published on Linux on purpose: publishing it from Windows leaves the launchers without
+# their execute bit (NTFS has none), and the archive would carry programs that will not start.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing tag to build and attach downloads to, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  CI: true
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build and test
+        run: dotnet test PCB_MillBurn.slnx -c Release
+
+  package:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        shell: bash
+        run: |
+          version="${TAG#v}"
+          out="out/${{ matrix.rid }}"
+          dotnet publish src/MillBurn.App -c Release -r ${{ matrix.rid }} --self-contained -p:Version="$version" -o "$out"
+          dotnet publish src/MillBurn.Cli -c Release -r ${{ matrix.rid }} --self-contained -p:Version="$version" -o "$out"
+          cp LICENSE THIRD-PARTY-NOTICES.md "$out/"
+
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "out/${{ matrix.rid }}/*" -DestinationPath "millburn-$env:TAG-${{ matrix.rid }}.zip"
+
+      - name: Archive (Linux)
+        if: runner.os == 'Linux'
+        run: tar --owner=0 --group=0 -czf "millburn-$TAG-${{ matrix.rid }}.tar.gz" -C "out/${{ matrix.rid }}" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: millburn-*
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* --title "PCB_MillBurn $TAG" --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi

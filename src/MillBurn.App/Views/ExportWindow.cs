@@ -153,7 +153,11 @@ public sealed class ExportWindow : Window
         heading.Children.Add(count);
         heading.Children.Add(Token(new TextBlock
         {
-            Text = "One file per layer, all sharing the board's lower-left corner as work zero.",
+            // The stock's corner when the job is built on stock: saying "the board's" there sends the
+            // operator to zero a border's width away from where every file in the list expects.
+            Text = _plan.Blank.Resolved
+                ? "One file per layer (per bit, for drilling), all sharing the stock's lower-left corner as work zero."
+                : "One file per layer (per bit, for drilling), all sharing the board's lower-left corner as work zero.",
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
         }, "TextSecondary"));

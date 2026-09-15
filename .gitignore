@@ -11,8 +11,18 @@
 /pcb2gcode/
 /Universal-G-Code-Sender/
 
-# Superseded MAUI scaffold, kept on disk pending a decision (Documentation/07-UI-Framework-Decision.md).
-/PCB_MillBurn/
+# ---- KiCad sources in design/ ----
+# The .kicad_pcb, .kicad_sch and .kicad_pro are project content. What KiCad writes beside them is not:
+# its own local-history git repository, timestamped backups, lock files while a file is open, the
+# per-user view state in .kicad_prl, and the footprint cache.
+design/**/.history/
+design/**/*-backups/
+design/**/~*.lck
+design/**/*.kicad_prl
+design/**/fp-info-cache
+design/**/_autosave-*
+# Photos straight off a phone carry location data. The copies used in Help/ are re-saved without it.
+design/Pictures/
 
 # ---- Build output ----
 [Bb]in/
