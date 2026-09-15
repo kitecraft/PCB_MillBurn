@@ -90,6 +90,7 @@
   .note p:last-child, .warn p:last-child { margin-bottom: 0; }
 
   figure { margin: 1.5rem 0; }
+  figure img { display: block; max-width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--rule); }
   figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 0.45rem; }
 
   .placeholder {
@@ -129,8 +130,8 @@
 
 <p>
   Most of KiCad&rsquo;s defaults are already right. The settings below are the ones that matter, with
-  the reason for each. Labels are as they appear in KiCad 8 to 10; older versions word some of them
-  differently.
+  the reason for each. The labels and pictures are from KiCad 10; older versions word some of them
+  differently, and lay out the drill dialog differently too.
 </p>
 
 <h2>The short version</h2>
@@ -154,6 +155,10 @@
     <tr>
       <td>Plot on All Layers</td><td>Nothing</td>
       <td>An outline plotted onto the copper would be isolated like a trace.</td>
+    </tr>
+    <tr>
+      <td>Plot drawing sheet</td><td>Off</td>
+      <td>The page border and title block would be drawn onto every layer, copper included.</td>
     </tr>
     <tr>
       <td>Use drill/place file origin</td><td>Off</td>
@@ -199,11 +204,9 @@
 </p>
 
 <figure>
-  <div class="placeholder" role="img" aria-label="Screenshot to come: KiCad's Plot dialog with these settings">
-    <strong>Screenshot to come</strong>
-    <span>KiCad&rsquo;s Plot dialog, set up as above.</span>
-    <code>images/kicad-plot-dialog.png</code>
-  </div>
+  <img src="images/kicad-plot-dialog.png" width="947" height="653"
+       alt="KiCad 10's Plot dialog: Gerber format; F.Cu, B.Cu, the paste, silkscreen and mask layers and Edge.Cuts included; nothing under Plot on All Layers; drawing sheet off; Check zone fills before plotting, Generate Gerber job file, Use extended X2 format and Include netlist attributes ticked; coordinate format 4.6, unit mm.">
+  <figcaption>KiCad 10&rsquo;s Plot dialog, set up for the project&rsquo;s own test board.</figcaption>
 </figure>
 
 <h3>Drill files: Generate Drill Files&hellip; in the same dialog</h3>
@@ -215,56 +218,59 @@
   </thead>
   <tbody>
     <tr>
-      <td>Drill file format</td><td>Excellon or Gerber X2</td>
-      <td>Both are read.</td>
+      <td>Format</td><td>Excellon or Gerber X2</td>
+      <td>Both are read. The picture below uses Gerber X2.</td>
     </tr>
     <tr class="key">
-      <td>PTH and NPTH in single file</td><td>Off</td>
+      <td>PTH and NPTH in single file <em>(Excellon)</em></td><td>Off</td>
       <td>Plated and non-plated holes come in as separate layers, so each gets its own settings and files.</td>
     </tr>
     <tr class="key">
-      <td>Minimal header</td><td>Off</td>
+      <td>Minimal header <em>(Excellon)</em></td><td>Off</td>
       <td>The header is where an Excellon file says whether its holes are plated.</td>
     </tr>
     <tr>
-      <td>Mirror Y axis</td><td>Off</td>
+      <td>Mirror Y axis <em>(Excellon)</em></td><td>Off</td>
       <td>The app mirrors bottom-side work itself.</td>
     </tr>
     <tr>
-      <td>Oval holes drill mode</td><td>Use route command</td>
-      <td>KiCad&rsquo;s recommendation. Slots written the other way (G85) are read too.</td>
+      <td>Use alternate drill mode for oval holes <em>(Excellon)</em></td><td>Off</td>
+      <td>Slots are written as routed paths. The alternate mode (G85) is read too.</td>
+    </tr>
+    <tr>
+      <td>Generate tenting layers <em>(Gerber X2)</em></td><td>Off</td>
+      <td>Not needed for the mill or the laser, so the folder holds only the files the board is made from.</td>
     </tr>
     <tr class="key">
-      <td>Drill origin</td><td>Absolute</td>
+      <td>Origin</td><td>Absolute</td>
       <td>The same origin as the Gerbers. See below.</td>
     </tr>
     <tr>
-      <td>Drill units</td><td>Millimeters</td>
+      <td>Units <em>(Excellon)</em></td><td>Millimeters</td>
       <td>Matches the Gerbers.</td>
     </tr>
     <tr>
-      <td>Zeros format</td><td>Decimal format</td>
+      <td>Zeros <em>(Excellon)</em></td><td>Decimal format</td>
       <td>KiCad&rsquo;s recommendation. The zero-suppressed formats are read too.</td>
     </tr>
     <tr>
-      <td>Map file format</td><td>Gerber X2</td>
-      <td>Only a Gerber map is read; it shows as a <em>Drill map</em> layer. Optional.</td>
+      <td>Generate map</td><td>On, Gerber X2</td>
+      <td>Optional. Only a Gerber map is read; it shows as a <em>Drill map</em> layer.</td>
     </tr>
   </tbody>
 </table>
 </div>
 
 <p>
-  Then <strong>Generate Drill File</strong>, and <strong>Generate Map File</strong> if you want the
-  maps. The report file is not read.
+  Then <strong>Generate</strong>. It writes the drill files, and the maps when <em>Generate map</em> is
+  ticked. <em>Generate Report File&hellip;</em> is not needed: the report is not read.
 </p>
 
 <figure>
-  <div class="placeholder" role="img" aria-label="Screenshot to come: KiCad's Generate Drill Files dialog with these settings">
-    <strong>Screenshot to come</strong>
-    <span>KiCad&rsquo;s Generate Drill Files dialog, set up as above.</span>
-    <code>images/kicad-drill-dialog.png</code>
-  </div>
+  <img src="images/kicad-drill-dialog.png" width="574" height="459"
+       alt="KiCad 10's Generate Drill Files dialog: Gerber X2 format with tenting layers off, Generate map ticked with Gerber X2, origin Absolute; units Millimeters and zeros Decimal format, greyed out.">
+  <figcaption>KiCad 10&rsquo;s Generate Drill Files dialog. Units and zeros are greyed out here because
+    they only apply to Excellon.</figcaption>
 </figure>
 
 <h2>Why these matter</h2>
