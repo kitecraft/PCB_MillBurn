@@ -586,6 +586,120 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
+    // ------------------------------------------------------------------ drill alignment
+
+    /// <summary>
+    /// The drilling and routing files the current export would write — what Job › Drill alignment
+    /// offers to test with, and what it writes again with the offset.
+    /// </summary>
+    public IReadOnlyList<ExportItem> DrillFiles() => PlanExport(OutputKind.Gcode) is { } plan
+        ? [.. plan.Items.Where(ExportPlanner.IsDrillOrRouting)]
+        : [];
+
+    /// <summary>The offsets last typed into the alignment dialog, kept for the session so reopening it keeps them.</summary>
+    public double AlignmentXMm { get; set; }
+
+    /// <inheritdoc cref="AlignmentXMm"/>
+    public double AlignmentYMm { get; set; }
+
+    /// <summary>Whether the aligned files include the board outline. On unless unticked this session.</summary>
+    public bool AlignmentOutline { get; set; } = true;
+
+    /// <summary>Whether this export has a board outline program for the alignment to move.</summary>
+    public bool HasOutlineProgram() => PlanExport(OutputKind.Gcode) is { } plan
+        && plan.Items.Any(ExportPlanner.IsBoardOutline);
+
+    /// <summary>Remembers the alignment test's hover height, which is a setting rather than a per-job number.</summary>
+    public void SaveAlignHover(double hoverMm) =>
+        SaveSettings(Settings with { Align = Settings.Align with { HoverMm = hoverMm } });
+
+    /// <summary>Writes the alignment test for one hole of one file, overwriting the last one.</summary>
+    public bool WriteAlignmentTest(
+        string path, ExportItem file, MillBurn.Gcode.AlignmentTarget target, Point2 offsetNm)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(target);
+
+        try
+        {
+            var text = MillBurn.Gcode.AlignmentTest.Generate(target, offsetNm, file.TargetName, new MillBurn.Gcode.AlignmentTestOptions
+            {
+                HoverMm = Settings.Align.HoverMm,
+                FeedMmPerMin = Settings.Align.FeedMmPerMin,
+                SafeZMm = Settings.Machine.SafeZMm,
+                Decimals = Settings.Machine.Decimals,
+            });
+
+            File.WriteAllText(path, text);
+
+            StatusMessage = string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"Wrote {Path.GetFileName(path)}: over {target.Kind} {target.Number} of {file.TargetName}, "
+                + $"moved X{MillBurn.Gcode.AlignmentTest.FormatOffset(offsetNm.X)} Y{MillBurn.Gcode.AlignmentTest.FormatOffset(offsetNm.Y)} mm.");
+
+            return true;
+        }
+        catch (Exception ex) when (IsExpected(ex) || ex is ArgumentOutOfRangeException)
+        {
+            StatusMessage = $"Could not write '{path}': {ex.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Writes every drilling and routing file again, moved by the alignment, under the aligned names,
+    /// with their pages. Returns how many files were written.
+    /// </summary>
+    public int WriteAlignedFiles(string folder, DrillAlignment alignment)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+        ArgumentNullException.ThrowIfNull(alignment);
+
+        if (PlanExport(OutputKind.Gcode, alignment: alignment) is not { } plan)
+        {
+            return 0;
+        }
+
+        var files = plan.Items.Where(alignment.Moves).ToList();
+
+        if (files.Count == 0)
+        {
+            StatusMessage = "Nothing to align: no drilling, routing or outline files in this export.";
+            return 0;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(folder);
+            var written = 0;
+
+            foreach (var item in files)
+            {
+                File.WriteAllText(Path.Combine(folder, item.TargetName), item.Content);
+                written++;
+
+                if (item.Companion is { } page)
+                {
+                    File.WriteAllText(Path.Combine(folder, page.TargetName), page.Content);
+                    written++;
+                }
+            }
+
+            StatusMessage = string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"Wrote {written} aligned file(s), moved X{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.XNm)} "
+                + $"Y{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.YNm)} mm, to {folder}. Run the .aligned files instead of the originals.");
+
+            return written;
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            StatusMessage = $"Could not write to '{folder}': {ex.Message}";
+            return 0;
+        }
+    }
+
     /// <summary>Reads a sender's probe log and keeps the surface it describes.</summary>
     public bool ImportHeightMap(string path)
     {
@@ -723,7 +837,8 @@ public sealed partial class MainViewModel : ViewModelBase
     /// no filter: what each layer produces is that layer's own setting, said on its own row, and a
     /// second control that could disagree with six rows at once is one answer too many.
     /// </summary>
-    public ExportPlan? PlanExport(OutputKind? filter = null, string? onlyLayer = null)
+    public ExportPlan? PlanExport(
+        OutputKind? filter = null, string? onlyLayer = null, DrillAlignment? alignment = null)
     {
         if (_board is null)
         {
@@ -737,7 +852,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
         var plan = ExportPlanner.Plan(
             _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter,
-            framing: Framing, machineSettings: Settings.Machine, job: _project.Settings.Job);
+            framing: Framing, machineSettings: Settings.Machine, job: _project.Settings.Job, alignment: alignment);
 
         if (onlyLayer is null)
         {

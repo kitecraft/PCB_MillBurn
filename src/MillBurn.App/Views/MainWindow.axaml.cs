@@ -409,6 +409,18 @@ public partial class MainWindow : Window
             _captureInstead = paste;
         }
 
+        // The drill alignment dialog, for a screenshot, like every other window here.
+        if (args.Contains("--align", StringComparer.OrdinalIgnoreCase) && vm.HasBoard)
+        {
+            var align = new AlignmentWindow(vm, Environment.CurrentDirectory)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            align.Show(this);
+            _captureInstead = align;
+        }
+
         if (args.Contains("--settings", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new SettingsWindow(vm.Settings) { RequestedThemeVariant = ActualThemeVariant };
@@ -931,6 +943,25 @@ public partial class MainWindow : Window
     /// Enabled with no board open, because this tests the tool library's claim about a physical
     /// object and that claim does not depend on which design happens to be loaded.
     /// </summary>
+    /// <summary>
+    /// Job › Drill alignment. Files go to the last export folder, because the aligned files belong
+    /// beside the ones they replace and the test file beside both.
+    /// </summary>
+    private async void OnAlignClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !vm.HasBoard)
+        {
+            return;
+        }
+
+        var folder = vm.Settings.LastExportFolder is { } last && Directory.Exists(last)
+            ? last
+            : vm.Project.OriginFolder ?? Environment.CurrentDirectory;
+
+        var window = new AlignmentWindow(vm, folder) { RequestedThemeVariant = ActualThemeVariant };
+        await window.ShowDialog(this);
+    }
+
     private async void OnTestCutsClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)

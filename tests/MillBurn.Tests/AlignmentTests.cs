@@ -1,0 +1,281 @@
+using MillBurn.Core;
+using MillBurn.Gcode;
+using MillBurn.Pipeline;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace MillBurn.Tests;
+
+/// <summary>
+/// Drill alignment: hover a bit over a real hole, find the offset by eye, and write the drilling and
+/// routing files again with it.
+///
+/// A small hole in a small pad leaves a few tenths either side, so a drilling origin slightly out puts
+/// holes on the edge of their pads. The board is assumed square to the machine, so the fix is an
+/// origin shift — and every one of these tests is about that shift being exactly the number typed, on
+/// exactly the files it is meant for.
+/// </summary>
+public sealed class AlignmentTests(ITestOutputHelper output)
+{
+    private static ExportPlan Plan(DrillAlignment? alignment = null, JobOptions? job = null)
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        return ExportPlanner.Plan(
+            loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode,
+            job: job, alignment: alignment);
+    }
+
+    // ------------------------------------------------------------------ the holes to hover over
+
+    /// <summary>Every hole a drilling file makes, in the order it makes them, and nothing else.</summary>
+    [Fact]
+    public void EveryHoleADrillingFileMakesIsATarget()
+    {
+        var drilling = Plan().Items.Where(i => i.Operation == OperationKind.Drilling).ToList();
+
+        Assert.NotEmpty(drilling);
+
+        foreach (var file in drilling)
+        {
+            var holes = GcodeParser.Parse(file.Content).Moves
+                .Where(m => !m.IsRapid && m.IsVertical && m.ToZNm < 0)
+                .Select(m => m.From)
+                .Distinct()
+                .ToList();
+
+            var targets = AlignmentTest.Targets(file.Content);
+
+            output.WriteLine($"{file.TargetName}: {holes.Count} holes, {targets.Count} targets");
+
+            Assert.Equal(holes, targets.Select(t => t.At));
+            Assert.All(targets, t => Assert.Equal("hole", t.Kind));
+            Assert.Equal(Enumerable.Range(1, targets.Count), targets.Select(t => t.Number));
+        }
+    }
+
+    /// <summary>
+    /// A milled hole is a helix, and its target is the centre of the circle it cuts — which is the hole
+    /// in the drill file, in work coordinates. Its pecks and depth passes are one target, not several.
+    /// </summary>
+    [Fact]
+    public void AMilledHoleIsTargetedAtItsCentre()
+    {
+        // The stock library's only drill is 1.0 mm, so PogoTest1's larger holes are milled when asked.
+        var plan = Plan(job: new JobOptions { MillLargeHoles = true });
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var centres = loaded.Layers
+            .Where(l => l.Drill is not null)
+            .SelectMany(l => l.Drill!.Hits)
+            .Select(h => new Point2(h.At.X - loaded.Bounds.MinX, h.At.Y - loaded.Bounds.MinY))
+            .ToList();
+
+        var routed = plan.Items.Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)).ToList();
+
+        Assert.NotEmpty(routed);
+
+        foreach (var file in routed)
+        {
+            var targets = AlignmentTest.Targets(file.Content);
+
+            output.WriteLine($"{file.TargetName}: {string.Join(", ", targets.Select(t => $"{t.Kind} X{Nm.ToMillimetreString(t.At.X, 3)} Y{Nm.ToMillimetreString(t.At.Y, 3)}"))}");
+
+            Assert.NotEmpty(targets);
+            Assert.All(targets, t => Assert.Contains(
+                centres,
+                c => Math.Abs(c.X - t.At.X) <= Nm.FromMillimetres(0.01) && Math.Abs(c.Y - t.At.Y) <= Nm.FromMillimetres(0.01)));
+        }
+    }
+
+    // ------------------------------------------------------------------ the test program
+
+    /// <summary>
+    /// Over the hole, moved by the offset, down to the hover height and no lower, spindle off — and it
+    /// stays there, because the point is to look at the tip.
+    /// </summary>
+    [Fact]
+    public void TheTestHoversOverTheHoleAndNeverGoesLower()
+    {
+        var target = new AlignmentTarget(3, new Point2(Nm.FromMillimetres(23.62), Nm.FromMillimetres(47.878)), "hole");
+        var offset = new Point2(Nm.FromMillimetres(0.12), Nm.FromMillimetres(-0.05));
+
+        var text = AlignmentTest.Generate(
+            target, offset, "Board-PTH-drl.bit1-1.00mm.nc", new AlignmentTestOptions { HoverMm = 0.1, SafeZMm = 5 });
+
+        output.WriteLine(text);
+
+        var moves = GcodeParser.Parse(text).Moves;
+        var lines = text.Split('\n').Select(l => l.Trim()).ToList();
+
+        Assert.Equal(Nm.FromMillimetres(0.1), moves.Min(m => m.ToZNm));
+        Assert.Equal(new Point2(Nm.FromMillimetres(23.74), Nm.FromMillimetres(47.828)), moves[^1].To);
+        Assert.Equal(Nm.FromMillimetres(0.1), moves[^1].ToZNm);
+
+        Assert.Contains("M5", lines);
+        Assert.DoesNotContain(lines, l => l.StartsWith("M3", StringComparison.Ordinal));
+        Assert.Contains("Offset X+0.120 Y-0.050 mm", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>A hover height of zero or less is a scratch through the pad being checked, and is refused.</summary>
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-0.1)]
+    public void TheBitIsNeverSentToTheSurfaceOrBelow(double hover) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => AlignmentTest.Generate(
+            new AlignmentTarget(1, Point2.Origin, "hole"), Point2.Origin, "a.nc", new AlignmentTestOptions { HoverMm = hover }));
+
+    // ------------------------------------------------------------------ the aligned files
+
+    /// <summary>
+    /// Every drilling and routing file, written again under its aligned name, with every move shifted by
+    /// exactly the offset; and every other file exactly as it was.
+    /// </summary>
+    [Fact]
+    public void AlignedFilesAreThePlainFilesMovedByTheOffset()
+    {
+        var offset = new DrillAlignment(Nm.FromMillimetres(0.12), Nm.FromMillimetres(-0.05));
+
+        var plain = Plan();
+        var aligned = Plan(offset);
+
+        var drill = plain.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
+
+        Assert.NotEmpty(drill);
+
+        foreach (var original in drill)
+        {
+            var name = Path.GetFileNameWithoutExtension(original.TargetName) + ".aligned.nc";
+            var moved = Assert.Single(aligned.Items, i => i.TargetName == name);
+
+            // The park home at the end goes to work zero in both, and is not part of the work.
+            var before = GcodeParser.Parse(original.Content).Moves.Where(m => m.MovesInPlane && m.To != Point2.Origin).ToList();
+            var after = GcodeParser.Parse(moved.Content).Moves.Where(m => m.MovesInPlane && m.To != Point2.Origin).ToList();
+
+            output.WriteLine($"{original.TargetName} -> {moved.TargetName}: {before.Count} moves");
+
+            Assert.Equal(before.Count, after.Count);
+
+            for (var i = 0; i < before.Count; i++)
+            {
+                Assert.Equal(new Point2(before[i].To.X + offset.XNm, before[i].To.Y + offset.YNm), after[i].To);
+            }
+
+            Assert.Contains("shifted X+0.120 Y-0.050 mm", moved.Content, StringComparison.Ordinal);
+        }
+
+        foreach (var other in plain.Items.Where(i => !ExportPlanner.IsDrillOrRouting(i)))
+        {
+            Assert.Equal(other.Content, Assert.Single(aligned.Items, i => i.TargetName == other.TargetName).Content);
+        }
+    }
+
+    /// <summary>
+    /// The board outline moves when asked, so it cuts round the copper the holes were lined up with; and
+    /// stays exactly as it was when not. The copper programs never move: they are what was measured against.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheOutlineMovesOnlyWhenAsked(bool outline)
+    {
+        var offset = new DrillAlignment(Nm.FromMillimetres(-0.2), Nm.FromMillimetres(0.08), outline);
+
+        var plain = Plan();
+        var aligned = Plan(offset);
+
+        var original = Assert.Single(plain.Items, i => i.Operation == OperationKind.Outline);
+        var name = Path.GetFileNameWithoutExtension(original.TargetName) + ".aligned.nc";
+
+        Assert.Equal(outline, offset.Moves(original));
+
+        if (!outline)
+        {
+            Assert.Equal(original.Content, Assert.Single(aligned.Items, i => i.TargetName == original.TargetName).Content);
+            Assert.DoesNotContain(aligned.Items, i => i.TargetName == name);
+            return;
+        }
+
+        var moved = Assert.Single(aligned.Items, i => i.TargetName == name);
+
+        var before = GcodeParser.Parse(original.Content).Moves.Where(m => m.MovesInPlane && m.To != Point2.Origin).ToList();
+        var after = GcodeParser.Parse(moved.Content).Moves.Where(m => m.MovesInPlane && m.To != Point2.Origin).ToList();
+
+        output.WriteLine($"{original.TargetName} -> {moved.TargetName}: {before.Count} moves");
+
+        Assert.Equal(before.Count, after.Count);
+        Assert.All(before.Zip(after), p => Assert.Equal(new Point2(p.First.To.X + offset.XNm, p.First.To.Y + offset.YNm), p.Second.To));
+
+        foreach (var copper in plain.Items.Where(i => i.Operation == OperationKind.Isolation))
+        {
+            Assert.False(offset.Moves(copper));
+            Assert.Equal(copper.Content, Assert.Single(aligned.Items, i => i.TargetName == copper.TargetName).Content);
+        }
+    }
+
+    /// <summary>
+    /// The stock is cut as an outline but is not the board's outline: it is cut before there is any
+    /// copper to line up with, and its corner is work zero. It never moves and is never written aligned.
+    /// </summary>
+    [Fact]
+    public void TheStockNeverMoves()
+    {
+        var job = new JobOptions { Blank = new BlankOptions { Enabled = true } };
+        var offset = new DrillAlignment(Nm.FromMillimetres(0.3), Nm.FromMillimetres(0.3), Outline: true);
+
+        var plain = Plan(job: job);
+        var aligned = Plan(offset, job);
+
+        var stock = Assert.Single(plain.Items, i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal));
+
+        Assert.False(offset.Moves(stock));
+        Assert.False(ExportPlanner.IsBoardOutline(stock));
+        Assert.Equal(stock.Content, Assert.Single(aligned.Items, i => i.TargetName == stock.TargetName).Content);
+        Assert.DoesNotContain(aligned.Items, i => i.TargetName.EndsWith(".stock.aligned.nc", StringComparison.Ordinal));
+
+        // The board's own outline, on the same stock, still does.
+        Assert.Contains(aligned.Items, i => ExportPlanner.IsBoardOutline(i) && i.TargetName.EndsWith(".aligned.nc", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A layer's page is written again too, under the aligned name, and lists the aligned files — the ones
+    /// to run — rather than the originals beside them.
+    /// </summary>
+    [Fact]
+    public void TheAlignedPagesListTheAlignedFiles()
+    {
+        var aligned = Plan(new DrillAlignment(Nm.FromMillimetres(0.12), 0));
+
+        var layers = aligned.Items
+            .Where(ExportPlanner.IsDrillOrRouting)
+            .GroupBy(i => i.LayerFileName)
+            .ToList();
+
+        Assert.Contains(layers, l => l.First().Companion is not null);
+
+        foreach (var layer in layers)
+        {
+            var files = layer.ToList();
+
+            if (files[0].Companion is not { } page)
+            {
+                continue;
+            }
+
+            output.WriteLine($"{page.TargetName}: {string.Join(", ", files.Select(f => f.TargetName))}");
+
+            Assert.EndsWith(".aligned.html", page.TargetName, StringComparison.Ordinal);
+            Assert.All(files, f => Assert.EndsWith(".aligned.nc", f.TargetName, StringComparison.Ordinal));
+
+            if (files.Count > 1)
+            {
+                Assert.All(files, f => Assert.Contains(f.TargetName, page.Content, StringComparison.Ordinal));
+            }
+        }
+    }
+}

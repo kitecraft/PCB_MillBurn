@@ -77,6 +77,36 @@ public sealed record ExportItem
 /// <param name="Description">One line, for the export report.</param>
 public sealed record ExportCompanion(string TargetName, string Content, string Description);
 
+/// <summary>
+/// A shift for the programs that follow copper already on the board, found with Job › Drill alignment.
+///
+/// The drilling and routing programs, because they have to land inside pads that are already there —
+/// etched, or isolated on another day — with a few tenths of clearance; and, when asked, the board
+/// outline, which has to sit round that same copper. The copper programs themselves are what the
+/// shift is measured against, so they never move, and neither does the stock, which is cut before
+/// there is anything on it to line up with. Applied in work coordinates, after any mirroring, so the
+/// numbers mean what the operator saw at the machine: X is the machine's X.
+/// </summary>
+/// <param name="XNm">How far to move every move in X.</param>
+/// <param name="YNm">And in Y.</param>
+/// <param name="Outline">Move the board outline program too.</param>
+public sealed record DrillAlignment(long XNm, long YNm, bool Outline = false)
+{
+    /// <summary>Added before the extension: <c>Board-PTH-drl.bit1-1.00mm.aligned.nc</c>.</summary>
+    public const string Suffix = ".aligned";
+
+    public Point2 Offset => new(XNm, YNm);
+
+    /// <summary>Whether this alignment moves an export's file: what is written again, aligned.</summary>
+    public bool Moves(ExportItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        // Never the stock: it is cut before there is any copper to line up with, and it is work zero.
+        return ExportPlanner.IsDrillOrRouting(item) || (Outline && ExportPlanner.IsBoardOutline(item));
+    }
+}
+
 /// <summary>Everything a single Export would write.</summary>
 public sealed record ExportPlan
 {
@@ -131,7 +161,8 @@ public static class ExportPlanner
         RouteEffort effort = RouteEffort.Balanced,
         ProgramFraming? framing = null,
         MachineSettings? machineSettings = null,
-        JobOptions? job = null)
+        JobOptions? job = null,
+        DrillAlignment? alignment = null)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(settings);
@@ -195,7 +226,7 @@ public static class ExportPlanner
             List<ExportItem> made = setting.Output == OutputKind.Svg
                 ? PlanSvg(board, frame, layer, setting, operation, page) is { } svg ? [svg] : []
                 : PlanGcode(board, frame, layer, setting, operation, library, boardThicknessNm, machine,
-                    effort, framing, machineSettings ?? new MachineSettings(), options);
+                    effort, framing, machineSettings ?? new MachineSettings(), options, alignment);
 
             items.AddRange(made);
 
@@ -210,7 +241,7 @@ public static class ExportPlanner
             // wrong program.
             List<ExportItem> routed = operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode
                 ? PlanSlots(board, frame, layer, setting, library, boardThicknessNm, machine, effort,
-                    framing, machineSettings ?? new MachineSettings(), options)
+                    framing, machineSettings ?? new MachineSettings(), options, alignment)
                 : [];
 
             items.AddRange(routed);
@@ -410,7 +441,8 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
-        JobOptions job)
+        JobOptions job,
+        DrillAlignment? alignment)
     {
         var tool = ResolveTool(setting, operation, library);
         var warnings = new List<string>();
@@ -446,10 +478,15 @@ public static class ExportPlanner
 
         var target = TargetNameFor(layer.FileName, operation, OutputKind.Gcode);
 
+        // The alignment moves drilling, and the outline when asked; never the copper it is measured against.
+        var aligned = operation == OperationKind.Drilling || (operation == OperationKind.Outline && alignment?.Outline == true)
+            ? alignment
+            : null;
+
         var files = AssembleEach(
             board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
             target, LayerOperations.Label(operation),
-            boardThicknessNm, machine, effort, framing, machineSettings);
+            boardThicknessNm, machine, effort, framing, machineSettings, aligned);
 
         if (files.Count == 0 || operation != OperationKind.Drilling || !setting.WriteDrillGuide)
         {
@@ -458,7 +495,7 @@ public static class ExportPlanner
 
         // One page for the layer, beside its first file, describing every file in the order they run.
         var guide = GuideFor(
-            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame != board.Bounds);
+            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame != board.Bounds, aligned);
 
         return guide is null ? files : [files[0] with { Companion = guide }, .. files.Skip(1)];
     }
@@ -494,7 +531,8 @@ public static class ExportPlanner
         MachineProfile? machine,
         RouteEffort effort,
         ProgramFraming? framing,
-        MachineSettings machineSettings)
+        MachineSettings machineSettings,
+        DrillAlignment? alignment = null)
     {
         var groups = toolpaths
             .GroupBy(t => t.Tool.Name, StringComparer.Ordinal)
@@ -504,13 +542,16 @@ public static class ExportPlanner
         if (groups.Count == 1)
         {
             return Assemble(
-                board, frame, layer, setting, operation, toolpaths, tool, summary, warnings, target, jobLabel,
-                boardThicknessNm, machine, effort, framing, machineSettings) is { } only
+                board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
+                Aligned(target, alignment), jobLabel,
+                boardThicknessNm, machine, effort, framing, machineSettings, null, alignment) is { } only
                 ? [only]
                 : [];
         }
 
-        var names = groups.Select((g, i) => BitFileName(target, i + 1, groups.Count, g[0].Tool)).ToList();
+        var names = groups
+            .Select((g, i) => Aligned(BitFileName(target, i + 1, groups.Count, g[0].Tool), alignment))
+            .ToList();
         var files = new List<ExportItem>(groups.Count);
 
         for (var g = 0; g < groups.Count; g++)
@@ -529,7 +570,7 @@ public static class ExportPlanner
 
             if (Assemble(
                     board, frame, layer, setting, operation, groups[g], bit, fileSummary, fileWarnings, names[g],
-                    jobLabel, boardThicknessNm, machine, effort, framing, machineSettings, notes) is { } file)
+                    jobLabel, boardThicknessNm, machine, effort, framing, machineSettings, notes, alignment) is { } file)
             {
                 files.Add(file with { Bit = label });
             }
@@ -537,6 +578,41 @@ public static class ExportPlanner
 
         return files;
     }
+
+    /// <summary>
+    /// The layer name the stock program goes under. It is cut as an outline, but it is not the board's
+    /// outline, and nothing that picks the outline out by operation should pick this up.
+    /// </summary>
+    public const string StockLayer = "(stock)";
+
+    /// <summary>The board outline program — not the stock, which is cut the same way.</summary>
+    public static bool IsBoardOutline(ExportItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        return item.Output == OutputKind.Gcode
+            && item.Operation == OperationKind.Outline
+            && item.LayerFileName != StockLayer;
+    }
+
+    /// <summary>A drilling or routing program: what Job › Drill alignment moves.</summary>
+    public static bool IsDrillOrRouting(ExportItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        return item.Output == OutputKind.Gcode
+            && (item.Operation == OperationKind.Drilling
+                || item.TargetName.Contains(".slots.", StringComparison.Ordinal));
+    }
+
+    /// <summary>"Board-PTH-drl.bit1-1.00mm.nc" as "Board-PTH-drl.bit1-1.00mm.aligned.nc", when aligned.</summary>
+    /// <remarks>
+    /// Before the extension, like the dry run and the levelled copy, so an aligned file sorts beside
+    /// the one it replaces and still opens in a sender.
+    /// </remarks>
+    private static string Aligned(string name, DrillAlignment? alignment) => alignment is null
+        ? name
+        : Path.GetFileNameWithoutExtension(name) + DrillAlignment.Suffix + Path.GetExtension(name);
 
     /// <summary>"Board-PTH-drl.nc", bit 2 of 3, a 0.50 mm drill: "Board-PTH-drl.bit2-0.50mm.nc".</summary>
     /// <remarks>Numbered so the files sort in the order they run, padded once there are ten.</remarks>
@@ -568,7 +644,8 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
-        JobOptions job)
+        JobOptions job,
+        DrillAlignment? alignment)
     {
         if (layer.Drill is null)
         {
@@ -672,7 +749,7 @@ public static class ExportPlanner
             board, frame, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
             stem + ".slots.nc",
             "Routed slots",
-            boardThicknessNm, machine, effort, framing, machineSettings);
+            boardThicknessNm, machine, effort, framing, machineSettings, alignment);
 
         if (files.Count == 0)
         {
@@ -707,7 +784,10 @@ public static class ExportPlanner
         [
             files[0] with
             {
-                Companion = new ExportCompanion(stem + ".slots.html", html, $"{cutters}{where}{missing}"),
+                Companion = new ExportCompanion(
+                    stem + ".slots" + (alignment is null ? string.Empty : DrillAlignment.Suffix) + ".html",
+                    html,
+                    $"{cutters}{where}{missing}"),
             },
             .. files.Skip(1),
         ];
@@ -903,7 +983,7 @@ public static class ExportPlanner
 
         return new ExportItem
         {
-            LayerFileName = "(stock)",
+            LayerFileName = StockLayer,
             Levellable = false,
             LayerLabel = "Stock",
             Role = LayerRole.Unknown,
@@ -973,7 +1053,8 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
-        IReadOnlyList<string>? bitNotes = null)
+        IReadOnlyList<string>? bitNotes = null,
+        DrillAlignment? alignment = null)
     {
         _ = tool;
 
@@ -982,6 +1063,13 @@ public static class ExportPlanner
         var shift = frame.IsEmpty
             ? Point2.Origin
             : new Point2(-frame.MinX, -frame.MinY);
+
+        // The drill alignment, on top. Added to the shift rather than to the geometry, so it lands in
+        // work coordinates after any mirroring — the frame the operator measured it in at the machine.
+        if (alignment is not null)
+        {
+            shift = new Point2(shift.X + alignment.XNm, shift.Y + alignment.YNm);
+        }
 
         // A bottom-side layer is drawn as seen through the board, so cutting it as-is produces a
         // mirror image. The flip is baked in here rather than left to the operator, and the file
@@ -997,6 +1085,15 @@ public static class ExportPlanner
         }
 
         notes.Add(OriginNote(board, frame));
+
+        if (alignment is not null)
+        {
+            var moved = Invariant(
+                $"X{AlignmentTest.FormatOffset(alignment.XNm)} Y{AlignmentTest.FormatOffset(alignment.YNm)} mm");
+
+            notes.Add(Invariant($"Aligned with the drill alignment test: every move shifted {moved} from the plain export."));
+            summary.Add(Invariant($"Aligned: shifted {moved}"));
+        }
 
         var mirrored = setting.MirrorFor(layer.Role);
 
@@ -1179,7 +1276,8 @@ public static class ExportPlanner
         long thicknessNm,
         IReadOnlyList<string> warnings,
         int repeats,
-        bool onBlank)
+        bool onBlank,
+        DrillAlignment? alignment)
     {
         var (html, report) = DrillGuide.Build(
             [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
@@ -1205,7 +1303,8 @@ public static class ExportPlanner
         var holes = report.Holes == 1 ? "1 hole" : Invariant($"{report.Holes} holes");
 
         return new ExportCompanion(
-            Path.GetFileNameWithoutExtension(target) + ".drilling.html",
+            Path.GetFileNameWithoutExtension(target) + ".drilling"
+                + (alignment is null ? string.Empty : DrillAlignment.Suffix) + ".html",
             html,
             $"{bits}{where}, {holes}");
     }

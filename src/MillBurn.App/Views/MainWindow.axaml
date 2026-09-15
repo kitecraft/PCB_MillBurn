@@ -199,6 +199,8 @@
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
                         <MenuItem Header="_Test cuts…" Click="OnTestCutsClicked" />
+                        <MenuItem Header="Drill _alignment…" Click="OnAlignClicked"
+                                  IsEnabled="{Binding HasBoard}" />
                         <Separator />
                         <MenuItem Header="Write _probing routine…" Click="OnWriteProbeClicked"
                                   IsEnabled="{Binding HasBoard}" />

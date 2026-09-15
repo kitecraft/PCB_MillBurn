@@ -40,6 +40,10 @@ internal static class Program
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
             Console.WriteLine("                                 --level-side top|bottom which face the map was probed on");
+            Console.WriteLine("                                 --align <x,y mm> only the drilling and routing files, moved this much, as .aligned");
+            Console.WriteLine("                                 --align-outline the board outline too");
+            Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
+            Console.WriteLine("                                 --file <part of a name> --hole <n> --offset <x,y mm> --hover <mm> -o <file>");
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
@@ -89,6 +93,7 @@ internal static class Program
             "export" when args.Length >= 2 => Export(args),
             "testcut" => TestCutCommand(args),
             "probe" when args.Length >= 2 => Probe(args),
+            "align" when args.Length >= 2 => Align(args),
             "level" when args.Length >= 3 => Level(args),
             "tools" => ToolsCommand(args),
             _ => Unknown(args[0]),
@@ -1604,11 +1609,34 @@ internal static class Program
 
         var job = JobFor(args, project);
 
+        DrillAlignment? alignment = null;
+
+        if (Argument(args, "--align") is { } alignText)
+        {
+            if (Alignment(alignText) is not { } parsedAlignment)
+            {
+                Console.Error.WriteLine("--align wants X,Y in mm, e.g. 0.12,-0.05.");
+                return 1;
+            }
+
+            alignment = parsedAlignment with
+            {
+                Outline = args.Contains("--align-outline", StringComparer.OrdinalIgnoreCase),
+            };
+        }
+
         var plan = blankOnly
             ? BlankOnlyPlan(board, settings, thicknessMm, framing, app, job)
             : ExportPlanner.Plan(
                 board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
-                framing: framing, machineSettings: app.Machine, job: job);
+                framing: framing, machineSettings: app.Machine, job: job, alignment: alignment);
+
+        // Aligned: only the files the alignment moves, under their own names, and no project page —
+        // that page describes a whole export, and this is not one.
+        if (alignment is not null)
+        {
+            plan = plan with { Items = [.. plan.Items.Where(alignment.Moves)], Page = null };
+        }
 
         // Companion programs that trace the same path in the air. Built here rather than at write
         // time so that a plain `export --dry-run` — no --write — still reports whether each one
@@ -2330,6 +2358,131 @@ internal static class Program
             Console.Error.WriteLine($"Could not read '{input}': {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Writes the drill alignment test for one hole: the same program Job › Drill alignment writes.
+    /// Lists the file's holes, so the number to ask for can be found.
+    /// </summary>
+    private static int Align(string[] args)
+    {
+        if (LoadBoardOrProject(args[1]) is not { } board)
+        {
+            return 1;
+        }
+
+        var app = AppSettings.LoadOrDefault();
+
+        var project = args[1].EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
+            ? ProjectFile.Open(args[1])
+            : null;
+
+        var settings = board.Layers.ToDictionary(
+            l => l.FileName,
+            l => project?.Settings.OutputFor(l.FileName)
+                ?? new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role, app.Import) },
+            StringComparer.Ordinal);
+
+        var plan = ExportPlanner.Plan(
+            board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(Number(args, "--thickness", app.BoardThicknessMm)),
+            OutputKind.Gcode, machineSettings: app.Machine, job: JobFor(args, project));
+
+        var files = plan.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
+
+        if (files.Count == 0)
+        {
+            Console.Error.WriteLine("This job has no drilling or routing files to align.");
+            return 1;
+        }
+
+        var wanted = Argument(args, "--file");
+        var file = wanted is null
+            ? files[0]
+            : files.FirstOrDefault(f => f.TargetName.Contains(wanted, StringComparison.OrdinalIgnoreCase));
+
+        if (file is null)
+        {
+            Console.Error.WriteLine($"No drilling or routing file matching '{wanted}'. They are:");
+
+            foreach (var f in files)
+            {
+                Console.Error.WriteLine("  " + f.TargetName);
+            }
+
+            return 1;
+        }
+
+        var targets = AlignmentTest.Targets(file.Content);
+
+        Console.WriteLine(file.TargetName);
+
+        foreach (var t in targets)
+        {
+            Line($"  {t.Number,4}  {t.Kind,-4}  X {Nm.ToMillimetreString(t.At.X, 3)}  Y {Nm.ToMillimetreString(t.At.Y, 3)}");
+        }
+
+        var number = (int)Number(args, "--hole", 1);
+
+        if (targets.FirstOrDefault(t => t.Number == number) is not { } target)
+        {
+            Console.Error.WriteLine($"There is no hole {number} in {file.TargetName}.");
+            return 1;
+        }
+
+        var offset = new DrillAlignment(0, 0);
+
+        if (Argument(args, "--offset") is { } offsetText)
+        {
+            if (Alignment(offsetText) is not { } parsed)
+            {
+                Console.Error.WriteLine("--offset wants X,Y in mm, e.g. 0.12,-0.05.");
+                return 1;
+            }
+
+            offset = parsed;
+        }
+
+        var hover = Number(args, "--hover", app.Align.HoverMm);
+
+        string text;
+
+        try
+        {
+            text = AlignmentTest.Generate(target, offset.Offset, file.TargetName, new AlignmentTestOptions
+            {
+                HoverMm = hover,
+                FeedMmPerMin = app.Align.FeedMmPerMin,
+                SafeZMm = app.Machine.SafeZMm,
+                Decimals = app.Machine.Decimals,
+            });
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+
+        var output = Argument(args, "-o") ?? Argument(args, "--out")
+            ?? Path.Combine(
+                Directory.Exists(args[1]) ? args[1] : Path.GetDirectoryName(Path.GetFullPath(args[1]))!,
+                SafeName(board.Source) + ".align-test.nc");
+
+        File.WriteAllText(output, text);
+
+        Line($"  wrote       {output} · {target.Kind} {target.Number}, moved X{AlignmentTest.FormatOffset(offset.XNm)} Y{AlignmentTest.FormatOffset(offset.YNm)} mm, {hover:0.00} mm above the surface");
+        return 0;
+    }
+
+    /// <summary>"0.12,-0.05" as a drill alignment, or null if it is not two numbers.</summary>
+    private static DrillAlignment? Alignment(string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+
+        return parts.Length == 2
+            && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+            && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
+            ? new DrillAlignment(Nm.FromMillimetres(x), Nm.FromMillimetres(y))
+            : null;
     }
 
     /// <summary>

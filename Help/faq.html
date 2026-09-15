@@ -42,6 +42,7 @@
     <li><a href="#relief">Milling the soldermask off the pads</a></li>
     <li><a href="#negative">Etching: burning the negative</a></li>
     <li><a href="#drilling">Drilling: one file per bit</a></li>
+    <li><a href="#alignment">Lining the holes up with the pads</a></li>
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
     <li><a href="#viewer">Looking at a G-code file</a></li>
@@ -1330,6 +1331,36 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   If your drill file lists the same position twice for the same bit &mdash; real ones do &mdash; it
   is drilled once, and the page says how many were repeated. Drilling a hole that already exists
   cuts nothing and is how drills get grabbed and snapped.
+</p>
+
+<h2 id="alignment">Lining the holes up with the pads</h2>
+
+<p>
+  A small hole in a small pad leaves a few tenths of a millimetre either side, so a drill that is
+  slightly off lands on the edge of the pad, or beside it. When the copper is already on the board
+  &mdash; etched, or isolated on another day &mdash; <em>Job &rsaquo; Drill alignment&hellip;</em>
+  checks where the holes will land, and moves them, before any of them are drilled.
+</p>
+
+<ol>
+  <li>Fit the bit the chosen file uses, and zero Z on your usual spot.</li>
+  <li>Pick a file and a hole, and press <strong>Write test</strong>. Run the test file in your sender:
+    with the spindle off, it moves over that hole and stops the tip just above the surface
+    &mdash; 0.1&nbsp;mm by default &mdash; and stays there.</li>
+  <li>If the tip is off-centre, change X or Y, write the test again, reload it in your sender and run
+    it. The dialog stays open for this.</li>
+  <li>When the tip sits on the centre, press <strong>Write aligned files</strong>. Every drilling and
+    routing file is written again, moved by that amount, as <code>&hellip;.aligned.nc</code> beside the
+    original, with its page. So is the board outline, unless you untick <em>Board outline too</em>, so
+    the board is cut out round the same copper. Run the aligned files instead of the originals.</li>
+</ol>
+
+<p>
+  <strong>It moves the holes and the outline, and nothing else.</strong> The copper files are what the
+  holes are being lined up with, so they stay where they are, and so does the stock, which is cut
+  before there is anything on it to line up with. The board is assumed square to the machine, so one
+  hole right means every hole right. Hover over a hole at the far side of the board as well: if that
+  one is out by a different amount, the stock is not square, and no single move will fix it.
 </p>
 
 <h2 id="drills">Holes of different sizes, and drill files that are Gerbers</h2>

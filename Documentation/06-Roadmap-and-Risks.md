@@ -1982,6 +1982,7 @@ than discovered after.
 - **Open recent**, off the File menu. See 6.9.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
+- **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2518,6 +2519,33 @@ still says "resume in your sender" — right for those machines, and wrong for p
 **Done when** Settings offers *one file per bit* (the default) and *one file, with this tool-change
 G-code*, the second emits the operator's block at every change, and each form's page describes the
 run it actually produces.
+
+#### 6.12 Drill alignment — **built**
+
+Requested from the workshop, for holes that have to land in pads already on the board: a small hole
+in a small pad leaves a few tenths either side, and a drilling origin slightly out puts holes on the
+edge of their pads. The board is assumed square to the machine, so the correction is an origin shift.
+
+**Job › Drill alignment…** opens a dialog that stays open while tests are written, because finding
+the offset is a loop. Pick a drilling or routing file and a hole in it; **Write test** writes
+`Board.align-test.nc`, overwriting the last one, which with the spindle off moves over that hole with
+the offset applied and stops the tip at the hover height (0.1 mm by default, remembered) and stays
+there. Adjust X and Y, write again, reload, run. **Write aligned files** writes every drilling and
+routing file again, shifted, as `….aligned.nc` beside the originals with their pages under aligned
+names — and the board outline too, unless unticked, since the alignment is for a board that already
+has copper on it and the outline has to go round that copper — and closes. The CLI does the same:
+`align` for the test, `export --align x,y [--align-outline]` for the files.
+
+- The holes are read from **the emitted program**: drill plunge points, and the centre of the ground
+  each routed cut covers — which for a helix is the hole's centre and for a racetrack the slot's.
+- The shift is added to the work-zero shift, after mirroring, so X and Y mean what they meant at the
+  machine. Drilling, routing and (when ticked) the board outline move; copper, stock and SVGs do
+  not. The stock is cut as an outline but is told apart by its layer name and never moves.
+- The test refuses a hover height at or below the surface.
+
+Not done: remembering the offset in the project, so a later full export stays aligned; and checking
+two holes at once to tell a shift from a stock that is not square. The help page says to hover over a
+hole at the far side too.
 
 ### Phase 7 — User documentation — **started**
 

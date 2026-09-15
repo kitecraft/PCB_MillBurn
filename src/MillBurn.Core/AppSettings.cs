@@ -109,6 +109,9 @@ public sealed record AppSettings
     /// <summary>How closely a levelled program follows the measured surface.</summary>
     public LevelSettings Level { get; init; } = new();
 
+    /// <summary>How the drill alignment test brings the bit down over a hole.</summary>
+    public AlignSettings Align { get; init; } = new();
+
     /// <summary>Where the window was when it was last closed, or null if it never has been.</summary>
     public WindowPlacement? Window { get; init; }
 
