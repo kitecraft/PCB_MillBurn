@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Xunit.Sdk;
 
 namespace MillBurn.GoldenTests;
@@ -121,9 +120,26 @@ internal static class Snapshot
     ///
     /// A baseline is a reviewed artefact that lives in the repository; writing it into bin/ would
     /// put a new one a clean rebuild away from existing, which is the opposite of the point.
+    ///
+    /// Found by walking up from the test binaries to the solution, **not** from
+    /// <c>[CallerFilePath]</c>. A CI build sets <c>ContinuousIntegrationBuild</c>, which maps source
+    /// paths to <c>/_/</c> for deterministic output — so on the first GitHub run every baseline was
+    /// looked for under <c>\_\tests\…</c>, none was found, and all five program snapshots failed with
+    /// "No baseline" while passing on every developer machine.
     /// </summary>
-    private static string Directory => Path.Combine(SourceDirectory(), "Snapshots");
+    private static string Directory => Path.Combine(SolutionDirectory(), "tests", "MillBurn.GoldenTests", "Snapshots");
 
-    private static string SourceDirectory([CallerFilePath] string here = "") =>
-        Path.GetDirectoryName(here)!;
+    private static string SolutionDirectory()
+    {
+        for (var at = new DirectoryInfo(AppContext.BaseDirectory); at is not null; at = at.Parent)
+        {
+            if (File.Exists(Path.Combine(at.FullName, "PCB_MillBurn.slnx")))
+            {
+                return at.FullName;
+            }
+        }
+
+        throw new DirectoryNotFoundException(
+            "PCB_MillBurn.slnx was not found above " + AppContext.BaseDirectory + ", so the snapshot baselines cannot be located.");
+    }
 }
