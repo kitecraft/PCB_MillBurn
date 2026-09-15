@@ -1240,6 +1240,13 @@ public static class ExportPlanner
                 $"Stayed down for {links.Linked} of {links.Considered} pass links ({links.LinkedLengthMm:F1} mm), saving that many plunges"));
         }
 
+        // Routing's equivalent: each hole or slot is one descent, its laps following on.
+        if (links.Continued > 0)
+        {
+            summary.Add(Invariant(
+                $"One continuous descent per feature: {links.Continued} depth lap(s) carried straight on without lifting"));
+        }
+
         if (measured.GougeCount > 0)
         {
             warnings.Add(Invariant($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this."));

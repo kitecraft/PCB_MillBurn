@@ -4,15 +4,26 @@ using MillBurn.Geometry;
 
 namespace MillBurn.Optimize;
 
-/// <summary>How many lifts were removed, and how far the tool travels instead.</summary>
-public readonly record struct LinkResult(int Linked, int Considered, double LinkedLengthMm)
+/// <summary>
+/// How many lifts were removed, and how far the tool travels instead.
+/// </summary>
+/// <param name="Linked">Passes reached across cleared ground rather than by lifting.</param>
+/// <param name="Considered">Passes close enough to the one before for that to be asked.</param>
+/// <param name="LinkedLengthMm">How far those links travel at depth.</param>
+/// <param name="Continued">
+/// Laps that carry straight on from the one before — the next depth of the same hole or slot — and so
+/// need no move at all. Counted apart from <paramref name="Linked"/>: nothing was crossed, and a
+/// summary adding them together would describe routing as isolation.
+/// </param>
+public readonly record struct LinkResult(int Linked, int Considered, double LinkedLengthMm, int Continued = 0)
 {
     public static LinkResult Nothing => default;
 
     public static LinkResult operator +(LinkResult a, LinkResult b) => new(
         a.Linked + b.Linked,
         a.Considered + b.Considered,
-        a.LinkedLengthMm + b.LinkedLengthMm);
+        a.LinkedLengthMm + b.LinkedLengthMm,
+        a.Continued + b.Continued);
 }
 
 /// <summary>
@@ -78,13 +89,15 @@ public static class PassLinker
     {
         ArgumentNullException.ThrowIfNull(toolpath);
 
-        // An outline cut goes through the stock and has nothing cleared beside it; a drill is a
-        // plunge, not a contour. Only the operations that clear an area can link across one.
-        if (toolpath.Kind is not (ToolpathKind.Isolation or ToolpathKind.Pocket)
-            || toolpath.Passes.Count < 2)
+        if (toolpath.Passes.Count < 2)
         {
             return (toolpath, LinkResult.Nothing);
         }
+
+        // An outline cut goes through the stock and has nothing cleared beside it; a drill is a
+        // plunge, not a contour. Only the operations that clear an area can link *across* one — but
+        // any of them can carry straight on into its own next lap.
+        var acrossArea = toolpath.Kind is ToolpathKind.Isolation or ToolpathKind.Pocket;
 
         var passes = new List<ToolpathPass>(toolpath.Passes.Count)
         {
@@ -94,11 +107,26 @@ public static class PassLinker
         var linked = 0;
         var considered = 0;
         var length = 0.0;
+        var continued = 0;
 
         for (var i = 1; i < toolpath.Passes.Count; i++)
         {
             var previous = toolpath.Passes[i - 1];
             var next = toolpath.Passes[i];
+
+            if (Continues(previous, next))
+            {
+                passes.Add(next with { LinkedFromPrevious = true });
+                continued++;
+                continue;
+            }
+
+            if (!acrossArea)
+            {
+                passes.Add(next with { LinkedFromPrevious = false });
+                continue;
+            }
+
             var gap = previous.End.DistanceTo(next.Start);
             var width = toolpath.Tool.WidthAtDepth(next.DepthNm);
 
@@ -128,8 +156,31 @@ public static class PassLinker
             }
         }
 
-        return (toolpath with { Passes = passes }, new LinkResult(linked, considered, length));
+        return (toolpath with { Passes = passes }, new LinkResult(linked, considered, length, continued));
     }
+
+    /// <summary>
+    /// Whether the next pass is the same feature's next lap, carrying straight on: the same stack,
+    /// starting exactly where the last one stopped, at the depth it stopped at.
+    ///
+    /// Found at the machine. A 2.2 mm hole on a 0.8 mm board came out as four laps of one helix with
+    /// a lift between each — retract to safe height, rapid back to the point the tool was already
+    /// over, drop to the approach height, and feed at the plunge rate down through the lap just cut
+    /// — because every lap is deeper than the last and starts where it ended, and the area rule
+    /// above only ever asks about passes at one depth with a gap between them.
+    ///
+    /// Nothing is crossed, so no material is in question: the tool is already there, and the next lap
+    /// descends along its own path from the depth it is at. That is also why a lap that would start
+    /// <em>deeper</em> than the last one ended never counts: reaching it means a plunge, and a linked
+    /// pass is emitted without one.
+    /// </summary>
+    private static bool Continues(ToolpathPass previous, ToolpathPass next) =>
+        previous.Stack >= 0
+        && previous.Stack == next.Stack
+        && previous.Path.Count > 0
+        && next.Path.Count > 0
+        && previous.End == next.Start
+        && (next.RampFromNm ?? next.DepthNm) == previous.DepthNm;
 
     /// <summary>
     /// Whether dragging the tool from one pass's end to the next pass's start cuts only material

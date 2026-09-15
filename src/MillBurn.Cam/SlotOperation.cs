@@ -79,8 +79,9 @@ public sealed record SlotPlan
 ///
 /// **It ramps rather than plunging.** An end mill driven straight down into FR4 is how small
 /// cutters break, and the geometry hands us the lead-in for free: the slot is already a path to
-/// descend along. Each depth step ramps over one lap, and a final lap at constant depth flattens
-/// the floor the ramp left sloping.
+/// descend along. Each depth step ramps over one lap, each lap carrying straight on from the last
+/// without lifting (PassLinker links them), and a final lap at constant depth flattens the floor the
+/// ramp left sloping — unless the last ramp was already below the board, where there is no floor.
 ///
 /// **A cutter is chosen from the library, never invented** — see <see cref="ToolChooser"/>. Which
 /// means some slots cannot be cut, and that is the point of the whole exercise rather than a
@@ -221,6 +222,7 @@ public static class SlotOperation
         var step = tool.StepdownNm > 0 ? tool.StepdownNm : depth;
         var steps = Math.Max(1, (int)Math.Ceiling(depth / (double)step));
         var previous = 0L;
+        var lastRampFrom = 0L;
 
         // An open slot is cut out and then back, rather than lifting and returning to the same end
         // each time: the tool finishes every pass exactly where the next one starts. A closed
@@ -231,6 +233,7 @@ public static class SlotOperation
         for (var i = 1; i <= steps; i++)
         {
             var to = Math.Min(depth, i * step);
+            lastRampFrom = previous;
 
             yield return new ToolpathPass
             {
@@ -243,6 +246,15 @@ public static class SlotOperation
             };
 
             previous = to;
+        }
+
+        // The flat lap takes the slope out of the floor the last ramp left. Under a through cut there
+        // may be no floor to flatten: when the last ramp starts below the underside of the board,
+        // every point along it is already through, and another lap is time spent cutting spoilboard.
+        // Strictly below — a ramp starting exactly at the underside leaves a skin at that point.
+        if (lastRampFrom > options.BoardThicknessNm)
+        {
+            yield break;
         }
 
         yield return new ToolpathPass

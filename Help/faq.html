@@ -1418,7 +1418,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   <strong>It ramps rather than plunging.</strong> An end mill driven straight down into FR4 at full
   depth is how small cutters break, and a slot is already a path to descend along: each depth step
-  descends over one lap, and a final lap at constant depth takes the slope back out of the floor.
+  descends over one lap, and each lap carries straight on from the last without lifting, so a hole or
+  slot is one continuous descent. A final lap at constant depth takes the slope back out of the floor
+  &mdash; left out when the last lap already started below the board, where there is no floor.
   The cut itself is a racetrack around the <em>inside</em> of the slot, offset in by the cutter's
   radius &mdash; or, where the cutter is exactly the slot's width, one line down the middle.
 </p>

@@ -206,7 +206,8 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
             $"{Nm.ToMillimetreString(p.RampFromNm ?? 0, 2)}→{Nm.ToMillimetreString(p.DepthNm, 2)}")));
 
         // 1.9 mm at 0.5 mm a step is four ramped passes, then one flat lap to take the slope out of
-        // the floor the ramp left.
+        // the floor the ramp left. The last ramp starts at 1.5 mm, still inside a 1.6 mm board, so
+        // that floor is real.
         Assert.Equal(5, passes.Count);
         Assert.All(passes.Take(4), p => Assert.True(p.Ramps));
         Assert.False(passes[^1].Ramps);
@@ -265,6 +266,85 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
 
         Assert.True(first.MovesInPlane || first.ToZNm >= 0,
             $"the first descent was straight down to {Nm.ToMillimetreString(-first.ToZNm, 2)} mm");
+    }
+
+    /// <summary>
+    /// Under a through cut the flat lap may have nothing to flatten. On a 0.8 mm board with 0.3 mm
+    /// break-through and a 0.5 mm step, the last ramp starts at 1.0 mm — already below the underside
+    /// — so the laps are 0 to 0.5, 0.5 to 1.0 and 1.0 to 1.1 mm, and that is the whole cut.
+    /// </summary>
+    [Fact]
+    public void AThroughCutWhoseLastRampIsBelowTheBoardHasNoFloorLap()
+    {
+        var library = new ToolLibrary { Tools = [EndMill(0.8, stepdownMm: 0.5)] };
+        var options = new SlotOptions
+        {
+            BoardThicknessNm = Nm.FromMillimetres(0.8),
+            BreakThroughNm = Nm.FromMillimetres(0.3),
+        };
+
+        var passes = SlotOperation.Build([Slot(1.0)], library, options).Toolpaths[0].Passes;
+
+        output.WriteLine(string.Join(", ", passes.Select(p =>
+            $"{Nm.ToMillimetreString(p.RampFromNm ?? p.DepthNm, 2)}→{Nm.ToMillimetreString(p.DepthNm, 2)}")));
+
+        Assert.Equal(3, passes.Count);
+        Assert.All(passes, p => Assert.True(p.Ramps));
+        Assert.Equal(Nm.FromMillimetres(1.0), passes[^1].RampFromNm);
+        Assert.Equal(Nm.FromMillimetres(1.1), passes[^1].DepthNm);
+    }
+
+    /// <summary>
+    /// On the board that found it, through the whole export: each hole and slot is entered once, and
+    /// its laps follow on without lifting.
+    ///
+    /// Counted from the emitted program — descents from above the surface into the material, against
+    /// the features the program cuts — so it holds whatever the laps are. Before the fix every lap was
+    /// its own entry: four per hole on this board.
+    /// </summary>
+    [Fact]
+    public void OnTheTestBoardEachHoleAndSlotIsEnteredOnce()
+    {
+        var endMill = new Tool
+        {
+            Id = Guid.NewGuid(),
+            Name = "0.8 mm end mill",
+            Kind = ToolKind.EndMill,
+            DiameterNm = Nm.FromMillimetres(0.8),
+            StepdownNm = Nm.FromMillimetres(0.5),
+        };
+
+        var library = new ToolLibrary { Tools = [.. ToolLibrary.Default.Tools, endMill] };
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.MillburnTestBoard));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        var plan = ExportPlanner.Plan(
+            loaded, settings, library, Nm.FromMillimetres(0.8), OutputKind.Gcode,
+            job: new JobOptions { MillLargeHoles = true, MillDrillToolId = endMill.Id });
+
+        var routed = plan.Items.Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)).ToList();
+
+        Assert.NotEmpty(routed);
+
+        foreach (var file in routed)
+        {
+            var moves = GcodeParser.Parse(file.Content).Moves;
+            var entries = moves.Count(m => m.FromZNm >= 0 && m.ToZNm < 0);
+            var features = AlignmentTest.Targets(file.Content).Count;
+
+            output.WriteLine($"{file.TargetName}: {features} features, {entries} entries into the material");
+
+            Assert.True(features > 0);
+            Assert.Equal(features, entries);
+            Assert.Contains(file.Summary, s => s.StartsWith("One continuous descent per feature", StringComparison.Ordinal));
+
+            // A lap that carries on starts where the tool already is, and writes no move to get there.
+            Assert.DoesNotContain(moves, m => !m.IsRapid && m.From == m.To && m.FromZNm == m.ToZNm);
+        }
     }
 
     // ------------------------------------------------------------------ mill-drill

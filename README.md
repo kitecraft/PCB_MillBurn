@@ -301,8 +301,8 @@ down between touching passes want a re-run.
 
 **Known rough edges, next in line:**
 
-- Routed holes and slots lift to safe height between every depth lap, and cut a finishing lap under a
-  through cut. Correct, and slow. Settings for how it routes are coming.
+- Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
+  board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
 
 877 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next after the rough edges: rulers down the viewport, open recent, drill hits drawn as

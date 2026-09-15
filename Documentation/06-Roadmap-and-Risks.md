@@ -1983,7 +1983,7 @@ than discovered after.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
-- **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp, no floor lap on a through cut, and settings of its own. See 6.13.
+- **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2548,7 +2548,7 @@ Not done: remembering the offset in the project, so a later full export stays al
 two holes at once to tell a shift from a stock that is not square. The help page says to hover over a
 hole at the far side too.
 
-#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority, not started**
+#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority; lifts and floor lap fixed, settings not started**
 
 Found on the test board at the machine: 0.8 mm board, "Spiral with" a 0.8 mm end mill (0.5 mm
 stepdown), the layer's 0.3 mm break-through, so 1.10 mm deep. Every milled hole and every slot was
@@ -2601,6 +2601,17 @@ And the file header, the export summary and the routing page saying what that co
 one continuous descent to 1.10 mm, one retract. Tests: exactly one `G0` to safe height per feature;
 depth descends monotonically with no feed through cleared air; no flat lap when the last ramp starts
 below the underside; the total descent equals board thickness plus break-through.
+
+**Fixed after v0.1.0: items 1 and 2.** `PassLinker` now recognises a *continuation* — the next
+pass in the same stack, starting exactly where the last one ended and at the depth it ended at — for
+any kind of toolpath, and links it; that is every lap of a hole or slot after the first, so the
+emitter lifts once per feature. The router already kept a stack's laps together and rotated a closed
+stack's laps to one start, so the zero gap survives ordering. A lap that would start deeper than the
+last ended is never a continuation, because a linked pass is written with no plunge. The emitter
+leaves out the zero-length move to where the tool already is, and the export summary counts the laps
+carried on separately from isolation's links. `SlotOperation` skips the flat lap when the last ramp
+starts strictly below the underside. On the test board: one entry into the material per hole and slot,
+three laps each. Items 3 and 4 (the sliver lap and break-through) wait for the settings.
 
 **Found alongside: board thickness is not the project's.** It is an app setting
 (`AppSettings.BoardThicknessMm`), so a project for a 1.6 mm board opened after working on a 0.8 mm

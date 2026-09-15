@@ -166,6 +166,97 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
         Assert.Equal(0, PassLinker.Apply(stepped).Result.Linked);
     }
 
+    // ------------------------------------------------------------------ routing: laps that carry on
+
+    private static Toolpath HoleOnAThinBoard()
+    {
+        var mill = new Tool
+        {
+            Name = "0.8 mm end mill",
+            Kind = ToolKind.EndMill,
+            DiameterNm = Nm.FromMillimetres(0.8),
+            StepdownNm = Nm.FromMillimetres(0.5),
+        };
+
+        var plan = SlotOperation.Holes(
+            [new DrillSlotTarget(0, Point2.Origin, Point2.Origin, Nm.FromMillimetres(2.2))],
+            new ToolLibrary { Tools = [mill] },
+            new SlotOptions { BoardThicknessNm = Nm.FromMillimetres(0.8), BreakThroughNm = Nm.FromMillimetres(0.3) });
+
+        return Assert.Single(plan.Toolpaths);
+    }
+
+    /// <summary>
+    /// A milled hole's laps are one helix, so every lap after the first carries straight on.
+    ///
+    /// Found at the machine: a 2.2 mm hole on a 0.8 mm board was four laps with a lift between each,
+    /// because every lap starts deeper than the last and exactly where it ended — the two things the
+    /// area rule never links.
+    /// </summary>
+    [Fact]
+    public void AHolesLapsCarryStraightOnWithoutLifting()
+    {
+        var toolpath = HoleOnAThinBoard();
+        var (linked, result) = PassLinker.Apply(toolpath);
+
+        output.WriteLine($"{toolpath.Passes.Count} laps, {result.Continued} carried on, {result.Linked} linked across");
+
+        Assert.True(toolpath.Passes.Count > 1, "a 1.1 mm hole in 0.5 mm steps is more than one lap");
+        Assert.Equal(toolpath.Passes.Count - 1, result.Continued);
+        Assert.Equal(0, result.Linked);
+        Assert.False(linked.Passes[0].LinkedFromPrevious);
+        Assert.All(linked.Passes.Skip(1), p => Assert.True(p.LinkedFromPrevious));
+    }
+
+    /// <summary>
+    /// A lap that would start deeper than the last one ended needs a plunge to reach, and a linked
+    /// pass is written without one — so it never carries on, however exactly it lines up.
+    /// </summary>
+    [Fact]
+    public void ALapStartingDeeperThanTheLastEndedDoesNotCarryOn()
+    {
+        var toolpath = HoleOnAThinBoard();
+        var plunged = toolpath with { Passes = [.. toolpath.Passes.Select(p => p with { RampFromNm = null })] };
+
+        Assert.Equal(0, PassLinker.Apply(plunged).Result.Continued);
+    }
+
+    /// <summary>
+    /// Two features that happen to meet are still two features: the next one's first lap is reached
+    /// the ordinary way, not treated as the other's next lap.
+    /// </summary>
+    [Fact]
+    public void AnotherFeatureStartingWhereOneEndsDoesNotCarryOn()
+    {
+        var middle = new Point2(Nm.FromMillimetres(5), 0);
+
+        var toolpath = new Toolpath
+        {
+            Kind = ToolpathKind.Outline,
+            Label = "Two slots end to end",
+            Tool = Tool.DefaultOutlineMill,
+            Passes =
+            [
+                new ToolpathPass
+                {
+                    Path = [new ArtSegment(ArtSweep.Linear, Point2.Origin, middle, Point2.Origin)],
+                    DepthNm = Nm.FromMillimetres(0.5),
+                    RampFromNm = 0,
+                    Stack = 0,
+                },
+                new ToolpathPass
+                {
+                    Path = [new ArtSegment(ArtSweep.Linear, middle, new Point2(Nm.FromMillimetres(10), 0), Point2.Origin)],
+                    DepthNm = Nm.FromMillimetres(1.0),
+                    RampFromNm = Nm.FromMillimetres(0.5),
+                    Stack = 1,
+                },
+            ],
+        };
+
+        Assert.Equal(0, PassLinker.Apply(toolpath).Result.Continued);
+    }
+
     // ------------------------------------------------------------------ on a real board
 
     /// <summary>

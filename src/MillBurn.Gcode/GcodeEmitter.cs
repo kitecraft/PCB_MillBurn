@@ -196,7 +196,7 @@ public static class GcodeEmitter
                     plunges++;
                 }
 
-                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract);
+                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract, at);
                 cut += pass.LengthNm;
             }
 
@@ -240,7 +240,8 @@ public static class GcodeEmitter
         GcodeOptions options,
         Func<long, string> mm,
         bool linked,
-        bool retract)
+        bool retract,
+        Point2 from)
     {
         var start = pass.Start;
         var feed = tool.FeedMmPerMin.ToString(CultureInfo.InvariantCulture);
@@ -254,9 +255,15 @@ public static class GcodeEmitter
         {
             // Straight across at depth, cutting. Everything it passes through was cleared by the
             // pass that just finished or is cleared by this one — PassLinker refuses anything else.
-            sb.Append("G1 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y))
-              .Append(" F").Append(feed).Append('\n');
-            first = false;
+            //
+            // A lap that carries straight on from the last one starts where the tool already is, and
+            // a move to where you are is noise in the file, so it is left out.
+            if (from != start)
+            {
+                sb.Append("G1 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y))
+                  .Append(" F").Append(feed).Append('\n');
+                first = false;
+            }
         }
         else
         {
