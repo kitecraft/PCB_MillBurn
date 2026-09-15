@@ -56,6 +56,12 @@ public sealed record ExportItem
     /// </summary>
     public bool Levellable { get; init; } = true;
 
+    /// <summary>
+    /// Which bit this file is for, when its layer needed more than one — "Bit 2 of 3 · 0.50 mm drill".
+    /// Null for a program that runs with one bit from start to finish.
+    /// </summary>
+    public string? Bit { get; init; }
+
     public int Bytes => System.Text.Encoding.UTF8.GetByteCount(Content);
 }
 
@@ -186,15 +192,12 @@ public static class ExportPlanner
                 continue;
             }
 
-            var item = setting.Output == OutputKind.Svg
-                ? PlanSvg(board, frame, layer, setting, operation, page)
+            List<ExportItem> made = setting.Output == OutputKind.Svg
+                ? PlanSvg(board, frame, layer, setting, operation, page) is { } svg ? [svg] : []
                 : PlanGcode(board, frame, layer, setting, operation, library, boardThicknessNm, machine,
                     effort, framing, machineSettings ?? new MachineSettings(), options);
 
-            if (item is not null)
-            {
-                items.Add(item);
-            }
+            items.AddRange(made);
 
             // Slots and milled holes get their own file. A run that alternates drills and end mills
             // is a tool change the drilling companion page cannot describe honestly, and the two are
@@ -205,17 +208,14 @@ public static class ExportPlanner
             // hole is too big to drill has nothing left to drill and everything left to route, and
             // that layer used to lose its routing file to a "nothing to cut" that was about the
             // wrong program.
-            var routed = operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode
+            List<ExportItem> routed = operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode
                 ? PlanSlots(board, frame, layer, setting, library, boardThicknessNm, machine, effort,
                     framing, machineSettings ?? new MachineSettings(), options)
-                : null;
+                : [];
 
-            if (routed is not null)
-            {
-                items.Add(routed);
-            }
+            items.AddRange(routed);
 
-            if (item is null && routed is null)
+            if (made.Count == 0 && routed.Count == 0)
             {
                 skipped.Add(Invariant($"{layer.FileName}: nothing to cut."));
             }
@@ -398,7 +398,7 @@ public static class ExportPlanner
 
     // ------------------------------------------------------------------ G-code
 
-    private static ExportItem? PlanGcode(
+    private static List<ExportItem> PlanGcode(
         Board board,
         Bounds frame,
         BoardLayer layer,
@@ -441,24 +441,123 @@ public static class ExportPlanner
 
         if (toolpaths.Count == 0)
         {
-            return null;
+            return [];
         }
 
-        return Assemble(
+        var target = TargetNameFor(layer.FileName, operation, OutputKind.Gcode);
+
+        var files = AssembleEach(
             board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
-            TargetNameFor(layer.FileName, operation, OutputKind.Gcode),
-            LayerOperations.Label(operation),
-            boardThicknessNm, machine, effort, framing, machineSettings, companion: true, repeated);
+            target, LayerOperations.Label(operation),
+            boardThicknessNm, machine, effort, framing, machineSettings);
+
+        if (files.Count == 0 || operation != OperationKind.Drilling || !setting.WriteDrillGuide)
+        {
+            return files;
+        }
+
+        // One page for the layer, beside its first file, describing every file in the order they run.
+        var guide = GuideFor(
+            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame != board.Bounds);
+
+        return guide is null ? files : [files[0] with { Companion = guide }, .. files.Skip(1)];
+    }
+
+    /// <summary>
+    /// One program per bit.
+    ///
+    /// A layer that needs several bits used to be one file that stopped between them with <c>M0</c>.
+    /// Found at the machine: <c>M0</c> puts GRBL in <em>Hold</em>, and a controller on hold will not
+    /// jog or probe — so there was no way to lift the head, fit the next bit and set Z without stopping
+    /// the program anyway, and the page's "change the bit, then resume" could not be followed. One
+    /// file per bit makes that stop the plan: fit the bit, set Z on the same spot, run the file.
+    ///
+    /// The bits are grouped by tool, in the order each first appears, so no bit is fitted twice.
+    /// A layer with one bit is exactly the one file it always was, under the same name. The layer's
+    /// own summary and warnings go on the first file, which is where the export list shows this layer;
+    /// each file says which bit it is and which file comes next, in its header, because the header is
+    /// what a sender shows when the file is opened.
+    /// </summary>
+    private static List<ExportItem> AssembleEach(
+        Board board,
+        Bounds frame,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        OperationKind operation,
+        IReadOnlyList<Toolpath> toolpaths,
+        Tool tool,
+        List<string> summary,
+        List<string> warnings,
+        string target,
+        string jobLabel,
+        long boardThicknessNm,
+        MachineProfile? machine,
+        RouteEffort effort,
+        ProgramFraming? framing,
+        MachineSettings machineSettings)
+    {
+        var groups = toolpaths
+            .GroupBy(t => t.Tool.Name, StringComparer.Ordinal)
+            .Select(g => g.ToList())
+            .ToList();
+
+        if (groups.Count == 1)
+        {
+            return Assemble(
+                board, frame, layer, setting, operation, toolpaths, tool, summary, warnings, target, jobLabel,
+                boardThicknessNm, machine, effort, framing, machineSettings) is { } only
+                ? [only]
+                : [];
+        }
+
+        var names = groups.Select((g, i) => BitFileName(target, i + 1, groups.Count, g[0].Tool)).ToList();
+        var files = new List<ExportItem>(groups.Count);
+
+        for (var g = 0; g < groups.Count; g++)
+        {
+            var bit = groups[g][0].Tool;
+            var label = Invariant($"Bit {g + 1} of {groups.Count} · {bit.Name}");
+
+            List<string> fileSummary = g == 0 ? [label, .. summary] : [label];
+            List<string> fileWarnings = g == 0 ? [.. warnings] : [];
+
+            List<string> notes =
+            [
+                Invariant($"Bit {g + 1} of {groups.Count}: fit the {bit.Name}, touch off Z on the same spot each time, then run this file."),
+                g + 1 < groups.Count ? Invariant($"Next: {names[g + 1]}") : "This is the last of them.",
+            ];
+
+            if (Assemble(
+                    board, frame, layer, setting, operation, groups[g], bit, fileSummary, fileWarnings, names[g],
+                    jobLabel, boardThicknessNm, machine, effort, framing, machineSettings, notes) is { } file)
+            {
+                files.Add(file with { Bit = label });
+            }
+        }
+
+        return files;
+    }
+
+    /// <summary>"Board-PTH-drl.nc", bit 2 of 3, a 0.50 mm drill: "Board-PTH-drl.bit2-0.50mm.nc".</summary>
+    /// <remarks>Numbered so the files sort in the order they run, padded once there are ten.</remarks>
+    private static string BitFileName(string target, int number, int count, Tool bit)
+    {
+        var digits = count.ToString(CultureInfo.InvariantCulture).Length;
+
+        return Path.GetFileNameWithoutExtension(target)
+            + ".bit" + number.ToString(CultureInfo.InvariantCulture).PadLeft(digits, '0')
+            + "-" + Nm.ToMillimetreString(bit.DiameterNm, 2) + "mm"
+            + Path.GetExtension(target);
     }
 
     /// <summary>
     /// The slots in a drill file, as their own routing program.
     ///
-    /// Null when there are no slots, or when none of them can be cut with anything in the library —
+    /// Empty when there are no slots, or when none of them can be cut with anything in the library —
     /// in which case the refusals are already on the drilling item, which is where somebody looking
     /// at this board will see them.
     /// </summary>
-    private static ExportItem? PlanSlots(
+    private static List<ExportItem> PlanSlots(
         Board board,
         Bounds frame,
         BoardLayer layer,
@@ -473,14 +572,14 @@ public static class ExportPlanner
     {
         if (layer.Drill is null)
         {
-            return null;
+            return [];
         }
 
         var milled = MilledSizes(layer.Drill, library, job);
 
         if (layer.Drill.Slots.Count == 0 && milled.Count == 0)
         {
-            return null;
+            return [];
         }
 
         var options = new SlotOptions
@@ -538,7 +637,7 @@ public static class ExportPlanner
 
         if (plan.Toolpaths.Count == 0)
         {
-            return null;
+            return [];
         }
 
         summary.AddRange(plan.Summary);
@@ -569,46 +668,49 @@ public static class ExportPlanner
         // program.
         var stem = Path.GetFileNameWithoutExtension(layer.FileName);
 
-        var item = Assemble(
+        var files = AssembleEach(
             board, frame, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
             stem + ".slots.nc",
             "Routed slots",
-            boardThicknessNm, machine, effort, framing, machineSettings, companion: false);
+            boardThicknessNm, machine, effort, framing, machineSettings);
 
-        if (item is null)
+        if (files.Count == 0)
         {
-            return null;
+            return [];
         }
 
-        // The page that travels with the file. It carries the refusals, which is the one thing on
-        // it that cannot be recovered from the program: a file cannot describe what is absent from
-        // it, and the export window is not what anybody has open at the machine.
-        var (html, report) = RoutingGuide.Build(item.Content, new RoutingGuideContext
-        {
-            BoardName = Path.GetFileName(board.Source),
-            LayerLabel = layer.Label,
-            ProgramName = item.TargetName,
-            BoardThicknessNm = boardThicknessNm,
-            BreakThroughNm = setting.BreakThroughNm,
-            Refusals = [.. plan.Refusals.Select(Worded)],
-            RefusedCount = plan.RefusedCount,
-            Warnings = [.. warnings.Where(w => !w.Contains("are NOT cut", StringComparison.Ordinal))],
-            OnBlank = frame != board.Bounds,
-        });
+        // The page that travels with the files. It carries the refusals, which is the one thing on
+        // it that cannot be recovered from a program: a file cannot describe what is absent from it,
+        // and the export window is not what anybody has open at the machine.
+        var (html, report) = RoutingGuide.Build(
+            [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
+            new RoutingGuideContext
+            {
+                BoardName = Path.GetFileName(board.Source),
+                LayerLabel = layer.Label,
+                ProgramName = files.Count == 1 ? files[0].TargetName : stem + ".slots",
+                BoardThicknessNm = boardThicknessNm,
+                BreakThroughNm = setting.BreakThroughNm,
+                Refusals = [.. plan.Refusals.Select(Worded)],
+                RefusedCount = plan.RefusedCount,
+                Warnings = [.. files[0].Warnings.Where(w => !w.Contains("are NOT cut", StringComparison.Ordinal))],
+                OnBlank = frame != board.Bounds,
+            });
 
         var cutters = report.Steps.Count == 1 ? "1 cutter" : Invariant($"{report.Steps.Count} cutters");
-        var changes = report.Changes == 1 ? "1 tool change" : Invariant($"{report.Changes} tool changes");
+        var where = files.Count == 1 ? string.Empty : Invariant($" in {files.Count} files");
         var missing = plan.RefusedCount == 0
             ? string.Empty
             : Invariant($", {plan.RefusedCount} not cut");
 
-        return item with
-        {
-            Companion = new ExportCompanion(
-                stem + ".slots.html",
-                html,
-                $"{cutters}, {changes}{missing}"),
-        };
+        return
+        [
+            files[0] with
+            {
+                Companion = new ExportCompanion(stem + ".slots.html", html, $"{cutters}{where}{missing}"),
+            },
+            .. files.Skip(1),
+        ];
     }
 
     /// <summary>
@@ -871,8 +973,7 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
-        bool companion,
-        int repeated = 0)
+        IReadOnlyList<string>? bitNotes = null)
     {
         _ = tool;
 
@@ -886,7 +987,16 @@ public static class ExportPlanner
         // mirror image. The flip is baked in here rather than left to the operator, and the file
         // says which way the stock must be turned — a program that is silently the wrong hand
         // looks completely correct on screen and scraps the board.
-        var notes = new List<string> { OriginNote(board, frame) };
+        // Which bit this file is for comes first, when there is more than one: it is the line a sender
+        // shows at the top of the file, and the one thing to check before pressing start.
+        var notes = new List<string>();
+
+        if (bitNotes is not null)
+        {
+            notes.AddRange(bitNotes);
+        }
+
+        notes.Add(OriginNote(board, frame));
 
         var mirrored = setting.MirrorFor(layer.Role);
 
@@ -1050,14 +1160,11 @@ public static class ExportPlanner
             Mirrored = mirrored,
             Summary = summary,
             Warnings = warnings,
-            Companion = companion && operation == OperationKind.Drilling && setting.WriteDrillGuide
-                ? GuideFor(board, layer, setting, target, text, boardThicknessNm, warnings, repeated, frame != board.Bounds)
-                : null,
         };
     }
 
     /// <summary>
-    /// The page that explains how to run a drilling program.
+    /// The page that explains how to run a layer's drilling files.
     ///
     /// Built from the emitted text rather than from the toolpaths, like everything else here that
     /// describes a program: a guide made from the toolpaths would describe the run somebody meant
@@ -1068,37 +1175,39 @@ public static class ExportPlanner
         BoardLayer layer,
         LayerOutputSettings setting,
         string target,
-        string program,
+        List<ExportItem> files,
         long thicknessNm,
-        List<string> warnings,
+        IReadOnlyList<string> warnings,
         int repeats,
         bool onBlank)
     {
-        var (html, report) = DrillGuide.Build(program, new DrillGuideContext
-        {
-            BoardName = Path.GetFileName(board.Source),
-            LayerLabel = layer.Label,
-            ProgramName = target,
-            BoardThicknessNm = thicknessNm,
-            BreakThroughNm = setting.BreakThroughNm,
-            RepeatedPositions = repeats,
-            Warnings = warnings,
-            OnBlank = onBlank,
-        });
+        var (html, report) = DrillGuide.Build(
+            [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
+            new DrillGuideContext
+            {
+                BoardName = Path.GetFileName(board.Source),
+                LayerLabel = layer.Label,
+                ProgramName = files.Count == 1 ? files[0].TargetName : Path.GetFileNameWithoutExtension(target),
+                BoardThicknessNm = thicknessNm,
+                BreakThroughNm = setting.BreakThroughNm,
+                RepeatedPositions = repeats,
+                Warnings = warnings,
+                OnBlank = onBlank,
+            });
 
         if (report.Steps.Count == 0)
         {
             return null;
         }
 
-        var changes = report.Changes == 1 ? "1 tool change" : Invariant($"{report.Changes} tool changes");
         var bits = report.Steps.Count == 1 ? "1 bit" : Invariant($"{report.Steps.Count} bits");
+        var where = files.Count == 1 ? string.Empty : Invariant($" in {files.Count} files");
         var holes = report.Holes == 1 ? "1 hole" : Invariant($"{report.Holes} holes");
 
         return new ExportCompanion(
             Path.GetFileNameWithoutExtension(target) + ".drilling.html",
             html,
-            $"{bits}, {changes}, {holes}");
+            $"{bits}{where}, {holes}");
     }
 
     private static Toolpath BuildIsolation(
@@ -1206,7 +1315,7 @@ public static class ExportPlanner
         {
             var count = layer.Drill.Slots.Count == 1 ? "1 slot" : Invariant($"{layer.Drill.Slots.Count} slots");
 
-            summary.Add(Invariant($"{count} — routed separately, see the .slots.nc beside this"));
+            summary.Add(Invariant($"{count} — routed separately, in the .slots program beside this"));
         }
 
         // The library is a claim about the drawer. Not a refusal — you may well own a bit and not
@@ -1224,7 +1333,7 @@ public static class ExportPlanner
                 $"The tool library has no drill of {string.Join(", ", missing.Select(m => Nm.ToMillimetreString(m, 2) + " mm"))}. The program still asks for {(missing.Count == 1 ? "it" : "them")} — check you have {(missing.Count == 1 ? "that bit" : "those bits")} before you start."));
         }
 
-        // One file per layer, and the sizes inside it become tool changes rather than more files.
+        // One toolpath per size, and one file per bit when they are written (see AssembleEach).
         // Returned as separate toolpaths because each carries its own bit: merging them into one
         // kept only the first tool, so a board with 0.8 mm and 1.0 mm holes had every one of them
         // drilled 1.0 mm and nothing in the file said so.

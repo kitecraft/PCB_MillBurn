@@ -93,26 +93,48 @@ PogoTest1-NPTH.nc
   plunges   8
   extent    0.000 .. 9.045 x 0.000 .. 28.665 mm
 
-PogoTest1-PTH.nc
+PogoTest1-PTH.bit1-1.70mm.nc
   operation Drilling
   layer     Plated holes
-  lines     151
-  sha256    7a9838d872098c0b
+  lines     81
+  sha256    3f97e6f7fc13aec9
+  summary   Bit 1 of 2 · 1.70 mm drill
   summary   16 holes in 2 sizes · 1.90 mm deep (0.30 mm through the back)
-  summary   16 holes drilled, 118 mm travel
-  summary   2m 23s – 2m 26s · 150 lines
-  summary   Ordering: 123 mm rapid → 118 mm (4 % less)
+  summary   8 holes drilled, 92 mm travel
+  summary   1m 12s – 1m 14s · 80 lines
+  summary   Ordering: 97 mm rapid → 92 mm (6 % less)
   warning   The tool library has no drill of 1.70 mm. The program still asks for it — check you have that bit before you start.
   comment   ( PCB_MillBurn - PogoTest1-PTH — Drilling )
+  comment   ( Bit 1 of 2: fit the 1.70 mm drill, touch off Z on the same spot each time, then run this file. )
+  comment   ( Next: PogoTest1-PTH.bit2-1.00mm.nc )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Drill 1.70 mm [8 holes] )
   comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
+  control   M3 S10000 · M5 · M30
+  depths    -1.900, -1.600, -0.800
+  moves     43 rapid, 24 feed, 0 arc
+  distance  0.00 mm cutting, 91.90 mm travel
+  plunges   32
+  extent    0.000 .. 16.832 x 0.000 .. 33.607 mm
+
+PogoTest1-PTH.bit2-1.00mm.nc
+  operation Drilling
+  layer     Plated holes
+  lines     81
+  sha256    bf50efe7f8c050bb
+  summary   Bit 2 of 2 · 1.00 mm drill
+  summary   8 holes drilled, 34 mm travel
+  summary   1m 10s – 1m 12s · 80 lines
+  summary   Ordering: 39 mm rapid → 34 mm (13 % less)
+  comment   ( PCB_MillBurn - PogoTest1-PTH — Drilling )
+  comment   ( Bit 2 of 2: fit the 1.00 mm drill, touch off Z on the same spot each time, then run this file. )
+  comment   ( This is the last of them. )
+  comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Drill 1.00 mm [8 holes] )
   comment   ( Pecking 0.80 mm at a time through 1.90 mm. )
-  comment   ( Change tool to 1.00 mm drill )
-  control   M3 S10000 · M5 · M0 · M3 S10000 · M5 · M30
+  control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -0.800
-  moves     84 rapid, 48 feed, 0 arc
-  distance  0.00 mm cutting, 117.98 mm travel
-  plunges   64
-  extent    0.000 .. 16.832 x 0.000 .. 33.607 mm
+  moves     43 rapid, 24 feed, 0 arc
+  distance  0.00 mm cutting, 33.81 mm travel
+  plunges   32
+  extent    0.000 .. 13.250 x 0.000 .. 6.900 mm

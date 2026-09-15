@@ -4,6 +4,14 @@ using MillBurn.Core;
 
 namespace MillBurn.Gcode;
 
+/// <summary>
+/// One program a guide page describes, by the name it is written under.
+///
+/// A list of these rather than one program, because a layer that needs several bits is written as one
+/// file per bit, and the page is what tells somebody which file goes with which bit and in what order.
+/// </summary>
+public sealed record GuideProgram(string Name, string Text);
+
 /// <summary>Facts about the job that are not in the program itself.</summary>
 public sealed record DrillGuideContext
 {
@@ -41,6 +49,9 @@ public sealed record DrillGuideStep
     public required int Line { get; init; }
 
     public required double Seconds { get; init; }
+
+    /// <summary>The file this bit's holes are in.</summary>
+    public string Program { get; init; } = string.Empty;
 }
 
 /// <summary>What the page says, available without rendering it.</summary>
@@ -49,6 +60,9 @@ public sealed record DrillGuideReport
     public required IReadOnlyList<DrillGuideStep> Steps { get; init; }
 
     public int Changes => Math.Max(0, Steps.Count - 1);
+
+    /// <summary>How many files the bits are spread across: one per bit, or one for all of them.</summary>
+    public int Files => Steps.Select(s => s.Program).Distinct(StringComparer.Ordinal).Count();
 
     public int Holes => Steps.Sum(s => s.Holes);
 
@@ -72,13 +86,32 @@ public sealed record DrillGuideReport
 /// </summary>
 public static class DrillGuide
 {
-    /// <summary>Builds the page, and the facts it is built from.</summary>
+    /// <summary>Builds the page for one program, and the facts it is built from.</summary>
     public static (string Html, DrillGuideReport Report) Build(string program, DrillGuideContext context)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(context);
 
-        var steps = Read(program);
+        return Build([new GuideProgram(context.ProgramName, program)], context);
+    }
+
+    /// <summary>Builds the page for a layer's files, in the order they run.</summary>
+    public static (string Html, DrillGuideReport Report) Build(
+        IReadOnlyList<GuideProgram> programs, DrillGuideContext context)
+    {
+        ArgumentNullException.ThrowIfNull(programs);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var steps = new List<DrillGuideStep>();
+
+        foreach (var program in programs)
+        {
+            foreach (var step in Read(program.Text))
+            {
+                steps.Add(step with { Order = steps.Count + 1, Program = program.Name });
+            }
+        }
+
         var report = new DrillGuideReport { Steps = steps };
 
         return (Render(report, context), report);
@@ -207,9 +240,16 @@ public static class DrillGuide
         page.Append("<style>\n").Append(Style).Append("</style>\n</head>\n<body>\n");
 
         page.Append("<h1>").Append(Escape(context.LayerLabel)).Append("</h1>\n");
-        page.Append("<p class=\"sub\">")
-            .Append(Escape(context.BoardName))
-            .Append(" · <code>").Append(Escape(context.ProgramName)).Append("</code></p>\n");
+        page.Append("<p class=\"sub\">").Append(Escape(context.BoardName));
+
+        if (report.Files > 1)
+        {
+            page.Append(" · <strong>").Append(report.Files).Append(" files</strong>, one per bit</p>\n");
+        }
+        else
+        {
+            page.Append(" · <code>").Append(Escape(context.ProgramName)).Append("</code></p>\n");
+        }
 
         Overview(page, report, context);
         Sequence(page, report);
@@ -221,7 +261,9 @@ public static class DrillGuide
         }
 
         page.Append(GuideFooter.For(
-            "This page describes the program beside it; if you re-export, read it again.",
+            report.Files > 1
+                ? "This page describes the files beside it; if you re-export, read it again."
+                : "This page describes the program beside it; if you re-export, read it again.",
             "drilling"));
 
         page.Append("</body>\n</html>\n");
@@ -236,7 +278,15 @@ public static class DrillGuide
         page.Append("<div class=\"facts\">\n");
         Fact(page, "Holes", report.Holes.ToString(CultureInfo.InvariantCulture));
         Fact(page, "Bits", report.Steps.Count.ToString(CultureInfo.InvariantCulture));
-        Fact(page, "Tool changes", report.Changes.ToString(CultureInfo.InvariantCulture));
+
+        if (report.Files > 1)
+        {
+            Fact(page, "Files", report.Files.ToString(CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            Fact(page, "Tool changes", report.Changes.ToString(CultureInfo.InvariantCulture));
+        }
         Fact(page, "Time", Duration(report.Seconds));
 
         if (depth > 0)
@@ -249,7 +299,9 @@ public static class DrillGuide
 
     private static void Sequence(StringBuilder page, DrillGuideReport report)
     {
-        page.Append("<h2>The run, in order</h2>\n");
+        // "Suggested", as on the project page: most of the order is physics, but a board can have a
+        // reason to differ, and somebody new to this must not read a suggestion as an instruction.
+        page.Append(report.Files > 1 ? "<h2>Suggested order</h2>\n" : "<h2>The run, in order</h2>\n");
 
         if (report.Steps.Count == 0)
         {
@@ -257,8 +309,12 @@ public static class DrillGuide
             return;
         }
 
+        // One file per bit: the last column names the file, which is what somebody opens in the
+        // sender. A single file keeps the line each bit starts at.
+        var perFile = report.Files > 1;
+
         page.Append("<table>\n<thead><tr><th>#</th><th>Put in the spindle</th><th>Holes</th>"
-            + "<th>About</th><th>From line</th></tr></thead>\n<tbody>\n");
+            + "<th>About</th><th>").Append(perFile ? "File" : "From line").Append("</th></tr></thead>\n<tbody>\n");
 
         foreach (var step in report.Steps)
         {
@@ -266,12 +322,34 @@ public static class DrillGuide
                 .Append("<td><strong>").Append(Escape(step.Bit)).Append("</strong></td>")
                 .Append("<td>").Append(step.Holes).Append("</td>")
                 .Append("<td>").Append(Duration(step.Seconds)).Append("</td>")
-                .Append("<td>").Append(step.Line).Append("</td></tr>\n");
+                .Append("<td>");
+
+            if (perFile)
+            {
+                page.Append("<code>").Append(Escape(step.Program)).Append("</code>");
+            }
+            else
+            {
+                page.Append(step.Line);
+            }
+
+            page.Append("</td></tr>\n");
         }
 
         page.Append("</tbody>\n</table>\n");
 
-        if (report.Changes > 0)
+        if (perFile)
+        {
+            page.Append("<p><strong>One file per bit</strong>, in the suggested order above. Before "
+                + "each one, fit its bit and touch off Z. <strong>X and Y keep their zero</strong> — "
+                + "leave them alone between files.</p>\n");
+
+            page.Append("<div class=\"warn\"><p><strong>Z is the one you have to set again</strong>, "
+                + "before every file and <strong>on the same spot each time</strong>. A new bit sits at "
+                + "a different height in the collet, and the depths are measured from the surface of "
+                + "the board rather than from the spindle.</p></div>\n");
+        }
+        else if (report.Changes > 0)
         {
             // Scoped to X and Y, and only to X and Y. An earlier version said the tool change
             // "does not need re-zeroing" — meaning the two axes that had not moved — immediately

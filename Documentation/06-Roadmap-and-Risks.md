@@ -1981,6 +1981,7 @@ than discovered after.
 - **The viewer leaves a gap in every outline ring** — done. See 6.8.
 - **Open recent**, off the File menu. See 6.9.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves. See 6.10.
+- **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2483,6 +2484,40 @@ What the implementation has to decide:
 **Done when** a drilling program previews with an X at every hole, from plain plunges and from
 canned cycles alike; the X hides with its own chip and with its layer's row; and a milling program's
 plunges do not grow Xs.
+
+#### 6.11 Bit changes: one file per bit, or one file with custom tool-change G-code — **per-bit built; the choice is not**
+
+**Built (2026-09-14): one file per bit.** A drilling or routing layer that needs more than one bit
+is written as one file per bit — `Board-PTH-drl.bit1-1.00mm.nc`, `Board-PTH-drl.bit2-0.50mm.nc`, …,
+numbered in the suggested order — and a layer with one bit is still the single file it always was.
+Each file's header says which bit to fit and which file comes next. The drilling and routing pages
+stay one per layer and list the files in the suggested order.
+
+Found at the machine, on the first drilling run with a bit change. The single file stopped between
+bits with `M5`/`M0`/`M3` at safe Z, and `M0` puts GRBL in *Hold*. A controller on hold will not jog
+or probe, so there was no way to lift the head, fit the next bit and touch off Z without stopping the
+program — and the page's "change the bit, then resume in your sender" could not be followed. The
+workaround was Stop, change and re-zero in *Idle*, then restart the file from the line after the
+`M0`. One file per bit makes that unavoidable stop the plan rather than a recovery.
+
+Requested alongside, for later:
+
+- **Let the operator choose** one file per bit or one file with bit changes in it. A sender with
+  tool-change macros, or a machine with an automatic changer, runs a single file perfectly well, and
+  for those one file is simpler. The choice belongs with the machine settings — it depends on the
+  controller and the sender, not on the board.
+- **Custom tool-change G-code.** What the single file does at a change is the part that varies by
+  machine: `M6 T<n>` for a changer or a macro-driven sender; a raise to a tool-change height; a probe
+  cycle at a fixed touch-off spot. It wants the same treatment as the custom start and end G-code
+  (Settings › start/end), with the bit's number, name and diameter available to it.
+
+What that needs from the code: the emitter's stop sequence (today a fixed `M5`/`M0`/`M3`) replaced by
+the operator's block, and the pages' single-file wording, which is still there for that case and
+still says "resume in your sender" — right for those machines, and wrong for plain GRBL.
+
+**Done when** Settings offers *one file per bit* (the default) and *one file, with this tool-change
+G-code*, the second emits the operator's block at every change, and each form's page describes the
+run it actually produces.
 
 ### Phase 7 — User documentation — **started**
 

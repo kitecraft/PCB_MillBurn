@@ -135,13 +135,15 @@ public sealed class ExportPlannerTests
         var board = Board();
         var plan = Plan(board, Defaults(board));
 
-        // Both coppers, both drill files and the profile.
-        Assert.Equal(5, plan.Count);
+        // Both coppers, the plated holes as one file per bit (two sizes, so two files), the
+        // non-plated holes (one size, one file) and the profile.
+        Assert.Equal(6, plan.Count);
         Assert.Equal(plan.Count, plan.Items.Select(i => i.TargetName).Distinct(StringComparer.Ordinal).Count());
 
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-B_Cu.nc");
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-F_Cu.nc");
-        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-PTH.nc");
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-PTH.bit1-1.70mm.nc");
+        Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-PTH.bit2-1.00mm.nc");
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-NPTH.nc");
         Assert.Contains(plan.Items, i => i.TargetName == "PogoTest1-Edge_Cuts.nc");
     }
@@ -193,7 +195,8 @@ public sealed class ExportPlannerTests
 
         Assert.All(Plan(board, settings, OutputKind.Svg).Items, i => Assert.Equal(OutputKind.Svg, i.Output));
         Assert.All(Plan(board, settings, OutputKind.Gcode).Items, i => Assert.Equal(OutputKind.Gcode, i.Output));
-        Assert.Equal(6, Plan(board, settings).Count);
+        // Seven: the plated holes are two files, one per bit.
+        Assert.Equal(7, Plan(board, settings).Count);
     }
 
     /// <summary>A mill job and a laser job out of one board, which is what this exists for.</summary>
@@ -299,9 +302,10 @@ public sealed class ExportPlannerTests
                 BreakThroughNm = Nm.FromMillimetres(throughMm),
             };
 
-            return Plan(board, settings, OutputKind.Gcode).Items
-                .Single(i => i.LayerFileName == "PogoTest1-PTH.drl")
-                .Content;
+            // Every file the layer is written as — one per bit — goes to the same depth.
+            return string.Join("\n", Plan(board, settings, OutputKind.Gcode).Items
+                .Where(i => i.LayerFileName == "PogoTest1-PTH.drl")
+                .Select(i => i.Content));
         }
 
         Assert.Contains("Z-1.900", Depth(0.3), StringComparison.Ordinal);

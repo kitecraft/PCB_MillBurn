@@ -160,14 +160,14 @@ public static class ProjectPage
 
         if (Any(i => i.Operation == OperationKind.Drilling))
         {
-            page.Append("<li><strong>Drill.</strong> The drilling page says which bit, and when it "
-                + "stops to change.</li>\n");
+            page.Append("<li><strong>Drill.</strong> One file per bit, in the order the drilling page "
+                + "lists them. Fit the bit and touch off Z before each file.</li>\n");
         }
 
         if (Any(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)))
         {
-            page.Append("<li><strong>Route the slots.</strong> End mill, not a drill. The routing "
-                + "page says which cutter.</li>\n");
+            page.Append("<li><strong>Route the slots.</strong> End mill, not a drill. One file per "
+                + "cutter; the routing page lists them.</li>\n");
         }
 
         if (Any(i => i.Operation == OperationKind.Pocket))
@@ -232,7 +232,9 @@ public static class ProjectPage
             if (item.Companion is { } companion)
             {
                 page.Append("<tr><td><code>").Append(Escape(companion.TargetName)).Append("</code></td>")
-                    .Append("<td>Read this before running the file above.</td>")
+                    .Append(item.Bit is null
+                        ? "<td>Read this before running the file above.</td>"
+                        : "<td>Read this first: it lists this layer's files, in order.</td>")
                     .Append("<td>—</td></tr>\n");
             }
         }
@@ -319,7 +321,9 @@ public static class ProjectPage
         page.Append("</ul>\n");
     }
 
-    private static string What(ExportItem item) => item.TargetName switch
+    private static string What(ExportItem item) => item.Bit is { } bit ? Kind(item) + " · " + bit : Kind(item);
+
+    private static string Kind(ExportItem item) => item.TargetName switch
     {
         var n when n.Contains(".stock.", StringComparison.Ordinal) => "Cuts the stock to size",
         var n when n.Contains(".slots.", StringComparison.Ordinal) => "Slots and milled holes",

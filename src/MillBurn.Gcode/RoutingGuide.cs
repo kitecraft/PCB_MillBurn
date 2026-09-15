@@ -59,6 +59,9 @@ public sealed record RoutingGuideStep
     public required int Line { get; init; }
 
     public required double Seconds { get; init; }
+
+    /// <summary>The file this cutter's work is in.</summary>
+    public string Program { get; init; } = string.Empty;
 }
 
 /// <summary>What a routing program does, in the order it does it.</summary>
@@ -67,6 +70,9 @@ public sealed record RoutingGuideReport
     public required IReadOnlyList<RoutingGuideStep> Steps { get; init; }
 
     public int Changes => Math.Max(0, Steps.Count - 1);
+
+    /// <summary>How many files the cutters are spread across: one per cutter, or one for all.</summary>
+    public int Files => Steps.Select(s => s.Program).Distinct(StringComparer.Ordinal).Count();
 
     public double Seconds => Steps.Sum(s => s.Seconds);
 }
@@ -90,13 +96,33 @@ public sealed record RoutingGuideReport
 /// </summary>
 public static class RoutingGuide
 {
-    /// <summary>Builds the page, and the facts it is built from.</summary>
+    /// <summary>Builds the page for one program, and the facts it is built from.</summary>
     public static (string Html, RoutingGuideReport Report) Build(string program, RoutingGuideContext context)
     {
         ArgumentNullException.ThrowIfNull(program);
         ArgumentNullException.ThrowIfNull(context);
 
-        var report = new RoutingGuideReport { Steps = Read(program) };
+        return Build([new GuideProgram(context.ProgramName, program)], context);
+    }
+
+    /// <summary>Builds the page for a layer's routing files, in the order they run.</summary>
+    public static (string Html, RoutingGuideReport Report) Build(
+        IReadOnlyList<GuideProgram> programs, RoutingGuideContext context)
+    {
+        ArgumentNullException.ThrowIfNull(programs);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var steps = new List<RoutingGuideStep>();
+
+        foreach (var program in programs)
+        {
+            foreach (var step in Read(program.Text))
+            {
+                steps.Add(step with { Order = steps.Count + 1, Program = program.Name });
+            }
+        }
+
+        var report = new RoutingGuideReport { Steps = steps };
 
         return (Render(report, context), report);
     }
@@ -240,9 +266,16 @@ public static class RoutingGuide
         page.Append("<style>\n").Append(DrillGuide.Style).Append("</style>\n</head>\n<body>\n");
 
         page.Append("<h1>").Append(Escape(context.LayerLabel)).Append(" — routed features</h1>\n");
-        page.Append("<p class=\"sub\">")
-            .Append(Escape(context.BoardName))
-            .Append(" · <code>").Append(Escape(context.ProgramName)).Append("</code></p>\n");
+        page.Append("<p class=\"sub\">").Append(Escape(context.BoardName));
+
+        if (report.Files > 1)
+        {
+            page.Append(" · <strong>").Append(report.Files).Append(" files</strong>, one per cutter</p>\n");
+        }
+        else
+        {
+            page.Append(" · <code>").Append(Escape(context.ProgramName)).Append("</code></p>\n");
+        }
 
         Overview(page, report, context);
 
@@ -268,7 +301,9 @@ public static class RoutingGuide
         }
 
         page.Append(GuideFooter.For(
-            "This page describes the program beside it; if you re-export, read it again.",
+            report.Files > 1
+                ? "This page describes the files beside it; if you re-export, read it again."
+                : "This page describes the program beside it; if you re-export, read it again.",
             "drills"));
 
         page.Append("</body>\n</html>\n");
@@ -282,7 +317,15 @@ public static class RoutingGuide
 
         page.Append("<div class=\"facts\">\n");
         Fact(page, "Cutters", report.Steps.Count.ToString(CultureInfo.InvariantCulture));
-        Fact(page, "Tool changes", report.Changes.ToString(CultureInfo.InvariantCulture));
+
+        if (report.Files > 1)
+        {
+            Fact(page, "Files", report.Files.ToString(CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            Fact(page, "Tool changes", report.Changes.ToString(CultureInfo.InvariantCulture));
+        }
         Fact(page, "Time", Duration(report.Seconds));
 
         if (depth > 0)
@@ -325,7 +368,7 @@ public static class RoutingGuide
 
     private static void Sequence(StringBuilder page, RoutingGuideReport report)
     {
-        page.Append("<h2>The run, in order</h2>\n");
+        page.Append(report.Files > 1 ? "<h2>Suggested order</h2>\n" : "<h2>The run, in order</h2>\n");
 
         if (report.Steps.Count == 0)
         {
@@ -333,8 +376,10 @@ public static class RoutingGuide
             return;
         }
 
+        var perFile = report.Files > 1;
+
         page.Append("<table>\n<thead><tr><th>#</th><th>Put in the spindle</th><th>Makes</th>"
-            + "<th>About</th><th>From line</th></tr></thead>\n<tbody>\n");
+            + "<th>About</th><th>").Append(perFile ? "File" : "From line").Append("</th></tr></thead>\n<tbody>\n");
 
         foreach (var step in report.Steps)
         {
@@ -342,12 +387,34 @@ public static class RoutingGuide
                 .Append("<td><strong>").Append(Escape(step.Cutter)).Append("</strong></td>")
                 .Append("<td>").Append(string.Join("<br>", step.Makes.Select(Escape))).Append("</td>")
                 .Append("<td>").Append(Duration(step.Seconds)).Append("</td>")
-                .Append("<td>").Append(step.Line).Append("</td></tr>\n");
+                .Append("<td>");
+
+            if (perFile)
+            {
+                page.Append("<code>").Append(Escape(step.Program)).Append("</code>");
+            }
+            else
+            {
+                page.Append(step.Line);
+            }
+
+            page.Append("</td></tr>\n");
         }
 
         page.Append("</tbody>\n</table>\n");
 
-        if (report.Changes > 0)
+        if (perFile)
+        {
+            page.Append("<p><strong>One file per cutter</strong>, in the suggested order above. Before "
+                + "each one, fit its cutter and touch off Z. <strong>X and Y keep their zero</strong> — "
+                + "leave them alone between files.</p>\n");
+
+            page.Append("<div class=\"warn\"><p><strong>Z is the one you have to set again</strong>, "
+                + "before every file and <strong>on the same spot each time</strong>. A new cutter sits "
+                + "at a different height in the collet, and the depths are measured from the surface "
+                + "of the board.</p></div>\n");
+        }
+        else if (report.Changes > 0)
         {
             page.Append("<p>The program <strong>stops on its own</strong> between each of these, "
                 + "with the spindle off and the tool lifted clear. Change the cutter, then resume in "

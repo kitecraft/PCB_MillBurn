@@ -347,9 +347,12 @@ public sealed class GerberDrillTests
                 ToolLibrary.Default,
                 Nm.FromMillimetres(1.6));
 
-            // The layer's own name appears in the header, and it is the one thing that legitimately
-            // differs between two files holding the same holes.
-            return Assert.Single(plan.Items).Content.Replace(
+            // Every file the layer is written as — one per bit — with its name. The layer's own name
+            // appears in the file names and headers, and it is the one thing that legitimately differs
+            // between two files holding the same holes.
+            Assert.NotEmpty(plan.Items);
+
+            return string.Join("\n", plan.Items.Select(i => i.TargetName + "\n" + i.Content)).Replace(
                 Path.GetFileNameWithoutExtension(fileName), "drill", StringComparison.Ordinal);
         }
 

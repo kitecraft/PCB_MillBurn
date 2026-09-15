@@ -41,7 +41,7 @@
     <li><a href="#panels">Can I panelise?</a></li>
     <li><a href="#relief">Milling the soldermask off the pads</a></li>
     <li><a href="#negative">Etching: burning the negative</a></li>
-    <li><a href="#drilling">Drilling: which bit, and when it stops</a></li>
+    <li><a href="#drilling">Drilling: one file per bit</a></li>
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
     <li><a href="#viewer">Looking at a G-code file</a></li>
@@ -1280,20 +1280,19 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   ignored for G-code rather than producing a program that mills the whole board away.
 </p>
 
-<h2 id="drilling">Drilling: which bit, and when it stops</h2>
+<h2 id="drilling">Drilling: one file per bit</h2>
 
 <p>
-  Drilling is the only operation with <strong>tool changes</strong> in it, so it is the only one
-  where the program alone does not tell you what to do. A board with holes in four sizes is four
-  runs with three stops between them, and the file says so only in comments you would have to go
-  looking for.
+  A board with holes in four sizes needs four bits, and <strong>each bit gets its own file</strong>:
+  <code>MyBoard-PTH.bit1-1.00mm.nc</code>, <code>MyBoard-PTH.bit2-0.80mm.nc</code> and so on, numbered
+  in the suggested order. A layer that needs only one bit is still a single <code>MyBoard-PTH.nc</code>.
+  The top of each file says which bit to fit and which file comes next.
 </p>
 
 <p>
-  So every drill program gets a page beside it &mdash; <code>MyBoard-PTH.drilling.html</code> next to
-  <code>MyBoard-PTH.nc</code> &mdash; listing the bits <strong>in the order they go in</strong>, how
-  many holes each one makes, roughly how long that takes, and which line of the program it starts
-  at. Open it in a browser and work down it.
+  Each drilling layer also gets one page beside its files &mdash; <code>MyBoard-PTH.drilling.html</code>
+  &mdash; listing the files <strong>in the suggested order</strong>, the bit each one needs, how many
+  holes it makes and roughly how long it takes. Open it in a browser and work down it.
 </p>
 
 <p>
@@ -1303,15 +1302,17 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <div class="note">
   <p>
-    <strong>The program stops on its own</strong> between bits &mdash; spindle off, tool lifted
-    clear &mdash; and waits. Change the bit and resume in your sender. X and Y have not moved and do
-    not need re-setting.
+    <strong>Why separate files, rather than one file that stops between bits?</strong> A program that
+    pauses for a bit change leaves GRBL on hold, and a controller on hold will not jog or probe
+    &mdash; so there is no way to lift the head, fit the next bit and set Z without stopping the
+    program anyway. Separate files make that the plan: fit the bit, set Z, run the file. X and Y keep
+    their zero between files; leave them alone.
   </p>
 </div>
 
 <div class="warn">
   <p>
-    <strong>Re-zero Z after every bit change.</strong> A new bit sits at a different height in the
+    <strong>Set Z again before every file, on the same spot each time.</strong> A new bit sits at a different height in the
     collet, and the depths in the program are measured from the surface of the board, not from the
     spindle. This is the one part of a tool change that cannot be done for you, and getting it wrong
     either drills nothing or drills through the table.
@@ -1345,6 +1346,8 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   long it takes, and <strong>which features are not in it</strong>. That last one is why the page
   exists: a program cannot describe what is absent from it, so a slot with no cutter narrow enough
   is invisible in the <code>.nc</code> and invisible at the machine.
+  Routing that needs more than one cutter is one file per cutter, listed in order on that page, the
+  same way drilling is.
   Two reasons: a run that alternates drills and cutters is a tool change the drilling page cannot
   describe honestly, and the two want different feeds.
 </p>

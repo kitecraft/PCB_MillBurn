@@ -35,9 +35,8 @@ public sealed class RoutingGuideTests(ITestOutputHelper output)
         var plan = ExportPlanner.Plan(
             loaded, settings, library ?? ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode);
 
-        return Assert.Single(
-            plan.Items,
-            i => i.TargetName.EndsWith(".slots.nc", StringComparison.Ordinal));
+        // The first of the layer's routing files: one per cutter, and the page is on the first.
+        return plan.Items.First(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal));
     }
 
     /// <summary>A routing program gets a page, sharing the program's own name so the two sort together.</summary>
@@ -254,31 +253,43 @@ public sealed class RoutingGuideTests(ITestOutputHelper output)
         var plan = ExportPlanner.Plan(
             loaded, settings, library, Nm.FromMillimetres(1.6), OutputKind.Gcode, job: job);
 
-        var routed = plan.Items.Where(i => i.TargetName.EndsWith(".slots.nc", StringComparison.Ordinal)).ToList();
+        var routed = plan.Items
+            .Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal))
+            .GroupBy(i => i.LayerFileName)
+            .ToList();
 
         Assert.NotEmpty(routed);
 
         var listedTogether = false;
+        var split = false;
 
-        foreach (var item in routed)
+        foreach (var layer in routed)
         {
-            var page = Assert.IsType<ExportCompanion>(item.Companion);
+            var files = layer.ToList();
 
-            Assert.Equal(item.TargetName[..^".nc".Length] + ".html", page.TargetName);
+            // One page per layer, on its first file, naming every file the layer was written as.
+            var page = Assert.IsType<ExportCompanion>(files[0].Companion);
+            Assert.All(files.Skip(1), f => Assert.Null(f.Companion));
+            Assert.Equal(Path.GetFileNameWithoutExtension(layer.Key) + ".slots.html", page.TargetName);
 
-            var features = item.Content.Split('\n')
+            var features = files.SelectMany(f => f.Content.Split('\n'))
                 .Select(l => l.Trim())
                 .Where(l => l.StartsWith('(') && l.Contains(", cut with the ", StringComparison.Ordinal))
                 .Select(l => l[1..l.IndexOf(", cut with the ", StringComparison.Ordinal)].Trim())
                 .ToList();
 
-            output.WriteLine($"{item.TargetName}: {features.Count} features — {page.Description}");
+            output.WriteLine($"{layer.Key}: {files.Count} file(s), {features.Count} features — {page.Description}");
 
             Assert.NotEmpty(features);
             Assert.All(features, f => Assert.Contains(f, page.Content, StringComparison.Ordinal));
+            Assert.All(files, f => Assert.Contains(f.TargetName, page.Content, StringComparison.Ordinal));
+            Assert.All(files, f => Assert.DoesNotContain(f.Content.Split('\n'), l => l.Trim() == "M0"));
 
             listedTogether |= page.Content.Contains("<br>", StringComparison.Ordinal);
+            split |= files.Count > 1;
         }
+
+        Assert.True(split, "some layer on this board needs more than one cutter, and so more than one file");
 
         Assert.True(listedTogether, "some cutter on this board makes more than one feature");
     }

@@ -347,7 +347,7 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
         Assert.True(drilledOn < drilledOff, "milling large holes should leave fewer to drill");
 
         var routed = on.Items
-            .Where(i => i.TargetName.EndsWith(".slots.nc", StringComparison.Ordinal))
+            .Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal))
             .ToList();
 
         foreach (var file in routed)
@@ -356,7 +356,11 @@ public sealed class SlotRoutingTests(ITestOutputHelper output)
         }
 
         Assert.NotEmpty(routed);
-        Assert.All(routed, r => Assert.Contains(r.Summary, s => s.Contains("mm across", StringComparison.Ordinal)));
+
+        // A layer's routing may be one file per cutter; its own summary is on the first of them.
+        Assert.All(
+            routed.GroupBy(r => r.LayerFileName),
+            layer => Assert.Contains(layer.First().Summary, s => s.Contains("mm across", StringComparison.Ordinal)));
 
         // The non-plated file's only size is 2.20 mm, so once that is milled it has nothing left to
         // drill at all. It must still get its routing program rather than being written off as

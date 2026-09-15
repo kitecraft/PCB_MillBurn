@@ -55,19 +55,20 @@ public sealed class DrillSizeTests(ITestOutputHelper output)
     [Theory]
     [InlineData(RealBoards.PogoTest1)]
     [InlineData(RealBoards.PogoTest1AllLayers)]
-    public void EverySizeGetsItsOwnBitAndItsOwnToolChange(string board)
+    public void EverySizeGetsItsOwnBitAndItsOwnFile(string board)
     {
-        var drilling = Plan(board).Items
+        var layers = Plan(board).Items
             .Where(i => i.Operation == OperationKind.Drilling)
+            .GroupBy(i => i.LayerFileName)
             .ToList();
 
-        Assert.NotEmpty(drilling);
+        Assert.NotEmpty(layers);
 
         var checkedMultiSize = false;
 
-        foreach (var item in drilling)
+        foreach (var files in layers)
         {
-            var drill = DrillOf(board, item.TargetName);
+            var drill = DrillOf(board, files.First().TargetName);
 
             if (drill is null)
             {
@@ -75,12 +76,13 @@ public sealed class DrillSizeTests(ITestOutputHelper output)
             }
 
             var sizes = drill.Tools.Count;
-            var stops = item.Content.Split('\n').Count(l => l.Trim() == "M0");
+            var content = string.Join("\n", files.Select(f => f.Content));
 
-            output.WriteLine($"{item.TargetName}: {sizes} size(s), {stops} tool change stop(s)");
+            output.WriteLine($"{files.Key}: {sizes} size(s), {files.Count()} file(s)");
 
-            // One bit goes in before the program starts, so a change is only needed for the rest.
-            Assert.Equal(sizes - 1, stops);
+            // One file per bit, and no file stops part-way for a change of bit.
+            Assert.Equal(sizes, files.Count());
+            Assert.All(files, f => Assert.DoesNotContain(f.Content.Split('\n'), l => l.Trim() == "M0"));
 
             foreach (var (tool, _) in drill.ByTool())
             {
@@ -94,7 +96,7 @@ public sealed class DrillSizeTests(ITestOutputHelper output)
 
                 Assert.Contains(
                     $"Drill {millimetres} mm [{holes} holes]",
-                    item.Content,
+                    content,
                     StringComparison.Ordinal);
             }
 
@@ -113,9 +115,13 @@ public sealed class DrillSizeTests(ITestOutputHelper output)
     [InlineData(RealBoards.PogoTest1AllLayers)]
     public void NoHoleIsLostBySplittingTheOperation(string board)
     {
-        foreach (var item in Plan(board).Items.Where(i => i.Operation == OperationKind.Drilling))
+        var layers = Plan(board).Items
+            .Where(i => i.Operation == OperationKind.Drilling)
+            .GroupBy(i => i.LayerFileName);
+
+        foreach (var files in layers)
         {
-            var drill = DrillOf(board, item.TargetName);
+            var drill = DrillOf(board, files.First().TargetName);
 
             if (drill is null)
             {
@@ -123,14 +129,14 @@ public sealed class DrillSizeTests(ITestOutputHelper output)
             }
 
             // A drilled hole is one descent below zero, however many pecks it takes to get there:
-            // count the distinct XY positions the program plunges at.
-            var plunges = GcodeParser.Parse(item.Content).Moves
+            // count the distinct XY positions each file plunges at, across all of the layer's files.
+            var plunges = files.Sum(f => GcodeParser.Parse(f.Content).Moves
                 .Where(m => m.IsVertical && m.ToZNm < 0)
                 .Select(m => m.From)
                 .Distinct()
-                .Count();
+                .Count());
 
-            output.WriteLine($"{item.TargetName}: {drill.Hits.Count} holes in the file, {plunges} drilled");
+            output.WriteLine($"{files.Key}: {drill.Hits.Count} holes in the drill file, {plunges} drilled");
             Assert.Equal(drill.Hits.Count, plunges);
         }
     }
@@ -143,10 +149,12 @@ public sealed class DrillSizeTests(ITestOutputHelper output)
     [Fact]
     public void TheBiggestBitGoesFirst()
     {
-        var item = Plan(RealBoards.PogoTest1).Items
-            .First(i => i.Operation == OperationKind.Drilling && i.Content.Contains("M0", StringComparison.Ordinal));
+        var files = Plan(RealBoards.PogoTest1).Items
+            .Where(i => i.Operation == OperationKind.Drilling)
+            .GroupBy(i => i.LayerFileName)
+            .First(g => g.Count() > 1);
 
-        var order = item.Content.Split('\n')
+        var order = files.SelectMany(f => f.Content.Split('\n'))
             .Where(l => l.StartsWith("( Drill ", StringComparison.Ordinal))
             .Select(l => double.Parse(
                 l.Split(' ')[2], System.Globalization.CultureInfo.InvariantCulture))

@@ -132,7 +132,7 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
         Assert.Contains(
             item.Summary,
             s => s.Contains("2 slots", StringComparison.Ordinal)
-                && s.Contains(".slots.nc", StringComparison.Ordinal));
+                && s.Contains(".slots", StringComparison.Ordinal));
     }
 
     /// <summary>Said on the summary line, which is what the export window shows first.</summary>
@@ -207,7 +207,8 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
         var plan = ExportPlanner.Plan(
             loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode);
 
-        var plated = plan.Items.Single(
+        // The first of the layer's drilling files, one per bit, carries the layer's own summary.
+        var plated = plan.Items.First(
             i => i.Operation == OperationKind.Drilling && i.Role == LayerRole.PlatedDrill);
 
         output.WriteLine(string.Join("\n", plated.Summary));

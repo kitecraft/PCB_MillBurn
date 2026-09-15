@@ -157,6 +157,8 @@ one block is most of what is left.
 | V17 | A stroked area layer is drawn closed | 06 §6.8 | **Done** | `ClosedRings` split from `Outlined`; `ClosedRingTests` |
 | V18 | Open recent, off the File menu | 06 §6.9 | **Not started** | `AppSettings.RecentProjects` is already kept; nothing shows it |
 | V19 | Drill hits drawn as an X, with their own toolpath toggle | 06 §6.10 | **Not started** | plunges are counted, never drawn; `G81`/`G83` are not interpreted at all |
+| V20 | A layer needing several bits is one file per bit, and its page lists them in order | 06 §6.11 | **Done** | `AssembleEach`; an `M0` stop leaves GRBL on hold, where it will not jog or probe |
+| V21 | Choose one file per bit or one file with custom tool-change G-code | 06 §6.11 | **Not started** | for tool-change macros and automatic changers |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -219,6 +221,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.8 The viewer's gap in every outline ring | workshop | **Done** |
 | 6.9 Open recent | workshop | **Not started** — the list is already kept |
 | 6.10 Drill hits drawn as an X | workshop | **Not started** |
+| 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

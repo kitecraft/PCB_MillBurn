@@ -83,7 +83,8 @@ public sealed class NearIdenticalDrillTests(ITestOutputHelper output) : IDisposa
         M02*
         """;
 
-    private ExportItem Drilling()
+    /// <summary>The layer's drilling files, in the order they run: one per bit.</summary>
+    private List<ExportItem> Drilling()
     {
         File.WriteAllText(Path.Combine(_folder, "Board-PTH-drl.gbr"), Drill);
         File.WriteAllText(Path.Combine(_folder, "Board-Edge_Cuts.gbr"), Outline);
@@ -102,29 +103,30 @@ public sealed class NearIdenticalDrillTests(ITestOutputHelper output) : IDisposa
         var plan = ExportPlanner.Plan(
             board, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode);
 
-        return Assert.Single(plan.Items, i => i.Operation == OperationKind.Drilling);
+        return [.. plan.Items.Where(i => i.Operation == OperationKind.Drilling)];
     }
 
     /// <summary>
-    /// Three bits, not four. Nothing distinguishes 1.00000 from 1.00076, and a program that stops
-    /// to have you swap a bit for the one already in the spindle is worse than wrong — it teaches
-    /// the operator to ignore the stops.
+    /// Three bits, not four — and so three files. Nothing distinguishes 1.00000 from 1.00076, and a
+    /// file that has you swap a bit for the one already in the spindle is worse than wrong: it
+    /// teaches the operator to skip steps.
     /// </summary>
     [Fact]
     public void SizesAMicronApartAreOneBit()
     {
-        var item = Drilling();
-        var labels = Labels(item.Content);
+        var files = Drilling();
+        var labels = files.SelectMany(f => Labels(f.Content)).ToList();
 
         output.WriteLine(string.Join(" · ", labels));
-        output.WriteLine(string.Join("\n", item.Summary));
+        output.WriteLine(string.Join("\n", files[0].Summary));
 
         Assert.Equal(3, labels.Count);
-        Assert.Contains(item.Summary, s => s.Contains("7 holes in 3 sizes", StringComparison.Ordinal));
+        Assert.Equal(3, files.Count);
+        Assert.Contains(files[0].Summary, s => s.Contains("7 holes in 3 sizes", StringComparison.Ordinal));
 
         // Merged to the larger of the two. A hole a micron over is a hole; a hole a micron under is
         // a part that does not fit.
-        Assert.Contains("1.00 mm [3 holes]", item.Content, StringComparison.Ordinal);
+        Assert.Contains(files, f => f.Content.Contains("1.00 mm [3 holes]", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -138,10 +140,10 @@ public sealed class NearIdenticalDrillTests(ITestOutputHelper output) : IDisposa
     [Fact]
     public void TheGuideNamesTheBitTheProgramActuallyUses()
     {
-        var item = Drilling();
-        var guide = item.Companion!.Content;
+        var files = Drilling();
+        var guide = files[0].Companion!.Content;
 
-        var fromProgram = Labels(item.Content);
+        var fromProgram = files.SelectMany(f => Labels(f.Content)).ToList();
         var fromGuide = Regex.Matches(guide, "<td><strong>([^<]*)</strong></td>")
             .Select(m => m.Groups[1].Value)
             .ToList();
@@ -179,19 +181,24 @@ public sealed class NearIdenticalDrillTests(ITestOutputHelper output) : IDisposa
 
         // Not every board has a drill file — GridStripConnector puts its holes nowhere this path
         // sees — and a board with nothing to drill is not a failure of the thing being asserted.
-        var drilling = plan.Items.Where(i => i.Operation == OperationKind.Drilling).ToList();
+        var layers = plan.Items
+            .Where(i => i.Operation == OperationKind.Drilling)
+            .GroupBy(i => i.LayerFileName)
+            .ToList();
 
-        output.WriteLine($"{drilling.Count} drilling program(s)");
+        output.WriteLine($"{layers.Count} drilling layer(s)");
 
-        foreach (var item in drilling)
+        // One page per layer, on the first of its files, and it names the bits of all of them.
+        foreach (var layer in layers)
         {
-            var fromProgram = Labels(item.Content);
-            var fromGuide = Regex.Matches(item.Companion?.Content ?? string.Empty,
+            var files = layer.ToList();
+            var fromProgram = files.SelectMany(f => Labels(f.Content)).ToList();
+            var fromGuide = Regex.Matches(files[0].Companion?.Content ?? string.Empty,
                     "<td><strong>([^<]*)</strong></td>")
                 .Select(m => m.Groups[1].Value)
                 .ToList();
 
-            output.WriteLine($"{item.TargetName}: {string.Join(" · ", fromProgram)}");
+            output.WriteLine($"{layer.Key}: {string.Join(" · ", fromProgram)}");
 
             Assert.Equal(fromProgram, fromGuide);
         }
