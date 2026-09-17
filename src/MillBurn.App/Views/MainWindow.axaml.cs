@@ -327,6 +327,23 @@ public partial class MainWindow : Window
 
         // Opens the tool editor for a screenshot, so the dialog is checkable headlessly like
         // everything else. Non-modal on purpose: a modal one would block the capture.
+        // Filled once at startup as well as when the File menu opens, so the item is a submenu from
+        // the first click rather than after the first visit.
+        FillRecent();
+
+        // The recent list, printed rather than shown. A menu's popup is its own visual root and never
+        // lands in a screenshot, which is how an Open recent that never opened at all got as far as
+        // the workshop; printing what the menu would list is checkable from a terminal.
+        if (args.Contains("--recent", StringComparer.OrdinalIgnoreCase))
+        {
+            FillRecent();
+
+            foreach (var item in (RecentMenu.ItemsSource ?? Array.Empty<object>()).OfType<MenuItem>())
+            {
+                Console.WriteLine($"recent: {item.Header}" + (item.IsEnabled ? string.Empty : "  (disabled)"));
+            }
+        }
+
         if (args.Contains("--tools", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
@@ -805,13 +822,19 @@ public partial class MainWindow : Window
     /// saved — including by this very menu — and a menu built at startup would be one project behind
     /// for the rest of the session.
     /// </summary>
-    private void OnRecentOpened(object? sender, RoutedEventArgs e)
+    private void OnFileMenuOpened(object? sender, RoutedEventArgs e) => FillRecent();
+
+    /// <summary>Kept for a submenu opened on its own; the File menu has normally filled it already.</summary>
+    private void OnRecentOpened(object? sender, RoutedEventArgs e) => FillRecent();
+
+    private void FillRecent()
     {
-        if (DataContext is not MainViewModel vm || sender is not MenuItem menu)
+        if (DataContext is not MainViewModel vm)
         {
             return;
         }
 
+        var menu = RecentMenu;
         var recents = vm.RecentProjects;
 
         // Two projects of the same name, in different folders, are told apart by their folder — and

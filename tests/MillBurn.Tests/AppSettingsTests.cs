@@ -127,6 +127,21 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Equal([Path.GetFullPath(relative)], settings.RecentProjects.ToArray());
     }
 
+    /// <summary>
+    /// A list written before paths were stored absolute holds the same project twice, and the menu
+    /// then showed it twice with a folder beside each to tell them apart. Tidied when it is read.
+    /// </summary>
+    [Fact]
+    public void AnOlderRecentListIsTidiedWhenItIsRead()
+    {
+        var relative = Path.Combine("boards", "a.millburn");
+        var full = Path.GetFullPath(relative);
+
+        new AppSettings { RecentProjects = [relative, full] }.Save(Path_);
+
+        Assert.Equal([full], AppSettings.LoadOrDefault(Path_).RecentProjects.ToArray());
+    }
+
     [Fact]
     public void TheRecentListIsBounded()
     {

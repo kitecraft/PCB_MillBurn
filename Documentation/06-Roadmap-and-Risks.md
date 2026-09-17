@@ -2467,10 +2467,20 @@ underscore in a name is doubled so it is not eaten as an accelerator, and an emp
 disabled line.
 
 Two things came out of building it. The list stores **full paths**: the same project opened from the
-window and passed to the CLI as `WorkingFolder/board.millburn` was two entries. And the last clause of
-*Done when* is the one thing that could not be met: a menu's popup is its own visual root, so a
-headless screenshot of the window catches the File menu highlighted and nothing of the list. A `--recent`
-flag was written, tried, and taken out again.
+window and passed to the CLI as `WorkingFolder/board.millburn` was two entries. And a list written
+before that holds both, so `Migrate` tidies one as it is read.
+
+**The bug that got out, and what it cost.** Filling the list when *its own* submenu opened meant it was
+never filled at all: a `MenuItem` with no children is not a submenu, so it drew no arrow, never opened,
+and never raised the event that would have filled it. From the workshop: *"I open a project, then open
+another project. The 'Open recent' still has no ellipse and no available projects to select."* It is now
+filled when the **File** menu opens, and once at startup, so the item is a submenu from the first click.
+
+That went out because the last clause of *Done when* could not be met as written: a menu's popup is its
+own visual root, so a headless screenshot of the window catches the File menu highlighted and nothing of
+the list — a `--recent` flag that opened the menu was written, tried and taken out again. What replaced
+it is a `--recent` flag that **prints** the entries the menu would show, which catches an empty list, a
+duplicate, or a name mangled by an accelerator, from a terminal.
 
 #### 6.10 Drill hits drawn as an X — **superseded**
 

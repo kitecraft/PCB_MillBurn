@@ -214,6 +214,21 @@ public sealed record AppSettings
     /// </summary>
     private static AppSettings Migrate(AppSettings settings)
     {
+        // The recent list once stored whatever path it was handed, so a file written by an older
+        // build holds the same project twice — opened from the window as a full path, and from the
+        // CLI as a relative one. Tidied on the way in, so the menu neither lists it twice nor has to
+        // explain which is which.
+        var recents = settings.RecentProjects
+            .Select(Full)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .ToImmutableArray();
+
+        if (!recents.SequenceEqual(settings.RecentProjects, StringComparer.OrdinalIgnoreCase))
+        {
+            settings = settings with { RecentProjects = recents };
+        }
+
         if (settings.SubstrateColour is not { } substrate)
         {
             return settings;
