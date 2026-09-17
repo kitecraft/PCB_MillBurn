@@ -35,6 +35,7 @@ internal static class Program
             Console.WriteLine("                                 --stock <l,b,r,t mm> cut the stock to size too, this much bigger than the board");
             Console.WriteLine("                                 --stock-size <WxH mm> the stock is this rectangle instead");
             Console.WriteLine("                                 --stock-have the stock is already that size; cut nothing");
+            Console.WriteLine("                                 --stock-holes two alignment holes in its waste border");
             Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
             Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
             Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
@@ -2610,6 +2611,7 @@ internal static class Program
                 WidthMm = w,
                 HeightMm = h,
                 Cut = !declared,
+                AlignmentHoles = HasOption(args, "--stock-holes"),
             };
         }
 
@@ -2618,7 +2620,12 @@ internal static class Program
             .Select(v => double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : double.NaN)
             .ToList();
 
-        var options = new BlankOptions { Enabled = true, Cut = !declared };
+        var options = new BlankOptions
+        {
+            Enabled = true,
+            Cut = !declared,
+            AlignmentHoles = HasOption(args, "--stock-holes"),
+        };
 
         return borders.Count switch
         {

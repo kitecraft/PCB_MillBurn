@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using MillBurn.Core;
+using MillBurn.Gcode;
 using MillBurn.Pipeline;
 using Xunit;
 using Xunit.Abstractions;
@@ -710,6 +711,138 @@ public sealed class BlankTests(ITestOutputHelper output)
         return ExportPlanner.Plan(
             loaded, settings, library, Nm.FromMillimetres(thicknessMm),
             job: new JobOptions { Blank = new BlankOptions { Enabled = true } });
+    }
+
+    // ------------------------------------------------------------------ alignment holes in the waste
+
+    private static BlankOptions WithHoles(double borderMm = 10) => new()
+    {
+        Enabled = true,
+        LeftMm = borderMm,
+        RightMm = borderMm,
+        BottomMm = borderMm,
+        TopMm = borderMm,
+        AlignmentHoles = true,
+    };
+
+    /// <summary>
+    /// Two holes, in waste, clear of everything, and as far apart as the stock allows.
+    ///
+    /// They exist to be measured, and the angle two holes can resolve is the error in reading each one
+    /// divided by the distance between them — so a pair near the same corner would be worth little.
+    /// </summary>
+    [Fact]
+    public void TheAlignmentHolesSitInTheWasteAsFarApartAsTheStockAllows()
+    {
+        var board = new Bounds(0, 0, Nm.FromMillimetres(60), Nm.FromMillimetres(40));
+        var cutter = Nm.FromMillimetres(1.0);
+
+        var plan = Blanks.Resolve(WithHoles(), board, cutter);
+        var stock = plan.Bounds;
+
+        Assert.Equal(2, plan.AlignmentHoles.Count);
+        Assert.Equal(Nm.FromMillimetres(1.5), plan.HoleDiameterNm);
+
+        var clearance = (plan.HoleDiameterNm / 2) + (cutter / 2);
+
+        foreach (var hole in plan.AlignmentHoles)
+        {
+            output.WriteLine($"hole at {Nm.ToMillimetreString(hole.X, 2)}, {Nm.ToMillimetreString(hole.Y, 2)} mm");
+
+            // Inside the stock, clear of its edge.
+            Assert.True(hole.X - clearance > stock.MinX && hole.X + clearance < stock.MaxX);
+            Assert.True(hole.Y - clearance > stock.MinY && hole.Y + clearance < stock.MaxY);
+
+            // And outside the board, clear of where its outline will be cut.
+            var outside = hole.X + clearance < board.MinX || hole.X - clearance > board.MaxX
+                || hole.Y + clearance < board.MinY || hole.Y - clearance > board.MaxY;
+
+            Assert.True(outside, "a hole overlapped the board");
+        }
+
+        // One in the bottom border, one in the left, at opposite ends: more than half the diagonal.
+        var apart = plan.AlignmentHoles[0].DistanceTo(plan.AlignmentHoles[1]);
+        var diagonal = Math.Sqrt((stock.Width * (double)stock.Width) + (stock.Height * (double)stock.Height));
+
+        output.WriteLine($"{Nm.ToMillimetreString((long)apart, 1)} mm apart, diagonal {Nm.ToMillimetreString((long)diagonal, 1)} mm");
+        Assert.True(apart > diagonal / 2, "the two holes should be at opposite ends of their borders");
+    }
+
+    /// <summary>A border too narrow to hold one says so, and the stock is still cut.</summary>
+    [Fact]
+    public void ABorderTooNarrowForAHoleSaysSoAndStillCutsTheStock()
+    {
+        var board = new Bounds(0, 0, Nm.FromMillimetres(60), Nm.FromMillimetres(40));
+        var plan = Blanks.Resolve(WithHoles(borderMm: 3.2), board, Nm.FromMillimetres(1.0));
+
+        output.WriteLine(string.Join("\n", plan.Notes));
+
+        Assert.True(plan.Resolved);
+        Assert.Empty(plan.AlignmentHoles);
+        Assert.Contains(plan.Notes, n => n.StartsWith("No alignment holes:", StringComparison.Ordinal));
+    }
+
+    /// <summary>Nothing cuts holes into stock it did not make.</summary>
+    [Fact]
+    public void DeclaredStockGetsNoAlignmentHoles()
+    {
+        var board = new Bounds(0, 0, Nm.FromMillimetres(60), Nm.FromMillimetres(40));
+        var plan = Blanks.Resolve(WithHoles() with { Cut = false }, board, Nm.FromMillimetres(1.0));
+
+        Assert.Empty(plan.AlignmentHoles);
+        Assert.Contains(plan.Notes, n => n.Contains("did not make", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// In the program: both holes are cut, and cut before the edges — a hole made after them is a hole
+    /// in a piece hanging on its tabs.
+    /// </summary>
+    [Fact]
+    public void TheStockProgramCutsTheHolesBeforeItsEdges()
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.PogoTest1));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings { FileName = l.FileName, Output = LayerOperations.DefaultFor(l.Role) },
+            StringComparer.Ordinal);
+
+        var job = new JobOptions { Blank = WithHoles() };
+        var plan = ExportPlanner.Plan(loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode, job: job);
+
+        var stock = Assert.Single(plan.Items, i => i.TargetName.EndsWith(".stock.nc", StringComparison.Ordinal));
+        var holes = plan.Blank.AlignmentHoles
+            .Select(h => new Point2(h.X - plan.Blank.Bounds.MinX, h.Y - plan.Blank.Bounds.MinY))
+            .ToList();
+
+        Assert.Equal(2, holes.Count);
+
+        var targets = AlignmentTest.Targets(stock.Content);
+        output.WriteLine(string.Join("\n", targets.Select(t =>
+            $"{t.Kind} {t.Number} at {Nm.ToMillimetreString(t.At.X, 2)}, {Nm.ToMillimetreString(t.At.Y, 2)}")));
+
+        foreach (var hole in holes)
+        {
+            Assert.Contains(targets, t => t.At.DistanceTo(hole) < Nm.FromMillimetres(0.05));
+        }
+
+        // The first thing the program cuts is one of them, not the perimeter.
+        Assert.Contains(holes, h => h.DistanceTo(targets[0].At) < Nm.FromMillimetres(0.05));
+        Assert.Contains(stock.Summary, s => s.Contains("alignment hole", StringComparison.OrdinalIgnoreCase));
+
+        // And each hole is entered once. The stock program is emitted straight rather than through
+        // Assemble, so it had to be linked on its own: without that, a hole's second lap lifted to
+        // safe height and plunged back into the hole it had just cut.
+        // Inside the hole's own circle, because a helix enters on its orbit rather than at the centre.
+        var inside = plan.Blank.HoleDiameterNm / 2.0;
+
+        foreach (var hole in holes)
+        {
+            var entries = GcodeParser.Parse(stock.Content).Moves
+                .Count(m => m.FromZNm >= 0 && m.ToZNm < 0 && m.From.DistanceTo(hole) < inside);
+
+            Assert.Equal(1, entries);
+        }
     }
 
     // ------------------------------------------------------------------ it travels with the project

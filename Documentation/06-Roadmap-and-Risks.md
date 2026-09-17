@@ -2676,7 +2676,7 @@ slider, and records it whenever the outputs are recorded — on every change and
 `export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
 `project info` print which; `project save --thickness` records one.
 
-#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **scheduled, not started; build together**
+#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **Part 1 built; Part 2 not started**
 
 Requested from the workshop, after the first boards cut on stock. The stock (5.6) gives every setup a
 datum and helps alignment a great deal, but small amounts of play in jigs and clamps can still throw the
@@ -2722,6 +2722,22 @@ ones give a translation and a rotation: the two-point case of the fit already de
 
 Built together because each is half of the other: the holes exist to be measured, and a rotation needs
 two known places to measure.
+
+**Part 1 built.** *Project info ▸ Alignment holes in the waste*, and `--stock-holes` from the command
+line. `Blanks.Resolve` places them, because it is what knows the stock, the board inside it and the
+cutter that makes both: one centred across the bottom border at its right-hand end, one across the left
+border at its top — very nearly the stock's diagonal apart, since the angle two holes can resolve is the
+error in reading each divided by the distance between them. Each keeps its own radius, the cutter's, and
+a millimetre clear of the stock's cut, the board's outline and the corner. A border too narrow to hold
+one says so, by how much, and still cuts the stock; stock the mill did not make says so too. The default
+size is half as wide again as the cutter, so it can be spiralled rather than plunged, and
+`BlankOperation` cuts them with `SlotOperation.Holes` — the same code as a milled hole in a board,
+before the edges, while the stock is still part of the sheet, with no bit change.
+
+One thing the build turned up: the stock program is emitted straight rather than through `Assemble`, so
+it had never been through `PassLinker`. A hole's second lap lifted to safe height and plunged back into
+the hole it had just cut. Linking it there fixed that and left the perimeter alone, where a deeper lap
+starts above where the last finished and a plunge is what it should be.
 
 ### Phase 7 — User documentation — **started**
 

@@ -168,7 +168,7 @@ board being cut rather than from a document.
 | V23 | Routed holes and slots: one continuous ramp per feature, no lift between laps, no floor lap under a through cut | 06 §6.13 | **Done** | `PassLinker` continuations; `SlotRoutingTests.OnTheTestBoardEachHoleAndSlotIsEnteredOnce`, `AThroughCutWhoseLastRampIsBelowTheBoardHasNoFloorLap` |
 | V24 | Routing settings: depth per lap, short last lap, break-through, finishing lap, ramp feed | 06 §6.13 | **Not started — priority** | defaults from the cutter and the layer |
 | V25 | Board thickness saved with the project, and read by the CLI | 06 §6.13 | **Done** | `ProjectSettings.BoardThicknessMm`; `ProjectTests.TheBoardThicknessIsSavedWithTheProject`; CLI `ThicknessFor` |
-| V26 | Alignment holes in the stock's bottom and left waste borders, cut with the stock | 06 §6.14 | **Not started** | build with V27 |
+| V26 | Alignment holes in the stock's bottom and left waste borders, cut with the stock | 06 §6.14 | **Done** | `Blanks.AlignmentHolesFor`, `BlankOperation.HolePasses`; `BlankTests.TheAlignmentHolesSitInTheWasteAsFarApartAsTheStockAllows`, `TheStockProgramCutsTheHolesBeforeItsEdges` |
 | V27 | Drill alignment from two holes: translation and rotation, separation checked, saved with the project | 06 §6.14 | **Not started** | the two-point case of 04 §4.2 |
 | V28 | Build-on-stock options in a dialog of their own | 06 §6.14 | **Not started** | to examine; *Project info* is crowded |
 
@@ -239,7 +239,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
 | 6.12 Drill alignment | workshop | **Done** |
 | 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Partial** — lifts and floor lap fixed; settings not started |
-| 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Not started** — build together |
+| 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Partial** — the holes are cut; the two-hole fit is not |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

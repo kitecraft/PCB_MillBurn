@@ -939,16 +939,27 @@ public static class ExportPlanner
             BoardThicknessNm = thicknessNm,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             BreakThroughNm = OutlineSetting(board, settings)?.BreakThroughNm ?? new BlankOutlineOptions().BreakThroughNm,
+
+            // Worked out with the stock itself, because where they go depends on where the board sits
+            // inside it and on the cutter that makes both.
+            AlignmentHoles = blank.AlignmentHoles,
+            HoleDiameterNm = blank.HoleDiameterNm,
         };
 
         var toolpath = BlankOperation.Build(blank.Bounds, options);
+
+        // Linked like every other program. This one is emitted straight rather than through Assemble,
+        // so without this an alignment hole's laps lifted to safe height and plunged back into the hole
+        // they had just cut. The stock's own edges are unaffected: a deeper lap of the perimeter starts
+        // above where the last one finished, which is a plunge by definition and never a continuation.
+        var (linked, _) = PassLinker.Apply(toolpath);
 
         var shift = new Point2(-blank.Bounds.MinX, -blank.Bounds.MinY);
 
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — stock",
-            Toolpaths = [Translate(toolpath, shift)],
+            Toolpaths = [Translate(linked, shift)],
             OriginShift = shift,
             Notes =
             [

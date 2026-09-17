@@ -65,6 +65,25 @@ public sealed record BlankOptions
 
     public double? PlaceYMm { get; init; }
 
+    /// <summary>
+    /// Cut two small holes in the waste border, as a reference for checking alignment later.
+    ///
+    /// The stock's edges are the datum, and they are good — but a jig with a little play in it puts
+    /// the piece back a few hundredths out, or a few hundredths turned, and neither shows until the
+    /// holes are in the board. Two holes cut in the same setup as the edges sit at known coordinates
+    /// in the stock's own frame, in material that is thrown away, so every later setup can be checked
+    /// against them before anything is cut into the board.
+    /// </summary>
+    public bool AlignmentHoles { get; init; }
+
+    /// <summary>
+    /// Their diameter, or zero for one the outline cutter can spiral comfortably.
+    ///
+    /// A cutter needs room to spiral: a hole its own width is a plunge. Half as wide again is the
+    /// smallest that is not, and it is still small enough to sit in a 10 mm border.
+    /// </summary>
+    public double HoleDiameterMm { get; init; }
+
     public static BlankOptions Default { get; } = new();
 }
 
@@ -84,6 +103,15 @@ public sealed record BlankPlan
 
     /// <summary>Things worth saying about the blank there is.</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
+
+    /// <summary>
+    /// Where the alignment holes go, in board coordinates: one in the bottom border, one in the left.
+    /// Empty when none were asked for, or when the borders cannot hold them.
+    /// </summary>
+    public IReadOnlyList<Point2> AlignmentHoles { get; init; } = [];
+
+    /// <summary>The diameter of those holes.</summary>
+    public long HoleDiameterNm { get; init; }
 
     public static BlankPlan None { get; } = new();
 
@@ -189,12 +217,81 @@ public static class Blanks
         notes.Add(Invariant(
             $"The board uses {Fill(board, bounds):P0} of it."));
 
+        var (holes, diameter) = AlignmentHolesFor(options, board, bounds, cutterNm, notes);
+
         return new BlankPlan
         {
             Bounds = bounds,
             Cut = options.Cut,
             Notes = notes,
+            AlignmentHoles = holes,
+            HoleDiameterNm = diameter,
         };
+    }
+
+    /// <summary>
+    /// Clearance around an alignment hole: enough that it never runs into the stock's own cut, the
+    /// board's outline cut, or the corner where two borders meet. One millimetre, over the hole's
+    /// radius and the cutter's.
+    /// </summary>
+    public static long HoleClearanceNm { get; } = Nm.FromMillimetres(1);
+
+    /// <summary>
+    /// The hole a given cutter can spiral comfortably: half as wide again as the cutter, rounded up
+    /// to a tenth. A cutter needs room to spiral, and one the size of the hole is a plunge.
+    /// </summary>
+    public static long HoleDiameterFor(long cutterNm) =>
+        Nm.FromMillimetres(Math.Ceiling(cutterNm * 1.5 / Nm.PerMillimetre * 10) / 10);
+
+    /// <summary>
+    /// Where the two alignment holes go, and how big they are.
+    ///
+    /// **As far apart as the stock allows**, because the angle two holes can resolve is the error in
+    /// reading each one divided by the distance between them: the bottom hole goes at the right-hand
+    /// end of the bottom border and the left hole at the top of the left one, which is very nearly
+    /// the stock's diagonal.
+    /// </summary>
+    private static (IReadOnlyList<Point2> Holes, long DiameterNm) AlignmentHolesFor(
+        BlankOptions options, Bounds board, Bounds bounds, long cutterNm, List<string> notes)
+    {
+        if (!options.AlignmentHoles)
+        {
+            return ([], 0);
+        }
+
+        if (!options.Cut)
+        {
+            notes.Add("No alignment holes: nothing cuts holes into a piece of stock it did not make. Ask for them on stock the mill cuts, or mark your own and use them the same way.");
+            return ([], 0);
+        }
+
+        var diameter = options.HoleDiameterMm > 0
+            ? Nm.FromMillimetres(options.HoleDiameterMm)
+            : HoleDiameterFor(cutterNm);
+
+        // What each hole needs from the edge it sits beside: its own radius, the cutter's, and the
+        // clearance. Twice that is the narrowest border one fits in.
+        var reach = (diameter / 2) + (cutterNm / 2) + HoleClearanceNm;
+        var bottom = board.MinY - bounds.MinY;
+        var left = board.MinX - bounds.MinX;
+
+        if (bottom < reach * 2 || left < reach * 2)
+        {
+            notes.Add(Invariant(
+                $"No alignment holes: a {Mm(diameter)} mm hole needs {Mm(reach * 2)} mm of border, and the bottom and left borders are {Mm(bottom)} and {Mm(left)} mm. Widen them, or ask for a smaller hole."));
+
+            return ([], 0);
+        }
+
+        notes.Add(Invariant(
+            $"Two {Mm(diameter)} mm alignment holes in the waste — one in the bottom border, one in the left — cut before the edges, with the same bit. Check a later setup against them with Job > Drill alignment before anything is cut into the board."));
+
+        return (
+            [
+                new Point2(bounds.MaxX - reach, bounds.MinY + (bottom / 2)),
+                new Point2(bounds.MinX + (left / 2), bounds.MaxY - reach),
+            ],
+            diameter);
     }
 
     private static Bounds Grown(BlankOptions options, Bounds board) => new(

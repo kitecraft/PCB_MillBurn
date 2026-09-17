@@ -1996,6 +1996,13 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial double BlankBorderMm { get; set; } = 10;
 
+    /// <summary>
+    /// Cut two small holes in the stock's waste border, as a reference for checking a later setup.
+    /// Off by default: they are waste, but they are also time on the machine.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool StockAlignmentHoles { get; set; }
+
     /// <summary>What the blank works out to, or why it does not. Shown under the fields.</summary>
     [ObservableProperty]
     public partial string BlankSummary { get; set; } = string.Empty;
@@ -2020,6 +2027,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
     partial void OnBlankBorderMmChanged(double value) => SaveBlank();
 
+    partial void OnStockAlignmentHolesChanged(bool value) => SaveBlank();
+
     private void SaveBlank()
     {
         if (_loadingJob)
@@ -2038,6 +2047,7 @@ public sealed partial class MainViewModel : ViewModelBase
             WidthMm = BlankWidthMm,
             HeightMm = BlankHeightMm,
             Cut = CutTheBlank,
+            AlignmentHoles = StockAlignmentHoles,
         };
 
         _project.Settings = _project.Settings with { Job = _project.Settings.Job with { Blank = blank } };
@@ -2119,6 +2129,7 @@ public sealed partial class MainViewModel : ViewModelBase
             BlankWidthMm = job.Blank.WidthMm;
             BlankHeightMm = job.Blank.HeightMm;
             BlankBorderMm = job.Blank.LeftMm;
+            StockAlignmentHoles = job.Blank.AlignmentHoles;
 
             // Inside the guard, not after it. A new list is a new source for the "Spiral with"
             // combo, and a combo given a new source clears its selection and then restores it —

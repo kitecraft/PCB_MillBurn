@@ -375,6 +375,12 @@
                                             <TextBlock Text="Cut the stock to size on the mill" Classes="caption" />
                                         </CheckBox>
 
+                                        <CheckBox IsChecked="{Binding StockAlignmentHoles, Mode=TwoWay}"
+                                                  IsEnabled="{Binding CutTheBlank}"
+                                                  ToolTip.Tip="Two small holes in the waste border, cut with the same bit before the edges are cut. A later setup can be checked against them with Job ▸ Drill alignment, before anything is cut into the board.">
+                                            <TextBlock Text="Alignment holes in the waste" Classes="caption" />
+                                        </CheckBox>
+
                                         <TextBlock Text="{Binding BlankSummary}"
                                                    Classes="caption"
                                                    TextWrapping="Wrap"
