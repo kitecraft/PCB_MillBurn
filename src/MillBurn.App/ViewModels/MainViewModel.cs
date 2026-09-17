@@ -274,6 +274,21 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Recently opened and saved projects, most recent first: what File ▸ Open recent lists.</summary>
+    public IReadOnlyList<string> RecentProjects => Settings.RecentProjects;
+
+    /// <summary>
+    /// Takes a project off the recent list, and says so. Called when one turns out not to be there
+    /// any more — the file is the only thing that can tell us, and only when somebody asks for it.
+    /// </summary>
+    public void ForgetRecent(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        SaveSettings(Settings.WithoutRecent(path));
+        StatusMessage = $"{Path.GetFileName(path)} is not there any more, so it has been taken off the recent list.";
+    }
+
     public bool SaveProject(string path)
     {
         ArgumentNullException.ThrowIfNull(path);

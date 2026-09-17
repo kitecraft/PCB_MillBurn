@@ -798,6 +798,80 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Fills the recent list as the submenu opens, from the saved settings.
+    ///
+    /// Built on opening rather than bound once: the list changes whenever a project is opened or
+    /// saved — including by this very menu — and a menu built at startup would be one project behind
+    /// for the rest of the session.
+    /// </summary>
+    private void OnRecentOpened(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || sender is not MenuItem menu)
+        {
+            return;
+        }
+
+        var recents = vm.RecentProjects;
+
+        // Two projects of the same name, in different folders, are told apart by their folder — and
+        // only then, because these are full paths several levels deep and the name is usually enough.
+        var shared = recents
+            .GroupBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var items = new List<MenuItem>();
+
+        for (var i = 0; i < recents.Count; i++)
+        {
+            var path = recents[i];
+            var name = Path.GetFileNameWithoutExtension(path);
+
+            var shown = shared.Contains(name) && Path.GetDirectoryName(path) is { Length: > 0 } folder
+                ? $"{name}  —  {Path.GetFileName(folder)}"
+                : name;
+
+            // Doubled, because a single underscore in a menu header is an accelerator: a project
+            // called Millburn_Test_Board would otherwise be listed as "MillburnTest_Board". The
+            // number in front is the accelerator instead, for the first nine.
+            var header = shown.Replace("_", "__", StringComparison.Ordinal);
+            var item = new MenuItem { Header = i < 9 ? $"_{i + 1}  {header}" : header };
+
+            ToolTip.SetTip(item, path);
+            item.Click += async (_, _) => await OpenRecentAsync(path);
+            items.Add(item);
+        }
+
+        if (items.Count == 0)
+        {
+            items.Add(new MenuItem { Header = "No projects yet", IsEnabled = false });
+        }
+
+        menu.ItemsSource = items;
+    }
+
+    /// <summary>Opens a project from the recent list, or takes it off the list if it has gone.</summary>
+    private async Task OpenRecentAsync(string path)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (!File.Exists(path))
+        {
+            vm.ForgetRecent(path);
+            return;
+        }
+
+        if (await ConfirmReplaceAsync())
+        {
+            vm.OpenProject(path);
+        }
+    }
+
     private async void OnOpenProjectClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm || !await ConfirmReplaceAsync())

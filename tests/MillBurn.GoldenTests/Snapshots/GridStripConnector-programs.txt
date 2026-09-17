@@ -4,11 +4,11 @@ GridStripConnector
 GridStripConnector-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
-  lines     132
-  sha256    1c2e423c9d526966
+  lines     117
+  sha256    58efbb2be87a7758
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   326 mm cutting, 83 mm travel
-  summary   1m 48s – 1m 52s · 131 lines
+  summary   1m 48s – 1m 52s · 116 lines
   summary   Simplified: 1,244 → 46 moves, 20 arcs (96 % fewer)
   comment   ( PCB_MillBurn - GridStripConnector-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 144.975, -92.025 mm. )
@@ -17,7 +17,7 @@ GridStripConnector-Edge_Cuts.nc
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
   control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400
-  moves     59 rapid, 40 feed, 20 arc
+  moves     44 rapid, 40 feed, 20 arc
   distance  325.90 mm cutting, 83.46 mm travel
   plunges   28
   extent    -0.500 .. 27.150 x -0.500 .. 9.350 mm
@@ -25,11 +25,11 @@ GridStripConnector-Edge_Cuts.nc
 GridStripConnector-F_Cu.nc
   operation Isolation routing
   layer     Top copper
-  lines     116
-  sha256    9ae90bf593d54979
+  lines     112
+  sha256    b48a7f74280bc1f4
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   172 mm cutting, 14 mm travel
-  summary   0m 56s – 0m 58s · 115 lines
+  summary   0m 56s – 0m 58s · 111 lines
   summary   Simplified: 1,148 → 85 moves, 40 arcs (93 % fewer)
   comment   ( PCB_MillBurn - GridStripConnector-F_Cu — Isolation routing )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 144.975, -92.025 mm. )
@@ -38,7 +38,7 @@ GridStripConnector-F_Cu.nc
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
   control   M3 S10000 · M5 · M30
   depths    -0.050
-  moves     15 rapid, 48 feed, 40 arc
+  moves     11 rapid, 48 feed, 40 arc
   distance  171.66 mm cutting, 13.95 mm travel
   plunges   6
   extent    0.000 .. 25.689 x -0.039 .. 7.888 mm

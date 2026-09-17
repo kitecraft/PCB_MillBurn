@@ -81,8 +81,50 @@ public sealed class AppSettingsTests : IDisposable
             .WithRecent("a.millburn");
 
         // Compared as an array: ImmutableArray<T>.Equals is reference equality, so Assert.Equal
-        // on two of them tests identity rather than contents.
-        Assert.Equal(["a.millburn", "b.millburn"], settings.RecentProjects.ToArray());
+        // on two of them tests identity rather than contents. Stored as full paths.
+        Assert.Equal(
+            [Path.GetFullPath("a.millburn"), Path.GetFullPath("b.millburn")],
+            settings.RecentProjects.ToArray());
+    }
+
+    /// <summary>
+    /// A project that has gone comes off the list, and nothing else moves. Taken off when it is found
+    /// to be missing, rather than hidden whenever the list is drawn: a project on a drive that is
+    /// unplugged today is still a project.
+    /// </summary>
+    [Fact]
+    public void ForgettingARecentProjectLeavesTheRestInOrder()
+    {
+        var settings = new AppSettings()
+            .WithRecent("a.millburn")
+            .WithRecent("b.millburn")
+            .WithRecent("c.millburn")
+            .WithoutRecent("B.MILLBURN");
+
+        Assert.Equal(
+            [Path.GetFullPath("c.millburn"), Path.GetFullPath("a.millburn")],
+            settings.RecentProjects.ToArray());
+
+        // Forgetting one that is not there changes nothing.
+        Assert.Equal(
+            settings.RecentProjects.ToArray(),
+            settings.WithoutRecent("never-opened.millburn").RecentProjects.ToArray());
+    }
+
+    /// <summary>
+    /// The same project named two ways is one project. Opened from the window it arrives as a full
+    /// path and from the CLI as whatever was typed, and the list held both.
+    /// </summary>
+    [Fact]
+    public void TheSameProjectUnderTwoPathsIsListedOnce()
+    {
+        var relative = Path.Combine("boards", "a.millburn");
+
+        var settings = new AppSettings()
+            .WithRecent(Path.GetFullPath(relative))
+            .WithRecent(relative);
+
+        Assert.Equal([Path.GetFullPath(relative)], settings.RecentProjects.ToArray());
     }
 
     [Fact]
@@ -95,7 +137,7 @@ public sealed class AppSettingsTests : IDisposable
         }
 
         Assert.Equal(10, settings.RecentProjects.Length);
-        Assert.Equal("p29.millburn", settings.RecentProjects[0]);
+        Assert.Equal(Path.GetFullPath("p29.millburn"), settings.RecentProjects[0]);
     }
 
     /// <summary>

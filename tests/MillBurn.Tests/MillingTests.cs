@@ -310,6 +310,50 @@ public sealed class MillingTests
         ],
     };
 
+    /// <summary>
+    /// The tool lifts once between features, not twice.
+    ///
+    /// A pass that ends by retracting used to be followed by a pass that began by retracting, so every
+    /// hole and slot in a routing file carried a second <c>G0 Z</c> to the height it was already at. It
+    /// cost nothing to run and made the file harder to read, which is most of what these files are for.
+    /// </summary>
+    [Fact]
+    public void TheToolNeverLiftsTwiceInARow()
+    {
+        var job = new Job
+        {
+            Name = "two squares",
+            Toolpaths =
+            [
+                OneSquare().Toolpaths[0] with
+                {
+                    Passes =
+                    [
+                        .. IsolationOperation.Build(Square(0, 0, 4), new IsolationOptions()).Passes,
+                        .. IsolationOperation.Build(Square(30, 30, 4), new IsolationOptions()).Passes,
+                    ],
+                },
+            ],
+        };
+
+        var options = new GcodeOptions();
+        var (text, _) = GcodeEmitter.Emit(job, options);
+        var safeZ = $"G0 Z{Nm.ToMillimetreString(options.SafeZNm, options.Decimals)}";
+
+        var lines = text.Split('\n').Select(l => l.Split('(')[0].Trim()).Where(l => l.Length > 0).ToList();
+
+        for (var i = 1; i < lines.Count; i++)
+        {
+            Assert.False(
+                lines[i] == safeZ && lines[i - 1] == safeZ,
+                $"lifted twice in a row at line {i + 1}:\n  "
+                    + string.Join("\n  ", lines.Skip(Math.Max(0, i - 3)).Take(7)));
+        }
+
+        // And it does still lift: the squares are 30 mm apart, so the tool cannot cross at depth.
+        Assert.Contains(safeZ, lines);
+    }
+
     [Fact]
     public void TheProgramSetsMillimetresAndAbsoluteMode()
     {

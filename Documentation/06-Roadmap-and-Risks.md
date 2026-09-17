@@ -1979,7 +1979,7 @@ than discovered after.
 - **The tool library, once it has more than a handful in it** — filter, sort, copy. See 6.6.
 - **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
 - **The viewer leaves a gap in every outline ring** — done. See 6.8.
-- **Open recent**, off the File menu. See 6.9.
+- **Open recent**, off the File menu — built. See 6.9.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves — superseded by KiCad's drill map layers. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
@@ -2428,7 +2428,7 @@ close verb on a backplot run, and a third test asserting the two palettes agree 
 are — so adding a style and forgetting which it is fails a test rather than producing a picture
 somebody has to notice.
 
-#### 6.9 Open recent — **scheduled, not started, small**
+#### 6.9 Open recent — **built**
 
 Requested from the workshop: a **Open recent** item in the File menu that opens a submenu on hover,
 listing the last few projects.
@@ -2456,6 +2456,21 @@ What the implementation has to decide:
 **Done when** the submenu lists real recent projects, opening one is indistinguishable from opening
 it through the dialog including the unsaved-work guard, a moved project reports itself once and
 leaves, and the whole thing is checkable from a headless screenshot like every other menu here.
+
+**Built after v0.1.1.** *File ▸ Open recent* fills itself as it opens — from the settings, not from a
+copy, because the list changes as projects are opened and saved, including by the menu itself. Each
+entry opens through `ConfirmReplaceAsync` and `OpenProject`, the same path as `Ctrl+O`. A project that
+has gone is taken off the list and said so in the status bar, once, when it is asked for rather than
+whenever the menu is drawn — a drive that is unplugged today is not a project that has gone. The first
+nine carry number accelerators, the folder appears only when two projects share a file name, an
+underscore in a name is doubled so it is not eaten as an accelerator, and an empty list shows one
+disabled line.
+
+Two things came out of building it. The list stores **full paths**: the same project opened from the
+window and passed to the CLI as `WorkingFolder/board.millburn` was two entries. And the last clause of
+*Done when* is the one thing that could not be met: a menu's popup is its own visual root, so a
+headless screenshot of the window catches the File menu highlighted and nothing of the list. A `--recent`
+flag was written, tried, and taken out again.
 
 #### 6.10 Drill hits drawn as an X — **superseded**
 
@@ -2628,6 +2643,14 @@ three laps each. Items 3 and 4 (the sliver lap and break-through) wait for the s
 **Verified on metal:** both routing files cut on the test board, one continuous descent per feature, the
 plated file in 1:12 against an estimate of 0m 53s – 1m 31s and the non-plated in 0:47 against
 0m 37s – 0m 58s; and the plated slots and holes in one file with the chosen 0.8 mm end mill.
+
+**And the second lift, after v0.1.1.** Each feature still ended with a retract and the next began with
+one, so every hole carried a `G0 Z` to the height it was already at — and so did the end of every
+program. The emitter now tracks whether the tool is already clear and writes the line only when it is
+not, which is every emitted program rather than only routing: on the test board the non-plated routing
+file goes from 14 lifts to 7 and the plated from 20 to 10, and an isolation program's rapid count falls
+by a fifth. Nothing about the cutting moves: the golden snapshots' feed and arc counts and their time
+estimates are unchanged.
 
 **Found alongside: board thickness is not the project's.** It is an app setting
 (`AppSettings.BoardThicknessMm`), so a project for a 1.6 mm board opened after working on a 0.8 mm

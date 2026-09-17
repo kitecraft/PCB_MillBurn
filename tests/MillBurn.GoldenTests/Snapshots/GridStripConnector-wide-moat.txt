@@ -4,11 +4,11 @@ GridStripConnector
 GridStripConnector-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
-  lines     132
-  sha256    1c2e423c9d526966
+  lines     117
+  sha256    58efbb2be87a7758
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   326 mm cutting, 83 mm travel
-  summary   1m 48s – 1m 52s · 131 lines
+  summary   1m 48s – 1m 52s · 116 lines
   summary   Simplified: 1,244 → 46 moves, 20 arcs (96 % fewer)
   comment   ( PCB_MillBurn - GridStripConnector-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 144.975, -92.025 mm. )
@@ -17,7 +17,7 @@ GridStripConnector-Edge_Cuts.nc
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
   control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -0.800, -0.400
-  moves     59 rapid, 40 feed, 20 arc
+  moves     44 rapid, 40 feed, 20 arc
   distance  325.90 mm cutting, 83.46 mm travel
   plunges   28
   extent    -0.500 .. 27.150 x -0.500 .. 9.350 mm
@@ -25,11 +25,11 @@ GridStripConnector-Edge_Cuts.nc
 GridStripConnector-F_Cu.nc
   operation Isolation routing
   layer     Top copper
-  lines     372
-  sha256    5a64a3d5f81abf26
+  lines     368
+  sha256    8e189c46ef869044
   summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
   summary   696 mm cutting, 13 mm travel
-  summary   3m 34s – 3m 40s · 371 lines
+  summary   3m 34s – 3m 40s · 367 lines
   summary   Simplified: 4,696 → 331 moves, 159 arcs (93 % fewer)
   summary   Stayed down for 9 of 9 pass links (1.0 mm), saving that many plunges
   comment   ( PCB_MillBurn - GridStripConnector-F_Cu — Isolation routing )
@@ -40,7 +40,7 @@ GridStripConnector-F_Cu.nc
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
   control   M3 S10000 · M5 · M30
   depths    -0.050
-  moves     15 rapid, 184 feed, 159 arc
+  moves     11 rapid, 184 feed, 159 arc
   distance  696.34 mm cutting, 13.03 mm travel
   plunges   6
   extent    0.000 .. 26.012 x -0.362 .. 8.212 mm
