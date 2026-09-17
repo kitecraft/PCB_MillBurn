@@ -295,10 +295,12 @@ young enough that you should run the dry run first and read the pages beside the
   made by the laser: the stock cut to size on the mill, then drilled one file per bit, 1 mm slots and
   2.2–3.5 mm holes routed with an end mill, and every hole lined up on its pad with the drill alignment
   test.
+- **Since v0.1.0, on the same board.** Top-copper isolation staying down between touching passes, in
+  28:45 against an estimate of 16–46 minutes; the outline cut out with three tabs; and every routed hole
+  and slot cut in one continuous descent, both routing files finishing inside their estimates.
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, and the routed channel between the boards of a panel. The tab-placement fix and staying
-down between touching passes want a re-run.
+isolation, and the routed channel between the boards of a panel.
 
 **Known rough edges, next in line:**
 

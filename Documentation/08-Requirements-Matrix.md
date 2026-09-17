@@ -29,8 +29,8 @@ test, a measurement — so that "done" means something a reader can check.
 | 05 Viewer & export | 16 | 6 | 3 | 6 | 1 |
 | **Requirements** | **92** | **45** | **6** | **38** | **3** |
 
-Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 11 physical
-capabilities (5 proven, 2 wanting a re-run, 4 never cut).
+Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 14 physical
+capabilities (11 proven, 1 partly, 2 never cut).
 
 **The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 17
 not-started rows out of 27, nearly all of them the alignment and Job-model half of Phase 5. That
@@ -193,13 +193,16 @@ weaker claim than this one.
 | P2 | Isolation milling with a V-bit | PogoTest1, two jobs | **Proven** | — |
 | P3 | Test cuts calibrating tip width and angle | tip 0.127 → 0.11 measured | **Proven** | — |
 | P4 | Probe routine and levelled program | 0.011 mm of bow followed | **Proven** | — |
-| P5 | Outline cut-out with tabs | 4 tabs, after the split fix | **Re-test** | fix verified in G-code, not yet on metal |
+| P5 | Outline cut-out with tabs | Millburn test board after v0.1.0: 3 tabs, "outline is great" | **Proven** | — |
 | P6 | Arcs surviving levelling | confirmed in a second controller's viewer | **Proven** | — |
-| P7 | Links cut at depth between laps | 13 links, copper intersection zero | **Re-test** | first change that moves sideways at depth |
-| P8 | Drilling with tool changes | — | **Untested** | three `M6` stops on MyGerbers2 |
-| P9 | Double-sided and its mirror | — | **Untested** | scrap board with four pads |
-| P10 | Soldermask relief | — | **Untested** | needs cured mask on the stock |
-| P11 | Panel channel, one pass down the middle | — | **Untested** | MyGerbers3 |
+| P7 | Links cut at depth between laps | Millburn test board top copper after v0.1.0: 4 passes, lifts only where they belonged; 28:45 against an estimate of 16m 17s – 45m 45s | **Proven** | — |
+| P8 | Drilling with bit changes | Millburn test board: one file per bit, three bits, holes landing in their pads | **Proven** | — |
+| P9 | Double-sided and its mirror | Millburn test board, both sides made on the laser: the mirrored bottom lined up with the top, a small offset put down to the setup | **Partial** | milled bottom-side isolation, flipped on the mill |
+| P10 | Soldermask relief | — | **Untested** | needs cured mask on the stock; low priority |
+| P11 | Panel channel, one pass down the middle | — | **Untested** | GridStripConnector_Panelized with a 0.8 mm end mill |
+| P12 | Stock cut to size, its corner work zero for every later setup | Millburn test board, 10 mm border | **Proven** | — |
+| P13 | Routed slots and milled holes, one continuous descent each | Millburn test board after v0.1.0: 1 mm slots and 2.2–3.5 mm holes, 0.8 mm end mill; plated file 1:12 against 0m 53s – 1m 31s, non-plated 0:47 against 0m 37s – 0m 58s | **Proven** | — |
+| P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | two-hole rotation, 06 §6.14 |
 
 ---
 

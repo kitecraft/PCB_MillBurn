@@ -2085,6 +2085,9 @@ rather than offering a switch that changes nothing.
 
 #### 6.3 Staying down between passes that touch — **done**
 
+**Verified on metal after v0.1.0:** the Millburn test board's top copper, four isolation passes, with
+lifts only where they belonged; 28:45 on the machine against an estimate of 16m 17s – 45m 45s.
+
 Requested from the workshop: *"When cutting paths next to each other, the job does a z-lift then
 back down. Cutting around a circle with 3 loops: the first loop is cut, then a z-lift and z-lower,
 then the second ring, another z-lift/lower, then the third cut. Perhaps we can optimize some of
@@ -2621,6 +2624,10 @@ leaves out the zero-length move to where the tool already is, and the export sum
 carried on separately from isolation's links. `SlotOperation` skips the flat lap when the last ramp
 starts strictly below the underside. On the test board: one entry into the material per hole and slot,
 three laps each. Items 3 and 4 (the sliver lap and break-through) wait for the settings.
+
+**Verified on metal:** both routing files cut on the test board, one continuous descent per feature, the
+plated file in 1:12 against an estimate of 0m 53s – 1m 31s and the non-plated in 0:47 against
+0m 37s – 0m 58s; and the plated slots and holes in one file with the chosen 0.8 mm end mill.
 
 **Found alongside: board thickness is not the project's.** It is an app setting
 (`AppSettings.BoardThicknessMm`), so a project for a 1.6 mm board opened after working on a 0.8 mm
