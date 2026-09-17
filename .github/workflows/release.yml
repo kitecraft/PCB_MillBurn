@@ -8,7 +8,8 @@ name: release
 
 on:
   push:
-    tags: ['v*']
+    # Both cases: GitHub's tag filters are case-sensitive, and a V0.1.1 tag once started nothing at all.
+    tags: ['v*', 'V*']
   workflow_dispatch:
     inputs:
       tag:
@@ -62,7 +63,7 @@ jobs:
       - name: Publish
         shell: bash
         run: |
-          version="${TAG#v}"
+          version="${TAG#[vV]}"
           out="out/${{ matrix.rid }}"
           dotnet publish src/MillBurn.App -c Release -r ${{ matrix.rid }} --self-contained -p:Version="$version" -o "$out"
           dotnet publish src/MillBurn.Cli -c Release -r ${{ matrix.rid }} --self-contained -p:Version="$version" -o "$out"
