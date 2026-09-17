@@ -17,8 +17,9 @@ test, a measurement — so that "done" means something a reader can check.
 | **Not started** | No code |
 | **Superseded** | Replaced by something better, or deliberately dropped. The reason is the useful half |
 
-**Last audited:** 2026-09-12, at commit `7985840`; the eleven corrections it found landed in
-`7235387`.
+**Last audited:** 2026-09-17, at commit `937f8b2`. The counts had drifted rather than the rows: twelve
+rows were added or changed after v0.1.0 — drill alignment, per-bit drilling, the routing fix, board
+thickness, Open recent, the two 6.14 rows — while the summary still described a document of 92 rows.
 
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
@@ -26,15 +27,19 @@ test, a measurement — so that "done" means something a reader can check.
 | 02 Gerber & geometry | 22 | 15 | 0 | 6 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 29 | 9 | 2 | 18 | 0 |
-| 05 Viewer & export | 16 | 6 | 3 | 6 | 1 |
-| **Requirements** | **92** | **45** | **6** | **38** | **3** |
+| 05 Viewer & export | 28 | 12 | 3 | 11 | 2 |
+| **Requirements** | **104** | **51** | **6** | **43** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 14 physical
 capabilities (11 proven, 1 partly, 2 never cut).
 
-**The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 17
-not-started rows out of 27, nearly all of them the alignment and Job-model half of Phase 5. That
-one block is most of what is left.
+**The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 18
+not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That
+one block is most of what is left, and 6.14 is the first cut into it: alignment holes and a two-point
+fit are M16, M17 and M20 in their smallest useful form.
+
+Document 05 has grown fastest, and all of it from the workshop: every row from V17 on came from a
+board being cut rather than from a document.
 
 ---
 
