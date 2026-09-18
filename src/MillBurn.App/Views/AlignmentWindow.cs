@@ -14,8 +14,8 @@ using static System.FormattableString;
 namespace MillBurn.App.Views;
 
 /// <summary>
-/// Job › Drill alignment: hover a bit over a real hole, nudge the origin until it sits dead centre,
-/// then write every drilling and routing file again with that shift.
+/// Job › Drill alignment: hover a bit over a real hole, jog until the tip sits dead centre, type the
+/// position the machine shows, and write the programs that were ticked again, moved to match.
 ///
 /// **It stays open while tests are written.** Finding the offset is a loop — write, run, look, adjust,
 /// write again — and a dialog that closed on every write would have the operator reopening it and
@@ -330,24 +330,22 @@ public sealed class AlignmentWindow : Window
 
     // ------------------------------------------------------------------ layout
 
-    private StackPanel Build()
+    private DockPanel Build()
     {
-        var body = new StackPanel { Spacing = 4, Margin = new Thickness(18) };
+        var body = new StackPanel { Spacing = 4 };
 
+        // One block, not two: the paragraph that used to sit above these steps said the same thing
+        // again in prose, and the pair of them took an eighth of a dialog that has to fit on a laptop.
+        // What only the prose said — one hole shifts, two also turn — is now step 5.
         body.Children.Add(Secondary(
-            "Hover the bit over a real hole with the spindle off, jog until the tip sits dead centre, "
-            + "and type the X and Y the machine shows. Then write the programs you tick again, moved to "
-            + "match, so they follow what is already on the board. Drilling, routing and the outline are "
-            + "ticked to start with; the copper is not, because on a first side the copper is what you "
-            + "are measuring against. One hole is enough for a board sitting square to the machine; "
-            + "measure a second, at the other end, and the turn is corrected as well.", 12));
-
-        body.Children.Add(Secondary(
-            "1. Fit the bit the file uses, and zero Z on your usual spot.\n"
+            "Find where a hole really is, and every program you tick is written again to match it.\n"
+            + "1. Fit the bit the file uses, and zero Z on your usual spot.\n"
             + "2. Write test, then open or reload the test file in your sender and run it.\n"
             + "3. Jog the tip to the middle of the hole, and type where the machine says it is.\n"
             + "4. Write the test again to check it lands there on its own.\n"
-            + "5. Write the aligned files, and run those instead of the originals.", 12));
+            + "5. One hole is enough for a board sitting square to the machine. Measure a second, at "
+            + "the other end, and its turn is taken out as well.\n"
+            + "6. Write the aligned files, and run those instead of the originals.", 12));
 
         if (_vm.SavedAlignment is { } saved)
         {
@@ -361,15 +359,13 @@ public sealed class AlignmentWindow : Window
         body.Children.Add(Row("Test with", _file));
         body.Children.Add(Row(string.Empty, _bit));
         body.Children.Add(Row(_holeLabel, With(_hole, _test)));
-        body.Children.Add(Row("It is really at X (mm)", _x));
-        body.Children.Add(Row("It is really at Y (mm)", _y));
+        body.Children.Add(Row("It is really at (mm)", Pair(_x, _y)));
         body.Children.Add(Row(string.Empty, _correction));
 
         body.Children.Add(Row("Also measure", _useSecond));
 
         _rotation.Children.Add(Row("Second hole", With(_hole2, _test2)));
-        _rotation.Children.Add(Row("It is really at X (mm)", _x2));
-        _rotation.Children.Add(Row("It is really at Y (mm)", _y2));
+        _rotation.Children.Add(Row("It is really at (mm)", Pair(_x2, _y2)));
         _rotation.Children.Add(Row(string.Empty, _fit));
 
         body.Children.Add(_rotation);
@@ -384,7 +380,16 @@ public sealed class AlignmentWindow : Window
                 Margin = new Thickness(0, 4, 0, 0),
                 FontSize = 12,
             },
-            _moves));
+            // Capped and scrolled, because this list is the one part of the dialog that grows with
+            // the job: a board with a dozen exported layers would otherwise add a dozen rows and push
+            // the buttons off the bottom of the screen. Five rows fit, which covers the usual job.
+            new ScrollViewer
+            {
+                MaxHeight = 168,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                Content = _moves,
+            }));
 
         var change = new Button { Content = "Change…", FontSize = 11, Padding = new Thickness(8, 2) };
         change.Click += async (_, _) => await ChooseFolderAsync();
@@ -406,14 +411,14 @@ public sealed class AlignmentWindow : Window
             Children = { change, _where },
         }));
 
-        body.Children.Add(new Border
+        var status = new Border
         {
             Margin = new Thickness(0, 12, 0, 0),
             Padding = new Thickness(10, 8),
             CornerRadius = new CornerRadius(4),
             Background = new SolidColorBrush(Color.FromArgb(0x20, 0x5A, 0xA9, 0xF5)),
             Child = _status,
-        });
+        };
 
         var close = new Button { Content = "Close", IsCancel = true };
         close.Click += (_, _) => Close();
@@ -422,16 +427,58 @@ public sealed class AlignmentWindow : Window
         _test2.Click += (_, _) => WriteTest(Target2, Offset2, "second");
         _write.Click += (_, _) => WriteAligned();
 
-        body.Children.Add(new StackPanel
+        var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
             Margin = new Thickness(0, 16, 0, 0),
             Children = { close, _write },
-        });
+        };
 
-        return body;
+        // The status line and the buttons sit outside the scroll, so what the test is about to do and
+        // the button that does it are on screen whatever the dialog's height gets clamped to. Only the
+        // form scrolls — and on a screen tall enough it never has to, because the window still sizes
+        // itself to its content up to the cap set in OnOpened.
+        DockPanel.SetDock(buttons, Avalonia.Controls.Dock.Bottom);
+        DockPanel.SetDock(status, Avalonia.Controls.Dock.Bottom);
+
+        return new DockPanel
+        {
+            Margin = new Thickness(18),
+            LastChildFill = true,
+            Children =
+            {
+                buttons,
+                status,
+                new ScrollViewer
+                {
+                    VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                    Content = body,
+                },
+            },
+        };
+    }
+
+    /// <summary>
+    /// Keeps the window inside the screen it opened on.
+    ///
+    /// <see cref="SizeToContent"/> on its own will happily make a window taller than the display: the
+    /// form is long, and on a laptop the buttons ended up below the bottom edge where they could not
+    /// be reached or dragged back. The cap is read from the screen the window actually opened on, so
+    /// a second monitor of a different size or scaling gets its own answer.
+    /// </summary>
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+
+        if ((Screens.ScreenFromWindow(this) ?? Screens.Primary) is { } screen)
+        {
+            // WorkingArea is in physical pixels and a window's height is in device-independent ones,
+            // so the scaling has to come out of it or a 150% display gets a third of the cap it wants.
+            MaxHeight = (screen.WorkingArea.Height / screen.Scaling) - 48;
+        }
     }
 
     /// <summary>A hole list with its own test button: each hole is measured on its own.</summary>
@@ -852,6 +899,36 @@ public sealed class AlignmentWindow : Window
         FormatString = format,
         Width = 150,
         HorizontalAlignment = HorizontalAlignment.Left,
+    };
+
+    /// <summary>
+    /// An X and a Y on one row, because they are one measurement.
+    ///
+    /// They had a row each, which read as two questions rather than one and spent two rows of a
+    /// dialog that has to fit on a laptop. Side by side they also match how the number is read: off
+    /// the sender's position display, where X and Y sit next to each other.
+    /// </summary>
+    private static StackPanel Pair(NumericUpDown x, NumericUpDown y)
+    {
+        // Wider than a lone box, not narrower: the up/down buttons eat a fixed slice of a
+        // NumericUpDown, so halving the width halves the text area twice over and "23.620" comes out
+        // as "23.6". Two of these plus their axis letters still sit inside the row.
+        x.Width = 172;
+        y.Width = 172;
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Children = { Axis("X"), x, Axis("Y"), y },
+        };
+    }
+
+    private static TextBlock Axis(string name) => new()
+    {
+        Text = name,
+        VerticalAlignment = VerticalAlignment.Center,
+        FontSize = 12,
     };
 
     private static TextBlock Caption() => new()
