@@ -246,14 +246,57 @@ public sealed class GerberDrillTests
         Assert.Equal(expected, LayerRoleInfo.Label(role, fileName));
     }
 
-    /// <summary>Only a drill map reads its name; every other role already says what it is.</summary>
+    /// <summary>A role that describes the layer keeps its own name, whatever the file is called.</summary>
     [Fact]
-    public void NamingLeavesEveryOtherRoleAlone()
+    public void NamingLeavesEveryDescribedRoleAlone()
     {
-        foreach (var role in Enum.GetValues<LayerRole>().Where(r => r != LayerRole.DrillMap))
+        var named = new[] { LayerRole.DrillMap, LayerRole.Documentation, LayerRole.Unknown };
+
+        foreach (var role in Enum.GetValues<LayerRole>().Where(r => !named.Contains(r)))
         {
-            Assert.Equal(LayerRoleInfo.Label(role), LayerRoleInfo.Label(role, "Board-NPTH-drl.gbr"));
+            Assert.Equal(LayerRoleInfo.Label(role), LayerRoleInfo.Label(role, "Board-F_Courtyard.gbr"));
         }
+    }
+
+    /// <summary>
+    /// A drawing layer is named after the layer it came from. A board can carry any number of them
+    /// and they were all called the same thing, so a panel with two said nothing about either.
+    /// </summary>
+    [Theory]
+    [InlineData("Millburn_Test_Board-User_Comments.gbr", "User comments")]
+    [InlineData("Millburn_Test_Board-F_Courtyard.gbr", "Front courtyard")]
+    [InlineData("Board-B_Courtyard.gbr", "Back courtyard")]
+    [InlineData("Board-F_Fab.gbr", "Front fabrication")]
+    [InlineData("Board-Cmts_User.gbr", "User comments")]
+    [InlineData("Board-Margin.gbr", "Margin")]
+
+    // Not in the table: tidied and shown as written, which is the point — an unrecognised file is
+    // the one whose name the operator most needs to read.
+    [InlineData("Board-F_Something.gbr", "Front something")]
+    [InlineData("Board-User_9.gbr", "User 9")]
+    [InlineData("My-Long-Project-User_Comments.gbr", "User comments")]
+    public void ADrawingLayerIsNamedAfterItsFile(string fileName, string expected)
+    {
+        Assert.Equal(expected, LayerRoleInfo.Label(LayerRole.Documentation, fileName));
+        Assert.Equal(expected, LayerRoleInfo.Label(LayerRole.Unknown, fileName));
+    }
+
+    /// <summary>
+    /// KiCad writes its drawing layers as "Other,…", the standard's catch-all for a file that is
+    /// none of the board layers it defines. They are documentation, not something to guess at.
+    /// </summary>
+    [Theory]
+    [InlineData("Other,Comment")]
+    [InlineData("Other,User")]
+    [InlineData("OtherDrawing,Note")]
+    public void ADeclaredOtherFileIsDocumentation(string fileFunction)
+    {
+        Assert.True(LayerRoles.DeclaresNonBoardFunction(fileFunction));
+        Assert.Equal(LayerRole.Documentation, LayerRoles.FromFileFunction(fileFunction));
+
+        // Documentation is read, never made: nothing here can reach the machine.
+        Assert.Equal([OutputKind.None], LayerOperations.Available(LayerRole.Documentation));
+        Assert.False(LayerRoleInfo.VisibleByDefault(LayerRole.Documentation));
     }
 
     /// <summary>A drawing is off by default and cannot be cut. It is for reading.</summary>

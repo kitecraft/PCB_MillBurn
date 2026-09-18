@@ -178,16 +178,114 @@ public static class LayerRoleInfo
     /// <param name="fileName">The file it was read from, used only to tell two drill maps apart.</param>
     public static string Label(LayerRole role, string? fileName)
     {
-        if (role != LayerRole.DrillMap || string.IsNullOrEmpty(fileName))
+        if (string.IsNullOrEmpty(fileName))
         {
             return Label(role);
         }
 
-        // NPTH before PTH, because the one contains the other.
-        return fileName.Contains("NPTH", StringComparison.OrdinalIgnoreCase) ? "Non-plated drill map"
-            : fileName.Contains("PTH", StringComparison.OrdinalIgnoreCase) ? "Plated drill map"
+        if (role == LayerRole.DrillMap)
+        {
+            // NPTH before PTH, because the one contains the other.
+            return fileName.Contains("NPTH", StringComparison.OrdinalIgnoreCase) ? "Non-plated drill map"
+                : fileName.Contains("PTH", StringComparison.OrdinalIgnoreCase) ? "Plated drill map"
+                : Label(role);
+        }
+
+        // The roles that name a file rather than describe it. A board can carry any number of these
+        // — courtyards, comments, fabrication notes — and every one of them was called the same
+        // thing, so a panel with two of them said nothing about either. None can be exported, so
+        // this changes what the operator reads and nothing about what the machine cuts.
+        return role is LayerRole.Documentation or LayerRole.Unknown
+            ? NameFromFile(fileName) ?? Label(role)
             : Label(role);
     }
+
+    /// <summary>
+    /// The layer's own name, dug out of the file name: the part after the project's name, with the
+    /// extension dropped and the underscores turned back into words.
+    ///
+    /// KiCad writes <c>&lt;project&gt;-&lt;layer&gt;.gbr</c>, so the layer is what follows the last
+    /// dash — which holds however many dashes the project's own name has in it. The known names get
+    /// the wording the rest of the panel uses; anything else is tidied and shown as it was written,
+    /// because a file the app cannot name is exactly the one whose name the operator needs to see.
+    /// </summary>
+    private static string? NameFromFile(string fileName)
+    {
+        var stem = fileName;
+
+        if (stem.LastIndexOf('.') is var dot and > 0)
+        {
+            stem = stem[..dot];
+        }
+
+        if (stem.LastIndexOf('-') is var dash and >= 0)
+        {
+            stem = stem[(dash + 1)..];
+        }
+
+        if (stem.Length == 0)
+        {
+            return null;
+        }
+
+        if (KnownDrawingNames.TryGetValue(stem, out var known))
+        {
+            return known;
+        }
+
+        var words = stem.Split('_', StringSplitOptions.RemoveEmptyEntries);
+
+        if (words.Length == 0)
+        {
+            return null;
+        }
+
+        // A side letter is a side, everywhere else in this app.
+        words[0] = words[0] switch
+        {
+            "F" => "Front",
+            "B" => "Back",
+            _ => words[0],
+        };
+
+        // Sentence case, like every other label here — but a word carrying a digit is left as it
+        // was written, because "Eco1" is a name and "eco1" is a typo.
+        for (var i = 1; i < words.Length; i++)
+        {
+            if (!words[i].Any(char.IsDigit))
+            {
+                words[i] = words[i].ToLowerInvariant();
+            }
+        }
+
+        return string.Join(' ', words);
+    }
+
+    /// <summary>
+    /// KiCad's drawing layers, as their exported file names spell them, old names included: a board
+    /// exported from an older version writes <c>Cmts_User</c> for what is now <c>User_Comments</c>.
+    /// </summary>
+    private static readonly Dictionary<string, string> KnownDrawingNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["User_Comments"] = "User comments",
+            ["Cmts_User"] = "User comments",
+            ["User_Drawings"] = "User drawings",
+            ["Dwgs_User"] = "User drawings",
+            ["F_Courtyard"] = "Front courtyard",
+            ["B_Courtyard"] = "Back courtyard",
+            ["F_Fab"] = "Front fabrication",
+            ["B_Fab"] = "Back fabrication",
+            ["F_Adhesive"] = "Front adhesive",
+            ["B_Adhesive"] = "Back adhesive",
+            ["F_Adhes"] = "Front adhesive",
+            ["B_Adhes"] = "Back adhesive",
+            ["User_Eco1"] = "User Eco1",
+            ["User_Eco2"] = "User Eco2",
+            ["Eco1_User"] = "User Eco1",
+            ["Eco2_User"] = "User Eco2",
+            ["Margin"] = "Margin",
+        };
 
     /// <summary>Which layers are on by default: enough to recognise the board, not everything.</summary>
     public static bool VisibleByDefault(LayerRole role) => role switch

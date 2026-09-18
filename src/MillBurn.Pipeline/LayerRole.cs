@@ -55,7 +55,13 @@ public static class LayerRoles
             || kind.Equals("FabricationDrawing", StringComparison.OrdinalIgnoreCase)
             || kind.Equals("AssemblyDrawing", StringComparison.OrdinalIgnoreCase)
             || kind.Equals("ArrayDrawing", StringComparison.OrdinalIgnoreCase)
-            || kind.Equals("OtherDrawing", StringComparison.OrdinalIgnoreCase);
+            || kind.Equals("OtherDrawing", StringComparison.OrdinalIgnoreCase)
+
+            // "Other" is the standard's own catch-all for a file that is none of the board layers
+            // it defines, and it is what KiCad writes for courtyards, comments and the rest of the
+            // drawing layers — "Other,Comment", "Other,User". Every layer that does get made says
+            // so with a function of its own, so nothing that is cut can land here.
+            || kind.Equals("Other", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

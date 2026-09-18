@@ -835,8 +835,11 @@ internal static class Program
         foreach (var source in project.Sources.OrderBy(s => LayerRoleInfo.DrawOrder(s.Role)).ThenBy(s => s.FileName, StringComparer.Ordinal))
         {
             var overridden = source.RoleOverridden ? " (role set by hand)" : "";
-            Line($"  {LayerRoleInfo.Label(source.Role),-18} {source.FileName}{overridden}");
-            Line($"  {"",-18} content {source.ContentHash[..12]}  geometry {source.GeometryHash[..12]}");
+
+            // The same label the panel shows, so a board with two drill maps or three drawing
+            // layers reads the same here as it does there. Widened to fit the longest of them.
+            Line($"  {LayerRoleInfo.Label(source.Role, source.FileName),-22} {source.FileName}{overridden}");
+            Line($"  {"",-22} content {source.ContentHash[..12]}  geometry {source.GeometryHash[..12]}");
         }
 
         return 0;

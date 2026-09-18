@@ -44,17 +44,26 @@ public sealed class AllLayerRolesTests
     }
 
     /// <summary>
-    /// A user layer is not a board layer, and guessing a role for it would be worse than admitting
-    /// none: it would be silently cut or burned as whatever it was mistaken for.
+    /// A user layer is not a board layer, and it must never be cut or burned as whatever it might
+    /// have been mistaken for. That is what this has always guarded and still does.
+    ///
+    /// It used to expect <see cref="LayerRole.Unknown"/>, on the reading that anything else would
+    /// be a guess. It is not one: the file declares <c>Other,User</c>, which the standard defines
+    /// as a file that is none of the board layers it lists, and every layer in this same board that
+    /// does get made says so with a function of its own. So it is documentation, identified rather
+    /// than shrugged at — and documentation cannot be exported either.
     /// </summary>
     [Fact]
-    public void AUserLayerIsUnrecognisedRatherThanGuessed()
+    public void AUserLayerIsDocumentationAndCannotBeMade()
     {
         var user = Board().Layers.SingleOrDefault(l => l.FileName.Contains("User_1", StringComparison.Ordinal));
 
         Assert.NotNull(user);
-        Assert.Equal(LayerRole.Unknown, user.Role);
+        Assert.Equal(LayerRole.Documentation, user.Role);
         Assert.Equal([OutputKind.None], LayerOperations.Available(user.Role));
+
+        // Named after the layer it came from, so a board carrying several tells them apart.
+        Assert.Equal("User 1", user.Label);
     }
 
     /// <summary>
