@@ -472,9 +472,10 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 </p>
 
 <p>
-  If it is out by a different amount, the board is not square to the machine. An offset moves every
-  hole by the same amount, so it cannot correct a board that is sitting at an angle. Square the board
-  up and start again from step 3.
+  If it is out by a different amount, the board is sitting at an angle. An offset moves every hole by
+  the same amount, so on its own it cannot correct that &mdash; but a second measurement can. Either
+  square the board up and start again from step 3, or measure that far hole properly and let the turn
+  be worked out: <a href="#rotation">measuring a second hole</a>, below.
 </p>
 
 <figure>
@@ -534,13 +535,89 @@ Move X by / Move Y by     +0.170     -0.050</pre>
   sender&rsquo;s recent-files list can pick one by mistake.
 </p>
 
+<h2 id="rotation">Measuring a second hole, when the board is not square</h2>
+
+<p>
+  Everything above assumes the board sits square to the machine, so that one hole put right puts every
+  hole right. Sometimes it does not: a jig with a little play in it, or a board clamped back down
+  after etching, can sit a fraction of a degree over. At the hole you measured, that looks exactly
+  like an offset &mdash; it is the holes at the <em>other end</em> of the board that come out wrong,
+  and by more the further away they are.
+</p>
+
+<p>
+  A quarter of a degree is 0.3&nbsp;mm across a 70&nbsp;mm board. That is a hole off the edge of its
+  pad, from an error too small to see at the hole you were looking at.
+</p>
+
+<p>
+  Tick <strong>Measure a second hole as well, to correct rotation</strong>. A second hole row appears,
+  already set to the hole furthest from the first one, with its own <strong>Write test</strong>
+  button. Then:
+</p>
+
+<ol>
+  <li>Leave the first hole&rsquo;s numbers as you measured them in steps&nbsp;3 to&nbsp;5.</li>
+  <li>Press <strong>Write test</strong> on the second row, run that file, and jog until the tip sits
+    dead centre over <em>that</em> hole.</li>
+  <li>Type what the machine says into the second row&rsquo;s <strong>Move X by</strong> and
+    <strong>Move Y by</strong>. Each row is measured from where the program puts its own hole, so the
+    second row is not a correction to the first &mdash; nothing carries over between them.</li>
+</ol>
+
+<p>
+  The line under the second row then tells you what the two measurements came to:
+</p>
+
+<pre class="wrap">The board is turned 0.2618&deg; anticlockwise, and the two holes measured +0.010 mm against their known distance apart. Every hole is moved to match.</pre>
+
+<p>
+  The two test files are written under separate names &mdash;
+  <code>&hellip;.align-test-first.nc</code> and <code>&hellip;.align-test-second.nc</code> &mdash; so
+  there is no way to run one thinking it is the other.
+</p>
+
+<h3>The distance check</h3>
+
+<p>
+  Two holes are a known distance apart, and you have just measured that distance. Copper-clad does not
+  stretch, so if the two disagree, one of the holes was read wrongly &mdash; the wrong hole in the
+  list, or a number off the wrong axis. A few hundredths is measurement. More than half a millimetre
+  and MillBurn will not write the files at all; it says what the two distances were, and you can
+  measure again.
+</p>
+
+<p>
+  The same goes for two holes close together: below 10&nbsp;mm apart, a hole read a hundredth out
+  swings the angle more than the angle itself, so it asks for two holes at opposite ends of the board
+  instead of answering with a number it cannot stand behind.
+</p>
+
+<h3>What comes out</h3>
+
+<p>
+  The same files as before, with the turn built into every coordinate rather than applied by the
+  machine &mdash; GRBL has no coordinate rotation of its own. Circles stay circles; the arcs are
+  turned along with everything else. The header says both halves of what was done:
+</p>
+
+<pre class="wrap">( Aligned with the drill alignment test: every move turned 0.2618 degrees about X23.620 Y47.878 mm, then shifted X+0.170 Y-0.050 mm, from the plain export. )</pre>
+
+<p>
+  The turn is taken about the first hole you measured, so that hole lands exactly where you put it and
+  the rest of the board follows the angle.
+</p>
+
 <h2>Worth knowing</h2>
 
 <ul>
   <li>
-    <strong>The offset is not saved in the project.</strong> A later Export writes the plain files,
-    without the offset. To get aligned files again, reopen the dialog and write them; the numbers are
-    still there until you close MillBurn.
+    <strong>The correction is saved with the project.</strong> Write the aligned files and the shift,
+    the turn and the date are kept in the project file. Next time you open the dialog it offers them
+    back with <strong>Use it</strong>, so a board that is still clamped where it was does not have to
+    be measured again. If the board has moved since, ignore it and measure: the date is shown for
+    exactly that decision. A plain Export still writes plain files &mdash; the aligned ones come from
+    this dialog, or from <code>--align</code> on the command line.
   </li>
   <li>
     <strong>The outline step, after re-clamping.</strong> If the board came off the machine after
@@ -556,7 +633,10 @@ Move X by / Move Y by     +0.170     -0.050</pre>
   <li>
     <strong>From the command line:</strong> <code>align &lt;project&gt; --hole 3 --offset 0.17,-0.05</code>
     writes the test file, and <code>export &lt;project&gt; --align 0.17,-0.05 --align-outline --write</code>
-    writes the aligned files.
+    writes the aligned files. Adding <code>--hole2 11 --offset2 -0.02,0.03</code> to the
+    <code>align</code> command works out the turn from two measured holes and prints the
+    <code>export</code> line to run, and <code>--align saved</code> uses the correction already kept
+    in the project.
   </li>
 </ul>
 

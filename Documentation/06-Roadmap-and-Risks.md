@@ -2562,7 +2562,8 @@ run it actually produces.
 
 Requested from the workshop, for holes that have to land in pads already on the board: a small hole
 in a small pad leaves a few tenths either side, and a drilling origin slightly out puts holes on the
-edge of their pads. The board is assumed square to the machine, so the correction is an origin shift.
+edge of their pads. The correction here is an origin shift, measured at one hole, which is right for a
+board sitting square to the machine; 6.14 adds the turn, for a board that is not.
 
 **Job › Drill alignment…** opens a dialog that stays open while tests are written, because finding
 the offset is a loop. Pick a drilling or routing file and a hole in it; **Write test** writes
@@ -2581,9 +2582,8 @@ has copper on it and the outline has to go round that copper — and closes. The
   not. The stock is cut as an outline but is told apart by its layer name and never moves.
 - The test refuses a hover height at or below the surface.
 
-Not done: remembering the offset in the project, so a later full export stays aligned; and checking
-two holes at once to tell a shift from a stock that is not square. Both are now part of 6.14. The help page says to hover over a
-hole at the far side too.
+Both of this section's open items — remembering the correction in the project, and measuring two holes
+to tell a shift from a board that is not square — were built in 6.14, which is where they are described.
 
 #### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority; lifts and floor lap fixed, settings not started**
 
@@ -2676,13 +2676,14 @@ slider, and records it whenever the outputs are recorded — on every change and
 `export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
 `project info` print which; `project save --thickness` records one.
 
-#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **Part 1 built; Part 2 not started**
+#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **built**
 
 Requested from the workshop, after the first boards cut on stock. The stock (5.6) gives every setup a
 datum and helps alignment a great deal, but small amounts of play in jigs and clamps can still throw the
-accuracy off — enough to be annoying at best, and to lose a board at worst. Drill alignment (6.12)
-corrects a *shift*, measured at one hole, and assumes the board sits square to the machine; it cannot
-correct stock that has been clamped a fraction of a degree turned.
+accuracy off — enough to be annoying at best, and to lose a board at worst. Drill alignment as 6.12
+built it corrects a *shift*, measured at one hole, and assumes the board sits square to the machine: it
+could not correct stock clamped back down a fraction of a degree turned, which is what this section is
+for.
 
 **Part 1 — alignment holes in the stock's waste.** Options under *Build on stock*: one small hole in the
 bottom waste border and one in the left. Cut in the same program and the same setup as the stock's
@@ -2738,6 +2739,32 @@ One thing the build turned up: the stock program is emitted straight rather than
 it had never been through `PassLinker`. A hole's second lap lifted to safe height and plunged back into
 the hole it had just cut. Linking it there fixed that and left the perimeter alone, where a deeper lap
 starts above where the last finished and a plunge is what it should be.
+
+**Part 2 built.** *Job ▸ Drill alignment* gained a tick — *Measure a second hole as well, to correct
+rotation* — which opens a second hole row, its own **Write test** button, and its own pair of offsets.
+It starts on the hole furthest from the first, since the angle two holes resolve is the error in
+reading each divided by the distance between them. Both rows are measured from where the program puts
+their own hole, so nothing carries over between them and a mistake at one cannot bias the other; the
+two test files are named `…align-test-first.nc` and `…align-test-second.nc` so neither can be run as
+the other. `RigidFit.Solve` (MillBurn.Align) turns the two measurements into a turn and a shift — the
+two-point case of 04 §4.2, and small enough to be trigonometry rather than an SVD, which is why
+MathNet is not used here. It refuses two holes under 10 mm apart, and refuses a measured separation
+more than 0.5 mm from the known one: copper-clad does not stretch, so that is a misread hole, and
+fitting it would spread one bad reading across every hole on the board. `DrillAlignment` carries
+`RotationDegrees` and `PivotNm`, and `ExportPlanner` applies the whole correction after the shift and
+after mirroring — in the work coordinates the operator measured in — to every point of every pass,
+arc centres included, since GRBL has no `G68`. The header says both halves: *turned 0.3 degrees about
+X23.620 Y47.878 mm, then shifted X+0.100 Y-0.060 mm*. The correction is saved with the project
+(`ProjectSettings.Alignment`) with the date it was found, and offered back on the dialog with a
+**Use it** button rather than applied silently — an alignment is only true while the board has not
+moved, and the operator is the only one who knows that. The CLI has the same: `align … --hole2 N
+--offset2 x,y` prints the fit, the distance check and the `export` line to run, and `export --align
+x,y --align-turn deg --align-about x,y`, or `--align saved`, writes the files.
+
+Verified on the test board by putting a known turn in and reading it back out: two holes 28.42 mm
+apart, the second moved as a 0.3° turn about the first would move it, fitted to 0.3° with the
+separation check reading zero, and the exported program's two measured holes landing on exactly the
+positions that were fed in, with every hole between them following the angle.
 
 ### Phase 7 — User documentation — **started**
 

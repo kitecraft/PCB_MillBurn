@@ -620,6 +620,28 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Whether the aligned files include the board outline. On unless unticked this session.</summary>
     public bool AlignmentOutline { get; set; } = true;
 
+    /// <inheritdoc cref="AlignmentXMm"/>
+    public double AlignmentSecondXMm { get; set; }
+
+    /// <inheritdoc cref="AlignmentXMm"/>
+    public double AlignmentSecondYMm { get; set; }
+
+    /// <summary>Whether a second hole was measured this session, which is what finds the rotation.</summary>
+    public bool AlignmentUseSecond { get; set; }
+
+    /// <summary>The alignment saved with this project, or null if this board has never had one found.</summary>
+    public AlignmentRecord? SavedAlignment => _project.Settings.Alignment;
+
+    /// <summary>
+    /// Keeps the alignment with the project, so the next session starts from what the machine already
+    /// told this board rather than from zero.
+    /// </summary>
+    private void RememberAlignment(DrillAlignment alignment)
+    {
+        _project.Settings = _project.Settings with { Alignment = AlignmentRecord.From(alignment) };
+        _project.Touch();
+    }
+
     /// <summary>Whether this export has a board outline program for the alignment to move.</summary>
     public bool HasOutlineProgram() => PlanExport(OutputKind.Gcode) is { } plan
         && plan.Items.Any(ExportPlanner.IsBoardOutline);
@@ -701,10 +723,21 @@ public sealed partial class MainViewModel : ViewModelBase
                 }
             }
 
+            var turn = alignment.IsShiftOnly
+                ? string.Empty
+                : string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $" and turned {alignment.RotationDegrees:0.####}°");
+
+            var moved = string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"moved X{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.XNm)} Y{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.YNm)} mm{turn}");
+
+            RememberAlignment(alignment);
+
             StatusMessage = string.Create(
                 System.Globalization.CultureInfo.InvariantCulture,
-                $"Wrote {written} aligned file(s), moved X{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.XNm)} "
-                + $"Y{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.YNm)} mm, to {folder}. Run the .aligned files instead of the originals.");
+                $"Wrote {written} aligned file(s), {moved}, to {folder}. Run the .aligned files instead of the originals.");
 
             return written;
         }

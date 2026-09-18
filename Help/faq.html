@@ -1372,9 +1372,19 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   <strong>It moves the holes and the outline, and nothing else.</strong> The copper files are what the
   holes are being lined up with, so they stay where they are, and so does the stock, which is cut
-  before there is anything on it to line up with. The board is assumed square to the machine, so one
-  hole right means every hole right. Hover over a hole at the far side of the board as well: if that
-  one is out by a different amount, the stock is not square, and no single move will fix it.
+  before there is anything on it to line up with.
+</p>
+
+<p>
+  <strong>If the board is not square to the machine, measure a second hole.</strong> One hole right
+  means every hole right only while the board sits square; a board a fraction of a degree over looks
+  fine at the hole you measured and misses by the length of the arc at the far end. Tick
+  <em>Measure a second hole as well, to correct rotation</em>, hover over a hole at the opposite end,
+  and type what that one reads: the two together give the turn as well as the shift, and it is built
+  into every coordinate of the files that are written. The two holes are also a known distance apart,
+  which is checked against the distance you just measured &mdash; a disagreement of more than half a
+  millimetre means a hole was read wrongly, and nothing is written.
+  <a href="guides/drill-alignment.html#rotation">The guide walks through it.</a>
 </p>
 
 <h2 id="drills">Holes of different sizes, and drill files that are Gerbers</h2>

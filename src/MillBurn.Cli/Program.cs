@@ -42,10 +42,12 @@ internal static class Program
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
             Console.WriteLine("                                 --level-side top|bottom which face the map was probed on");
-            Console.WriteLine("                                 --align <x,y mm> only the drilling and routing files, moved this much, as .aligned");
+            Console.WriteLine("                                 --align <x,y mm|saved> only the drilling and routing files, moved this much, as .aligned");
+            Console.WriteLine("                                 --align-turn <deg> --align-about <x,y mm> turned as well, about that hole");
             Console.WriteLine("                                 --align-outline the board outline too");
             Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
             Console.WriteLine("                                 --file <part of a name> --hole <n> --offset <x,y mm> --hover <mm> -o <file>");
+            Console.WriteLine("                                 --hole2 <n> --offset2 <x,y mm> a second hole measured: prints the turn to export with");
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
@@ -1635,16 +1637,44 @@ internal static class Program
 
         if (Argument(args, "--align") is { } alignText)
         {
-            if (Alignment(alignText) is not { } parsedAlignment)
+            // "saved" is the correction this project already carries, found at the machine last time.
+            // Reusable only while the board has not moved since, which is why it has to be asked for.
+            var parsedAlignment = string.Equals(alignText, "saved", StringComparison.OrdinalIgnoreCase)
+                ? project?.Settings.Alignment?.ToAlignment()
+                : Alignment(alignText);
+
+            if (parsedAlignment is null)
             {
-                Console.Error.WriteLine("--align wants X,Y in mm, e.g. 0.12,-0.05.");
+                Console.Error.WriteLine(string.Equals(alignText, "saved", StringComparison.OrdinalIgnoreCase)
+                    ? "--align saved needs a project with an alignment saved in it. Run `align` and export with the numbers it gives."
+                    : "--align wants X,Y in mm, e.g. 0.12,-0.05.");
+
                 return 1;
             }
 
             alignment = parsedAlignment with
             {
-                Outline = args.Contains("--align-outline", StringComparer.OrdinalIgnoreCase),
+                Outline = parsedAlignment.Outline
+                    || args.Contains("--align-outline", StringComparer.OrdinalIgnoreCase),
             };
+
+            // The turn, when a second hole was measured. Both flags or neither: a turn with no pivot
+            // would turn the board about work zero, which is not where anything was measured.
+            var turnText = Argument(args, "--align-turn");
+
+            if (turnText is not null || Argument(args, "--align-about") is not null)
+            {
+                if (turnText is null
+                    || !double.TryParse(turnText, NumberStyles.Float, CultureInfo.InvariantCulture, out var degrees)
+                    || Argument(args, "--align-about") is not { } aboutText
+                    || Alignment(aboutText) is not { } about)
+                {
+                    Console.Error.WriteLine("--align-turn wants degrees and --align-about the hole it turns about, e.g. --align-turn 0.42 --align-about 12.5,9.0. Both, or neither.");
+                    return 1;
+                }
+
+                alignment = alignment with { RotationDegrees = degrees, PivotNm = about.Offset };
+            }
         }
 
         var plan = blankOnly
@@ -2473,6 +2503,12 @@ internal static class Program
             offset = parsed;
         }
 
+        // Two holes measured: report the turn rather than writing another test.
+        if (Argument(args, "--hole2") is not null || Argument(args, "--offset2") is not null)
+        {
+            return Fit(args, targets, target, offset.Offset);
+        }
+
         var hover = Number(args, "--hover", app.Align.HoverMm);
 
         string text;
@@ -2529,6 +2565,65 @@ internal static class Program
         return (app.BoardThicknessMm, project is null
             ? "the app's setting"
             : "the app's setting — this project does not record one yet");
+    }
+
+    /// <summary>
+    /// What two measured holes say: the turn, the shift, the distance check — and the export command
+    /// that applies them.
+    ///
+    /// It prints the flags rather than writing the files, because the fit is the part worth reading
+    /// before anything is cut: a turn of two degrees on a board that should be square means the stock
+    /// moved in the jig, and the answer to that is to re-clamp it, not to export around it.
+    /// </summary>
+    private static int Fit(
+        string[] args, IReadOnlyList<AlignmentTarget> targets, AlignmentTarget first, Point2 firstOffset)
+    {
+        var secondNumber = (int)Number(args, "--hole2", 0);
+
+        if (targets.FirstOrDefault(t => t.Number == secondNumber) is not { } second)
+        {
+            Console.Error.WriteLine($"--hole2 wants the number of the second hole measured; there is no hole {secondNumber} in this file.");
+            return 1;
+        }
+
+        if (second.Number == first.Number)
+        {
+            Console.Error.WriteLine("--hole2 is the same hole as --hole. Measure two holes at opposite ends of the board.");
+            return 1;
+        }
+
+        if (Argument(args, "--offset2") is not { } text || Alignment(text) is not { } secondOffset)
+        {
+            Console.Error.WriteLine("--offset2 wants X,Y in mm for the second hole, e.g. 0.14,-0.03.");
+            return 1;
+        }
+
+        var fit = RigidFit.Solve(
+            first.At, first.At + firstOffset, second.At, second.At + secondOffset.Offset);
+
+        if (!fit.Found)
+        {
+            Console.Error.WriteLine(fit.Refusal);
+            return 1;
+        }
+
+        var turn = fit.RotationDegrees == 0
+            ? "square to the machine"
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"turned {fit.RotationDegrees:0.####} degrees {(fit.RotationDegrees > 0 ? "anticlockwise" : "clockwise")}");
+
+        var degreesText = fit.RotationDegrees.ToString("0.#####", CultureInfo.InvariantCulture);
+
+        Console.WriteLine();
+        Line($"  holes       {first.Kind} {first.Number} and {second.Kind} {second.Number}, {Nm.ToMillimetreString((long)Math.Round(first.At.DistanceTo(second.At)), 2)} mm apart");
+        Line($"  measured    {AlignmentTest.FormatOffset(fit.SeparationErrorNm)} mm against that distance");
+        Line($"  board       {turn}");
+        Line($"  correction  X{AlignmentTest.FormatOffset(fit.OffsetNm.X)} Y{AlignmentTest.FormatOffset(fit.OffsetNm.Y)} mm about X{Nm.ToMillimetreString(fit.PivotNm.X, 3)} Y{Nm.ToMillimetreString(fit.PivotNm.Y, 3)}");
+        Console.WriteLine();
+        Line($"  export with --align {Nm.ToMillimetreString(fit.OffsetNm.X, 3)},{Nm.ToMillimetreString(fit.OffsetNm.Y, 3)} --align-turn {degreesText} --align-about {Nm.ToMillimetreString(fit.PivotNm.X, 3)},{Nm.ToMillimetreString(fit.PivotNm.Y, 3)}");
+
+        return 0;
     }
 
     /// <summary>"0.12,-0.05" as a drill alignment, or null if it is not two numbers.</summary>

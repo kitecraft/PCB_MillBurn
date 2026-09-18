@@ -174,6 +174,16 @@ public sealed record ProjectSettings
     /// </summary>
     public double? BoardThicknessMm { get; init; }
 
+    /// <summary>
+    /// The last drill alignment found for this board, or null if none has been.
+    ///
+    /// Kept with the project because the correction belongs to this board on this jig: the numbers
+    /// are found at the machine, late, and a board that goes back on for its outline an hour later
+    /// should not need them typed again from memory. What it is not is a licence to skip the test —
+    /// it is offered with the date it was found, and the operator can run the hover again in seconds.
+    /// </summary>
+    public AlignmentRecord? Alignment { get; init; }
+
     /// <summary>Which of <see cref="Tools"/> does what. Null falls back to the built-in default.</summary>
     public Guid? IsolationToolId { get; init; }
 
@@ -210,6 +220,57 @@ public sealed record ProjectSettings
             LayerOutputs = [.. others.Append(settings).OrderBy(o => o.FileName, StringComparer.Ordinal)],
         };
     }
+}
+
+/// <summary>
+/// A drill alignment as the project file keeps it: millimetres and degrees, because a project file is
+/// read by people.
+/// </summary>
+public sealed record AlignmentRecord
+{
+    public double XMm { get; init; }
+
+    public double YMm { get; init; }
+
+    /// <summary>Zero for a board that was square to the machine, or never measured twice.</summary>
+    public double RotationDegrees { get; init; }
+
+    public double PivotXMm { get; init; }
+
+    public double PivotYMm { get; init; }
+
+    /// <summary>Whether the outline was moved along with the drilling and routing.</summary>
+    public bool Outline { get; init; } = true;
+
+    /// <summary>
+    /// When it was found. Shown when the correction is offered again, because an alignment is only
+    /// true while the board has not moved: yesterday's numbers on a board re-clamped this morning are
+    /// worse than none.
+    /// </summary>
+    public DateTimeOffset? Found { get; init; }
+
+    public static AlignmentRecord From(DrillAlignment alignment)
+    {
+        ArgumentNullException.ThrowIfNull(alignment);
+
+        return new AlignmentRecord
+        {
+            XMm = Nm.ToMillimetres(alignment.XNm),
+            YMm = Nm.ToMillimetres(alignment.YNm),
+            RotationDegrees = alignment.RotationDegrees,
+            PivotXMm = Nm.ToMillimetres(alignment.PivotNm.X),
+            PivotYMm = Nm.ToMillimetres(alignment.PivotNm.Y),
+            Outline = alignment.Outline,
+            Found = DateTimeOffset.Now,
+        };
+    }
+
+    public DrillAlignment ToAlignment() => new(
+        Nm.FromMillimetres(XMm), Nm.FromMillimetres(YMm), Outline)
+    {
+        RotationDegrees = RotationDegrees,
+        PivotNm = new Point2(Nm.FromMillimetres(PivotXMm), Nm.FromMillimetres(PivotYMm)),
+    };
 }
 
 /// <summary>

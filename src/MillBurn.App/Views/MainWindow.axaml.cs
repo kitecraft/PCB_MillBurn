@@ -429,6 +429,10 @@ public partial class MainWindow : Window
         // The drill alignment dialog, for a screenshot, like every other window here.
         if (args.Contains("--align", StringComparer.OrdinalIgnoreCase) && vm.HasBoard)
         {
+            // With the second hole open, for a screenshot of the rotation half: it is hidden until
+            // asked for, and a screenshot cannot tick a box.
+            vm.AlignmentUseSecond = args.Contains("--align-turn", StringComparer.OrdinalIgnoreCase);
+
             var align = new AlignmentWindow(vm, Environment.CurrentDirectory)
             {
                 RequestedThemeVariant = ActualThemeVariant,

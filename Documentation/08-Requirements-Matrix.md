@@ -17,26 +17,29 @@ test, a measurement — so that "done" means something a reader can check.
 | **Not started** | No code |
 | **Superseded** | Replaced by something better, or deliberately dropped. The reason is the useful half |
 
-**Last audited:** 2026-09-17, at commit `937f8b2`. The counts had drifted rather than the rows: twelve
-rows were added or changed after v0.1.0 — drill alignment, per-bit drilling, the routing fix, board
-thickness, Open recent, the two 6.14 rows — while the summary still described a document of 92 rows.
+**Last audited:** 2026-09-17, after 6.14. The previous audit fixed counts that had drifted rather than
+rows — twelve rows added or changed after v0.1.0 while the summary still described a document of 92.
+This one moves what 6.14 built: V26 and V27 done, and with them M20 and the first halves of M16
+and M17, the fiducial block of document 04 that had not been touched at all.
 
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
 | 02 Gerber & geometry | 22 | 15 | 0 | 6 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
-| 04 Machines & laser | 29 | 9 | 2 | 18 | 0 |
-| 05 Viewer & export | 28 | 12 | 3 | 11 | 2 |
-| **Requirements** | **104** | **51** | **6** | **43** | **4** |
+| 04 Machines & laser | 29 | 10 | 4 | 15 | 0 |
+| 05 Viewer & export | 28 | 13 | 3 | 10 | 2 |
+| **Requirements** | **104** | **53** | **8** | **39** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 14 physical
 capabilities (11 proven, 1 partly, 2 never cut).
 
-**The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 18
-not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That
-one block is most of what is left, and 6.14 is the first cut into it: alignment holes and a two-point
-fit are M16, M17 and M20 in their smallest useful form.
+**The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 15
+not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That one
+block is still most of what is left, and 6.14 was the first cut into it: the stock's waste holes, a
+two-point rigid fit and a correction kept with the project are M16, M17 and M20 in their smallest
+useful form. What those rows still want is fiducials in copper, a fit from three or more points, and
+a residual threshold that refuses an export rather than reporting it.
 
 Document 05 has grown fastest, and all of it from the workshop: every row from V17 on came from a
 board being cut rather than from a document.
@@ -126,11 +129,11 @@ board being cut rather than from a document.
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |
-| M16 | Fiducial generation with per-workflow survivability rules | §4.2 | **Not started** | `ToolpathKind.Fiducial` exists as an enum value |
-| M17 | Kabsch/affine fit from typed measurements, residual reported | §4.2 | **Not started** | `MillBurn.Align` holds maps and levelling only |
+| M16 | Fiducial generation with per-workflow survivability rules | §4.2 | **Partial** | the stock's two waste holes (06 §6.14) are the milled case; fiducials in copper, with the rules about what survives each workflow, are not |
+| M17 | Kabsch/affine fit from typed measurements, residual reported | §4.2 | **Partial** | `RigidFit.Solve`: the two-point rigid case, with the separation error as its residual. Three or more points, and the SVD, are not built |
 | M18 | Laser registration by placement, not coordinates | §4.3 | **Not started** | — |
 | M19 | Refuse to export above the residual threshold without an override | §4.4 | **Not started** | — |
-| M20 | Alignment records persisted with the project | §4.5 | **Not started** | — |
+| M20 | Alignment records persisted with the project | §4.5 | **Done** | `ProjectSettings.Alignment` — shift, turn, pivot and the date found; `ProjectTests.TheDrillAlignmentIsSavedWithTheProject` |
 | M21 | Height mapping: generate the probe routine, import the sender's log | §5 | **Done** | `ProbeRoutine`, `ProbeLog`, `Leveller` |
 | M22 | Refuse a log that is not a probe log, and say why | §5 | **Done** | `ProbeLogRejectionTests`, five refusal shapes |
 | M23 | Fit degrades rather than failing: 3 points a surface, 2 a tilt, 1 an offset | §5 | **Done** | `HeightMapTests` |
@@ -169,7 +172,7 @@ board being cut rather than from a document.
 | V24 | Routing settings: depth per lap, short last lap, break-through, finishing lap, ramp feed | 06 §6.13 | **Not started — priority** | defaults from the cutter and the layer |
 | V25 | Board thickness saved with the project, and read by the CLI | 06 §6.13 | **Done** | `ProjectSettings.BoardThicknessMm`; `ProjectTests.TheBoardThicknessIsSavedWithTheProject`; CLI `ThicknessFor` |
 | V26 | Alignment holes in the stock's bottom and left waste borders, cut with the stock | 06 §6.14 | **Done** | `Blanks.AlignmentHolesFor`, `BlankOperation.HolePasses`; `BlankTests.TheAlignmentHolesSitInTheWasteAsFarApartAsTheStockAllows`, `TheStockProgramCutsTheHolesBeforeItsEdges` |
-| V27 | Drill alignment from two holes: translation and rotation, separation checked, saved with the project | 06 §6.14 | **Not started** | the two-point case of 04 §4.2 |
+| V27 | Drill alignment from two holes: translation and rotation, separation checked, saved with the project | 06 §6.14 | **Done** | `RigidFit.Solve`, `DrillAlignment.Apply`, `ProjectSettings.Alignment`; `RigidFitTests`, `AlignmentTests.ATurnMovesEveryHoleAlongWithIt`, `ProjectTests.TheDrillAlignmentIsSavedWithTheProject` |
 | V28 | Build-on-stock options in a dialog of their own | 06 §6.14 | **Not started** | to examine; *Project info* is crowded |
 
 ## 06 §2 — Cross-cutting acceptance criteria
@@ -207,7 +210,7 @@ weaker claim than this one.
 | P11 | Panel channel, one pass down the middle | — | **Untested** | GridStripConnector_Panelized with a 0.8 mm end mill |
 | P12 | Stock cut to size, its corner work zero for every later setup | Millburn test board, 10 mm border | **Proven** | — |
 | P13 | Routed slots and milled holes, one continuous descent each | Millburn test board after v0.1.0: 1 mm slots and 2.2–3.5 mm holes, 0.8 mm end mill; plated file 1:12 against 0m 53s – 1m 31s, non-plated 0:47 against 0m 37s – 0m 58s | **Proven** | — |
-| P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | two-hole rotation, 06 §6.14 |
+| P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | the shift is proven on metal; the two-hole turn (06 §6.14) is proven in the numbers only |
 
 ---
 
@@ -239,7 +242,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
 | 6.12 Drill alignment | workshop | **Done** |
 | 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Partial** — lifts and floor lap fixed; settings not started |
-| 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Partial** — the holes are cut; the two-hole fit is not |
+| 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Done** — the holes are cut, and two of them give the turn |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

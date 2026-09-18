@@ -97,6 +97,45 @@ public sealed record DrillAlignment(long XNm, long YNm, bool Outline = false)
 
     public Point2 Offset => new(XNm, YNm);
 
+    /// <summary>
+    /// How far the board is turned on the table, in degrees, anticlockwise about <see cref="PivotNm"/>.
+    ///
+    /// A shift alone assumes the stock is square to the machine, and a jig with play in it does not
+    /// promise that: measured at one hole a turned board looks like a shift, and the holes at the far
+    /// end come out wrong by the rest of the arc. Found by measuring two holes — see
+    /// <c>RigidFit</c> — and baked into the coordinates here, because GRBL has no <c>G68</c>.
+    /// </summary>
+    public double RotationDegrees { get; init; }
+
+    /// <summary>
+    /// What the rotation turns about, in work coordinates. Normally the first hole measured, so that
+    /// hole lands exactly where it was measured and the rotation accounts for the other.
+    /// </summary>
+    public Point2 PivotNm { get; init; }
+
+    /// <summary>True when this is a shift and nothing more.</summary>
+    public bool IsShiftOnly => RotationDegrees == 0;
+
+    /// <summary>
+    /// Where a point ends up: turned about the pivot, then moved. In that order, because the pivot is
+    /// a place on the table rather than a place in the design.
+    /// </summary>
+    public Point2 Apply(Point2 at)
+    {
+        if (IsShiftOnly)
+        {
+            return new Point2(at.X + XNm, at.Y + YNm);
+        }
+
+        var (sin, cos) = Math.SinCos(RotationDegrees * Math.PI / 180);
+        double dx = at.X - PivotNm.X;
+        double dy = at.Y - PivotNm.Y;
+
+        return new Point2(
+            PivotNm.X + (long)Math.Round((dx * cos) - (dy * sin)) + XNm,
+            PivotNm.Y + (long)Math.Round((dx * sin) + (dy * cos)) + YNm);
+    }
+
     /// <summary>Whether this alignment moves an export's file: what is written again, aligned.</summary>
     public bool Moves(ExportItem item)
     {
@@ -1075,12 +1114,9 @@ public static class ExportPlanner
             ? Point2.Origin
             : new Point2(-frame.MinX, -frame.MinY);
 
-        // The drill alignment, on top. Added to the shift rather than to the geometry, so it lands in
-        // work coordinates after any mirroring — the frame the operator measured it in at the machine.
-        if (alignment is not null)
-        {
-            shift = new Point2(shift.X + alignment.XNm, shift.Y + alignment.YNm);
-        }
+        // The drill alignment is applied after the shift rather than folded into it: a rotation turns
+        // about a place on the table, so it has to happen in work coordinates — the frame the operator
+        // measured it in — and after any mirroring, for the same reason.
 
         // A bottom-side layer is drawn as seen through the board, so cutting it as-is produces a
         // mirror image. The flip is baked in here rather than left to the operator, and the file
@@ -1102,8 +1138,22 @@ public static class ExportPlanner
             var moved = Invariant(
                 $"X{AlignmentTest.FormatOffset(alignment.XNm)} Y{AlignmentTest.FormatOffset(alignment.YNm)} mm");
 
-            notes.Add(Invariant($"Aligned with the drill alignment test: every move shifted {moved} from the plain export."));
-            summary.Add(Invariant($"Aligned: shifted {moved}"));
+            if (alignment.IsShiftOnly)
+            {
+                notes.Add(Invariant(
+                    $"Aligned with the drill alignment test: every move shifted {moved} from the plain export."));
+                summary.Add(Invariant($"Aligned: shifted {moved}"));
+            }
+            else
+            {
+                var turned = Invariant($"{alignment.RotationDegrees:0.####}");
+                var about = Invariant(
+                    $"X{Nm.ToMillimetreString(alignment.PivotNm.X, 3)} Y{Nm.ToMillimetreString(alignment.PivotNm.Y, 3)} mm");
+
+                notes.Add(Invariant(
+                    $"Aligned with the drill alignment test: every move turned {turned} degrees about {about}, then shifted {moved}, from the plain export."));
+                summary.Add(Invariant($"Aligned: turned {turned}°, shifted {moved}"));
+            }
         }
 
         var mirrored = setting.MirrorFor(layer.Role);
@@ -1177,7 +1227,9 @@ public static class ExportPlanner
             var (linkedPath, linkStep) = PassLinker.Apply(ordered);
             links += linkStep;
 
-            prepared.Add(Translate(linkedPath, shift));
+            var shifted = Translate(linkedPath, shift);
+
+            prepared.Add(alignment is null ? shifted : Aligned(shifted, alignment));
         }
 
         var job = new Job
@@ -1788,6 +1840,22 @@ public static class ExportPlanner
             Drills = [.. toolpath.Drills.Select(d => d with { At = Flip(d.At) })],
         };
     }
+
+    /// <summary>
+    /// Every point of a toolpath moved by the drill alignment, arc centres included.
+    ///
+    /// A rotation about the centre keeps an arc an arc — same radius, same sweep — so there is nothing
+    /// to rebuild; the three points each go through the same transform.
+    /// </summary>
+    private static Toolpath Aligned(Toolpath toolpath, DrillAlignment alignment) => toolpath with
+    {
+        Passes = [.. toolpath.Passes.Select(p => p with
+        {
+            Path = [.. p.Path.Select(s => new ArtSegment(
+                s.Sweep, alignment.Apply(s.From), alignment.Apply(s.To), alignment.Apply(s.Centre)))],
+        })],
+        Drills = [.. toolpath.Drills.Select(d => d with { At = alignment.Apply(d.At) })],
+    };
 
     private static Toolpath Translate(Toolpath toolpath, Point2 by) => toolpath with
     {
