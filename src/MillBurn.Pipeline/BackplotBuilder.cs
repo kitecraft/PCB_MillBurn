@@ -50,12 +50,24 @@ public static class BackplotBuilder
     /// screen, which looks exactly like one that was never generated.
     /// </summary>
     public static IReadOnlyList<BackplotLayer> Build(
-        IReadOnlyList<BackplotMove> moves, Point2 offset = default, long sagittaNm = 0) =>
-        Build(moves, new Placement(offset), sagittaNm);
+        IReadOnlyList<BackplotMove> moves, Point2 offset = default, long sagittaNm = 0,
+        bool splitByDepth = true) =>
+        Build(moves, new Placement(offset), sagittaNm, splitByDepth);
 
-    /// <inheritdoc cref="Build(IReadOnlyList{BackplotMove}, Point2, long)"/>
+    /// <inheritdoc cref="Build(IReadOnlyList{BackplotMove}, Point2, long, bool)"/>
+    /// <param name="moves">The classified moves, in program order.</param>
+    /// <param name="placement">Where they land on the board.</param>
+    /// <param name="sagittaNm">How finely arcs are flattened; zero for the default.</param>
+    /// <param name="splitByDepth">
+    /// Whether to draw the passes that reach this program's full depth apart from the shallower
+    /// ones. True for a program that does one job, which is what an export writes and what makes the
+    /// split mean something. False for a merged program — the single file the Mill button writes,
+    /// say — where isolation at 0.05 mm and an outline at 0.9 mm sit side by side and "does not
+    /// reach full depth" is true of the isolation without being useful.
+    /// </param>
     public static IReadOnlyList<BackplotLayer> Build(
-        IReadOnlyList<BackplotMove> moves, Placement placement, long sagittaNm = 0)
+        IReadOnlyList<BackplotMove> moves, Placement placement, long sagittaNm = 0,
+        bool splitByDepth = true)
     {
         ArgumentNullException.ThrowIfNull(moves);
 
@@ -63,20 +75,33 @@ public static class BackplotBuilder
         var current = new List<Point2>();
         var currentRole = (BackplotRole?)null;
 
+        // How deep this run cuts, so the ones that go all the way through can be told from the ones
+        // that do not. See Deepest below for why the picture needs that.
+        var currentDepth = 0L;
+        var cuts = new List<(long DepthNm, IReadOnlyList<Point2> Path)>();
+
         void Flush()
         {
             if (currentRole is { } role && current.Count >= 2)
             {
-                if (!runs.TryGetValue(role, out var list))
+                if (role == BackplotRole.Cut)
                 {
-                    list = [];
-                    runs[role] = list;
+                    cuts.Add((currentDepth, current));
                 }
+                else
+                {
+                    if (!runs.TryGetValue(role, out var list))
+                    {
+                        list = [];
+                        runs[role] = list;
+                    }
 
-                list.Add(current);
+                    list.Add(current);
+                }
             }
 
             current = [];
+            currentDepth = 0;
         }
 
         foreach (var (role, move) in moves)
@@ -99,6 +124,8 @@ public static class BackplotBuilder
                 currentRole = role;
                 current.Add(from);
             }
+
+            currentDepth = Math.Min(currentDepth, Math.Min(move.FromZNm, move.ToZNm));
 
             if (move.IsArc)
             {
@@ -124,14 +151,55 @@ public static class BackplotBuilder
 
         Add(BackplotRole.Travel, "gcode-travel", "Travel moves", BackplotPalette.Travel, false);
         Add(BackplotRole.LongTravel, "gcode-long-travel", "Long rapids", BackplotPalette.LongTravel, true);
-        Add(BackplotRole.Cut, "gcode-cut", "Cutting moves", BackplotPalette.Cut, true);
+
+        // The cuts, split by how deep they go.
+        //
+        // Every depth pass of one profile follows the same line, so drawing them all in one colour
+        // draws the same line several times and the picture says only "the cutter went here". What
+        // it needs to say is "the cutter went all the way through here" — because where it did not
+        // is a tab, and a tab is the difference between a board that comes out and a board that has
+        // to be sawn out. Overlaid, the shallow pass that crosses the tab paints over the gap the
+        // deep ones leave, and the tabs disappear.
+        //
+        // So the deepest passes are drawn in the cut colour and the shallower ones dimmed underneath.
+        // Nothing is hidden — this also draws a file from somebody else's CAM, where a shallow pass
+        // may be the only pass over some of the work — but a tab now reads as a gap in the bright
+        // line, with the dim line still crossing it.
+        var deepest = cuts.Count > 0 ? cuts.Min(c => c.DepthNm) : 0;
+
+        bool Through(long depthNm) => !splitByDepth || depthNm <= deepest + SameDepthNm;
+
+        var through = cuts.Where(c => Through(c.DepthNm)).Select(c => c.Path).ToList();
+        var partial = cuts.Where(c => !Through(c.DepthNm)).Select(c => c.Path).ToList();
+
+        if (partial.Count > 0)
+        {
+            layers.Add(new BackplotLayer(
+                "gcode-cut-partial", "Part-depth passes", BackplotPalette.PartialCut, partial, true));
+        }
+
+        if (through.Count > 0)
+        {
+            layers.Add(new BackplotLayer("gcode-cut", "Cutting moves", BackplotPalette.Cut, through, true));
+        }
+
         Add(BackplotRole.Gouge, "gcode-gouge", "RAPID AT DEPTH", BackplotPalette.Gouge, true);
 
         return layers;
     }
 
-    /// <summary>The role layers' ids, in the order <see cref="Build(IReadOnlyList{BackplotMove}, Placement, long)"/> adds them.</summary>
-    private static readonly string[] RoleOrder = ["gcode-travel", "gcode-long-travel", "gcode-cut", "gcode-gouge"];
+    /// <summary>The role layers' ids, in the order <see cref="Build(IReadOnlyList{BackplotMove}, Placement, long, bool)"/> adds them.</summary>
+    private static readonly string[] RoleOrder =
+        ["gcode-travel", "gcode-long-travel", "gcode-cut-partial", "gcode-cut", "gcode-gouge"];
+
+    /// <summary>
+    /// How close two depths have to be to count as the same pass.
+    ///
+    /// A micron: the programs are written to three decimal places of a millimetre, so passes that
+    /// are meant to be at one depth are at one depth, and anything further apart than this was meant
+    /// to be.
+    /// </summary>
+    private const long SameDepthNm = 1_000;
 
     /// <summary>One program's moves, and which layer they came from.</summary>
     /// <param name="Source">The layer's file name — the id the panel knows it by.</param>

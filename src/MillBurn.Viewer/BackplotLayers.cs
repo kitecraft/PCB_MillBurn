@@ -46,6 +46,16 @@ public static class BackplotPalette
     public static BoardLayerStyle Cut { get; } =
         new(new SKColor(0xFF, 0xD7, 0x40), 1f, Outlined: true, StrokePixels: 1.8f, ClosedRings: false);
 
+    /// <summary>
+    /// The same yellow, dimmed and thinner: a pass that does not go all the way through.
+    ///
+    /// Same hue on purpose. These are cuts, not travel, and the eye should read them as the same
+    /// kind of thing at a glance — what has changed is that the cutter did not reach the bottom
+    /// there, which over a tab is the whole point of the picture.
+    /// </summary>
+    public static BoardLayerStyle PartialCut { get; } =
+        new(new SKColor(0xFF, 0xD7, 0x40), 0.4f, Outlined: false, StrokePixels: 1.1f, ClosedRings: false);
+
     public static BoardLayerStyle Plunge { get; } =
         new(new SKColor(0xFF, 0x17, 0x44), 1f, Outlined: true, StrokePixels: 2.5f, ClosedRings: false);
 

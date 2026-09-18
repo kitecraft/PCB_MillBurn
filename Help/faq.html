@@ -1872,12 +1872,22 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <h3>Toolpath moves</h3>
 
 <p>
-  Under the list, after a <strong>Preview</strong>: <strong>Cutting moves</strong>, <strong>Travel
-  moves</strong>, <strong>Long rapids</strong>, <strong>RAPID AT DEPTH</strong> if there is one, and
-  the <strong>Substrate</strong>. These are not layers &mdash; no file makes one and none can be
+  Under the list, after a <strong>Preview</strong>: <strong>Cutting moves</strong>,
+  <strong>Part-depth passes</strong> where there are any, <strong>Travel moves</strong>,
+  <strong>Long rapids</strong>, <strong>RAPID AT DEPTH</strong> if there is one, and the
+  <strong>Substrate</strong>. These are not layers &mdash; no file makes one and none can be
   exported &mdash; so they are a filter across the whole drawing rather than rows pretending to be
   files. A path is drawn when <em>its layer&rsquo;s</em> zig-zag is on <em>and</em> its kind of move
   is ticked here.
+</p>
+
+<p>
+  <strong>Cutting moves are the passes that reach the program&rsquo;s full depth; part-depth passes
+  are the shallower ones, drawn dimmer underneath.</strong> That is what makes tabs visible: where
+  the board outline leaves a tab, the cutter never goes through, so the bright line has a gap and
+  only the dim one crosses it. Turn <em>Part-depth passes</em> off to see just what is cut through.
+  A program that works at one depth &mdash; isolation, engraving &mdash; has no part-depth passes and
+  no chip for them.
 </p>
 
 <p>
@@ -1898,8 +1908,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   This includes the things the app draws itself rather than reading from a file. They are not in the
   layer list &mdash; they are the <a href="#panel"><strong>Toolpath moves</strong></a> row of chips
   underneath it: the <strong>Substrate</strong>, and, after a <strong>Preview</strong>,
-  <strong>Cutting moves</strong>, <strong>Travel moves</strong>, <strong>Long rapids</strong> and
-  <strong>RAPID AT DEPTH</strong>. Click the coloured dot on a chip to change it. Those are often
+  <strong>Cutting moves</strong>, <strong>Part-depth passes</strong>, <strong>Travel moves</strong>,
+  <strong>Long rapids</strong> and <strong>RAPID AT DEPTH</strong>. Click the coloured dot on a chip
+  to change it. Those are often
   the ones that most need changing. The backplot palette deliberately picks hues the board does not
   use, so a program is never invisible against the copper it was made from — but which hues those
   are depends on which layers you have showing.

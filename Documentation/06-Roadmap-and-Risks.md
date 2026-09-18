@@ -472,7 +472,24 @@ cutter's and the tab height is ours, and the two need not divide into each other
 `OutlineOperation` now always cuts the depth the tab's top sits at, whatever the steps work out to.
 A tab taller than the whole cut cannot be cut down by anything, and says so in the program and in the
 export report rather than leaving a board that will not come free. `OutlineTabTests` pins the
-material left under a tab to the number the header quotes.
+material left under a tab to the number the header quotes. `BlankOperation` had the same defect and
+the same fix: the stock's tabs were cut by whichever of the outline's steps happened to land above
+them, or by none at all.
+
+**And the picture lost the tabs as soon as the cutting found them.** Reported within the hour: the
+outline's cut line stopped showing where the tabs were. It had never really shown them — before the
+fix nothing cut the tab at all, so *every* pass jumped the gap and the gap was in the drawing by
+accident. Cutting the tab down properly put a shallow pass across it, and drawing every pass in one
+colour let that pass paint over the gap the deep ones leave. The fix is the one the workshop
+suggested, made safe: rather than drawing only the bottom pass, `BackplotBuilder` splits the cuts
+into the passes that reach the program's full depth and the ones that do not, and draws the second
+set dimmer underneath. A tab then reads as a gap in the bright line with the dim line still crossing
+it, which is exactly what the material does; nothing is hidden, so a file from somebody else's CAM
+still draws in full; and the operator can turn *Part-depth passes* off to see only what goes through.
+It is not split for a merged program — the single file the Mill button writes — where isolation at
+0.05 mm is not a part-depth version of an outline at 0.9 mm. No new kind of control: the move-kind
+chips are built from whatever layers the backplot produces, so the new one appears beside *Cutting
+moves* and *Long rapids* with its own colour and switch.
 
 **Drill files written as Gerber X2 now drill.** KiCad's *Generate Drill Files* offers X2 instead of
 Excellon; picking it produced a Gerber full of circles that realised beautifully and drilled nothing,

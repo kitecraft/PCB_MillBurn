@@ -480,8 +480,12 @@ public sealed class BlankTests(ITestOutputHelper output)
 
         output.WriteLine("cutting depths: " + string.Join(", ", depths));
 
-        Assert.Equal([-0.9, -0.5], depths);
+        // -0.3 is not one of the step down's own passes: it is where the tabs start (0.90 deep, less
+        // the 0.50 tab and the 0.10 through), and it is cut because otherwise nothing ever cuts down
+        // to the tab and the sheet holds the stock by its full thickness.
+        Assert.Equal([-0.9, -0.5, -0.3], depths);
         Assert.Contains("0.90 mm deep in 0.50 mm passes", blank, StringComparison.Ordinal);
+        Assert.Contains("One extra pass at 0.30 mm, which is where the tabs start", blank, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -1364,7 +1364,9 @@ internal static class Program
             Line($"  long rapids {measured.LongTravelCount} over 10 mm");
         }
 
-        foreach (var layer in BackplotBuilder.Build(backplot, Undo(job.OriginShift)))
+        // One file for the whole job, so the depths in it belong to different operations: an
+        // isolation pass is not a part-depth version of the outline's through cut.
+        foreach (var layer in BackplotBuilder.Build(backplot, Undo(job.OriginShift), splitByDepth: false))
         {
             Line($"  layer       {layer.Id,-20} {layer.Runs.Count,5} runs, {layer.Runs.Sum(r => r.Count),7:N0} points");
         }
@@ -1392,7 +1394,11 @@ internal static class Program
 
         if (png is not null)
         {
-            RenderBackplotPng(board, BackplotBuilder.Build(backplot, Undo(job.OriginShift)), png, 1400);
+            RenderBackplotPng(
+                board,
+                BackplotBuilder.Build(backplot, Undo(job.OriginShift), splitByDepth: false),
+                png,
+                1400);
             Line($"  png         {png}");
         }
 

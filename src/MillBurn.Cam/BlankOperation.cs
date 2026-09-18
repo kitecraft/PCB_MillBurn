@@ -86,13 +86,29 @@ public static class BlankOperation
         var passes = HolePasses(options);
         var group = passes.Count > 0 ? 1 : 0;
 
+        var depths = new List<long>();
+
         for (var i = 1; i <= steps; i++)
         {
-            var at = Math.Min(depth, i * step);
+            depths.Add(Math.Min(depth, i * step));
+        }
 
+        // The depth the tabs start at is always cut, exactly as the board outline does it: the step
+        // down belongs to the cutter and the tab height to us, so nothing makes them divide into each
+        // other, and a tab nothing ever cut down to holds the full thickness of the sheet.
+        var tabTop = depth - options.TabHeightNm - options.BreakThroughNm;
+        var addedForTabs = options.TabsPerEdge > 0 && tabTop > 0 && !depths.Contains(tabTop);
+
+        if (addedForTabs)
+        {
+            depths.Add(tabTop);
+            depths.Sort();
+        }
+
+        foreach (var at in depths)
+        {
             // Tabs only once the cut is deep enough to need them, exactly as the board outline does.
-            var tabbed = options.TabsPerEdge > 0
-                && at > depth - options.TabHeightNm - options.BreakThroughNm;
+            var tabbed = options.TabsPerEdge > 0 && at > tabTop;
 
             var runs = Runs(edges, tabbed ? options : null);
 
@@ -121,6 +137,18 @@ public static class BlankOperation
         {
             notes.Add(Invariant(
                 $"{options.TabsPerEdge} tab(s) on the top and right edges only, {Mm(options.TabWidthNm)} mm wide. The bottom and left edges are the datum and are cut clean."));
+
+            if (addedForTabs)
+            {
+                notes.Add(Invariant(
+                    $"One extra pass at {Mm(tabTop)} mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the sheet."));
+            }
+
+            if (tabTop <= 0)
+            {
+                notes.Add(Invariant(
+                    $"The tabs are {Mm(options.TabHeightNm)} mm tall and this cut is only {Mm(depth)} mm deep, so nothing is cut away at them: they hold the full thickness of the sheet and have to be cut by hand."));
+            }
         }
 
         if (options.AlignmentHoles.Count > 0 && options.HoleDiameterNm > 0)
