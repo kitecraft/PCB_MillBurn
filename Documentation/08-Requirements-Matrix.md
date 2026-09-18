@@ -17,21 +17,25 @@ test, a measurement — so that "done" means something a reader can check.
 | **Not started** | No code |
 | **Superseded** | Replaced by something better, or deliberately dropped. The reason is the useful half |
 
-**Last audited:** 2026-09-17, after 6.14. The previous audit fixed counts that had drifted rather than
+**Last audited:** 2026-09-18, after 6.15 was requested. The previous audit fixed counts that had drifted rather than
 rows — twelve rows added or changed after v0.1.0 while the summary still described a document of 92.
 This one moves what 6.14 built: V26, V27 and V29 done, and with them M20 and the first halves of M16
 and M17, the fiducial block of document 04 that had not been touched at all. V29 arrived from the
 workshop while 6.14 was being written, and is the row that turned "what the alignment moves" from a
 rule into a choice.
 
+The 2026-09-18 pass adds one row and builds nothing: G23, the companion page listing the commands
+that would rebuild the export, asked for from the workshop as a head start for anyone moving from
+the window to a scripted pipeline.
+
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
-| 02 Gerber & geometry | 22 | 15 | 0 | 6 | 1 |
+| 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 29 | 10 | 4 | 15 | 0 |
 | 05 Viewer & export | 29 | 14 | 3 | 10 | 2 |
-| **Requirements** | **105** | **54** | **8** | **39** | **4** |
+| **Requirements** | **106** | **54** | **8** | **40** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (12 proven, 1 partly, 4 never cut).
@@ -94,6 +98,7 @@ board being cut rather than from a document.
 | G20 | A numbered picture of the holes and slots on each companion page | 06 §6.5 | **Not started** | inline SVG; refusals hatched, which is the point |
 | G21 | Tool library: filter by kind, sort, copy a tool | 06 §6.6 | **Not started** | a scannable row may be worth more than all three |
 | G22 | Coachmarks and a first-run walkthrough | 06 §6.7 | **Not started** | needs research; the walkthrough wants the test board to point at |
+| G23 | The project page lists the CLI commands that would rebuild the export | 06 §6.15 | **Not started** | derived from the emitted plan, not the settings, or it would name flags the export ignored |
 
 ## 03 — Toolpath optimization
 
@@ -249,6 +254,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.12 Drill alignment | workshop | **Done** |
 | 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Partial** — lifts and floor lap fixed; settings not started |
 | 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Done** — the holes are cut, and two of them give the turn |
+| 6.15 The project page names the commands that would rebuild the export | workshop | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

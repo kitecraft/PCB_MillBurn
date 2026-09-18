@@ -2020,6 +2020,7 @@ than discovered after.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
+- **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2847,6 +2848,45 @@ shifted.
 **Cut on metal, 2026-09-18.** Drills and edge cuts run from a two-hole correction: *"The results were
 as good as I can expect."* The same run is what turned up the tabs left at full thickness, which is
 its own fix above and belongs to the outline rather than to the alignment.
+
+#### 6.15 The companion page names the commands that would rebuild it — **requested, not started**
+
+Requested from the workshop: *"in the project html companion file that is written on export, can we
+add a new section at the bottom for the cli command used to create the export... or maybe, a list of
+cli commands that would be the fastest way to replicate the outputs using the cli. This would give
+those power users a big head start on setting up their own pipelines."*
+
+**The second framing is the right one.** A record of the command that was run is only available when
+a command was run, and most exports come from the window, where there was none. Deriving the
+commands that *would* reproduce this export works either way, and is more useful in the case that
+matters: somebody who has set the job up by clicking, likes the result, and now wants it repeatable.
+That is exactly the move from the app to a pipeline, and today it means reading the CLI's help and
+guessing which flags correspond to what they ticked.
+
+**It is the same principle the rest of the export already follows** — derive the description from
+what was emitted, never from what was intended. The commands come off the finished plan: the layer
+settings it used, the thickness, the stock, the alignment. A block written from the *settings* could
+name flags the export ignored, which is worse than no block at all, because it would be tried.
+
+**Expect it to be a short script, not one line.** A double-sided job with stock, a probe and an
+alignment is several invocations in an order that matters, and the order is half the value. So the
+section is the sequence, with a line of prose before each saying what it produces — close to what
+"Suggested running order" already does for the files, which is the section it should sit beside in
+tone.
+
+**Every path has to be quoted and relative**, because board names have spaces in them (`Arduino Mega
+2560`) and an absolute path from the machine that exported is wrong on the machine that runs it.
+`--set` values need the same care: layer names have spaces too.
+
+**It must be honest about what it cannot express.** Anything the window can do that the CLI cannot —
+if such a gap exists when this is built — gets named in the block as a comment rather than quietly
+omitted, so a script that does less than the export is not handed over as if it did the same. Worth
+checking both ways while building it: this is the kind of feature that finds missing CLI flags, and
+those are worth fixing rather than papering over.
+
+**Done when** an export of the test board writes a block that, pasted into a shell in a fresh folder
+with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
+double-sided one with stock and alignment, and for a board whose name has a space in it.
 
 ### Phase 7 — User documentation — **started**
 
