@@ -289,7 +289,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.1.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.2.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 **Proven on metal:**
@@ -311,18 +311,20 @@ run the dry run first and read the pages beside the files.
   *rotation* out as well as its shift — "as good as I can expect", from the machinist who asked for it.
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, and the routed channel between the boards of a panel.
+isolation, the routed channel between the boards of a panel, alignment measured from the stock's two
+waste holes, and the tab-height fix this release makes to every outline program — the depths are
+right in the file, and no board has been cut from one yet.
 
 **Known rough edges, next in line:**
 
 - Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
   board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
 
-919 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
-every push. Up next after the rough edges: rulers down the viewport, drill hits drawn as an X, a
-numbered picture on the drilling and routing pages, better tab placement — then an MCP server over
-the same libraries, and solder paste. The full picture, including every bug worth remembering and
-what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
+935 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+every push. Up next after the rough edges: rulers down the viewport, a numbered picture on the
+drilling and routing pages, better tab placement, and registration marks for placing a burn — then
+an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
+remembering and what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
 
 ---
 
