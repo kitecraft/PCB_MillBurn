@@ -2021,6 +2021,7 @@ than discovered after.
 - **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
 - **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
+- **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction. See 6.16.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2887,6 +2888,58 @@ those are worth fixing rather than papering over.
 **Done when** an export of the test board writes a block that, pasted into a shell in a fresh folder
 with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
 double-sided one with stock and alignment, and for a board whose name has a space in it.
+
+#### 6.16 A re-measured stock keeps the holes it was cut with — **requested, not started**
+
+Requested from the workshop, describing a workflow already in use: cut the stock to size with
+alignment holes in its waste; measure what came out; and if it is not quite the size asked for, set
+the stock to **Pre-cut** and type the measured dimensions, which fixes work zero, the shared page
+and the mirror axis to the piece actually on the table.
+
+**The correction step throws the holes away.** `Blank.AlignmentHolesFor` refuses outright on pre-cut
+stock — *"nothing cuts holes into a piece of stock it did not make"* — so the moment the measured
+size is entered the stock program has no holes in it, `WasteHoles()` comes back empty, and the
+waste-hole tick in Drill alignment greys out saying this job cuts none. The holes are sitting in the
+stock on the machine; the app has simply stopped believing in them.
+
+That refusal is right about *cutting* and wrong about *knowing*. It conflates two things that need
+separating: cutting holes into stock the mill did not make (never), and knowing where holes already
+cut are (which is the whole point of the pre-cut correction).
+
+**And the positions would be wrong even if they survived.** Both holes are anchored to the far
+edges — `bounds.MaxX - reach` and `bounds.MaxY - reach`, with the near coordinate at the middle of
+its border — so every one of their four coordinates is a function of the stock's size. Change the
+size by 0.08 mm and the app moves the holes 0.08 mm. They did not move.
+
+**Which is the better datum is the real question, and the answer is the holes.** A hole is placed by
+rapids from work zero, so its position carries positioning error only. The perimeter is a cut
+contour, carrying the cutter's diameter error and its deflection as well — which is exactly why the
+piece measured differently from what was asked for. So the measured size and the as-cut holes
+disagree, and the holes are the more trustworthy of the two.
+
+**Both are still needed, for different jobs.** The measured size is what fixes the mirror axis: the
+flip is about the stock's centreline, and on a piece 0.08 mm narrow that centreline is 0.04 mm from
+nominal, which is the error the operator entered the measurement to remove. The holes are what fixes
+where the design sits. So this is not a matter of choosing one — it is keeping two facts that come
+from different places and no longer agree.
+
+**Where the numbers should come from.** The same rule the rest of this codebase follows: record what
+was emitted. When a stock program is written with alignment holes, their coordinates are a fact about
+that program, so save them with the project the way `ProjectSettings.Alignment` already saves a
+correction, and stop recomputing them from a size that has since changed. A later re-cut of the stock
+replaces them; nothing else does.
+
+**The trap it closes is silent.** In waste-hole mode the dialog offers each hole at the position the
+app believes, and the operator types where it really is; the fit maps one onto the other and that
+transform is written into every ticked program. Believe the hole is 0.08 mm from where it is and
+that 0.08 mm goes straight into the board's drilling. The separation check does not catch it — two
+holes whose assumed positions are each wrong by a similar amount still measure nearly their expected
+distance apart, and 0.08 mm is far under the 0.5 mm refusal.
+
+**Done when** stock cut with alignment holes, then switched to Pre-cut with measured dimensions,
+still offers those holes in Drill alignment at the coordinates they were cut at rather than ones
+derived from the new size; the refusal still refuses to cut holes into stock the mill did not make;
+and a stock re-cut at a new size replaces the remembered holes rather than keeping stale ones.
 
 ### Phase 7 — User documentation — **started**
 

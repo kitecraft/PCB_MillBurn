@@ -26,16 +26,17 @@ rule into a choice.
 
 The 2026-09-18 pass adds one row and builds nothing: G23, the companion page listing the commands
 that would rebuild the export, asked for from the workshop as a head start for anyone moving from
-the window to a scripted pipeline.
+the window to a scripted pipeline, and M30, a re-measured stock keeping the alignment holes it was
+cut with — found by asking what the pre-cut correction does to them, which is discard them.
 
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
 | 01 Architecture | 15 | 8 | 0 | 7 | 0 |
 | 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
-| 04 Machines & laser | 29 | 10 | 4 | 15 | 0 |
+| 04 Machines & laser | 30 | 10 | 4 | 16 | 0 |
 | 05 Viewer & export | 29 | 14 | 3 | 10 | 2 |
-| **Requirements** | **106** | **54** | **8** | **40** | **4** |
+| **Requirements** | **107** | **54** | **8** | **41** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (12 proven, 1 partly, 4 never cut).
@@ -133,6 +134,7 @@ board being cut rather than from a document.
 | M12 | Corner-stop fixture generator — the recommended default | §4.1 | **Not started** | — |
 | M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Done** | `Blanks`, `BlankOperation`; work zero, page and mirror axis all follow it |
 | M29 | Laser verification: burn into the blank's border and measure | 06 §5.6.5 | **Not started** | the mill defines its datum; the laser only trusts one |
+| M30 | A re-measured (pre-cut) stock keeps the alignment holes it was cut with | 06 §6.16 | **Not started** | the holes are placed by rapids, the perimeter by a cutter; they disagree and the holes are right |
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |
@@ -255,6 +257,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Partial** — lifts and floor lap fixed; settings not started |
 | 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Done** — the holes are cut, and two of them give the turn |
 | 6.15 The project page names the commands that would rebuild the export | workshop | **Not started** |
+| 6.16 A re-measured stock keeps its alignment holes | workshop | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |
