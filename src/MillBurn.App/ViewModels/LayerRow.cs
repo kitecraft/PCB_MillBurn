@@ -361,12 +361,15 @@ public sealed partial class LayerRow : ObservableObject
     public bool NeedsPasses => IsGcode && Operation == OperationKind.Isolation;
 
     /// <summary>
-    /// Anything that can produce a file can be mirrored — drills and stencils included.
+    /// Anything that produces a file can be mirrored — drills and stencils included.
     ///
-    /// Offered on every exportable layer rather than only on one already set to export, so the
-    /// choice is visible while deciding rather than appearing after.
+    /// Only once it produces one. This used to be offered on every layer that *could* export, on the
+    /// grounds that the choice should be visible while deciding rather than appear after; but a tick
+    /// on a layer set to Not exported changes nothing, and <see cref="Detail"/> had already stopped
+    /// saying "mirrored" in that state. Every other option in the row — tabs, depth, invert — waits
+    /// for an output, so this one waiting too is what the rest of the row led the operator to expect.
     /// </summary>
-    public bool NeedsMirror => CanExport;
+    public bool NeedsMirror => IsGcode || IsSvg;
 
     /// <summary>Only a drawing can be inverted; a toolpath has nothing to be the complement of.</summary>
     public bool NeedsInvert => IsSvg;
