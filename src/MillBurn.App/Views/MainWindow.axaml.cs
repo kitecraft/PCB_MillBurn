@@ -361,6 +361,14 @@ public partial class MainWindow : Window
             ExpandLayers(true);
         }
 
+        // The refresh review, so the one panel that only appears when a source folder has moved on
+        // is checkable from a screenshot like every other part of the window. Read-only: it compares
+        // the project against its folder and applies nothing.
+        if (args.Contains("--refresh", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.InspectRefresh();
+        }
+
         if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase)
             || args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
         {

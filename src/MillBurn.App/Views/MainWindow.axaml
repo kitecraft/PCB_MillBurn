@@ -783,25 +783,34 @@
                             <TextBlock Text="{Binding RefreshSummary}"
                                        FontSize="12" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextPrimary}" />
-                            <ItemsControl ItemsSource="{Binding RefreshItems}" MaxHeight="220">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:RefreshItem">
-                                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-                                            <CheckBox Grid.Column="0"
-                                                      IsChecked="{Binding Selected, Mode=TwoWay}"
-                                                      VerticalAlignment="Top" />
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding Label}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextPrimary}" />
-                                                <TextBlock Text="{Binding Detail}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource TextSecondary}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <!--
+                                The cap belongs on a ScrollViewer, not on the ItemsControl: an
+                                ItemsControl does not scroll, so a MaxHeight on it alone sliced the
+                                sixth of nine files in half and hid the rest with nothing to say so.
+                                Every file here is a change the operator is being asked to approve,
+                                so one that cannot be reached is one that gets applied unread.
+                            -->
+                            <ScrollViewer MaxHeight="220" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding RefreshItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RefreshItem">
+                                            <Grid ColumnDefinitions="Auto,*" Margin="0,2,6,0">
+                                                <CheckBox Grid.Column="0"
+                                                          IsChecked="{Binding Selected, Mode=TwoWay}"
+                                                          VerticalAlignment="Top" />
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Label}"
+                                                               FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimary}" />
+                                                    <TextBlock Text="{Binding Detail}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextSecondary}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Apply" Click="OnApplyRefreshClicked"
                                         IsVisible="{Binding RefreshItems.Count}"
