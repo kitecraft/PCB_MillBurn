@@ -48,8 +48,9 @@ internal static class Program
             Console.WriteLine("                                 --align-outline the board outline too");
             Console.WriteLine("                                 --align-moves <names> exactly these programs instead, e.g. drilling,\"bottom copper\"");
             Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
-            Console.WriteLine("                                 --file <part of a name> --hole <n> --offset <x,y mm> --hover <mm> -o <file>");
-            Console.WriteLine("                                 --hole2 <n> --offset2 <x,y mm> a second hole measured: prints the turn to export with");
+            Console.WriteLine("                                 --file <part of a name> --hole <n> --hover <mm> -o <file>");
+            Console.WriteLine("                                 --at <x,y mm> where the hole really is, as the machine shows it; or --offset <x,y mm>");
+            Console.WriteLine("                                 --hole2 <n> --at2 <x,y mm> a second hole measured: prints the turn to export with");
             Console.WriteLine("                                 --waste-holes the stock's two holes rather than the board's");
             Console.WriteLine("                                 --flipped the board is turned over: the same holes, mirrored");
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
@@ -2562,6 +2563,19 @@ internal static class Program
             offset = parsed;
         }
 
+        // Or where the hole really is, which is what the machine shows once the tip is on its centre:
+        // nobody has to subtract that from where the program puts it.
+        if (Argument(args, "--at") is { } atText)
+        {
+            if (Alignment(atText) is not { } at)
+            {
+                Console.Error.WriteLine("--at wants the X,Y the machine shows with the tip on the hole, e.g. 23.74,47.83.");
+                return 1;
+            }
+
+            offset = new DrillAlignment(at.XNm - target.At.X, at.YNm - target.At.Y);
+        }
+
         // Two holes measured: report the turn rather than writing another test.
         if (Argument(args, "--hole2") is not null || Argument(args, "--offset2") is not null)
         {
@@ -2651,14 +2665,30 @@ internal static class Program
             return 1;
         }
 
-        if (Argument(args, "--offset2") is not { } text || Alignment(text) is not { } secondOffset)
+        Point2 secondOffset;
+
+        if (Argument(args, "--at2") is { } at2Text)
         {
-            Console.Error.WriteLine("--offset2 wants X,Y in mm for the second hole, e.g. 0.14,-0.03.");
+            if (Alignment(at2Text) is not { } at2)
+            {
+                Console.Error.WriteLine("--at2 wants the X,Y the machine shows with the tip on the second hole.");
+                return 1;
+            }
+
+            secondOffset = at2.Offset - second.At;
+        }
+        else if (Argument(args, "--offset2") is { } text && Alignment(text) is { } parsed)
+        {
+            secondOffset = parsed.Offset;
+        }
+        else
+        {
+            Console.Error.WriteLine("--offset2 wants X,Y in mm for the second hole, e.g. 0.14,-0.03 — or --at2 for where it really is.");
             return 1;
         }
 
         var fit = RigidFit.Solve(
-            first.At, first.At + firstOffset, second.At, second.At + secondOffset.Offset);
+            first.At, first.At + firstOffset, second.At, second.At + secondOffset);
 
         if (!fit.Found)
         {

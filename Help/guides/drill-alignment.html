@@ -184,9 +184,9 @@
 
 <p>
   This guide finds that error by looking at it, with the spindle off, before anything is drilled.
-  Bring the bit down just above a real pad, see how far off centre it is, enter that as an offset,
-  and look again. When it sits dead centre, write the files again with the offset built in. Two or
-  three tries is usually enough.
+  Bring the bit down just above a real pad, jog it to the middle of the pad, and type the two numbers
+  the machine shows. When the test lands dead centre on its own, write the files again with that
+  correction built in. Two or three tries is usually enough.
 </p>
 
 <figure class="photo">
@@ -291,8 +291,8 @@
 </p>
 
 <figure>
-  <img src="images/drill-alignment-dialog.png" width="640" height="890"
-       alt="The Drill alignment dialog: ticks for the stock's waste holes and for a flipped board, a file and a hole to test with, Move X by and Move Y by, the stopping height, a list of the programs to write again with drilling, slots and the outline ticked, and the folder the files go to.">
+  <img src="images/drill-alignment-dialog.png" width="640" height="941"
+       alt="The Drill alignment dialog: ticks for the stock's waste holes and for a flipped board, a file and a hole to test with, boxes for where the hole really is, the stopping height, a list of the programs to write again with drilling, slots and the outline ticked, and the folder the files go to.">
   <figcaption>The dialog stays open while you test, and closes when the aligned files are
     written.</figcaption>
 </figure>
@@ -317,10 +317,10 @@
   in and pick any hole that has already been drilled.
 </p>
 
-<h3 id="step-3"><span class="step-number">3</span>Test at 0, 0</h3>
+<h3 id="step-3"><span class="step-number">3</span>Test where the program thinks the hole is</h3>
 
 <p>
-  Leave <strong>Move X by</strong> and <strong>Move Y by</strong> at <code>0.000</code> and press
+  The two boxes already hold the hole&rsquo;s own coordinates, so leave them alone and press
   <strong>Write test</strong>. The file is <code>YourProject.align-test.nc</code>. Open it in your
   sender and run it.
 </p>
@@ -369,8 +369,8 @@
     <text x="118" y="92" class="d-text">Bit tip</text>
     <line x1="160" y1="96" x2="206" y2="106" class="d-line"/>
 
-    <text x="234" y="95" class="d-strong">Move X by +0.15</text>
-    <text x="310" y="140" class="d-strong">Move Y by −0.05</text>
+    <text x="234" y="95" class="d-strong">0.15 mm in X</text>
+    <text x="310" y="140" class="d-strong">0.05 mm in Y</text>
 
     <!-- Which way is which -->
     <line x1="34" y1="264" x2="84" y2="264" class="d-line" marker-end="url(#axis)"/>
@@ -380,51 +380,39 @@
     <text x="548" y="286" text-anchor="end" class="d-muted">Seen from above · not to scale</text>
   </svg>
   <figcaption>
-    The offset is how far the tip has to <em>go</em>: from where it is to where it should be. Here
-    it is short of the centre in X and past it in Y.
+    The tip is short of the centre in X and past it in Y. You do not have to work out by how much:
+    jog it to the centre and read the machine.
   </figcaption>
 </figure>
-
-<p>
-  <strong>Which way is plus?</strong> A positive number moves the tip towards the machine&rsquo;s +X
-  or +Y. If you are not sure which way that is over the board, jog 1&nbsp;mm in +X and watch where
-  the tip goes.
-</p>
-
-<h4>By eye</h4>
-
-<p>
-  Use something whose size you know as a ruler. The pad&rsquo;s size is in your design, and the
-  bit&rsquo;s diameter is on the bit. If a 1.0&nbsp;mm drill sits about a quarter of its own width
-  left of centre, that is about 0.25&nbsp;mm. A guess gets you close, and the next test shows what
-  is left.
-</p>
-
-<h4>By jogging, for an exact number</h4>
 
 <p>When the test has finished the machine is idle, so the jog controls work.</p>
 
 <ol>
   <li>Jog X and Y only, in 0.01&nbsp;mm steps, until the tip sits on the centre. Leave Z where it
     is, or raise it a little first if the board is not flat. Raising Z does not change X or Y.</li>
-  <li>Read the <em>work</em> position in your sender.</li>
-  <li>Subtract the hole&rsquo;s position from the dialog&rsquo;s <strong>Hole</strong> list. The
-    result is the offset to enter, whatever you had entered before.</li>
+  <li>Read the <em>work</em> position in your sender. That is where the hole really is.</li>
 </ol>
 
-<pre>                          X          Y
-Hole 3, from the list     55.625     58.305
-Work position, centred    55.795     58.255
-                          ------     ------
-Move X by / Move Y by     +0.170     -0.050</pre>
-
-<h3 id="step-5"><span class="step-number">5</span>Enter the offset and test again</h3>
+<h3 id="step-5"><span class="step-number">5</span>Type where it really is, and test again</h3>
 
 <p>
-  Type the numbers into <strong>Move X by</strong> and <strong>Move Y by</strong>. Enter the
-  <strong>whole offset</strong> from where the test started, not just the extra since your last
-  try. Press <strong>Write test</strong> again. It overwrites the same file, so reload it in your
-  sender (most senders keep the copy they first opened), then run it.
+  The two boxes, <strong>It is really at X</strong> and <strong>It is really at Y</strong>, start out
+  holding the position the test just used &mdash; where the program thinks the hole is. Replace them
+  with the numbers you just read off the machine. There is nothing to add up and nothing to subtract:
+  the dialog works out the correction and shows it underneath, so you can see at a glance whether it
+  is the few hundredths you expect.
+</p>
+
+<pre>                          X          Y
+The test sent the bit to  55.625     58.305
+You jogged it to          55.795     58.255     &lt;- type these two
+                          ------     ------
+The dialog says           +0.170     -0.050     &lt;- and works this out</pre>
+
+<p>
+  Press <strong>Write test</strong> again. It overwrites the same file, so reload it in your sender
+  (most senders keep the copy they first opened), then run it: this time it should go straight to the
+  middle of the hole.
 </p>
 
 <div class="note">
@@ -442,21 +430,21 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>Test</th><th>Move X by</th><th>Move Y by</th><th>What you see</th><th>Next</th></tr>
+    <tr><th>Test</th><th>Sent the bit to</th><th>What you see</th><th>Next</th></tr>
   </thead>
   <tbody>
     <tr>
-      <td class="num">1</td><td class="num">0.000</td><td class="num">0.000</td>
-      <td>Tip about 0.15&nbsp;mm short of centre in X, and 0.05&nbsp;mm past it in Y</td>
-      <td>Enter +0.15 and &minus;0.05</td>
+      <td class="num">1</td><td class="num">55.625, 58.305</td>
+      <td>Tip short of the centre; jogging to it reads 55.795, 58.255</td>
+      <td>Type those two</td>
     </tr>
     <tr>
-      <td class="num">2</td><td class="num">+0.150</td><td class="num">&minus;0.050</td>
-      <td>Still a hair short in X, about 0.02&nbsp;mm</td>
-      <td>Enter +0.17 (the whole offset, not +0.02)</td>
+      <td class="num">2</td><td class="num">55.795, 58.255</td>
+      <td>Nearly there; jogging the last hair reads 55.795, 58.260</td>
+      <td>Type those two</td>
     </tr>
     <tr>
-      <td class="num">3</td><td class="num">+0.170</td><td class="num">&minus;0.050</td>
+      <td class="num">3</td><td class="num">55.795, 58.260</td>
       <td>Dead centre</td>
       <td>Check a hole on the far side</td>
     </tr>
@@ -467,8 +455,9 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <h3 id="step-6"><span class="step-number">6</span>Check a hole on the far side</h3>
 
 <p>
-  Pick a hole near the opposite corner of the board and write a test with the same offset. If that
-  one is centred too, the offset is right everywhere on the board.
+  Pick a hole near the opposite corner of the board. Its boxes fill with its own coordinates plus the
+  correction you have just found, so pressing <strong>Write test</strong> sends the bit where that
+  hole ought to be. If it lands centred there too, the correction is right everywhere on the board.
 </p>
 
 <p>
@@ -633,9 +622,9 @@ Move X by / Move Y by     +0.170     -0.050</pre>
   <li>Leave the first hole&rsquo;s numbers as you measured them in steps&nbsp;3 to&nbsp;5.</li>
   <li>Press <strong>Write test</strong> on the second row, run that file, and jog until the tip sits
     dead centre over <em>that</em> hole.</li>
-  <li>Type what the machine says into the second row&rsquo;s <strong>Move X by</strong> and
-    <strong>Move Y by</strong>. Each row is measured from where the program puts its own hole, so the
-    second row is not a correction to the first &mdash; nothing carries over between them.</li>
+  <li>Type what the machine says into the second row&rsquo;s <strong>It is really at X</strong> and
+    <strong>It is really at Y</strong>. Each row is read against its own hole, so the second row is
+    not a correction to the first &mdash; nothing carries over between them.</li>
 </ol>
 
 <p>

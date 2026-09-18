@@ -461,6 +461,19 @@ it, so the only boundary that needs one is between the job and the stock — whi
 772 mm as a side effect, because the inner profiles became closed contours again instead of
 four tabbed runs each.
 
+**A tab is only a tab if something cut down to its top.** Reported from the workshop after a set of
+edge cuts: every tab was left at the full thickness of the board, so the piece had to be sawn out.
+The tab region is cut only by the passes *shallower* than the tab, and nothing made sure there was
+one — a 0.8 mm board, 0.90 mm of total depth and a cutter whose step down is 1.00 mm has exactly one
+pass, deeper than the tab, so the gap was jumped on every pass the profile had. The same arithmetic
+was quietly wrong on ordinary boards too: 1.6 mm in 0.4 mm steps put the deepest shallow pass at
+0.80 mm, leaving 1.10 mm under a tab whose own header promised 0.50 mm. The step down is the
+cutter's and the tab height is ours, and the two need not divide into each other at all, so
+`OutlineOperation` now always cuts the depth the tab's top sits at, whatever the steps work out to.
+A tab taller than the whole cut cannot be cut down by anything, and says so in the program and in the
+export report rather than leaving a board that will not come free. `OutlineTabTests` pins the
+material left under a tab to the number the header quotes.
+
 **Drill files written as Gerber X2 now drill.** KiCad's *Generate Drill Files* offers X2 instead of
 Excellon; picking it produced a Gerber full of circles that realised beautifully and drilled nothing,
 and the board would have come off the machine solid with no warning. `GerberDrills` reads the holes
@@ -2794,11 +2807,24 @@ control.
 - **The CLI has all three**: `align --waste-holes --flipped`, and `export --align-moves
   drilling,"bottom copper"`, which matches on what the dialog shows and refuses a name that matches
   nothing rather than writing fewer files than were asked for.
+- **Where the hole really is, not how far away it is.** Also from the workshop, once the dialog had
+  been used in anger: the machine already shows the position of the tip once it is jogged onto the
+  hole, so asking for the *difference* between that and the program's number is asking the operator
+  to do arithmetic the app can do. The two boxes now take the measured position — pre-filled with
+  where the test is about to send the bit, so they always start by saying what will happen — and the
+  correction is derived and shown underneath, where its size is still worth a look: a few hundredths
+  is an alignment, half a millimetre is the wrong hole. The offset never appears as an input again.
+  `align --at x,y` and `--at2 x,y` are the same thing on the command line, and produce the same fit
+  as the `--offset` form they sit beside.
 
 Verified on the test board: the waste holes list as two holes and no perimeter, at X86.380 Y5.000 and
 X5.000 Y83.840 on 88.63 mm-wide stock, mirroring to X2.250 and X83.630 when flipped; and
 `--align-moves "bottom copper"` wrote exactly one file, the mirrored isolation program, turned and
 shifted.
+
+**Cut on metal, 2026-09-18.** Drills and edge cuts run from a two-hole correction: *"The results were
+as good as I can expect."* The same run is what turned up the tabs left at full thickness, which is
+its own fix above and belongs to the outline rather than to the alignment.
 
 ### Phase 7 — User documentation — **started**
 

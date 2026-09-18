@@ -33,8 +33,8 @@ rule into a choice.
 | 05 Viewer & export | 29 | 14 | 3 | 10 | 2 |
 | **Requirements** | **105** | **54** | **8** | **39** | **4** |
 
-Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 15 physical
-capabilities (11 proven, 1 partly, 3 never cut).
+Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
+capabilities (12 proven, 1 partly, 4 never cut).
 
 **The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 15
 not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That one
@@ -213,8 +213,10 @@ weaker claim than this one.
 | P11 | Panel channel, one pass down the middle | — | **Untested** | GridStripConnector_Panelized with a 0.8 mm end mill |
 | P12 | Stock cut to size, its corner work zero for every later setup | Millburn test board, 10 mm border | **Proven** | — |
 | P13 | Routed slots and milled holes, one continuous descent each | Millburn test board after v0.1.0: 1 mm slots and 2.2–3.5 mm holes, 0.8 mm end mill; plated file 1:12 against 0m 53s – 1m 31s, non-plated 0:47 against 0m 37s – 0m 58s | **Proven** | — |
-| P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | the shift is proven on metal; the two-hole turn (06 §6.14) is proven in the numbers only |
+| P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | — |
+| P16 | Two-hole alignment with rotation, cut on metal | Millburn test board, 2026-09-18: drills and edge cuts from a two-hole correction, "as good as I can expect" | **Proven** | — |
 | P15 | Alignment from the stock's waste holes, measured from either side | — | **Untested** | the numbers are right on the test board; nothing cut from them yet |
+| P17 | Tabs left the thickness the program promises | — | **Untested** | the depths are right in the file; the fix is newer than the last board cut |
 
 ---
 

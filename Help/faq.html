@@ -1352,7 +1352,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  Step by step, with how to measure the offset exactly:
+  Step by step, with pictures:
   <a href="guides/drill-alignment.html">the drill alignment guide</a>.
 </p>
 
@@ -1361,12 +1361,13 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <li>Pick a file and a hole, and press <strong>Write test</strong>. Run the test file in your sender:
     with the spindle off, it moves over that hole and stops the tip just above the surface
     &mdash; 0.1&nbsp;mm by default &mdash; and stays there.</li>
-  <li>If the tip is off-centre, change X or Y, write the test again, reload it in your sender and run
-    it. The dialog stays open for this.</li>
-  <li>When the tip sits on the centre, press <strong>Write aligned files</strong>. Every drilling and
-    routing file is written again, moved by that amount, as <code>&hellip;.aligned.nc</code> beside the
-    original, with its page. So is the board outline, unless you untick <em>Board outline too</em>, so
-    the board is cut out round the same copper. Run the aligned files instead of the originals.</li>
+  <li>If the tip is off-centre, jog it to the middle of the hole and type the X and Y your sender
+    shows into <em>It is really at X</em> and <em>It is really at Y</em>. Nothing to add up: the
+    dialog works out the correction and shows it. Write the test again, reload it in your sender and
+    run it to check. The dialog stays open for this.</li>
+  <li>When the tip lands on the centre by itself, press <strong>Write aligned files</strong>.
+    Everything ticked is written again, moved to match, as <code>&hellip;.aligned.nc</code> beside the
+    original, with its page. Run the aligned files instead of the originals.</li>
 </ol>
 
 <p>

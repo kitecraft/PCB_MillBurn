@@ -35,10 +35,13 @@ public sealed class AlignmentWindow : Window
     private readonly ComboBox _file = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox _hole = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox _hole2 = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly NumericUpDown _x = Number(-10, 10, 0.01, "F3");
-    private readonly NumericUpDown _y = Number(-10, 10, 0.01, "F3");
-    private readonly NumericUpDown _x2 = Number(-10, 10, 0.01, "F3");
-    private readonly NumericUpDown _y2 = Number(-10, 10, 0.01, "F3");
+    // Where the hole really is, as the machine reads it — not how far that is from where the program
+    // puts it. Jog the bit until it sits dead centre, read the two numbers off the sender, type them
+    // in. Nobody has to subtract anything, and the correction is worked out from the pair.
+    private readonly NumericUpDown _x = Number(-2000, 2000, 0.01, "F3");
+    private readonly NumericUpDown _y = Number(-2000, 2000, 0.01, "F3");
+    private readonly NumericUpDown _x2 = Number(-2000, 2000, 0.01, "F3");
+    private readonly NumericUpDown _y2 = Number(-2000, 2000, 0.01, "F3");
     private readonly NumericUpDown _hover = Number(0.02, 5, 0.05, "F2");
 
     private readonly CheckBox _useSecond = new()
@@ -49,6 +52,9 @@ public sealed class AlignmentWindow : Window
 
     private readonly StackPanel _rotation = new() { Spacing = 0, IsVisible = false };
     private readonly TextBlock _fit = Caption();
+
+    /// <summary>The correction the typed position comes to, so the number is still visible.</summary>
+    private readonly TextBlock _correction = Caption();
 
     // Named "First hole" only once there is a second one to tell it from.
     private readonly TextBlock _holeLabel = new()
@@ -89,6 +95,9 @@ public sealed class AlignmentWindow : Window
     private string _folder;
     private string _last = string.Empty;
 
+    /// <summary>True while the boxes are being filled in code, so that does not read as a measurement.</summary>
+    private bool _filling;
+
     public AlignmentWindow(MainViewModel vm, string folder)
     {
         ArgumentNullException.ThrowIfNull(vm);
@@ -109,10 +118,7 @@ public sealed class AlignmentWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this[!BackgroundProperty] = new DynamicResourceExtension("PageBackground");
 
-        _x.Value = (decimal)vm.AlignmentXMm;
-        _y.Value = (decimal)vm.AlignmentYMm;
-        _x2.Value = (decimal)vm.AlignmentSecondXMm;
-        _y2.Value = (decimal)vm.AlignmentSecondYMm;
+        // The boxes are filled from the chosen hole once it is known — see Fill.
         _useSecond.IsChecked = vm.AlignmentUseSecond;
         _rotation.IsVisible = vm.AlignmentUseSecond;
         _hover.Value = (decimal)vm.Settings.Align.HoverMm;
@@ -138,8 +144,8 @@ public sealed class AlignmentWindow : Window
         Content = Build();
 
         _file.SelectionChanged += (_, _) => ShowHoles();
-        _hole.SelectionChanged += (_, _) => Refresh();
-        _hole2.SelectionChanged += (_, _) => Refresh();
+        _hole.SelectionChanged += (_, _) => { Fill(); Refresh(); };
+        _hole2.SelectionChanged += (_, _) => { Fill(); Refresh(); };
         _x.ValueChanged += (_, _) => Remember();
         _y.ValueChanged += (_, _) => Remember();
         _x2.ValueChanged += (_, _) => Remember();
@@ -161,7 +167,7 @@ public sealed class AlignmentWindow : Window
         _flipped.IsCheckedChanged += (_, _) =>
         {
             _vm.AlignmentFlipped = _flipped.IsChecked == true;
-            Refresh();
+            ShowHoles();
         };
 
         _hover.ValueChanged += (_, _) =>
@@ -202,13 +208,19 @@ public sealed class AlignmentWindow : Window
 
     private AlignmentTarget? Target2 => At(_hole2);
 
-    private Point2 Offset => new(
+    /// <summary>What was typed for the first hole: where it really is.</summary>
+    private Point2 Measured => new(
         Nm.FromMillimetres((double)(_x.Value ?? 0)),
         Nm.FromMillimetres((double)(_y.Value ?? 0)));
 
-    private Point2 Offset2 => new(
+    private Point2 Measured2 => new(
         Nm.FromMillimetres((double)(_x2.Value ?? 0)),
         Nm.FromMillimetres((double)(_y2.Value ?? 0)));
+
+    /// <summary>How far that is from where the program puts it: the correction, derived.</summary>
+    private Point2 Offset => Target is { } target ? Measured - Known(target) : Point2.Origin;
+
+    private Point2 Offset2 => Target2 is { } target ? Measured2 - Known(target) : Point2.Origin;
 
     private bool Rotating => _useSecond.IsChecked == true;
 
@@ -323,18 +335,19 @@ public sealed class AlignmentWindow : Window
         var body = new StackPanel { Spacing = 4, Margin = new Thickness(18) };
 
         body.Children.Add(Secondary(
-            "Hover the bit over a real hole with the spindle off, and move the origin until the tip sits "
-            + "dead centre. Then write the programs you tick again, moved by the same amount, so they "
-            + "follow what is already on the board. Drilling, routing and the outline are ticked to "
-            + "start with; the copper is not, because on a first side the copper is what you are "
-            + "measuring against. One hole is enough for a board sitting square to the machine; measure "
-            + "a second, at the other end, and the turn is corrected as well.", 12));
+            "Hover the bit over a real hole with the spindle off, jog until the tip sits dead centre, "
+            + "and type the X and Y the machine shows. Then write the programs you tick again, moved to "
+            + "match, so they follow what is already on the board. Drilling, routing and the outline are "
+            + "ticked to start with; the copper is not, because on a first side the copper is what you "
+            + "are measuring against. One hole is enough for a board sitting square to the machine; "
+            + "measure a second, at the other end, and the turn is corrected as well.", 12));
 
         body.Children.Add(Secondary(
             "1. Fit the bit the file uses, and zero Z on your usual spot.\n"
             + "2. Write test, then open or reload the test file in your sender and run it.\n"
-            + "3. If the tip is off-centre, change X or Y and write the test again.\n"
-            + "4. When it sits right, write the aligned files, and run those instead of the originals.", 12));
+            + "3. Jog the tip to the middle of the hole, and type where the machine says it is.\n"
+            + "4. Write the test again to check it lands there on its own.\n"
+            + "5. Write the aligned files, and run those instead of the originals.", 12));
 
         if (_vm.SavedAlignment is { } saved)
         {
@@ -348,14 +361,15 @@ public sealed class AlignmentWindow : Window
         body.Children.Add(Row("Test with", _file));
         body.Children.Add(Row(string.Empty, _bit));
         body.Children.Add(Row(_holeLabel, With(_hole, _test)));
-        body.Children.Add(Row("Move X by (mm)", _x));
-        body.Children.Add(Row("Move Y by (mm)", _y));
+        body.Children.Add(Row("It is really at X (mm)", _x));
+        body.Children.Add(Row("It is really at Y (mm)", _y));
+        body.Children.Add(Row(string.Empty, _correction));
 
         body.Children.Add(Row("Also measure", _useSecond));
 
         _rotation.Children.Add(Row("Second hole", With(_hole2, _test2)));
-        _rotation.Children.Add(Row("Move X by (mm)", _x2));
-        _rotation.Children.Add(Row("Move Y by (mm)", _y2));
+        _rotation.Children.Add(Row("It is really at X (mm)", _x2));
+        _rotation.Children.Add(Row("It is really at Y (mm)", _y2));
         _rotation.Children.Add(Row(string.Empty, _fit));
 
         body.Children.Add(_rotation);
@@ -530,6 +544,7 @@ public sealed class AlignmentWindow : Window
             _useSecond.IsChecked = true;
         }
 
+        Fill();
         Refresh();
     }
 
@@ -552,12 +567,58 @@ public sealed class AlignmentWindow : Window
         return best;
     }
 
+    /// <summary>
+    /// Puts the hole's own coordinates in the boxes, plus whatever correction is already in hand.
+    ///
+    /// So the boxes always start by saying where the test is about to send the bit, and the operator
+    /// changes them to where it should have gone. Switching holes, turning the board over or moving to
+    /// the waste holes all re-fill them, because each is a different place on the table.
+    /// </summary>
+    private void Fill()
+    {
+        _filling = true;
+
+        try
+        {
+            if (Target is { } first)
+            {
+                var at = Known(first) + new Point2(
+                    Nm.FromMillimetres(_vm.AlignmentXMm), Nm.FromMillimetres(_vm.AlignmentYMm));
+
+                _x.Value = (decimal)Nm.ToMillimetres(at.X);
+                _y.Value = (decimal)Nm.ToMillimetres(at.Y);
+            }
+
+            if (Target2 is { } second)
+            {
+                var at = Known(second) + new Point2(
+                    Nm.FromMillimetres(_vm.AlignmentSecondXMm), Nm.FromMillimetres(_vm.AlignmentSecondYMm));
+
+                _x2.Value = (decimal)Nm.ToMillimetres(at.X);
+                _y2.Value = (decimal)Nm.ToMillimetres(at.Y);
+            }
+        }
+        finally
+        {
+            _filling = false;
+        }
+    }
+
     private void Remember()
     {
-        _vm.AlignmentXMm = (double)(_x.Value ?? 0);
-        _vm.AlignmentYMm = (double)(_y.Value ?? 0);
-        _vm.AlignmentSecondXMm = (double)(_x2.Value ?? 0);
-        _vm.AlignmentSecondYMm = (double)(_y2.Value ?? 0);
+        // Filling the boxes is not the operator typing in them.
+        if (_filling)
+        {
+            return;
+        }
+
+        var offset = Offset;
+        var offset2 = Offset2;
+
+        _vm.AlignmentXMm = Nm.ToMillimetres(offset.X);
+        _vm.AlignmentYMm = Nm.ToMillimetres(offset.Y);
+        _vm.AlignmentSecondXMm = Nm.ToMillimetres(offset2.X);
+        _vm.AlignmentSecondYMm = Nm.ToMillimetres(offset2.Y);
         Refresh();
     }
 
@@ -570,6 +631,13 @@ public sealed class AlignmentWindow : Window
         _write.IsEnabled = _movable.Count > 0 && Correction() is not null;
         _useSecond.IsEnabled = _targets.Count > 1;
         _holeLabel.Text = Rotating ? "First hole" : "Hole";
+
+        // The correction is still shown, because its size is the thing worth a second look: a few
+        // hundredths is an alignment, half a millimetre is a hole read wrongly or the wrong hole.
+        _correction.Text = Target is { } picked
+            ? Invariant(
+                $"The program puts it at X {Mm(Known(picked).X)}  Y {Mm(Known(picked).Y)} — so this moves everything X{AlignmentTest.FormatOffset(Offset.X)} Y{AlignmentTest.FormatOffset(Offset.Y)} mm.")
+            : string.Empty;
 
         DescribeFit();
 

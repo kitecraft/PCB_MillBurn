@@ -1701,6 +1701,14 @@ public static class ExportPlanner
         {
             warnings.Add("No tabs: the board comes free on the last pass and will be thrown by the cutter.");
         }
+        else if (options.TotalDepthNm - options.TabHeightNm - setting.BreakThroughNm <= 0)
+        {
+            // Nothing can be cut away at the tab, so the piece stays attached by its full thickness.
+            // Worth a line in the report as well as in the program: at the machine it looks like a
+            // cut that simply did not work.
+            warnings.Add(Invariant(
+                $"The tabs are {Nm.ToMillimetreString(options.TabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board."));
+        }
 
         if (tool.Kind == ToolKind.VBit)
         {
