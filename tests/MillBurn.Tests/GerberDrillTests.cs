@@ -229,6 +229,33 @@ public sealed class GerberDrillTests
         Assert.Equal("Drill map", LayerRoleInfo.Label(role));
     }
 
+    /// <summary>
+    /// Both drill maps declare the same file function, so the panel listed two identical rows. The
+    /// name is the only thing that separates them — for the label, and for nothing else.
+    /// </summary>
+    [Theory]
+    [InlineData("Board-PTH-drl_map.gbr", "Plated drill map")]
+    [InlineData("Board-NPTH-drl_map.gbr", "Non-plated drill map")]
+    [InlineData("Board-drl_map.gbr", "Drill map")]
+    public void TheTwoDrillMapsAreToldApartByName(string fileName, string expected)
+    {
+        var (role, _) = LayerRoles.Detect(Parse(DrillMap), fileName);
+
+        // Still a drill map: naming it has not turned it into holes to cut.
+        Assert.Equal(LayerRole.DrillMap, role);
+        Assert.Equal(expected, LayerRoleInfo.Label(role, fileName));
+    }
+
+    /// <summary>Only a drill map reads its name; every other role already says what it is.</summary>
+    [Fact]
+    public void NamingLeavesEveryOtherRoleAlone()
+    {
+        foreach (var role in Enum.GetValues<LayerRole>().Where(r => r != LayerRole.DrillMap))
+        {
+            Assert.Equal(LayerRoleInfo.Label(role), LayerRoleInfo.Label(role, "Board-NPTH-drl.gbr"));
+        }
+    }
+
     /// <summary>A drawing is off by default and cannot be cut. It is for reading.</summary>
     [Theory]
     [InlineData(LayerRole.DrillMap)]

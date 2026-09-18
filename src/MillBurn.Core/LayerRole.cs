@@ -159,6 +159,36 @@ public static class LayerRoleInfo
         _ => "Unknown",
     };
 
+    /// <summary>
+    /// The label, made specific by the file name where the role alone cannot be.
+    ///
+    /// A board has two drill maps and KiCad writes both as plain <c>%TF.FileFunction,Drillmap*%</c>
+    /// with nothing to say which holes each one charts, so the panel listed two rows called "Drill
+    /// map" and neither said which was which. The file name is the only thing that tells them apart.
+    ///
+    /// It decides the label and nothing else. The role still comes from what the file declares —
+    /// letting a name containing "PTH" win over a declared drill map is what once read a chart of
+    /// the holes as 688 plated holes to drill.
+    ///
+    /// Reading the name is what works today, not what should work forever: the job file lists each
+    /// drill file with the holes it covers, and once that is parsed it can say which map belongs to
+    /// which, for the boards whose names carry no hint at all.
+    /// </summary>
+    /// <param name="role">The layer's role, as detected.</param>
+    /// <param name="fileName">The file it was read from, used only to tell two drill maps apart.</param>
+    public static string Label(LayerRole role, string? fileName)
+    {
+        if (role != LayerRole.DrillMap || string.IsNullOrEmpty(fileName))
+        {
+            return Label(role);
+        }
+
+        // NPTH before PTH, because the one contains the other.
+        return fileName.Contains("NPTH", StringComparison.OrdinalIgnoreCase) ? "Non-plated drill map"
+            : fileName.Contains("PTH", StringComparison.OrdinalIgnoreCase) ? "Plated drill map"
+            : Label(role);
+    }
+
     /// <summary>Which layers are on by default: enough to recognise the board, not everything.</summary>
     public static bool VisibleByDefault(LayerRole role) => role switch
     {
