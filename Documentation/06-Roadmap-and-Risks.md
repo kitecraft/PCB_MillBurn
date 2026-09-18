@@ -2766,6 +2766,40 @@ apart, the second moved as a 0.3° turn about the first would move it, fitted to
 separation check reading zero, and the exported program's two measured holes landing on exactly the
 positions that were fed in, with every hole between them following the angle.
 
+**Part 3 — the waste holes as targets, either side up, and a say in what moves.** Asked for from the
+workshop as soon as Part 2 was running, and the last of it changes a rule rather than adding a
+control.
+
+- **Use the stock's two waste holes.** A tick swaps the hole lists over to the stock's own program.
+  Worth having because of *when* they exist: a board hole can only align a step that comes after
+  drilling, so aligning the drilling itself had nothing to measure against until now. They are also
+  nearly the stock's diagonal apart — a longer baseline than any pair of board holes — and cut in the
+  same program and setup as the stock's edges, so their coordinates are defined rather than measured
+  (§4.1's argument, applied to fiducials). The two are picked out of the emitted program by matching
+  the plan's hole centres: the stock cuts its own edges below the surface too, and on square stock
+  that perimeter reads as one more round feature. Where they are still comes from the program.
+- **The board is flipped over.** The holes go through, so the same two serve both sides. The tick
+  mirrors them about the stock's vertical centreline — the axis a bottom-side program is mirrored
+  about, and the only one that puts the stock back in the same corner — for the hole list, the test
+  program and the fit. The pair is deliberately not symmetric, so a board put back the wrong way up
+  reads as centimetres out rather than hundredths.
+- **What moves is now a list, not a rule.** *Drilling, routing and optionally the outline; copper
+  never* is right for a first side and wrong for a second: cut the top copper, etch it, turn the stock
+  over, and the bottom copper is the program that has to land on what is already there. So
+  `DrillAlignment.Moved` names the programs, `ExportPlanner.Movable` lists what an export writes, and
+  the dialog shows one tick per program with the old rule as the default. Programs for the flipped
+  side are marked, and ticks that disagree with the flip box are called out — said rather than
+  refused, because drilling from the back of a flipped board is a real thing to want. The stock is
+  never in the list, whoever asks for it.
+- **The CLI has all three**: `align --waste-holes --flipped`, and `export --align-moves
+  drilling,"bottom copper"`, which matches on what the dialog shows and refuses a name that matches
+  nothing rather than writing fewer files than were asked for.
+
+Verified on the test board: the waste holes list as two holes and no perimeter, at X86.380 Y5.000 and
+X5.000 Y83.840 on 88.63 mm-wide stock, mirroring to X2.250 and X83.630 when flipped; and
+`--align-moves "bottom copper"` wrote exactly one file, the mirrored isolation program, turned and
+shifted.
+
 ### Phase 7 — User documentation — **started**
 
 Plain HTML in `Help/`, shipped with the app, opened in the user's browser from a Help menu. No

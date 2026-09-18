@@ -1370,9 +1370,24 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </ol>
 
 <p>
-  <strong>It moves the holes and the outline, and nothing else.</strong> The copper files are what the
-  holes are being lined up with, so they stay where they are, and so does the stock, which is cut
-  before there is anything on it to line up with.
+  <strong>It moves what you tick.</strong> Drilling, routed slots and the board outline start ticked,
+  and the copper does not: on a first side the copper is what the holes are being lined up with, so
+  moving it would move the target along with the correction. Turn the board over to work the other
+  side, though, and the bottom copper is exactly what has to land on what is already there &mdash; so
+  the dialog lists every program the export writes and you say which ones follow the board. The stock
+  is never in that list: it is cut before there is anything on the board to line up with, and it is
+  the work zero the correction itself is measured from.
+</p>
+
+<p>
+  <strong>If the project cuts its own stock, use the waste holes.</strong> Two small holes in the
+  borders that get thrown away, cut by the stock program in the same setup and with the same end mill
+  as the stock&rsquo;s edges &mdash; so where they are is defined by the file rather than measured.
+  They exist before anything is drilled, which means they can line up the drilling itself; they are
+  nearly the stock&rsquo;s diagonal apart, which is what the turn&rsquo;s accuracy depends on; and
+  they go right through, so the same two work with the board flipped over for the other side. Tick
+  <em>Alignment holes in the waste</em> under Project info to cut them, and <em>Use the stock&rsquo;s
+  two waste holes</em> in the dialog to measure them.
 </p>
 
 <p>

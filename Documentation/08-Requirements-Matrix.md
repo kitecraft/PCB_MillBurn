@@ -19,8 +19,10 @@ test, a measurement — so that "done" means something a reader can check.
 
 **Last audited:** 2026-09-17, after 6.14. The previous audit fixed counts that had drifted rather than
 rows — twelve rows added or changed after v0.1.0 while the summary still described a document of 92.
-This one moves what 6.14 built: V26 and V27 done, and with them M20 and the first halves of M16
-and M17, the fiducial block of document 04 that had not been touched at all.
+This one moves what 6.14 built: V26, V27 and V29 done, and with them M20 and the first halves of M16
+and M17, the fiducial block of document 04 that had not been touched at all. V29 arrived from the
+workshop while 6.14 was being written, and is the row that turned "what the alignment moves" from a
+rule into a choice.
 
 | Section | Rows | Done | Partial | Not started | Superseded |
 |---|---|---|---|---|---|
@@ -28,11 +30,11 @@ and M17, the fiducial block of document 04 that had not been touched at all.
 | 02 Gerber & geometry | 22 | 15 | 0 | 6 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 29 | 10 | 4 | 15 | 0 |
-| 05 Viewer & export | 28 | 13 | 3 | 10 | 2 |
-| **Requirements** | **104** | **53** | **8** | **39** | **4** |
+| 05 Viewer & export | 29 | 14 | 3 | 10 | 2 |
+| **Requirements** | **105** | **54** | **8** | **39** | **4** |
 
-Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 14 physical
-capabilities (11 proven, 1 partly, 2 never cut).
+Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 15 physical
+capabilities (11 proven, 1 partly, 3 never cut).
 
 **The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 15
 not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That one
@@ -129,7 +131,7 @@ board being cut rather than from a document.
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |
-| M16 | Fiducial generation with per-workflow survivability rules | §4.2 | **Partial** | the stock's two waste holes (06 §6.14) are the milled case; fiducials in copper, with the rules about what survives each workflow, are not |
+| M16 | Fiducial generation with per-workflow survivability rules | §4.2 | **Partial** | the stock's two waste holes (06 §6.14) are the milled case, cut and measured; fiducials in copper, with the rules about what survives each workflow, are not |
 | M17 | Kabsch/affine fit from typed measurements, residual reported | §4.2 | **Partial** | `RigidFit.Solve`: the two-point rigid case, with the separation error as its residual. Three or more points, and the SVD, are not built |
 | M18 | Laser registration by placement, not coordinates | §4.3 | **Not started** | — |
 | M19 | Refuse to export above the residual threshold without an override | §4.4 | **Not started** | — |
@@ -174,6 +176,7 @@ board being cut rather than from a document.
 | V26 | Alignment holes in the stock's bottom and left waste borders, cut with the stock | 06 §6.14 | **Done** | `Blanks.AlignmentHolesFor`, `BlankOperation.HolePasses`; `BlankTests.TheAlignmentHolesSitInTheWasteAsFarApartAsTheStockAllows`, `TheStockProgramCutsTheHolesBeforeItsEdges` |
 | V27 | Drill alignment from two holes: translation and rotation, separation checked, saved with the project | 06 §6.14 | **Done** | `RigidFit.Solve`, `DrillAlignment.Apply`, `ProjectSettings.Alignment`; `RigidFitTests`, `AlignmentTests.ATurnMovesEveryHoleAlongWithIt`, `ProjectTests.TheDrillAlignmentIsSavedWithTheProject` |
 | V28 | Build-on-stock options in a dialog of their own | 06 §6.14 | **Not started** | to examine; *Project info* is crowded |
+| V29 | Align from the stock's waste holes, from either side of the board, and choose which programs move | 06 §6.14 | **Done** | `ExportPlanner.Movable`, `DrillAlignment.Moved`, the dialog's waste/flip ticks; `AlignmentTests.OnlyTheProgramsNamedAreMoved`, `TheStockIsNeverMovedEvenWhenNamed`; CLI `align --waste-holes --flipped`, `export --align-moves` |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -211,6 +214,7 @@ weaker claim than this one.
 | P12 | Stock cut to size, its corner work zero for every later setup | Millburn test board, 10 mm border | **Proven** | — |
 | P13 | Routed slots and milled holes, one continuous descent each | Millburn test board after v0.1.0: 1 mm slots and 2.2–3.5 mm holes, 0.8 mm end mill; plated file 1:12 against 0m 53s – 1m 31s, non-plated 0:47 against 0m 37s – 0m 58s | **Proven** | — |
 | P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | the shift is proven on metal; the two-hole turn (06 §6.14) is proven in the numbers only |
+| P15 | Alignment from the stock's waste holes, measured from either side | — | **Untested** | the numbers are right on the test board; nothing cut from them yet |
 
 ---
 

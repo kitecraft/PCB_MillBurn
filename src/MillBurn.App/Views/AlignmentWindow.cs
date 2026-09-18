@@ -58,11 +58,22 @@ public sealed class AlignmentWindow : Window
         FontSize = 12,
     };
 
-    private readonly CheckBox _outline = new()
+    private readonly CheckBox _waste = new()
     {
-        Content = "Board outline too, so it cuts round the same copper",
+        Content = "Use the stock's two waste holes instead of holes in the board",
         FontSize = 12,
     };
+
+    private readonly CheckBox _flipped = new()
+    {
+        Content = "The board is flipped over, and I am measuring from the back",
+        FontSize = 12,
+    };
+
+    /// <summary>One tick per program group in the export: what gets written again, aligned.</summary>
+    private readonly StackPanel _moves = new() { Spacing = 0 };
+
+    private readonly List<(MovableProgram Program, CheckBox Box)> _movable = [];
 
     private readonly TextBlock _bit = Caption();
     private readonly TextBlock _where = Caption();
@@ -72,7 +83,9 @@ public sealed class AlignmentWindow : Window
     private readonly Button _test2 = new() { Content = "Write test", Margin = new Thickness(8, 0, 0, 0) };
     private readonly Button _write = new() { Content = "Write aligned files" };
 
-    private readonly bool _hasOutline;
+    private readonly ExportItem? _stock;
+    private readonly List<Point2> _wasteHoles = [];
+    private readonly long _frameWidthNm;
     private string _folder;
     private string _last = string.Empty;
 
@@ -104,14 +117,21 @@ public sealed class AlignmentWindow : Window
         _rotation.IsVisible = vm.AlignmentUseSecond;
         _hover.Value = (decimal)vm.Settings.Align.HoverMm;
 
-        _hasOutline = vm.HasOutlineProgram();
-        _outline.IsChecked = _hasOutline && vm.AlignmentOutline;
-        _outline.IsEnabled = _hasOutline;
+        _stock = vm.StockProgram();
+        _wasteHoles = [.. vm.WasteHoles()];
+        _frameWidthNm = vm.FrameWidthNm();
 
-        if (!_hasOutline)
+        _waste.IsEnabled = _stock is not null && _wasteHoles.Count > 0;
+        _waste.IsChecked = _waste.IsEnabled && vm.AlignmentWasteHoles;
+
+        if (!_waste.IsEnabled)
         {
-            _outline.Content = "Board outline too (this job has no outline program)";
+            _waste.Content = "Use the stock's waste holes (this job cuts none — Project info ▸ Alignment holes in the waste)";
         }
+
+        _flipped.IsChecked = vm.AlignmentFlipped;
+
+        BuildMoves(vm);
 
         _file.ItemsSource = _files.Select(f => f.TargetName).ToList();
 
@@ -132,12 +152,16 @@ public sealed class AlignmentWindow : Window
             Refresh();
         };
 
-        _outline.IsCheckedChanged += (_, _) =>
+        _waste.IsCheckedChanged += (_, _) =>
         {
-            if (_hasOutline)
-            {
-                _vm.AlignmentOutline = _outline.IsChecked == true;
-            }
+            _vm.AlignmentWasteHoles = _waste.IsChecked == true;
+            ShowHoles();
+        };
+
+        _flipped.IsCheckedChanged += (_, _) =>
+        {
+            _vm.AlignmentFlipped = _flipped.IsChecked == true;
+            Refresh();
         };
 
         _hover.ValueChanged += (_, _) =>
@@ -150,8 +174,29 @@ public sealed class AlignmentWindow : Window
         ShowHoles();
     }
 
-    private ExportItem? Selected =>
-        _file.SelectedIndex >= 0 && _file.SelectedIndex < _files.Count ? _files[_file.SelectedIndex] : null;
+    /// <summary>The program the holes are read from: the stock's, in waste-hole mode, else the chosen file.</summary>
+    private ExportItem? Selected => Waste
+        ? _stock
+        : _file.SelectedIndex >= 0 && _file.SelectedIndex < _files.Count ? _files[_file.SelectedIndex] : null;
+
+    private bool Waste => _waste.IsChecked == true && _stock is not null && _wasteHoles.Count > 0;
+
+    private bool Flipped => _flipped.IsChecked == true;
+
+    /// <summary>
+    /// Where a hole is now, as against where the program puts it.
+    ///
+    /// The same place, until the board is turned over. Flipped left-to-right about the stock's
+    /// vertical centreline — the axis the app mirrors a bottom-side program about, and the only axis
+    /// that puts the stock back in the same corner — a hole at X is at the stock's width minus X. Y
+    /// does not move. So the two waste holes, cut once, can be hovered over from either side.
+    /// </summary>
+    private Point2 Known(AlignmentTarget target) => Flipped && _frameWidthNm > 0
+        ? new Point2(_frameWidthNm - target.At.X, target.At.Y)
+        : target.At;
+
+    /// <summary>The target as the machine will be sent to it, which is what the test program wants.</summary>
+    private AlignmentTarget AsMeasured(AlignmentTarget target) => target with { At = Known(target) };
 
     private AlignmentTarget? Target => At(_hole);
 
@@ -187,30 +232,88 @@ public sealed class AlignmentWindow : Window
         if (first.Number == second.Number)
         {
             return new RigidFitResult(
-                0, default, first.At, 0,
+                0, default, Known(first), 0,
                 "Both rows are the same hole. Pick a second hole at the other end of the board.");
         }
 
-        return RigidFit.Solve(first.At, first.At + Offset, second.At, second.At + Offset2);
+        // Against where each hole is *now* — mirrored, on a flipped board — because that is the frame
+        // the operator read their numbers in, and the frame the programs being moved are written in.
+        return RigidFit.Solve(
+            Known(first), Known(first) + Offset, Known(second), Known(second) + Offset2);
     }
 
-    /// <summary>The correction to write with, or null when the two holes do not give one.</summary>
+    /// <summary>What the ticks in the list add up to.</summary>
+    private System.Collections.Immutable.ImmutableArray<string> Chosen() =>
+        [.. _movable.Where(m => m.Box.IsChecked == true).Select(m => m.Program.Key)];
+
+    /// <summary>The correction to write with, or null when nothing would be written.</summary>
     private DrillAlignment? Correction()
     {
-        var outline = _outline.IsChecked == true;
+        var chosen = Chosen();
+
+        if (chosen.Length == 0)
+        {
+            return null;
+        }
 
         if (Fit() is not { } fit)
         {
-            return Rotating ? null : new DrillAlignment(Offset.X, Offset.Y, outline);
+            return Rotating ? null : new DrillAlignment(Offset.X, Offset.Y) { Moved = chosen };
         }
 
         return fit.Found
-            ? new DrillAlignment(fit.OffsetNm.X, fit.OffsetNm.Y, outline)
+            ? new DrillAlignment(fit.OffsetNm.X, fit.OffsetNm.Y)
             {
                 RotationDegrees = fit.RotationDegrees,
                 PivotNm = fit.PivotNm,
+                Moved = chosen,
             }
             : null;
+    }
+
+    /// <summary>
+    /// The list of what gets written again: one tick per program the export would write.
+    ///
+    /// Drilling and routing start ticked, and the board outline with them, because that is what this
+    /// dialog has always moved and what the first side of a board needs. Everything else starts
+    /// unticked and is there for the workflows that need it — the flipped board whose bottom copper
+    /// has to land on holes already drilled, most of all.
+    /// </summary>
+    private void BuildMoves(MainViewModel vm)
+    {
+        var programs = vm.MovablePrograms();
+        var saved = vm.AlignmentMoved;
+
+        foreach (var program in programs)
+        {
+            var box = new CheckBox
+            {
+                // "Board outline · Board outline" says nothing twice.
+                Content = (program.What == program.LayerLabel
+                        ? program.What
+                        : Invariant($"{program.What} · {program.LayerLabel}"))
+                    + (program.Files > 1 ? Invariant($" ({program.Files} files)") : string.Empty)
+                    + (program.Mirrored ? "  — flipped side" : string.Empty),
+                FontSize = 12,
+                IsChecked = saved is { } chosen
+                    ? chosen.Contains(program.Key)
+                    : program.MovedByDefault || (vm.AlignmentOutline && program.What == "Board outline"),
+            };
+
+            box.IsCheckedChanged += (_, _) =>
+            {
+                _vm.AlignmentMoved = Chosen();
+                Refresh();
+            };
+
+            _movable.Add((program, box));
+            _moves.Children.Add(box);
+        }
+
+        if (programs.Count == 0)
+        {
+            _moves.Children.Add(Secondary("This export writes no G-code programs to move.", 12));
+        }
     }
 
     // ------------------------------------------------------------------ layout
@@ -221,10 +324,11 @@ public sealed class AlignmentWindow : Window
 
         body.Children.Add(Secondary(
             "Hover the bit over a real hole with the spindle off, and move the origin until the tip sits "
-            + "dead centre. Then write the drilling, routing and outline files again, moved by the same "
-            + "amount, so they follow the copper already on the board. The copper files are not moved. "
-            + "One hole is enough for a board sitting square to the machine; measure a second, at the "
-            + "other end, and the turn is corrected as well.", 12));
+            + "dead centre. Then write the programs you tick again, moved by the same amount, so they "
+            + "follow what is already on the board. Drilling, routing and the outline are ticked to "
+            + "start with; the copper is not, because on a first side the copper is what you are "
+            + "measuring against. One hole is enough for a board sitting square to the machine; measure "
+            + "a second, at the other end, and the turn is corrected as well.", 12));
 
         body.Children.Add(Secondary(
             "1. Fit the bit the file uses, and zero Z on your usual spot.\n"
@@ -239,6 +343,8 @@ public sealed class AlignmentWindow : Window
 
         body.Children.Add(new Border { Height = 8 });
 
+        body.Children.Add(Row("Holes to use", _waste));
+        body.Children.Add(Row(string.Empty, _flipped));
         body.Children.Add(Row("Test with", _file));
         body.Children.Add(Row(string.Empty, _bit));
         body.Children.Add(Row(_holeLabel, With(_hole, _test)));
@@ -255,7 +361,16 @@ public sealed class AlignmentWindow : Window
         body.Children.Add(_rotation);
 
         body.Children.Add(Row("Stop above the surface (mm)", _hover));
-        body.Children.Add(Row("Also move", _outline));
+        body.Children.Add(Row(
+            new TextBlock
+            {
+                Text = "Write again, aligned",
+                // Top, not centre: the list beside it can be a dozen rows long.
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 4, 0, 0),
+                FontSize = 12,
+            },
+            _moves));
 
         var change = new Button { Content = "Change…", FontSize = 11, Padding = new Thickness(8, 2) };
         change.Click += async (_, _) => await ChooseFolderAsync();
@@ -339,7 +454,7 @@ public sealed class AlignmentWindow : Window
 
         use.Click += (_, _) =>
         {
-            if (_vm.WriteAlignedFiles(_folder, saved.ToAlignment() with { Outline = _outline.IsChecked == true }) > 0)
+            if (_vm.WriteAlignedFiles(_folder, saved.ToAlignment()) > 0)
             {
                 Close();
                 return;
@@ -378,11 +493,17 @@ public sealed class AlignmentWindow : Window
     private void ShowHoles()
     {
         var file = Selected;
+        var found = file is null ? [] : AlignmentTest.Targets(file.Content);
 
-        _targets = file is null ? [] : [.. AlignmentTest.Targets(file.Content)];
+        // In waste-hole mode, only the two holes: the stock cuts its own edges below the surface too,
+        // and on square stock that perimeter reads as one more round feature. Which features are the
+        // holes comes from the stock plan; where they are still comes from the program.
+        _targets = Waste
+            ? [.. found.Where(t => _wasteHoles.Any(h => h.DistanceTo(t.At) <= Nm.FromMillimetres(0.5)))]
+            : [.. found];
 
         var names = _targets
-            .Select(t => Invariant($"{(t.Kind == "slot" ? "Slot" : "Hole")} {t.Number}  ·  X {Mm(t.At.X)}   Y {Mm(t.At.Y)}"))
+            .Select(t => Invariant($"{(t.Kind == "slot" ? "Slot" : "Hole")} {t.Number}  ·  X {Mm(Known(t).X)}   Y {Mm(Known(t).Y)}"))
             .ToList();
 
         _hole.ItemsSource = names;
@@ -393,7 +514,21 @@ public sealed class AlignmentWindow : Window
         // The far hole, not the next one: the two want to be as far apart as the board allows, and the
         // last one the program reaches is usually at the other end of it.
         _hole2.SelectedIndex = _targets.Count > 1 ? Furthest(_targets[0]) : -1;
-        _bit.Text = file is null ? string.Empty : "Fit the " + BitOf(file) + " for this one.";
+
+        // The file picker is for board holes; the waste holes are only ever in the stock's program.
+        _file.IsEnabled = !Waste;
+
+        _bit.Text = file is null
+            ? string.Empty
+            : Waste
+                ? Invariant($"Read from {file.TargetName}. Fit the {BitOf(file)} — the bit that cut the holes — for this one.")
+                : "Fit the " + BitOf(file) + " for this one.";
+
+        // Two holes is exactly what the waste pair is for, so it starts on.
+        if (Waste && _targets.Count > 1 && !Rotating)
+        {
+            _useSecond.IsChecked = true;
+        }
 
         Refresh();
     }
@@ -432,31 +567,72 @@ public sealed class AlignmentWindow : Window
         ToolTip.SetTip(_where, _folder);
         _test.IsEnabled = Target is not null;
         _test2.IsEnabled = Target2 is not null;
-        _write.IsEnabled = _files.Count > 0 && Correction() is not null;
+        _write.IsEnabled = _movable.Count > 0 && Correction() is not null;
         _useSecond.IsEnabled = _targets.Count > 1;
         _holeLabel.Text = Rotating ? "First hole" : "Hole";
 
         DescribeFit();
 
-        if (_files.Count == 0)
+        if (_movable.Count == 0)
         {
-            _status.Text = "This job has no drilling or routing files to align. Set a drill layer to G-code first.";
+            _status.Text = "This job writes no G-code programs to align. Set a layer to G-code first.";
             return;
         }
 
         if (Target is not { } target)
         {
-            _status.Text = "No holes found in this file.";
+            _status.Text = Waste
+                ? "The stock's program has no alignment holes in it. Tick Alignment holes in the waste under Project info, and cut the stock again."
+                : "No holes found in this file.";
+
             return;
         }
 
-        var at = new Point2(target.At.X + Offset.X, target.At.Y + Offset.Y);
+        var at = Known(target) + Offset;
         var hover = (double)(_hover.Value ?? 0.1m);
 
         var plan = Invariant(
             $"The test moves to X {Mm(at.X)}  Y {Mm(at.Y)} and stops {hover:0.00} mm above the surface, spindle off.");
 
+        if (SideWarning() is { } warning)
+        {
+            plan += "\n" + warning;
+        }
+
         _status.Text = _last.Length == 0 ? plan : plan + "\n" + _last;
+    }
+
+    /// <summary>
+    /// Says so when the correction is being measured on one side of the board and written into
+    /// programs for the other.
+    ///
+    /// Not a refusal — drilling from the back of a flipped board is a real thing to want, and so is
+    /// leaving the outline for a later setup. But a correction measured with the board turned over
+    /// describes the board turned over, and writing it into a program for the other side without
+    /// saying so moves that program the wrong way across the stock.
+    /// </summary>
+    private string? SideWarning()
+    {
+        var chosen = _movable.Where(m => m.Box.IsChecked == true).Select(m => m.Program).ToList();
+
+        if (chosen.Count == 0)
+        {
+            return "Nothing is ticked under “Write again, aligned”, so there is nothing to write.";
+        }
+
+        var wrongSide = chosen.Where(p => p.Mirrored != Flipped).ToList();
+
+        if (wrongSide.Count == 0)
+        {
+            return null;
+        }
+
+        var names = string.Join(", ", wrongSide.Select(p => p.What + " · " + p.LayerLabel));
+        var isAre = wrongSide.Count == 1 ? "is" : "are";
+
+        return Flipped
+            ? $"Measured on the flipped board, but {names} {isAre} written for the board the right way up. Tick those only if you meant to."
+            : $"{names} {isAre} written for the flipped board, and this correction was measured the right way up. Tick those only if you meant to.";
     }
 
     /// <summary>
@@ -508,7 +684,7 @@ public sealed class AlignmentWindow : Window
         var suffix = Rotating ? Invariant($".align-test-{which}.nc") : ".align-test.nc";
         var path = Path.Combine(_folder, SafeName(_vm.Project.DisplayName) + suffix);
 
-        _last = _vm.WriteAlignmentTest(path, file, target, offset)
+        _last = _vm.WriteAlignmentTest(path, file, AsMeasured(target), offset)
             ? Invariant($"Wrote {Path.GetFileName(path)}. Open or reload it in your sender and run it.")
             : _vm.StatusMessage;
 
@@ -571,6 +747,16 @@ public sealed class AlignmentWindow : Window
             if (at >= 0)
             {
                 return line[(at + marker.Length)..].TrimEnd(')', ' ', '.').Trim();
+            }
+
+            // The stock program's own line: "( Fit the 1.0 mm end mill: the Board outline layer's bit… )".
+            const string fit = "( Fit the ";
+
+            if (line.StartsWith(fit, StringComparison.Ordinal))
+            {
+                var colon = line.IndexOf(':', StringComparison.Ordinal);
+
+                return (colon > 0 ? line[fit.Length..colon] : line[fit.Length..].TrimEnd(')', ' ', '.')).Trim();
             }
         }
 

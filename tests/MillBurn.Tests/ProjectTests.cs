@@ -111,6 +111,8 @@ public sealed class ProjectTests : IDisposable
             PivotXMm = 12.5,
             PivotYMm = 9,
             Outline = true,
+            Moved = ["Board-B_Cu.gbr|Isolation"],
+            Flipped = true,
             Found = found,
         };
 
@@ -124,6 +126,11 @@ public sealed class ProjectTests : IDisposable
         Assert.NotNull(saved);
         Assert.Equal(0.42, saved.RotationDegrees);
         Assert.Equal(found.ToUnixTimeSeconds(), saved.Found?.ToUnixTimeSeconds());
+
+        // Which programs it moved, and which way up the board was — both decide what the numbers mean.
+        Assert.Equal(["Board-B_Cu.gbr|Isolation"], saved.Moved);
+        Assert.True(saved.Flipped);
+        Assert.Equal(saved.Moved, saved.ToAlignment().Moved);
 
         // And it comes back as the same correction, to the nanometre.
         var correction = saved.ToAlignment();

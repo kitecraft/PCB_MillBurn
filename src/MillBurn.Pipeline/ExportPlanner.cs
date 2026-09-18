@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using Clipper2Lib;
 using MillBurn.Cam;
@@ -92,6 +93,31 @@ public sealed record ExportCompanion(string TargetName, string Content, string D
 /// <param name="Outline">Move the board outline program too.</param>
 public sealed record DrillAlignment(long XNm, long YNm, bool Outline = false)
 {
+    /// <summary>
+    /// Exactly which programs move, as <see cref="KeyFor(string, OperationKind)"/> keys, or null for
+    /// the rule above: drilling and routing, plus the outline when <see cref="Outline"/> is set.
+    ///
+    /// Named rather than ruled because the rule only fits the first side of a board. Cut the top
+    /// copper, etch it, flip the stock over, and the *bottom* copper is now the thing that has to
+    /// land on what is already there — the one program the rule refuses to move, because on the first
+    /// side copper is what everything else is measured against. Which programs are in that position
+    /// depends on the workflow, and a workflow is the operator's, so the dialog lists the export's
+    /// programs and they say.
+    /// </summary>
+    public ImmutableArray<string>? Moved { get; init; }
+
+    /// <summary>Identifies one program group — one layer's drilling, or its slots, or the outline.</summary>
+    public static string KeyFor(string layerFileName, OperationKind operation) =>
+        layerFileName + "|" + operation;
+
+    /// <summary>The key for a file already written.</summary>
+    public static string KeyFor(ExportItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        return KeyFor(item.LayerFileName, item.Operation);
+    }
+
     /// <summary>Added before the extension: <c>Board-PTH-drl.bit1-1.00mm.aligned.nc</c>.</summary>
     public const string Suffix = ".aligned";
 
@@ -141,10 +167,53 @@ public sealed record DrillAlignment(long XNm, long YNm, bool Outline = false)
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        // Never the stock: it is cut before there is any copper to line up with, and it is work zero.
-        return ExportPlanner.IsDrillOrRouting(item) || (Outline && ExportPlanner.IsBoardOutline(item));
+        // Never the stock, whoever asks: it is cut before there is anything on the board to line up
+        // with, and it is the work zero everything else — this correction included — is measured from.
+        if (item.Output != OutputKind.Gcode || item.LayerFileName == ExportPlanner.StockLayer)
+        {
+            return false;
+        }
+
+        return Moved is { } chosen
+            ? chosen.Contains(KeyFor(item))
+            : ExportPlanner.IsDrillOrRouting(item) || (Outline && ExportPlanner.IsBoardOutline(item));
+    }
+
+    /// <summary>
+    /// The same question about a program that has not been written yet, which is how the planner knows
+    /// whether to write it aligned.
+    /// </summary>
+    public bool Moves(string layerFileName, OperationKind operation, bool slots = false)
+    {
+        ArgumentNullException.ThrowIfNull(layerFileName);
+
+        if (layerFileName == ExportPlanner.StockLayer)
+        {
+            return false;
+        }
+
+        return Moved is { } chosen
+            ? chosen.Contains(KeyFor(layerFileName, operation))
+            : operation == OperationKind.Drilling
+                || slots
+                || (Outline && operation == OperationKind.Outline);
     }
 }
+
+/// <summary>
+/// One group of programs Drill alignment can move, as the dialog lists it.
+/// </summary>
+/// <param name="Key">What <see cref="DrillAlignment.Moved"/> names it by.</param>
+/// <param name="What">"Drilling", "Routed slots", "Board outline", "Isolation".</param>
+/// <param name="LayerLabel">The layer it belongs to, as the layer list names it.</param>
+/// <param name="Files">How many files it is — drilling is one per bit.</param>
+/// <param name="Mirrored">
+/// Whether it is written for the flipped board. A correction measured with the board flipped over
+/// belongs to these; one measured the right way up belongs to the others.
+/// </param>
+/// <param name="MovedByDefault">Whether it moves when nothing is chosen: drilling and routing.</param>
+public sealed record MovableProgram(
+    string Key, string What, string LayerLabel, int Files, bool Mirrored, bool MovedByDefault);
 
 /// <summary>Everything a single Export would write.</summary>
 public sealed record ExportPlan
@@ -517,10 +586,9 @@ public static class ExportPlanner
 
         var target = TargetNameFor(layer.FileName, operation, OutputKind.Gcode);
 
-        // The alignment moves drilling, and the outline when asked; never the copper it is measured against.
-        var aligned = operation == OperationKind.Drilling || (operation == OperationKind.Outline && alignment?.Outline == true)
-            ? alignment
-            : null;
+        // The alignment moves what it was told to move — by default drilling, and the outline when
+        // asked; never the stock, and never a program the operator did not name.
+        var aligned = alignment?.Moves(layer.FileName, operation) == true ? alignment : null;
 
         var files = AssembleEach(
             board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
@@ -631,8 +699,43 @@ public static class ExportPlanner
 
         return item.Output == OutputKind.Gcode
             && item.Operation == OperationKind.Outline
-            && item.LayerFileName != StockLayer;
+            && item.LayerFileName != StockLayer
+            // Routed slots are written as an outline operation on a drill layer. They are drilling
+            // work, and they are not the program that cuts the board out.
+            && !item.TargetName.Contains(".slots.", StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The G-code programs in an export, grouped the way Drill alignment offers them: one row per
+    /// layer and operation — a layer's drilling, its slots, the board outline, a side's copper.
+    ///
+    /// The stock is never in the list. Every other program is, because which ones have to follow
+    /// copper already on the board is a property of the workflow rather than of the file: on a first
+    /// side it is the drilling, on a flipped board it is the copper that has not been cut yet.
+    /// </summary>
+    public static IReadOnlyList<MovableProgram> Movable(ExportPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return [.. plan.Items
+            .Where(i => i.Output == OutputKind.Gcode && i.LayerFileName != StockLayer)
+            .GroupBy(DrillAlignment.KeyFor)
+            .Select(g => new MovableProgram(
+                g.Key,
+                ProgramLabel(g.First()),
+                g.First().LayerLabel,
+                g.Count(),
+                g.First().Mirrored,
+                g.Any(IsDrillOrRouting)))];
+    }
+
+    /// <summary>What one group of files is, in the words its own page uses.</summary>
+    private static string ProgramLabel(ExportItem item) => item switch
+    {
+        _ when item.TargetName.Contains(".slots.", StringComparison.Ordinal) => "Routed slots",
+        _ when IsBoardOutline(item) => "Board outline",
+        _ => LayerOperations.Label(item.Operation),
+    };
 
     /// <summary>A drilling or routing program: what Job › Drill alignment moves.</summary>
     public static bool IsDrillOrRouting(ExportItem item)
@@ -784,11 +887,17 @@ public static class ExportPlanner
         // program.
         var stem = Path.GetFileNameWithoutExtension(layer.FileName);
 
+        // Slots are written as an outline operation on a drill layer, so they are asked for by that
+        // name — the same key the dialog listed them under.
+        var aligned = alignment?.Moves(layer.FileName, OperationKind.Outline, slots: true) == true
+            ? alignment
+            : null;
+
         var files = AssembleEach(
             board, frame, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
             stem + ".slots.nc",
             "Routed slots",
-            boardThicknessNm, machine, effort, framing, machineSettings, alignment);
+            boardThicknessNm, machine, effort, framing, machineSettings, aligned);
 
         if (files.Count == 0)
         {
@@ -824,7 +933,7 @@ public static class ExportPlanner
             files[0] with
             {
                 Companion = new ExportCompanion(
-                    stem + ".slots" + (alignment is null ? string.Empty : DrillAlignment.Suffix) + ".html",
+                    stem + ".slots" + (aligned is null ? string.Empty : DrillAlignment.Suffix) + ".html",
                     html,
                     $"{cutters}{where}{missing}"),
             },

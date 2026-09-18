@@ -638,9 +638,66 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     private void RememberAlignment(DrillAlignment alignment)
     {
-        _project.Settings = _project.Settings with { Alignment = AlignmentRecord.From(alignment) };
+        _project.Settings = _project.Settings with
+        {
+            Alignment = AlignmentRecord.From(alignment, AlignmentFlipped),
+        };
+
         _project.Touch();
     }
+
+    /// <summary>
+    /// The stock's own program, when this job builds on stock — where the waste holes are read from.
+    ///
+    /// From the emitted program, like every other hole the dialog offers, so the coordinates are the
+    /// ones the machine will be sent to rather than the ones the planner started from.
+    /// </summary>
+    public ExportItem? StockProgram() => PlanExport(OutputKind.Gcode) is { } plan
+        ? plan.Items.FirstOrDefault(i => i.LayerFileName == ExportPlanner.StockLayer)
+        : null;
+
+    /// <summary>
+    /// Where the stock's alignment holes are in its program's own coordinates.
+    ///
+    /// Used to pick them out of that program: the stock cuts its perimeter below the surface too, and
+    /// on square stock that reads as one more round feature. The coordinates still come from the
+    /// emitted program — these say which of its features are the holes.
+    /// </summary>
+    public IReadOnlyList<Point2> WasteHoles()
+    {
+        if (PlanExport(OutputKind.Gcode) is not { } plan || _board is null || !plan.Blank.Resolved)
+        {
+            return [];
+        }
+
+        var frame = plan.FrameFor(_board.Bounds);
+
+        return [.. plan.Blank.AlignmentHoles.Select(h => new Point2(h.X - frame.MinX, h.Y - frame.MinY))];
+    }
+
+    /// <summary>Every G-code program this export would write, as Drill alignment offers them.</summary>
+    public IReadOnlyList<MovableProgram> MovablePrograms() => PlanExport(OutputKind.Gcode) is { } plan
+        ? ExportPlanner.Movable(plan)
+        : [];
+
+    /// <summary>
+    /// How wide the frame every program is referenced to is: the stock's, or the board's without one.
+    ///
+    /// The axis a flipped board mirrors about. A hole at X in the program is at this width minus X
+    /// once the stock is turned over left-to-right and put back in the same corner.
+    /// </summary>
+    public long FrameWidthNm() => PlanExport(OutputKind.Gcode) is { } plan && _board is { } board
+        ? plan.FrameFor(board.Bounds).Width
+        : 0;
+
+    /// <summary>What the operator last chose to move, or null while the default rule stands.</summary>
+    public System.Collections.Immutable.ImmutableArray<string>? AlignmentMoved { get; set; }
+
+    /// <summary>Whether the alignment is being measured with the board flipped over.</summary>
+    public bool AlignmentFlipped { get; set; }
+
+    /// <summary>Whether the holes being measured are the stock's waste holes rather than the board's.</summary>
+    public bool AlignmentWasteHoles { get; set; }
 
     /// <summary>Whether this export has a board outline program for the alignment to move.</summary>
     public bool HasOutlineProgram() => PlanExport(OutputKind.Gcode) is { } plan

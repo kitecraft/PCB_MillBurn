@@ -243,13 +243,28 @@ public sealed record AlignmentRecord
     public bool Outline { get; init; } = true;
 
     /// <summary>
+    /// Exactly which programs were written again, as <see cref="DrillAlignment.Moved"/> keys, or null
+    /// when the correction was left to the default rule.
+    /// </summary>
+    public ImmutableArray<string>? Moved { get; init; }
+
+    /// <summary>
+    /// Whether it was measured with the board flipped over.
+    ///
+    /// Recorded because it decides what the numbers mean: a correction found on the flipped board
+    /// describes the flipped board, and reusing it on the first side would move every program the
+    /// wrong way across the stock.
+    /// </summary>
+    public bool Flipped { get; init; }
+
+    /// <summary>
     /// When it was found. Shown when the correction is offered again, because an alignment is only
     /// true while the board has not moved: yesterday's numbers on a board re-clamped this morning are
     /// worse than none.
     /// </summary>
     public DateTimeOffset? Found { get; init; }
 
-    public static AlignmentRecord From(DrillAlignment alignment)
+    public static AlignmentRecord From(DrillAlignment alignment, bool flipped = false)
     {
         ArgumentNullException.ThrowIfNull(alignment);
 
@@ -261,6 +276,8 @@ public sealed record AlignmentRecord
             PivotXMm = Nm.ToMillimetres(alignment.PivotNm.X),
             PivotYMm = Nm.ToMillimetres(alignment.PivotNm.Y),
             Outline = alignment.Outline,
+            Moved = alignment.Moved,
+            Flipped = flipped,
             Found = DateTimeOffset.Now,
         };
     }
@@ -270,6 +287,7 @@ public sealed record AlignmentRecord
     {
         RotationDegrees = RotationDegrees,
         PivotNm = new Point2(Nm.FromMillimetres(PivotXMm), Nm.FromMillimetres(PivotYMm)),
+        Moved = Moved,
     };
 }
 

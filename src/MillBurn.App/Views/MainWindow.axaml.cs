@@ -432,6 +432,8 @@ public partial class MainWindow : Window
             // With the second hole open, for a screenshot of the rotation half: it is hidden until
             // asked for, and a screenshot cannot tick a box.
             vm.AlignmentUseSecond = args.Contains("--align-turn", StringComparer.OrdinalIgnoreCase);
+            vm.AlignmentWasteHoles = args.Contains("--align-waste", StringComparer.OrdinalIgnoreCase);
+            vm.AlignmentFlipped = args.Contains("--align-flipped", StringComparer.OrdinalIgnoreCase);
 
             var align = new AlignmentWindow(vm, Environment.CurrentDirectory)
             {

@@ -279,6 +279,109 @@ public sealed class AlignmentTests(ITestOutputHelper output)
         }
     }
 
+    // ------------------------------------------------------------------ what moves
+
+    /// <summary>
+    /// Named programs move and nothing else does — including the copper, which the default rule never
+    /// moves and which a flipped board's workflow needs moved.
+    /// </summary>
+    [Fact]
+    public void OnlyTheProgramsNamedAreMoved()
+    {
+        var plain = Plan();
+        var movable = ExportPlanner.Movable(plain);
+
+        Assert.NotEmpty(movable);
+
+        // The copper: exactly what the default rule refuses to move.
+        var copper = movable.First(m => m.What.StartsWith("Isolation", StringComparison.Ordinal));
+        var alignment = new DrillAlignment(Nm.FromMillimetres(0.2), 0) { Moved = [copper.Key] };
+
+        var aligned = Plan(alignment);
+        var moved = aligned.Items.Where(alignment.Moves).ToList();
+
+        output.WriteLine($"moved: {string.Join(", ", moved.Select(m => m.TargetName))}");
+
+        Assert.All(moved, m => Assert.Equal(copper.Key, DrillAlignment.KeyFor(m)));
+        Assert.All(moved, m => Assert.EndsWith(".aligned.nc", m.TargetName, StringComparison.Ordinal));
+
+        // And the drilling, which the default rule always moves, is untouched here.
+        foreach (var drill in plain.Items.Where(ExportPlanner.IsDrillOrRouting))
+        {
+            Assert.Equal(
+                drill.Content,
+                Assert.Single(aligned.Items, i => i.TargetName == drill.TargetName).Content);
+        }
+    }
+
+    /// <summary>
+    /// The stock is never moved, however it is named. It is cut before there is anything on the board
+    /// to line up with, and it is the work zero the correction itself is measured from.
+    /// </summary>
+    [Fact]
+    public void TheStockIsNeverMovedEvenWhenNamed()
+    {
+        var job = new JobOptions { Blank = new BlankOptions { Enabled = true } };
+        var plain = Plan(job: job);
+
+        var stock = Assert.Single(plain.Items, i => i.LayerFileName == ExportPlanner.StockLayer);
+
+        var alignment = new DrillAlignment(Nm.FromMillimetres(0.3), 0)
+        {
+            Moved = [DrillAlignment.KeyFor(stock)],
+        };
+
+        Assert.False(alignment.Moves(stock));
+        Assert.DoesNotContain(ExportPlanner.Movable(plain), m => m.Key == DrillAlignment.KeyFor(stock));
+
+        var aligned = Plan(alignment, job);
+
+        Assert.Equal(
+            stock.Content,
+            Assert.Single(aligned.Items, i => i.LayerFileName == ExportPlanner.StockLayer).Content);
+    }
+
+    /// <summary>
+    /// The listing tells the dialog what it needs to draw a row: what each group is, whose layer it
+    /// belongs to, how many files it is, and which side of the board it is written for.
+    /// </summary>
+    [Fact]
+    public void TheMovableListDescribesEveryGcodeProgram()
+    {
+        var plan = Plan();
+        var movable = ExportPlanner.Movable(plan);
+
+        foreach (var program in movable)
+        {
+            output.WriteLine($"{program.Key}  {program.What} · {program.LayerLabel}  {program.Files} file(s)");
+        }
+
+        // Every G-code file except the stock is in exactly one group.
+        var files = plan.Items.Where(i => i.Output == OutputKind.Gcode && i.LayerFileName != ExportPlanner.StockLayer).ToList();
+
+        Assert.Equal(files.Count, movable.Sum(m => m.Files));
+        Assert.Equal(movable.Select(m => m.Key).Distinct().Count(), movable.Count);
+        Assert.Contains(movable, m => m.What == "Drilling" && m.MovedByDefault);
+        Assert.Contains(movable, m => m.What == "Isolation routing" && !m.MovedByDefault);
+        Assert.All(movable, m => Assert.False(string.IsNullOrWhiteSpace(m.LayerLabel)));
+    }
+
+    /// <summary>
+    /// Routed slots are written as an outline operation on a drill layer, which is not the program
+    /// that cuts the board out — and the two must not be confused, because one moves by default and
+    /// the other only when asked.
+    /// </summary>
+    [Fact]
+    public void SlotsAreNotTheBoardOutline()
+    {
+        var plan = Plan(job: new JobOptions { MillLargeHoles = true });
+        var slots = plan.Items.Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)).ToList();
+
+        Assert.NotEmpty(slots);
+        Assert.All(slots, s => Assert.False(ExportPlanner.IsBoardOutline(s)));
+        Assert.All(slots, s => Assert.True(ExportPlanner.IsDrillOrRouting(s)));
+    }
+
     // ------------------------------------------------------------------ a board that is also turned
 
     /// <summary>

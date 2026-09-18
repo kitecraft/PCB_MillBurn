@@ -291,8 +291,8 @@
 </p>
 
 <figure>
-  <img src="images/drill-alignment-dialog.png" width="640" height="590"
-       alt="The Drill alignment dialog: a file and a hole to test with, Move X by and Move Y by, the stopping height, Board outline too, and the folder the files go to.">
+  <img src="images/drill-alignment-dialog.png" width="640" height="890"
+       alt="The Drill alignment dialog: ticks for the stock's waste holes and for a flipped board, a file and a hole to test with, Move X by and Move Y by, the stopping height, a list of the programs to write again with drilling, slots and the outline ticked, and the folder the files go to.">
   <figcaption>The dialog stays open while you test, and closes when the aligned files are
     written.</figcaption>
 </figure>
@@ -489,9 +489,10 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <h3 id="step-7"><span class="step-number">7</span>Write the aligned files</h3>
 
 <p>
-  Press <strong>Write aligned files</strong>. Every drilling and slot file is written again with
-  the offset built in, and so is the board outline unless you untick <strong>Board outline
-  too</strong>. The dialog closes. For the test board, that is:
+  Press <strong>Write aligned files</strong>. Everything ticked under <strong>Write again,
+  aligned</strong> is written again with the offset built in &mdash; drilling, slots and the board
+  outline, unless you have changed the ticks (see <a href="#what-moves">choosing what gets written
+  again</a>). The dialog closes. For the test board, that is:
 </p>
 
 <div class="table-wrap">
@@ -506,7 +507,7 @@ Move X by / Move Y by     +0.170     -0.050</pre>
     <tr><td><code>…-PTH-drl.slots.aligned.nc</code><br><code>…-NPTH-drl.slots.aligned.nc</code></td>
       <td>Routed slots and milled holes</td></tr>
     <tr><td><code>…-Edge_Cuts.aligned.nc</code></td>
-      <td>The board outline, when <em>Board outline too</em> is ticked</td></tr>
+      <td>The board outline, while it is ticked</td></tr>
     <tr><td><code>…-PTH-drl.drilling.aligned.html</code><br><code>…slots.aligned.html</code></td>
       <td>The pages that go with them, listing the aligned files</td></tr>
   </tbody>
@@ -533,6 +534,78 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <p>
   Consider moving the original, un-aligned files into another folder, so that neither you nor your
   sender&rsquo;s recent-files list can pick one by mistake.
+</p>
+
+<h2 id="waste-holes">The stock&rsquo;s waste holes</h2>
+
+<p>
+  If the project cuts its own stock, tick <strong>Alignment holes in the waste</strong> under
+  <em>Project info</em> and the stock program puts two small holes in the borders that get thrown
+  away &mdash; one near the right-hand end of the bottom border, one near the top of the left. They are
+  cut in the same program, in the same setup, with the same end mill as the stock&rsquo;s edges, so
+  their positions are not measured at all: they are exactly where the file says, in the frame every
+  other program is written in.
+</p>
+
+<p>
+  Tick <strong>Use the stock&rsquo;s two waste holes</strong> in the alignment dialog and the hole
+  lists show those two instead of the board&rsquo;s. Three things make them worth using:
+</p>
+
+<ul>
+  <li><strong>They exist before anything is drilled.</strong> A board hole can only line up a step
+    that comes <em>after</em> drilling. The waste holes can line up the drilling itself.</li>
+  <li><strong>They are nearly the stock&rsquo;s diagonal apart</strong>, which is a longer baseline
+    than almost any pair of board holes &mdash; and the turn&rsquo;s accuracy is the error in reading
+    each hole divided by the distance between them.</li>
+  <li><strong>They survive.</strong> They are holes in a piece of copper-clad: an etch, a re-clamp,
+    a coat of paint and a trip to the other machine all leave them exactly where they were. Then
+    they are cut off with the waste.</li>
+</ul>
+
+<p>
+  Fit the end mill that cut them &mdash; the dialog names it &mdash; rather than a drill, and hover
+  over them the same way as any other hole.
+</p>
+
+<h3 id="flipped">Working on the other side</h3>
+
+<p>
+  The waste holes go right through, so the same two can be used with the board turned over. Tick
+  <strong>The board is flipped over, and I am measuring from the back</strong>: the hole positions
+  mirror about the stock&rsquo;s vertical centreline, which is the axis the app mirrors a bottom-side
+  program about and the only one that puts the stock back in the same corner. The list shows the
+  mirrored coordinates, and the test program sends the bit to them.
+</p>
+
+<p>
+  Because the two holes are deliberately <em>not</em> symmetric &mdash; one low and right, one high and
+  left &mdash; a board that went back the wrong way up shows itself: the numbers come out large
+  instead of a few hundredths.
+</p>
+
+<h2 id="what-moves">Choosing what gets written again</h2>
+
+<p>
+  The list under <strong>Write again, aligned</strong> is every G-code program this export writes, one
+  tick each. Drilling, routed slots and the board outline start ticked. The copper does not, because
+  on a first side the copper is the thing you measured against &mdash; moving it would move the
+  target along with the correction.
+</p>
+
+<p>
+  <strong>On a flipped board that changes.</strong> Cut the top copper, etch it, turn the stock over,
+  and the bottom copper is now the program that has to land on what is already there. Tick it. This is
+  what the list is for: which programs have to follow the board depends on the workflow, and MillBurn
+  cannot know yours. Programs written for the flipped side are marked <em>flipped side</em> in the
+  list, and if the ticks disagree with the flip box &mdash; a correction measured face-up being
+  written into a bottom-side program, or the other way round &mdash; the dialog says so rather than
+  writing it quietly.
+</p>
+
+<p>
+  The stock is never in the list. It is cut before there is anything on the board to line up with, and
+  it is the work zero the correction itself is measured from.
 </p>
 
 <h2 id="rotation">Measuring a second hole, when the board is not square</h2>

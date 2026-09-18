@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using MillBurn.Cam;
 using MillBurn.Core;
@@ -45,9 +46,12 @@ internal static class Program
             Console.WriteLine("                                 --align <x,y mm|saved> only the drilling and routing files, moved this much, as .aligned");
             Console.WriteLine("                                 --align-turn <deg> --align-about <x,y mm> turned as well, about that hole");
             Console.WriteLine("                                 --align-outline the board outline too");
+            Console.WriteLine("                                 --align-moves <names> exactly these programs instead, e.g. drilling,\"bottom copper\"");
             Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
             Console.WriteLine("                                 --file <part of a name> --hole <n> --offset <x,y mm> --hover <mm> -o <file>");
             Console.WriteLine("                                 --hole2 <n> --offset2 <x,y mm> a second hole measured: prints the turn to export with");
+            Console.WriteLine("                                 --waste-holes the stock's two holes rather than the board's");
+            Console.WriteLine("                                 --flipped the board is turned over: the same holes, mirrored");
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
@@ -1677,6 +1681,22 @@ internal static class Program
             }
         }
 
+        // Which programs are written again. Named rather than ruled, because on a flipped board the
+        // copper is the thing that has to follow what is already there — see Job › Drill alignment.
+        if (alignment is not null && Argument(args, "--align-moves") is { } movesText)
+        {
+            var listing = ExportPlanner.Movable(ExportPlanner.Plan(
+                board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm),
+                OutputKind.Gcode, framing: framing, machineSettings: app.Machine, job: job));
+
+            if (Chosen(movesText, listing) is not { } chosen)
+            {
+                return 1;
+            }
+
+            alignment = alignment with { Moved = chosen };
+        }
+
         var plan = blankOnly
             ? BlankOnlyPlan(board, settings, thicknessMm, framing, app, job)
             : ExportPlanner.Plan(
@@ -2448,15 +2468,24 @@ internal static class Program
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thickness.Mm),
             OutputKind.Gcode, machineSettings: app.Machine, job: JobFor(args, project));
 
-        var files = plan.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
+        var waste = args.Contains("--waste-holes", StringComparer.OrdinalIgnoreCase);
+
+        // The stock's two waste holes: cut with the stock's own edges, so their coordinates are known
+        // rather than measured, and they exist before anything is drilled.
+        var files = waste
+            ? [.. plan.Items.Where(i => i.LayerFileName == ExportPlanner.StockLayer)]
+            : plan.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
 
         if (files.Count == 0)
         {
-            Console.Error.WriteLine("This job has no drilling or routing files to align.");
+            Console.Error.WriteLine(waste
+                ? "This job cuts no stock, so it has no waste holes. Build on stock with --stock, and ask for the holes with --stock-holes."
+                : "This job has no drilling or routing files to align.");
+
             return 1;
         }
 
-        var wanted = Argument(args, "--file");
+        var wanted = waste ? null : Argument(args, "--file");
         var file = wanted is null
             ? files[0]
             : files.FirstOrDefault(f => f.TargetName.Contains(wanted, StringComparison.OrdinalIgnoreCase));
@@ -2474,6 +2503,36 @@ internal static class Program
         }
 
         var targets = AlignmentTest.Targets(file.Content);
+
+        if (waste)
+        {
+            // The stock cuts its own edges below the surface too, and on square stock that perimeter
+            // reads as one more round feature. The plan says which features are the holes; the
+            // program still says where they are.
+            var frame = plan.FrameFor(board.Bounds);
+
+            var holes = plan.Blank.AlignmentHoles
+                .Select(h => new Point2(h.X - frame.MinX, h.Y - frame.MinY))
+                .ToList();
+
+            targets = [.. targets.Where(t => holes.Any(h => h.DistanceTo(t.At) <= Nm.FromMillimetres(0.5)))];
+
+            if (targets.Count == 0)
+            {
+                Console.Error.WriteLine("The stock program has no alignment holes in it. Add --stock-holes and cut the stock again.");
+                return 1;
+            }
+        }
+
+        // Turned over left-to-right about the stock's vertical centreline — the axis a bottom-side
+        // program is mirrored about, and the only one that puts the stock back in the same corner.
+        // The holes go through, so the same two can be hovered over from either side.
+        if (args.Contains("--flipped", StringComparer.OrdinalIgnoreCase))
+        {
+            var width = plan.FrameFor(board.Bounds).Width;
+
+            targets = [.. targets.Select(t => t with { At = new Point2(width - t.At.X, t.At.Y) })];
+        }
 
         Console.WriteLine(file.TargetName);
 
@@ -2625,6 +2684,46 @@ internal static class Program
 
         return 0;
     }
+
+    /// <summary>
+    /// Which programs <c>--align-moves</c> names, or null when one of the names matches nothing.
+    ///
+    /// Matched on what the dialog shows — "Drilling · Plated holes" — so a word from either half
+    /// picks it out: <c>--align-moves drilling,outline</c>, or <c>--align-moves "bottom copper"</c>.
+    /// A name that matches nothing stops the export and lists what there was, rather than quietly
+    /// writing fewer files than were asked for.
+    /// </summary>
+    private static ImmutableArray<string>? Chosen(string text, IReadOnlyList<MovableProgram> listing)
+    {
+        var chosen = new List<string>();
+
+        foreach (var wanted in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var matched = listing
+                .Where(p => p.Key.Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                    || Describe(p).Contains(wanted, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (matched.Count == 0)
+            {
+                Console.Error.WriteLine($"--align-moves: nothing here is called '{wanted}'. This export writes:");
+
+                foreach (var program in listing)
+                {
+                    Console.Error.WriteLine("  " + Describe(program));
+                }
+
+                return null;
+            }
+
+            chosen.AddRange(matched.Select(m => m.Key));
+        }
+
+        return [.. chosen.Distinct(StringComparer.Ordinal)];
+    }
+
+    private static string Describe(MovableProgram program) =>
+        program.What + " · " + program.LayerLabel;
 
     /// <summary>"0.12,-0.05" as a drill alignment, or null if it is not two numbers.</summary>
     private static DrillAlignment? Alignment(string text)
