@@ -1882,12 +1882,13 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  <strong>Cutting moves are the passes that reach the program&rsquo;s full depth; part-depth passes
-  are the shallower ones, drawn dimmer underneath.</strong> That is what makes tabs visible: where
-  the board outline leaves a tab, the cutter never goes through, so the bright line has a gap and
-  only the dim one crosses it. Turn <em>Part-depth passes</em> off to see just what is cut through.
-  A program that works at one depth &mdash; isolation, engraving &mdash; has no part-depth passes and
-  no chip for them.
+  <strong>Cutting moves are the passes that reach the program&rsquo;s full depth.</strong> That is
+  what makes tabs visible: where the board outline leaves a tab the cutter never goes through, so the
+  line simply stops and starts again either side of it. <strong>Part-depth passes</strong> are the
+  shallower ones &mdash; the ramp into a hole, the first laps round a profile &mdash; and they are
+  <em>off</em> until you tick them, because on a job full of ramps they are most of the program and
+  laying them over the board tints the whole picture instead of telling you anything. A program that
+  works at one depth, like isolation, has no part-depth passes and no chip for them.
 </p>
 
 <p>

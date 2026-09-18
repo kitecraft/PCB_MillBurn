@@ -174,8 +174,12 @@ public static class BackplotBuilder
 
         if (partial.Count > 0)
         {
+            // Off until asked for. A ramped program — a helix into every hole, a perimeter that
+            // spirals down — is nearly all part-depth runs, and drawing them all lays a yellow wash
+            // over the whole board. The bright line answers the question the picture is for: where
+            // does the cutter go all the way through, and so where does the board stay attached.
             layers.Add(new BackplotLayer(
-                "gcode-cut-partial", "Part-depth passes", BackplotPalette.PartialCut, partial, true));
+                "gcode-cut-partial", "Part-depth passes", BackplotPalette.PartialCut, partial, false));
         }
 
         if (through.Count > 0)

@@ -481,11 +481,16 @@ outline's cut line stopped showing where the tabs were. It had never really show
 fix nothing cut the tab at all, so *every* pass jumped the gap and the gap was in the drawing by
 accident. Cutting the tab down properly put a shallow pass across it, and drawing every pass in one
 colour let that pass paint over the gap the deep ones leave. The fix is the one the workshop
-suggested, made safe: rather than drawing only the bottom pass, `BackplotBuilder` splits the cuts
-into the passes that reach the program's full depth and the ones that do not, and draws the second
-set dimmer underneath. A tab then reads as a gap in the bright line with the dim line still crossing
-it, which is exactly what the material does; nothing is hidden, so a file from somebody else's CAM
-still draws in full; and the operator can turn *Part-depth passes* off to see only what goes through.
+suggested: `BackplotBuilder` splits the cuts into the passes that reach the program's full depth and
+the ones that do not, and draws only the first set. A tab then reads as a gap in the line, which is
+exactly what the material does.
+
+The shallower passes are kept as their own layer rather than dropped, so nothing is lost — a file
+from somebody else's CAM may have real work that no deeper pass covers — but they are **off until
+asked for**. Drawn by default they were worse than the problem: on a job full of ramps, a helix into
+every hole and a perimeter that spirals down, nearly every run is a part-depth one, and all of them
+together laid a yellow wash over the whole board. Reported from the workshop within the hour, which
+is the second time this feature has been corrected by somebody looking at it rather than at the code.
 It is not split for a merged program — the single file the Mill button writes — where isolation at
 0.05 mm is not a part-depth version of an outline at 0.9 mm. No new kind of control: the move-kind
 chips are built from whatever layers the backplot produces, so the new one appears beside *Cutting

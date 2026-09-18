@@ -420,9 +420,11 @@ public sealed class BackplotTests
         Assert.All(cut.Runs, r => Assert.NotEqual(r[0], r[^1]));
         Assert.Contains(partial.Runs, r => r[0] == r[^1]);
 
-        // Both are drawn: the dim line still crosses the tab, so nothing has been hidden.
-        Assert.True(partial.VisibleByDefault);
+        // The full-depth line is what is drawn; the shallower passes are there to be turned on, not
+        // laid over the board. A ramped program is nearly all part-depth runs, and showing those by
+        // default tints the whole picture instead of saying anything.
         Assert.True(cut.VisibleByDefault);
+        Assert.False(partial.VisibleByDefault);
     }
 
     /// <summary>
