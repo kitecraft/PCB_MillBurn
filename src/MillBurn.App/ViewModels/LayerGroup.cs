@@ -41,6 +41,15 @@ public sealed partial class LayerGroup : ObservableObject
     {
         get
         {
+            // "none exported" describes a choice, and in a group where nothing *can* be exported
+            // there is no choice to describe — it read as a setting somebody had left switched off.
+            // Drawings, drill maps and files the app could not place all land in one group together,
+            // so that group says what it is instead of reporting a count it can never change.
+            if (Rows.Count > 0 && Rows.All(r => !r.CanExport))
+            {
+                return "not exportable";
+            }
+
             var exporting = Rows.Count(r => r.HasExportBadge);
 
             return exporting == 0
