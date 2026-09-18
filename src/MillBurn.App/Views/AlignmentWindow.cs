@@ -784,11 +784,19 @@ public sealed class AlignmentWindow : Window
         {
             Title = "Where the alignment files go",
             AllowMultiple = false,
+
+            // Opening at the folder already chosen, rather than wherever the picker was last, so
+            // picking the one beside it is two clicks instead of a walk down the tree.
+            SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(_folder),
         });
 
         if (picked.Count > 0 && picked[0].TryGetLocalPath() is { } path)
         {
             _folder = path;
+
+            // Kept for next time. Chosen here rather than when the files are written, because the
+            // choice is the operator's answer to "where do these go" either way.
+            _vm.SaveAlignFolder(path);
             Refresh();
         }
     }

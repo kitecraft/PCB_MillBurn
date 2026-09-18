@@ -707,6 +707,39 @@ public sealed partial class MainViewModel : ViewModelBase
     public void SaveAlignHover(double hoverMm) =>
         SaveSettings(Settings with { Align = Settings.Align with { HoverMm = hoverMm } });
 
+    /// <summary>
+    /// Remembers where the alignment files go, so the next visit starts there.
+    ///
+    /// Kept apart from the export folder: these files are usually written into a folder of their
+    /// own, over and over during one session, and choosing it again every time is the sort of thing
+    /// that gets a file written next to the wrong programs.
+    /// </summary>
+    public void SaveAlignFolder(string folder)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+
+        if (!string.Equals(Settings.Align.LastFolder, folder, StringComparison.Ordinal))
+        {
+            SaveSettings(Settings with { Align = Settings.Align with { LastFolder = folder } });
+        }
+    }
+
+    /// <summary>
+    /// Where Job › Drill alignment opens: where it last wrote, then where the last export went, then
+    /// the folder the board came from.
+    /// </summary>
+    public string AlignFolder()
+    {
+        if (Settings.Align.LastFolder is { } mine && Directory.Exists(mine))
+        {
+            return mine;
+        }
+
+        return Settings.LastExportFolder is { } last && Directory.Exists(last)
+            ? last
+            : Project.OriginFolder ?? Environment.CurrentDirectory;
+    }
+
     /// <summary>Writes the alignment test for one hole of one file, overwriting the last one.</summary>
     public bool WriteAlignmentTest(
         string path, ExportItem file, MillBurn.Gcode.AlignmentTarget target, Point2 offsetNm)

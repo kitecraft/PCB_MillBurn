@@ -45,6 +45,42 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     /// <summary>
+    /// The drill alignment's own folder, kept apart from the export's.
+    ///
+    /// The alignment files are written over and over during one session, usually into a folder of
+    /// their own beside the plain export; starting at the export folder each time meant picking the
+    /// same folder again on every visit, which is how a file ends up beside the wrong programs.
+    /// </summary>
+    [Fact]
+    public void TheAlignmentFolderIsRememberedApartFromTheExportFolder()
+    {
+        new AppSettings
+        {
+            LastExportFolder = @"C:\jobs\out",
+            Align = new AlignSettings { HoverMm = 0.15, LastFolder = @"C:\jobs\out\aligned" },
+        }.Save(Path_);
+
+        var read = AppSettings.LoadOrDefault(Path_);
+
+        Assert.Equal(@"C:\jobs\out\aligned", read.Align.LastFolder);
+        Assert.Equal(@"C:\jobs\out", read.LastExportFolder);
+        Assert.Equal(0.15, read.Align.HoverMm);
+    }
+
+    /// <summary>A settings file written before the folder was kept reads back with none, not an empty one.</summary>
+    [Fact]
+    public void SettingsFromBeforeTheAlignmentFolderExistedHaveNone()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path_, """{ "Align": { "HoverMm": 0.2 } }""");
+
+        var read = AppSettings.LoadOrDefault(Path_);
+
+        Assert.Null(read.Align.LastFolder);
+        Assert.Equal(0.2, read.Align.HoverMm);
+    }
+
+    /// <summary>
     /// Losing preferences is an inconvenience; failing to start is not. The file is also left alone
     /// rather than overwritten, so a hand-editing mistake stays recoverable.
     /// </summary>

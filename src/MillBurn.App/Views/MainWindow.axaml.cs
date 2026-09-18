@@ -435,7 +435,8 @@ public partial class MainWindow : Window
             vm.AlignmentWasteHoles = args.Contains("--align-waste", StringComparer.OrdinalIgnoreCase);
             vm.AlignmentFlipped = args.Contains("--align-flipped", StringComparer.OrdinalIgnoreCase);
 
-            var align = new AlignmentWindow(vm, Environment.CurrentDirectory)
+            // The folder the menu would open it at, so the screenshot shows what the operator sees.
+            var align = new AlignmentWindow(vm, vm.AlignFolder())
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -1047,8 +1048,8 @@ public partial class MainWindow : Window
     /// object and that claim does not depend on which design happens to be loaded.
     /// </summary>
     /// <summary>
-    /// Job › Drill alignment. Files go to the last export folder, because the aligned files belong
-    /// beside the ones they replace and the test file beside both.
+    /// Job › Drill alignment. Files go where the last alignment run put them, or beside the last
+    /// export: the aligned files belong beside the ones they replace, and the test file beside both.
     /// </summary>
     private async void OnAlignClicked(object? sender, RoutedEventArgs e)
     {
@@ -1057,11 +1058,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var folder = vm.Settings.LastExportFolder is { } last && Directory.Exists(last)
-            ? last
-            : vm.Project.OriginFolder ?? Environment.CurrentDirectory;
-
-        var window = new AlignmentWindow(vm, folder) { RequestedThemeVariant = ActualThemeVariant };
+        var window = new AlignmentWindow(vm, vm.AlignFolder()) { RequestedThemeVariant = ActualThemeVariant };
         await window.ShowDialog(this);
     }
 
