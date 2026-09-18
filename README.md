@@ -126,15 +126,23 @@ that are already there — which is what drill alignment is for.
 one side of that ring is gone.
 
 `Job ▸ Drill alignment…` writes a test that brings the bit down over a real pad with the spindle
-off and stops it a tenth of a millimetre above the copper. You look, you type how far off it is, you
-test again. When the tip sits dead centre, one button writes every drilling and slot file again —
-and the outline, so it cuts round the same copper — with that shift built in.
+off and stops it a tenth of a millimetre above the copper. Jog the tip to the middle of the hole,
+type the two numbers the machine shows, and test again. When it lands dead centre by itself, one
+button writes every program you tick again — drilling, slots, the outline — with that correction
+built in.
+
+**Measure a second hole** at the far end of the board and the *turn* is corrected too, not just the
+shift: a board a quarter of a degree out looks perfect where you measured it and misses by 0.3 mm
+across 70 mm. The two holes are also a known distance apart, which is checked against the distance
+you just measured — copper-clad does not stretch, so a disagreement means a hole was read wrongly
+and nothing is written. If the project cuts its own stock, two holes in the waste give you something
+to measure against *before* anything is drilled, from either side of the board.
 
 The photo is the same pads drilled twice: the first holes from the plain files, the second from the
 aligned ones, a couple of tests later.
 
-The [drill alignment guide](Help/guides/drill-alignment.html) walks through it, including how to
-measure the offset exactly by jogging. It also ships with the app, under `Help ▸ Guides`.
+The [drill alignment guide](Help/guides/drill-alignment.html) walks through it. It also ships with
+the app, under `Help ▸ Guides`.
 
 </td>
 </tr>
@@ -251,8 +259,9 @@ millburn probe   <folder> --spacing 8                      # a G38.2 grid to run
 millburn export  <folder> --level probe.log --write        # bend every program to the surface
 millburn level   anyones.nc --map probe.log                # works on any G-code, not just ours
 
-millburn align   <project> --hole 3 --offset 0.12,-0.05    # the drill alignment test
-millburn export  <project> --align 0.12,-0.05 --align-outline --write
+millburn align   <project> --hole 3 --at 23.74,47.83       # the drill alignment test
+millburn align   <project> --hole 3 --at 23.74,47.83 --hole2 11 --at2 40.49,70.77   # and the turn
+millburn export  <project> --align 0.12,-0.05 --align-turn 0.3 --align-about 23.62,47.88 --write
 
 millburn project save <folder> -o board.millburn
 millburn tools list
@@ -280,8 +289,8 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.0 — the first public release.** Solid enough that its author makes boards with it;
-young enough that you should run the dry run first and read the pages beside the files.
+**Version 0.1.1.** Solid enough that its author makes boards with it; young enough that you should
+run the dry run first and read the pages beside the files.
 
 **Proven on metal:**
 
@@ -298,6 +307,8 @@ young enough that you should run the dry run first and read the pages beside the
 - **Since v0.1.0, on the same board.** Top-copper isolation staying down between touching passes, in
   28:45 against an estimate of 16–46 minutes; the outline cut out with three tabs; and every routed hole
   and slot cut in one continuous descent, both routing files finishing inside their estimates.
+- **Since v0.1.1.** Drills and edge cuts run from a two-hole correction, which takes the board's
+  *rotation* out as well as its shift — "as good as I can expect", from the machinist who asked for it.
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
 isolation, and the routed channel between the boards of a panel.
@@ -307,10 +318,10 @@ isolation, and the routed channel between the boards of a panel.
 - Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
   board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
 
-877 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
-every push. Up next after the rough edges: rulers down the viewport, open recent, drill hits drawn as
-an X, a numbered picture on the drilling and routing pages, better tab placement — then an MCP server
-over the same libraries, and solder paste. The full picture, including every bug worth remembering and
+919 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+every push. Up next after the rough edges: rulers down the viewport, drill hits drawn as an X, a
+numbered picture on the drilling and routing pages, better tab placement — then an MCP server over
+the same libraries, and solder paste. The full picture, including every bug worth remembering and
 what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
 
 ---
