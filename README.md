@@ -309,11 +309,12 @@ run the dry run first and read the pages beside the files.
   and slot cut in one continuous descent, both routing files finishing inside their estimates.
 - **Since v0.1.1.** Drills and edge cuts run from a two-hole correction, which takes the board's
   *rotation* out as well as its shift — "as good as I can expect", from the machinist who asked for it.
+  And tabs now come out the thickness the program promises: the outline cuts one extra pass at the
+  tab top, so the tabs are left partial instead of full thickness and the board snaps out.
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, alignment measured from the stock's two
-waste holes, and the tab-height fix this release makes to every outline program — the depths are
-right in the file, and no board has been cut from one yet.
+isolation, the routed channel between the boards of a panel, and alignment measured from the stock's
+two waste holes.
 
 **Known rough edges, next in line:**
 

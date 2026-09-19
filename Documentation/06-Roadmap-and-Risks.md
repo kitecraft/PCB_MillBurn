@@ -476,6 +476,10 @@ material left under a tab to the number the header quotes. `BlankOperation` had 
 the same fix: the stock's tabs were cut by whichever of the outline's steps happened to land above
 them, or by none at all.
 
+**Cut on metal, 2026-09-19.** Confirmed on the test board: the outline runs the extra pass at the
+tab top and the tabs come out partial rather than full thickness. The fix changed every outline
+program in the release, so this was the one result v0.1.2 was held for.
+
 **And the picture lost the tabs as soon as the cutting found them.** Reported within the hour: the
 outline's cut line stopped showing where the tabs were. It had never really shown them — before the
 fix nothing cut the tab at all, so *every* pass jumped the gap and the gap was in the drawing by

@@ -39,7 +39,7 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | **Requirements** | **107** | **54** | **8** | **41** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
-capabilities (12 proven, 1 partly, 4 never cut).
+capabilities (13 proven, 1 partly, 3 never cut).
 
 **The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 15
 not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That one
@@ -223,7 +223,7 @@ weaker claim than this one.
 | P14 | Drill alignment: hover test, then aligned files | Millburn test board: a couple of tests, then every hole in the middle of its pad (photographed in the guide) | **Proven** | — |
 | P16 | Two-hole alignment with rotation, cut on metal | Millburn test board, 2026-09-18: drills and edge cuts from a two-hole correction, "as good as I can expect" | **Proven** | — |
 | P15 | Alignment from the stock's waste holes, measured from either side | — | **Untested** | the numbers are right on the test board; nothing cut from them yet |
-| P17 | Tabs left the thickness the program promises | — | **Untested** | the depths are right in the file; the fix is newer than the last board cut |
+| P17 | Tabs left the thickness the program promises | Millburn test board, 2026-09-19: outline cut with the extra pass at the tab top, tabs left partial rather than full thickness | **Proven** | — |
 
 ---
 
