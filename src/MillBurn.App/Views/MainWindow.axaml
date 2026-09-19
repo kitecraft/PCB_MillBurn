@@ -765,6 +765,7 @@
                                                     <Button Classes="swatch"
                                                             Width="10" Height="10"
                                                             VerticalAlignment="Center"
+                                                            IsVisible="{Binding HasColour}"
                                                             Click="OnKindSwatchClicked"
                                                             ToolTip.Tip="Change this colour">
                                                         <Border CornerRadius="5"

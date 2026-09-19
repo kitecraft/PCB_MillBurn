@@ -390,6 +390,14 @@ public partial class MainWindow : Window
             vm.Preview();
         }
 
+        // "Show only this layer's toolpath" on the first layer whose name contains the text, so what
+        // that gesture hides — the stock's paths included — can be checked from a screenshot.
+        if (Argument(args, "--only-toolpath") is { } onlyName
+            && vm.Layers.FirstOrDefault(r => r.Label.Contains(onlyName, StringComparison.OrdinalIgnoreCase)) is { } onlyRow)
+        {
+            vm.OnlyToolpath(onlyRow);
+        }
+
         // Loads a probe log at startup, so the export dialog's levelling row can be checked with a
         // surface actually imported rather than only in its disabled state.
         if (Argument(args, "--map") is { } probeLog && !vm.ImportHeightMap(probeLog))

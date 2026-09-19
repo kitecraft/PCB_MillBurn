@@ -96,6 +96,12 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     private readonly Dictionary<string, bool> _kindVisible = new(StringComparer.Ordinal);
 
+    /// <summary>The Stock chip's id, which is also the key its state is remembered by.</summary>
+    private const string StockChipId = "stock";
+
+    /// <summary>The scene ids of the stock program's paths, which the Stock chip governs.</summary>
+    private readonly HashSet<string> _stockPaths = new(StringComparer.Ordinal);
+
     /// <summary>
     /// The same rows as <see cref="Layers"/>, bucketed by which part of the board they belong to.
     /// This is what the panel lists; <see cref="Layers"/> stays flat for everything that has to
@@ -1736,6 +1742,32 @@ public sealed partial class MainViewModel : ViewModelBase
                 OnToolpathFilterChanged));
         }
 
+        // The stock is not a layer — no file of the board's produces it, and it has nothing to set —
+        // but its paths want hiding like one: without this, "show only this layer" still drew the
+        // stock's cuts, holes and rapids over it. So it is a switch here, beside the substrate, and
+        // not a row in the layer list.
+        _stockPaths.Clear();
+
+        var stockLayers = _backplot
+            .Where(b => b.Source == ExportPlanner.StockLayer)
+            .Select(b => scene.Layer(b.Id))
+            .OfType<BoardSceneLayer>()
+            .ToList();
+
+        if (stockLayers.Count > 0)
+        {
+            _stockPaths.UnionWith(stockLayers.Select(l => l.Id));
+
+            MoveKinds.Add(new MoveKindRow(
+                StockChipId,
+                "Stock",
+                stockLayers,
+                Avalonia.Media.Brushes.Transparent,
+                !_kindVisible.TryGetValue(StockChipId, out var stockShowing) || stockShowing,
+                OnToolpathFilterChanged,
+                hasColour: false));
+        }
+
         // The substrate is not a move, but it is the same kind of thing as these: a drawing-wide
         // switch with no file behind it and nothing to export.
         if (scene.Layer(BoardSceneBuilder.SubstrateId) is { } substrate)
@@ -1781,12 +1813,17 @@ public sealed partial class MainViewModel : ViewModelBase
             }
         }
 
-        foreach (var kind in MoveKinds)
+        // The stock has no row, so its chip stands in for one: the same rule, with the chip as the
+        // owner. It is a switch over paths the kinds already govern, not a kind of its own.
+        var stock = MoveKinds.FirstOrDefault(k => k.Id == StockChipId);
+
+        foreach (var kind in MoveKinds.Where(k => !ReferenceEquals(k, stock)))
         {
             foreach (var layer in kind.Layers)
             {
                 layer.Visible = kind.IsVisible
-                    && (!owner.TryGetValue(layer.Id, out var row) || row.ShowToolpath);
+                    && (!owner.TryGetValue(layer.Id, out var row) || row.ShowToolpath)
+                    && (stock is null || !_stockPaths.Contains(layer.Id) || stock.IsVisible);
             }
         }
     }
@@ -1805,7 +1842,11 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             row.ShowToolpath = visible;
         }
+
+        StockChip?.IsVisible = visible;
     }
+
+    private MoveKindRow? StockChip => MoveKinds.FirstOrDefault(k => k.Id == StockChipId);
 
     /// <summary>
     /// Shows one layer's paths and nobody else's — the gesture behind "let me look at this cut".
@@ -1818,6 +1859,9 @@ public sealed partial class MainViewModel : ViewModelBase
         {
             row.ShowToolpath = ReferenceEquals(row, only);
         }
+
+        // The stock is not that layer either.
+        StockChip?.IsVisible = false;
     }
 
     /// <summary>
