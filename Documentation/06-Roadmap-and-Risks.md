@@ -2032,6 +2032,7 @@ than discovered after.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
+- **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
 - Machine-profile sharing.
 
 #### 6.1 Rulers — **scheduled, not started**
@@ -3150,6 +3151,45 @@ takes the same options, as every export does.
 **Done when** the test board's `F_Paste` gives a watertight STL (every edge shared by exactly two
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
+
+#### 6.19 A dry run that is the real run, raised — **requested, not started**
+
+Requested from the workshop: *"The dry-run could be much better representative of a real run. The
+lack of z-moves lowers the usefulness of the current dry-run too much. What if the dry-run was just a
+copy of the real run, then, ensure the spindle is OFF, then, raise the entire thing by X mm (default
+3)."*
+
+**Why it is better.** `DryRun.Rewrite` holds every move at one height, so what it shows is the path
+in plan and nothing else: no plunge, no lift, no ramp, no helix, and none of the Z travel that is a
+quarter of a real program's time on the workshop's machine (`$112 = 100`), so a flat run's time is
+not the real run's time. A raised copy moves exactly as the real program does, only higher — every
+descent visible at its real place and speed, and the time the real time.
+
+**The rewrite.** Every Z word in absolute mode becomes Z + the rise, 3 mm by default; the canned
+cycles' R plane rises with it. The spindle is stopped at the top, as now, and every `M3`/`M4` is
+dropped rather than trusted to be harmless. Feeds kept, as now, unless the operator turns them off.
+
+**Where it has to refuse, as the flat one already does:**
+
+- **The lowest point must still clear the stock.** Raised by 3 mm, the deepest cut on a 1.6 mm board
+  with 0.3 mm break-through ends 1.1 mm above it; a deeper program, or a smaller rise, would not. So
+  the check becomes *nothing moves below work zero plus a clearance*, read back out of the rewritten
+  text like the current one, and a program that fails it is refused with the rise it would need —
+  never quietly raised further, because the operator asked for a number and should know it changed.
+- **`G92` and `G10`** rewrite the coordinate system, so a raised Z word no longer means what it did.
+  Refused.
+- **`G53`** moves are in machine coordinates — a tool-change position in someone's end G-code — and
+  are left exactly as written.
+- **`G38.x` probing** would feel for a surface that is now 3 mm further away. Refused.
+- **`G91`**, as now.
+
+**The flat dry run stays, as a choice.** It still has a use — a quick look at extents and order, and
+it cannot plunge anything by construction — so *Settings › Dry run* becomes a list: *a raised copy of
+the real run* (by default, since it is the one that answers more) or *held flat*, each with its
+height. The export's dry-run tick is unchanged.
+
+**Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
+with every plunge in the air, and its run time lands where the real program's does.
 
 ### Phase 7 — User documentation — **started**
 

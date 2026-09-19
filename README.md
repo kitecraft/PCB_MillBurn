@@ -525,6 +525,9 @@ Sabogal's [**KiCad-Arduino-Boards**](https://github.com/sabogalc/KiCad-Arduino-B
 test boards. · And the **gSender**, **Candle**, **LinuxCNC** and **LightBurn** communities, who make the
 machines actually run — this app only writes the files.
 
+And to **RAVNIR**, a Nordic music project from Switzerland, for the beat that drove a very high
+development cadence.
+
 ---
 
 ## How this was built

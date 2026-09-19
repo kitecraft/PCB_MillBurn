@@ -38,8 +38,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 31 | 11 | 4 | 16 | 0 |
-| 05 Viewer & export | 30 | 15 | 3 | 10 | 2 |
-| **Requirements** | **109** | **56** | **8** | **41** | **4** |
+| 05 Viewer & export | 31 | 15 | 3 | 11 | 2 |
+| **Requirements** | **110** | **56** | **8** | **42** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (13 proven, 1 partly, 3 never cut).
@@ -189,6 +189,7 @@ board being cut rather than from a document.
 | V28 | Build-on-stock options in a dialog of their own | 06 §6.14 | **Not started** | to examine; *Project info* is crowded |
 | V29 | Align from the stock's waste holes, from either side of the board, and choose which programs move | 06 §6.14 | **Done** | `ExportPlanner.Movable`, `DrillAlignment.Moved`, the dialog's waste/flip ticks; `AlignmentTests.OnlyTheProgramsNamedAreMoved`, `TheStockIsNeverMovedEvenWhenNamed`; CLI `align --waste-holes --flipped`, `export --align-moves` |
 | V30 | A paste stencil to 3D-print: STL from a paste layer, apertures shrunk to the right volume, thinner steps only where release needs them, optional locating lip | 06 §6.18 | **Not started** | *Job › Paste stencil…*; target volume from Phase 9's rule |
+| V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Not started** | refuses when the lowest point would not clear the stock, and on `G92`/`G10`/`G38`; the flat dry run stays as a choice |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -265,6 +266,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.16 A re-measured stock keeps its alignment holes | workshop | **Parked** — built on a branch, not merged |
 | 6.17 The stock's alignment holes marked in the SVGs | workshop | **Partial** — placing layers built; Print and Cut not tried |
 | 6.18 A paste stencil to 3D-print | workshop | **Not started** |
+| 6.19 A dry run that is the real run, raised | workshop | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |
