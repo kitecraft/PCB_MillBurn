@@ -58,7 +58,7 @@ public static class ProjectPage
         Order(page, plan, context);
         Files(page, plan);
         Zero(page, context);
-        Laser(page, plan);
+        Laser(page, plan, context);
         Watch(page, plan, context);
 
         page.Append(GuideFooter.For(
@@ -283,32 +283,59 @@ public static class ProjectPage
     ///
     /// The SVGs share a page, and the page is bigger than the artwork — so software that imports by
     /// the drawing's own bounds drops the border and lands everything at the origin, out by exactly
-    /// that border. The number is stated rather than left to be worked out.
+    /// that border. The numbers are stated rather than left to be worked out — and per file, because
+    /// each file's drawing is a different box: copper that reaches the board edge is the board, a
+    /// mask is only its outermost openings.
     /// </summary>
-    private static void Laser(StringBuilder page, ExportPlan plan)
+    private static void Laser(StringBuilder page, ExportPlan plan, ProjectPageContext context)
     {
-        var svgs = plan.Items.Where(i => i.Output == OutputKind.Svg).ToList();
+        var svgs = plan.Items.Where(i => i.Output == OutputKind.Svg && i.Drawing is not null).ToList();
 
         if (svgs.Count == 0)
         {
             return;
         }
 
+        // The page is the stock when there is one, the board when not: the same frame the planner drew in.
+        var frame = context.Blank.Resolved ? context.Blank.Bounds : context.Board;
+        var boardX = context.Board.MinX - frame.MinX;
+        var boardY = context.Board.MinY - frame.MinY;
+
         page.Append("<h2>Placing the SVGs</h2>\n<ul>\n");
         page.Append("<li>They all share one page, so they line up with each other.</li>\n");
-        page.Append("<li>Put the <strong>page's</strong> lower-left corner on work zero.</li>\n");
-
-        foreach (var line in svgs[0].Summary.Where(s => s.Contains("artwork sits", StringComparison.Ordinal)))
-        {
-            page.Append("<li>").Append(Escape(line)).Append("</li>\n");
-        }
-
+        page.Append("<li>Put the <strong>page's</strong> lower-left corner on work zero, and nothing "
+            + "below needs doing.</li>\n");
         page.Append("</ul>\n");
 
-        page.Append("<div class=\"warn\"><p><strong>Do not centre them.</strong> Some laser software "
-            + "imports the drawing rather than the page: it throws the empty border away and puts "
-            + "the artwork at the origin. That is out by the border, and it looks right. Place by "
-            + "the page, or add the offset above by hand.</p></div>\n");
+        page.Append("<div class=\"warn\"><p><strong>If your laser software imports the drawing "
+            + "rather than the page</strong>, it throws the empty border away and keeps only the "
+            + "drawing's own box, which is different for every file. The size it shows on import says "
+            + "which it did. Then place each file by its own row: its lower-left corner at the first "
+            + "pair of numbers when ")
+            .Append(context.Blank.Resolved ? "the stock's corner" : "the board's corner")
+            .Append(" is on the laser's origin, or its centre at the second when the ")
+            .Append(context.Blank.Resolved ? "cut-out board's" : "board's")
+            .Append(" corner is. One file's numbers are wrong for another.</p></div>\n");
+
+        page.Append("<table>\n<thead><tr><th>File</th><th>Imports as</th>"
+            + "<th>Lower-left, from the page's corner</th><th>Centre, from the board's corner</th>"
+            + "</tr></thead>\n<tbody>\n");
+
+        foreach (var item in svgs)
+        {
+            var d = item.Drawing!.Value;
+
+            page.Append("<tr><td><code>").Append(Escape(item.TargetName)).Append("</code></td><td>")
+                .Append(Nm.ToMillimetreString(d.Width, 2)).Append(" × ")
+                .Append(Nm.ToMillimetreString(d.Height, 2)).Append(" mm</td><td>")
+                .Append(Pair(d.MinX, d.MinY)).Append("</td><td>")
+                .Append(Pair(d.Centre.X - boardX, d.Centre.Y - boardY)).Append("</td></tr>\n");
+        }
+
+        page.Append("</tbody>\n</table>\n");
+
+        static string Pair(long x, long y) =>
+            Nm.ToMillimetreString(x, 2) + " right, " + Nm.ToMillimetreString(y, 2) + " up";
     }
 
     private static void Watch(StringBuilder page, ExportPlan plan, ProjectPageContext context)

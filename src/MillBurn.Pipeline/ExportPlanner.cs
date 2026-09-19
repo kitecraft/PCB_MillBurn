@@ -69,6 +69,16 @@ public sealed record ExportItem
     /// </summary>
     public string? Doing { get; init; }
 
+    /// <summary>
+    /// For an SVG: the extent of what is drawn in it, measured from the page's lower-left corner.
+    /// Null for anything else.
+    ///
+    /// Laser software that imports by content keeps exactly this box and throws the page away, and
+    /// every layer's box is different — copper that reaches the board edge is the board, a mask is
+    /// only its outermost openings. So the offset it needs is this file's own, never the board's.
+    /// </summary>
+    public Bounds? Drawing { get; init; }
+
     /// <summary>What this file does, in the words the export list uses.</summary>
     public string DoingLabel => Doing ?? LayerOperations.Label(Operation);
 
@@ -479,21 +489,23 @@ public static class ExportPlanner
         // object, which turns a board into hundreds of them.
         var svg = SvgWriter.Write(artwork, page, new SvgExportOptions { SingleLayer = true });
 
-        // Where the artwork sits on the page, which is the number somebody needs if their laser
-        // software imports by the *content* rather than by the page.
+        // Where this file's drawing sits on the page, which is the number somebody needs if their
+        // laser software imports by the *content* rather than by the page.
         //
-        // Plenty of it does: it drops the empty border and lands the drawing at the origin, which
-        // is right for a picture and wrong for a board — the art is then out by the border, and the
-        // border is the whole reason the page is bigger than the artwork. Saying the offset here
-        // means nobody has to work it out from two dimensions and a memory of what they typed.
-        var inset = new Point2(board.Bounds.MinX - frame.MinX, board.Bounds.MinY - frame.MinY);
+        // Plenty of it does: it drops the empty border and keeps only the drawing's own box. That
+        // box is this layer's, not the board's — measured in the workshop, top copper imported at
+        // the board's 68.63 × 66.09 but the legend at 67.10 × 64.01 and the mask at 34.85 × 57.29.
+        // One offset for all of them, the board's, put the mask 9.5 mm out. So each file says its
+        // own, from what is actually going into it.
+        var drawn = Polygons.BoundsOf(area);
+        var drawing = new Bounds(
+            drawn.MinX - frame.MinX, drawn.MinY - frame.MinY,
+            drawn.MaxX - frame.MinX, drawn.MaxY - frame.MinY);
 
         var summary = new List<string>
         {
             Invariant($"{page.WidthMm:F2} × {page.HeightMm:F2} mm page, shared by every layer in this export"),
-            inset.X == 0 && inset.Y == 0
-                ? "The artwork starts at the page's lower-left corner."
-                : Invariant($"The artwork sits {Nm.ToMillimetreString(inset.X, 2)} mm right and {Nm.ToMillimetreString(inset.Y, 2)} mm up from the page's lower-left corner. If your laser software imports by content rather than by page, that is the offset to add."),
+            Invariant($"Imported by content rather than by page, it is {Nm.ToMillimetreString(drawing.Width, 2)} × {Nm.ToMillimetreString(drawing.Height, 2)} mm, and its lower-left corner goes {Nm.ToMillimetreString(drawing.MinX, 2)} mm right and {Nm.ToMillimetreString(drawing.MinY, 2)} mm up from the page's."),
             // Measured from what is going into the file, not from the layer it came from. Mirroring
             // leaves both alone, but inverting replaces the geometry entirely — and reporting the
             // source layer's 18 shapes and 112 mm² for a drawing that is now the board minus those
@@ -542,6 +554,7 @@ public static class ExportPlanner
             Content = svg,
             Summary = summary,
             Warnings = warnings,
+            Drawing = drawing,
         };
     }
 

@@ -626,8 +626,10 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     is the stock rather than the artwork &mdash; so there is an empty border round the drawing. Some
     laser software imports the <em>drawing</em> and throws the border away, which puts the artwork at
     the origin instead of where it belongs. <strong>Place by the page, not by the content</strong>,
-    and do not centre. If your software cannot do that, the project page gives you the offset to
-    type in.
+    and do not centre. If your software cannot do that, the project page has a row for every SVG:
+    the size it will import at, where its lower-left corner goes, and where its centre goes from the
+    board&rsquo;s corner. Each file&rsquo;s numbers are its own &mdash; a mask&rsquo;s drawing is only
+    its outermost openings, so it imports much smaller than the copper, and at a different place.
   </p>
 </div>
 
