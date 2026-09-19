@@ -2032,6 +2032,7 @@ than discovered after.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
+- **Machine checks**: backlash, axis scale, squareness, what a bit really cuts, lost steps, tram — measured with calipers and a loupe, the way the test cuts measure a bit. See 6.22.
 - **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.55 mm closer than the program asked. See 6.21.
 - **Which way up is this stock?**: a datum corner that can be seen from across the bench on a nearly square piece. See 6.20.
 - **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
@@ -3278,6 +3279,105 @@ error is neither, and no rigid fit can push two points apart.
 
 **Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 102.8, and
 a burn registered on them lands on both.
+
+#### 6.22 Machine checks: measure the machine, not only the bit — **requested, not started**
+
+From the workshop, after 6.21 turned a laser mystery into 0.27 mm of backlash: *"Since MillBurn is
+aimed at people with inexpensive desktop mills (typical is the 3018 mill), overall machine accuracy
+may be as important as the drill tests are for the bits themselves."*
+
+The test cuts already refuse to trust a V-bit's label and measure the tip instead (*Test cuts:
+checking the library against a caliper*, in Phase 5 above). This is the same argument one level up:
+nothing about a 3018-class machine is known to the tolerance the app quietly assumes — that a commanded millimetre is a
+millimetre, that X and Y are square, that an 0.8 mm end mill cuts an 0.8 mm slot. Each is
+measurable in an afternoon with the tools the workshop actually owns: **digital calipers, a loupe,
+and perhaps a dial indicator**.
+
+Two rules shape every check below, and they come from what a caliper is good at. **It reads edges
+well and centres badly**, so a check gives two faces to measure between. And **it reads 0.01 mm**,
+so a check amplifies its error — over the longest baseline the stock allows, and, where the physics
+allows, by arranging for the error to appear twice.
+
+##### The backlash check, in full
+
+**What it exploits.** Backlash is the slack between screw and nut: the axis takes it up only when it
+reverses. A feature positioned by a move arriving in +X therefore sits a fixed distance from one
+positioned by a move arriving in −X, and that distance *is* the backlash. Arrange for one pair to be
+displaced one way and another pair the other way, and the difference between the two pairs is
+**twice** it.
+
+**What is cut.** Plunges, not milled features: a plunged hole's position is decided by the move that
+arrived at it and by nothing else, while a milled pocket's edges are also cut on moves of their own,
+each with its own reversal to confuse the reading. Six plunges with one end mill, in three rows, at a
+span the stock can hold — 60 mm by default, the longer the better:
+
+| Row | Left hole approached | Right hole approached | Spacing should read |
+|---|---|---|---|
+| 1 — the reference | moving +X | moving +X | the programmed span |
+| 2 | moving −X | moving +X | the span **plus** the backlash |
+| 3 | moving +X | moving −X | the span **minus** the backlash |
+
+Each approach is made at travel height: rapid past the hole by a few millimetres, then back to it, so
+the last motion before the plunge is in the direction the row calls for. Row 1 is the control: both
+holes take the slack up the same way, so their spacing is the machine's true one and confirms the
+program did what it says.
+
+**What is measured.** For each row, the **outer** distance across the pair and the **inner** distance
+between them, both with calipers on the hole walls. Their average is the centre-to-centre distance,
+and the hole diameter drops out of it — which matters, because the hole is never exactly the bit's
+size, and because measuring two hole centres directly is the thing calipers cannot do. That is the
+same reading that went wrong in the workshop's own first attempt, 102.8 mm against 103.34.
+
+**The arithmetic**, which the companion page states rather than leaves to the bench:
+
+> backlash = (row 2 − row 3) ÷ 2
+
+and row 1 minus the programmed span is a scale check thrown in free: more than a few hundredths over
+60 mm and the axis's steps-per-millimetre is worth looking at before anything else.
+
+**Then the same again for Y**, rows running the other way. The two axes are independent and usually
+differ — the workshop's X measured about 0.27 mm while Y came out near 0.1 mm.
+
+**What the number is for.** It sets the approach overshoot in 6.21, which has to exceed the
+backlash to take it up; it tells the operator whether the anti-backlash nut wants
+adjusting or replacing; and it is the number that says whether a machine can hold an 0.2 mm isolation
+gap at all. It is worth re-measuring when anything changes, because it wears.
+
+**What the check must say out loud.** Use the same bit for all six plunges and do not change the
+collet between them. Deburr before measuring. Take each reading three times. And never measure from
+the stock's edges, which were cut by the machine being tested.
+
+##### The other checks, sketched
+
+- **Axis scale.** Two fine scribed lines as far apart as the stock allows, measured and compared
+  against the commanded distance; the correction goes into the controller's steps-per-millimetre, not
+  into the app. The mill's version of the 100 mm line the workshop burned on the laser.
+- **Squareness.** A large scribed square, both diagonals measured; their difference over the square's
+  size is the error angle. 0.2 mm across 60 mm is about 0.1°, which puts the far corner of a 100 mm
+  board 0.2 mm out, and no amount of levelling or two-hole alignment touches it.
+- **Effective cutter diameter.** One straight slot, its width measured: what the bit *cuts*, runout
+  and deflection included. Isolation width depends on it directly, and the result belongs in the tool
+  library beside the V-bit tip width the test cuts already measure.
+- **Return to zero.** Scribe a cross, run a long fast pattern, scribe it again: two crosses that do
+  not coincide are lost steps, and the answer is a lower feed or acceleration rather than a better
+  toolpath.
+- **Spindle tram.** Nearly free, because the probe grid already exists: the dominant tilt in a height
+  map *is* the tram, and the levelling report could say so — "0.08 mm of tilt across 60 mm, mostly in
+  X, which is the machine rather than the board". Levelling hides it; knowing it lets it be fixed.
+- **Tool-change repeatability.** Touch off, cut a witness, change tools, touch off, cut beside it: how
+  much Z moves between bits, which is exactly what a mixed-bit job in one setup depends on.
+
+##### Where it lives
+
+*Job › Machine checks…*, beside *Test cuts…*, and `machine-check <name>` on the command line. Each
+writes a program and a companion page that says what to measure, where, and what the number means —
+the test cuts' own shape, which is already proven. Results are typed back in the same way a test cut
+is reopened, so the app can keep them: backlash feeds 6.21's overshoot, effective diameter feeds the
+tool library, and scale, squareness and tram are **reported and never silently applied**, because
+they belong in the machine's own firmware or in its frame.
+
+**Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
+cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 102.8.
 
 ### Phase 7 — User documentation — **started**
 

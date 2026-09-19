@@ -38,8 +38,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 31 | 11 | 4 | 16 | 0 |
-| 05 Viewer & export | 33 | 15 | 3 | 13 | 2 |
-| **Requirements** | **112** | **56** | **8** | **44** | **4** |
+| 05 Viewer & export | 34 | 15 | 3 | 14 | 2 |
+| **Requirements** | **113** | **56** | **8** | **45** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (13 proven, 1 partly, 3 never cut).
@@ -192,6 +192,7 @@ board being cut rather than from a document.
 | V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Not started** | refuses when the lowest point would not clear the stock, and on `G92`/`G10`/`G38`; the flat dry run stays as a choice |
 | V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180° |
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.55 mm closer than programmed: 0.27 mm of X backlash, taken up from opposite sides |
+| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Not started** | caliper-readable by design; backlash feeds 6.21, diameter feeds the tool library, the rest reported not applied |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -271,6 +272,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.19 A dry run that is the real run, raised | workshop | **Not started** |
 | 6.20 Which way up is this stock? | workshop | **Not started** |
 | 6.21 Every hole approached from the same side | workshop | **Not started** |
+| 6.22 Machine checks: measure the machine, not only the bit | workshop | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |
