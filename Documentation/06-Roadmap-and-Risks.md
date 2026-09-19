@@ -2031,7 +2031,7 @@ than discovered after.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
-- Solder-paste stencil generation.
+- **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
 - Machine-profile sharing.
 
 #### 6.1 Rulers — **scheduled, not started**
@@ -3072,6 +3072,84 @@ jig.
 
 **Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
 layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.
+
+#### 6.18 A paste stencil to 3D-print — **requested, not started**
+
+Requested from the workshop, and ranked ahead of the paste extruder (Phase 9), which stays long
+term: *"A Job option to create a solder paste stencil that can be made by 3D printing … MillBurn
+would produce the STL file and the user can slice it as they see fit."*
+
+**A dialog of its own, from the Job menu** — *Job › Paste stencil…*:
+
+- **Which paste layer**, from a drop-down, because a board can have two. With none, everything is
+  disabled and the dialog says a paste layer is needed and how to export one from KiCad.
+- **Stencil size**, width and height, with the paste layer centred in it.
+- **Thickness** — the stencil's overall thickness.
+- **Design foil thickness** — the foil the paste layer was drawn for, 0.10 to 0.15 mm, which with
+  each aperture's area sets the volume every pad should get.
+- **Thinner where shrinking cannot do it**, as an option: steps only for the apertures that need
+  them (below).
+- **Step margin** — how much bigger than the apertures in it a thinner area is, and a **merge
+  distance**, so steps that nearly touch become one area instead of a crowd of islands.
+- **Generate and save…** opens a save dialog, writes the `.stl`, and comes **back to the dialog**,
+  because a board often wants more than one stencil: top and bottom, or two thicknesses to compare.
+
+**It is about volume: shrink first, thin only where shrinking fails.** The workshop's correction
+to the first draft, which thinned the stencil: *"Maybe narrower and shorter is in fact a better way
+… It's about volume, not width/height."* A printed stencil is thick — 0.2 to 0.3 mm where a bought
+foil is 0.12 — so an aperture the paste layer's own size puts down 1.7 to 2.5 times the paste it was
+designed for, and bridges. Every aperture's **target volume** is Phase 9's: its area × the design
+foil thickness. At the stencil's thickness, that volume means a smaller hole, so the aperture
+**shrinks** — narrower and shorter, keeping its proportions — until area × thickness is the target.
+
+Shrinking has one limit, and it is the one stencil makers design around: paste only leaves a hole
+that is open enough for its depth. IPC-7525's **area ratio** — the opening's area over its wall area
+— has to stay at or above 0.66. Worked through for this section:
+
+| Pad | Stencil | Full size gives | Shrunk to the right volume | Area ratio |
+|---|---|---|---|---|
+| QFN thermal 3.0 × 3.0 | 0.3 mm | 2.5× the paste | 1.90 × 1.90 | 1.58 — releases |
+| 0805 1.0 × 1.3 | 0.2 mm | 1.7× | 0.77 × 1.01 | 1.09 — releases |
+| SOIC 0.6 × 1.5 | 0.2 mm | 1.7× | 0.46 × 1.16 | 0.83 — releases |
+| SOIC 0.6 × 1.5 | 0.3 mm | 2.5× | 0.38 × 0.95 | 0.45 — keeps its paste |
+| 0402 0.5 × 0.55 | 0.2 mm | 1.7× | 0.39 × 0.43 | 0.51 — keeps its paste |
+
+So shrinking is the right lever for large and mid-size pads, and small pads are where it runs out.
+Per aperture, in order: **shrink** to the target volume; where that breaks the area ratio, shrink
+only as far as release allows and, if steps are on, put the aperture in a **thinner step** where the
+right volume and release both hold; where neither works, **refuse and name the pad** rather than
+write a stencil that will not deliver it. The dialog reports each pad's target and delivered volume
+and the total, so an over- or under-fed pad is a number on screen before it is a bridge on the board.
+
+**What printing changes.** A printer cannot make any thickness: it makes whole layers, so steps snap
+to a **layer height** the operator gives (0.1 mm, 0.05 mm on resin). Nor any hole: an FDM nozzle
+cannot make a hole much smaller than itself, so a **smallest printable opening** is an option too,
+and an aperture that would have to shrink below it is refused and named like one that will not
+release. Printed stencils are thick by stencil standards, and
+a printer's smallest hole is far bigger than a laser's, so the dialog says plainly that fine pitch is
+where this stops working — the same warning Phase 9 plans for dispensing.
+
+**Which way up.** The side against the board stays flat, so it seals; steps are cut from the
+squeegee side, as on a bought step stencil, and the flat side is the one that prints on the bed. A
+bottom paste stencil is mirrored, since it is used from the board's underside.
+
+**Confidence in alignment, here too.** A stencil is only as good as its registration, and a printed
+part can locate itself: an optional **locating lip** under the stencil, following the board outline
+with a clearance, deep enough to catch the board's edge and shallower than the board, so the stencil
+drops over the cut-out board and cannot be placed wrong. That serves the goal the whole app is for
+better than centring by eye. To settle when it is built, alongside the paste layer centred in the
+stencil: whether the lip, when chosen, should centre the board rather than the paste.
+
+**Where it lives.** `src/MillBurn.Cam/StencilOperation.cs` turns apertures into regions by
+thickness — steps are Clipper offsets and unions, and the merge distance is a closing (offset out,
+union, offset back). `src/MillBurn.Export/StlWriter.cs` extrudes each region and writes binary STL:
+new, because nothing in the app is 3D yet, and polygons with holes need triangulating (a small
+library such as LibTessDotNet, or ear clipping written here). `stencil <project>` on the command line
+takes the same options, as every export does.
+
+**Done when** the test board's `F_Paste` gives a watertight STL (every edge shared by exactly two
+triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
+prints and slices without repair, and paste printed through it on a real board lands on the pads.
 
 ### Phase 7 — User documentation — **started**
 
