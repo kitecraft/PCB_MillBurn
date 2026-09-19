@@ -224,6 +224,12 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
             Assert.Contains(svg.Summary, s => s.Contains("Settings › Laser", StringComparison.Ordinal));
         }
 
+        // The centre is measured from the corner of what the file imports as — the stock's, here,
+        // since the stock layer makes the box. From the board's corner it is a number the operator
+        // cannot use, and the workshop hit exactly that.
+        Assert.Contains("<th>Centre, from the stock's corner</th>", plan.Page!.Content, StringComparison.Ordinal);
+        Assert.Contains("40.00 right, 40.00 up", plan.Page.Content, StringComparison.Ordinal);
+
         // And the project page gives one placement instead of a table to look things up in.
         Assert.Contains("Every SVG also carries the board outline, and the stock with its holes", plan.Page!.Content, StringComparison.Ordinal);
         Assert.Contains("puts the stock's corner on the laser's origin", plan.Page.Content, StringComparison.Ordinal);
@@ -234,6 +240,10 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
         Assert.Equal("68.63 × 66.09", Size(cutOut, "F_Mask"));
         Assert.DoesNotContain("<g id=\"stock\"", Svg(cutOut, "F_Mask").Content, StringComparison.Ordinal);
         Assert.Contains("puts the board's corner on the laser's origin, for a board already cut out", cutOut.Page!.Content, StringComparison.Ordinal);
+
+        // With the outline alone the box is the board, so its centre is measured from the board.
+        Assert.Contains("<th>Centre, from the board's corner</th>", cutOut.Page.Content, StringComparison.Ordinal);
+        Assert.Contains("34.31 right, 33.05 up", cutOut.Page.Content, StringComparison.Ordinal);
 
         // Without stock, the box is the board's.
         var bare = TestBoard(SvgPlacingLayers.OutlineAndStock, new BlankOptions());

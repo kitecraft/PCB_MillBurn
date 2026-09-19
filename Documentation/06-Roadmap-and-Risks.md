@@ -2032,6 +2032,8 @@ than discovered after.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
+- **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.55 mm closer than the program asked. See 6.21.
+- **Which way up is this stock?**: a datum corner that can be seen from across the bench on a nearly square piece. See 6.20.
 - **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
 - Machine-profile sharing.
 
@@ -3190,6 +3192,92 @@ height. The export's dry-run tick is unchanged.
 
 **Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
 with every plunge in the air, and its run time lands where the real program's does.
+
+#### 6.20 Which way up is this stock? — **requested, not started**
+
+From the workshop, cutting the 78.63 x 76.09 mm test stock: *"Might need a better way to orient the
+board. On this mostly square board, the chamfer corner isn't quite enough for a visual check for
+orientation. It's too square."*
+
+**The datum corner is already marked** — `BlankOperation` chamfers it 3 mm in the same pass as the
+edges, and the stock program says so. On an oblong piece that is enough, because the shape itself
+says which way round it goes. On a nearly square one it is not: a 3 mm chamfer on a 78 mm edge is a
+detail you have to go looking for, and every one of the four corners is a candidate until you find
+it. Getting it wrong puts every later file on the wrong face or the wrong way round, and the stock
+is the thing everything else is measured from.
+
+**The holes do not settle it either.** Turned 180 degrees, the two waste holes land very nearly
+where each other were — 2.50, 74.29 and 76.83, 2.50 on this piece — so a glance at them confirms
+nothing. That near-symmetry is not an accident: they sit in the two borders, as far apart as the
+stock allows.
+
+**Ideas, none chosen:**
+
+- **A chamfer sized for the piece**, rather than a fixed 3 mm: a proportion of the shorter edge, with
+  a floor and a ceiling. Costs nothing, cuts in the pass that is already running, and makes the mark
+  unmissable on a big piece.
+- **A second, smaller chamfer** on one neighbouring corner, so the pattern of corners is different
+  from every angle. Unambiguous under both 180 degrees and a flip — the flip being the one the datum
+  corner cannot catch today.
+- **A notch in a waste edge**, on the top or right only. Never on the two datum edges, which have to
+  stay clean to seat in the corner stop.
+- **A mark, not a cut**: the letters of the corner engraved shallowly in the waste, or burned in by
+  the laser as part of a placing layer — free on the laser, and readable rather than inferred.
+
+**To settle:** whether the mark should also survive the board being cut out of the stock, since after
+that the waste is scrap and the board's own outline has to carry the orientation; and whether a flip
+needs to be as loudly marked as a turn.
+
+**Done when** somebody who has not seen the piece before can say which corner is the datum from
+across the bench, and the stock program and project page say what to look for.
+
+#### 6.21 Every hole approached from the same side — **found in the workshop, not started**
+
+Found while checking the laser against the stock's waste holes, 2026-09-19, and worth recording in
+full because every party was innocent until the last measurement.
+
+**What was seen.** A burn of the *Stock and holes* placing layer landed with its cross 0.14 mm right
+of the top-left waste hole and 0.7 mm right of the bottom-right one — the error growing with X, which
+looks exactly like a scale error. It was not one:
+
+- A 100 mm line burned on the laser measured 100 mm to within 0.05 mm, so the laser's motion is right.
+- Falcon reported the imported design as 78.63 x 76.09 mm, the stock's own size, and its ruler
+  measured the two crosses 103.34 mm apart — which is what `stock.nc` drills, 74.33 across and 71.79
+  up. So the file and the software are right.
+- The cut stock measured 78.6 x 76.16 mm against 78.63 x 76.09, so the mill's scale is right.
+
+**What was wrong.** The holes. Measured on the piece they are about 102.8 mm apart, some 0.55 mm
+closer in X than the program asks — the workshop's own caliper reading and the two photographs agree.
+In Y the same comparison gives about 0.1 mm, so it is one axis.
+
+**Backlash, about 0.27 mm on X.** The two holes are approached from opposite directions — the
+bottom-right one moving +X, the top-left one moving -X — so the slack is taken up on opposite sides
+and the pair ends up **twice** the backlash closer together. The stock's outer size stays right
+because its outline is one continuous loop, where backlash shows as a small step at a direction
+change rather than as a size error. That is exactly the pattern here: a piece that measures true,
+with two holes in it that do not.
+
+**Nothing already built can correct it.** The two-hole alignment fits a rotation and a shift; this
+error is neither, and no rigid fit can push two points apart.
+
+**What to build.**
+
+- **Approach every hole from the same side.** Overshoot the position by a set distance and come back
+  to it, so the slack is taken up the same way for every hole — alignment holes, drilling files, the
+  start of a routed feature, and the alignment test's own moves. The approach happens at travel
+  height, over air. GRBL has no backlash compensation, so the program has to carry it.
+- **A distance, and a direction, in the machine settings.** The overshoot has to exceed the backlash,
+  so it is the operator's number (a millimetre is plenty for a machine worth cutting with); the
+  direction is one pair of signs, -X and -Y by default. To settle: what to do when the approach point
+  would fall outside the machine's soft limits near work zero — approach from the other side and say
+  so, or refuse.
+- **A backlash check, beside the test cuts.** A program that drills the same pair of holes approached
+  from both directions: measure the two pairs, and the difference is twice the backlash. That turns a
+  number nobody knows into one the operator can write on the machine — and it is the same shape as
+  `testcut`, which already exists to measure a bit rather than guess it.
+
+**Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 102.8, and
+a burn registered on them lands on both.
 
 ### Phase 7 — User documentation — **started**
 

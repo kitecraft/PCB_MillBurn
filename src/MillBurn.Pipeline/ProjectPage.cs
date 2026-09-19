@@ -310,12 +310,13 @@ public static class ProjectPage
         var placing = svgs[0].PlacingLayers;
         var stock = context.Blank.Resolved;
 
+        // Which box the placing layers make: the stock's if its layer is in the file, the board's if
+        // only the outline is — chosen in Settings › Laser by what goes against the laser's origin.
+        var withStock = placing.Any(p => p.StartsWith("Stock", StringComparison.Ordinal));
+
         if (placing.Count > 0)
         {
             // The layers make every file's box the same, so the advice is one placement, not a lookup.
-            // Which box they make: the stock's if its layer is in the file, the board's if only the
-            // outline is — chosen in Settings › Laser by what goes against the laser's origin.
-            var withStock = placing.Any(p => p.StartsWith("Stock", StringComparison.Ordinal));
             var holes = placing.Contains("Stock and holes");
 
             page.Append("<div class=\"note\"><p><strong>Every SVG also carries the board outline")
@@ -349,9 +350,18 @@ public static class ProjectPage
                     + "draw the board outline into every file to make them the same.</p></div>\n");
         }
 
+        // The centre is measured from the corner of whatever the file imports as, because that is
+        // what the operator puts on the origin: the stock's corner when the stock layer makes the
+        // box, the board's otherwise. Measured from the board's corner while the box was the
+        // stock's, the workshop had to work the right number out themselves.
+        var from = withStock ? "the stock's" : "the board's";
+        var originX = withStock ? 0 : boardX;
+        var originY = withStock ? 0 : boardY;
+
         page.Append("<table>\n<thead><tr><th>File</th><th>Imports as</th>"
-            + "<th>Lower-left, from the page's corner</th><th>Centre, from the board's corner</th>"
-            + "</tr></thead>\n<tbody>\n");
+            + "<th>Lower-left, from the page's corner</th><th>Centre, from ")
+            .Append(from)
+            .Append(" corner</th></tr></thead>\n<tbody>\n");
 
         foreach (var item in svgs)
         {
@@ -361,7 +371,7 @@ public static class ProjectPage
                 .Append(Nm.ToMillimetreString(d.Width, 2)).Append(" × ")
                 .Append(Nm.ToMillimetreString(d.Height, 2)).Append(" mm</td><td>")
                 .Append(Pair(d.MinX, d.MinY)).Append("</td><td>")
-                .Append(Pair(d.Centre.X - boardX, d.Centre.Y - boardY)).Append("</td></tr>\n");
+                .Append(Pair(d.Centre.X - originX, d.Centre.Y - originY)).Append("</td></tr>\n");
         }
 
         page.Append("</tbody>\n</table>\n");
