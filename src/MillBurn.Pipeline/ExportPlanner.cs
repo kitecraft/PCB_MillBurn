@@ -79,6 +79,12 @@ public sealed record ExportItem
     /// </summary>
     public Bounds? Drawing { get; init; }
 
+    /// <summary>
+    /// For an SVG: the layers in it that are there for placing it rather than burning — "Board
+    /// outline", "Stock and holes". Empty when Settings › Laser turns them off.
+    /// </summary>
+    public IReadOnlyList<string> PlacingLayers { get; init; } = [];
+
     /// <summary>What this file does, in the words the export list uses.</summary>
     public string DoingLabel => Doing ?? LayerOperations.Label(Operation);
 
@@ -351,7 +357,8 @@ public static class ExportPlanner
             }
 
             List<ExportItem> made = setting.Output == OutputKind.Svg
-                ? PlanSvg(board, frame, layer, setting, operation, page) is { } svg ? [svg] : []
+                ? PlanSvg(board, frame, blank, layer, setting, operation, page,
+                    (machineSettings ?? new MachineSettings()).SvgPlacingLayers) is { } svg ? [svg] : []
                 : PlanGcode(board, frame, layer, setting, operation, library, boardThicknessNm, machine,
                     effort, framing, machineSettings ?? new MachineSettings(), options, alignment);
 
@@ -442,10 +449,12 @@ public static class ExportPlanner
     private static ExportItem? PlanSvg(
         Board board,
         Bounds frame,
+        BlankPlan blank,
         BoardLayer layer,
         LayerOutputSettings setting,
         OperationKind operation,
-        SvgPage? page)
+        SvgPage? page,
+        SvgPlacingLayers references)
     {
         if (page is null || layer.Area.Count == 0)
         {
@@ -467,7 +476,7 @@ public static class ExportPlanner
         // the material. Without that the laser would be asked to clear an infinite plane.
         if (setting.Invert)
         {
-            area = Polygons.Difference(BoardRegion(board, mirrored), area);
+            area = Polygons.Difference(BoardRegion(board, mirrored ? frame.MinX + frame.MaxX : null), area);
         }
 
         var artwork = PolygonArtwork.ToArtwork(
@@ -487,7 +496,11 @@ public static class ExportPlanner
 
         // Single layer by default: some laser software makes one of its own cut layers per imported
         // object, which turns a board into hundreds of them.
-        var svg = SvgWriter.Write(artwork, page, new SvgExportOptions { SingleLayer = true });
+        var marks = references == SvgPlacingLayers.None
+            ? []
+            : ReferenceLayers(board, frame, references == SvgPlacingLayers.OutlineAndStock ? blank : BlankPlan.None, mirrored);
+
+        var svg = SvgWriter.Write(artwork, page, new SvgExportOptions { SingleLayer = true, References = marks });
 
         // Where this file's drawing sits on the page, which is the number somebody needs if their
         // laser software imports by the *content* rather than by the page.
@@ -497,7 +510,11 @@ public static class ExportPlanner
         // the board's 68.63 × 66.09 but the legend at 67.10 × 64.01 and the mask at 34.85 × 57.29.
         // One offset for all of them, the board's, put the mask 9.5 mm out. So each file says its
         // own, from what is actually going into it.
-        var drawn = Polygons.BoundsOf(area);
+        //
+        // With the reference layers in it, the box is theirs: the board, or the stock when there is
+        // one — the same for every file, which is what they are there for.
+        var drawn = marks.SelectMany(m => m.Shapes).Aggregate(
+            Polygons.BoundsOf(area), (b, shape) => b.Union(ArtGeometry.Measure(shape with { StrokeWidthNm = 0 })));
         var drawing = new Bounds(
             drawn.MinX - frame.MinX, drawn.MinY - frame.MinY,
             drawn.MaxX - frame.MinX, drawn.MaxY - frame.MinY);
@@ -512,6 +529,11 @@ public static class ExportPlanner
             // shapes describes the wrong thing, in the one place someone checks before writing it.
             Invariant($"{area.Count} shapes, {Polygons.AreaMm2(area):F2} mm²"),
         };
+
+        if (marks.Count > 0)
+        {
+            summary.Add(Invariant($"Placing layers, not for burning: {string.Join(", ", marks.Select(m => m.Label.ToLowerInvariant()))} (Settings › Laser)"));
+        }
 
         if (mirrored)
         {
@@ -555,6 +577,7 @@ public static class ExportPlanner
             Summary = summary,
             Warnings = warnings,
             Drawing = drawing,
+            PlacingLayers = [.. marks.Select(m => m.Label)],
         };
     }
 
@@ -1947,7 +1970,14 @@ public static class ExportPlanner
     /// when there is no outline, which is the same fallback the viewer makes and is stated as a
     /// warning rather than assumed.
     /// </summary>
-    private static Paths64 BoardRegion(Board board, bool mirrored)
+    /// <param name="board">The board, whose outline layer bounds the region.</param>
+    /// <param name="mirrorSumX">
+    /// Mirror about the vertical line at half this X, or null for no mirror. The caller's own axis,
+    /// never the board's: a mirrored layer flips about the frame's centreline, and on stock that is
+    /// not centred on the board the two lines differ — an inverted bottom layer then cut its
+    /// complement from a board region flipped about the wrong one, out by twice the difference.
+    /// </param>
+    private static Paths64 BoardRegion(Board board, long? mirrorSumX)
     {
         var outline = board.Layers.FirstOrDefault(l => l.Role == LayerRole.Outline);
 
@@ -1959,7 +1989,69 @@ public static class ExportPlanner
         // rather than a ring around its edge.
         region = Polygons.UnionSelf(region);
 
-        return mirrored ? MirrorX(region, board.Bounds.MinX + board.Bounds.MaxX) : region;
+        return mirrorSumX is { } sumX ? MirrorX(region, sumX) : region;
+    }
+
+    /// <summary>
+    /// The layers every SVG carries for placing it, not for burning: the board outline in red, and
+    /// the stock with its alignment holes in blue when there is stock.
+    ///
+    /// Asked for from the workshop after a mask, cropped by Falcon to its own outermost openings,
+    /// would have landed 9.5 mm out. With these in every file each one imports at the same box, so
+    /// the placement that works for one works for all. Mirrored with the drawing, about the same
+    /// line, because the holes go through the stock and the outline is the board's own.
+    /// </summary>
+    private static List<SvgReference> ReferenceLayers(Board board, Bounds frame, BlankPlan blank, bool mirrored)
+    {
+        long? sumX = mirrored ? frame.MinX + frame.MaxX : null;
+        var hairline = Nm.FromMillimetres(0.05);
+
+        var layers = new List<SvgReference>
+        {
+            new("board-outline", "Board outline", "#FF0000",
+                [new ArtShape { Subpaths = Rings(BoardRegion(board, sumX)), StrokeWidthNm = hairline }]),
+        };
+
+        if (!blank.Resolved)
+        {
+            return layers;
+        }
+
+        var shapes = new List<ArtShape>
+        {
+            new() { Subpaths = Rings([Polygons.Rectangle(blank.Bounds)]), StrokeWidthNm = hairline },
+        };
+
+        // A ring the hole's own size, and a cross through it that a pointer or a camera is aimed at.
+        var radius = Math.Max(blank.HoleDiameterNm / 2, Nm.FromMillimetres(0.2));
+        var arm = Nm.FromMillimetres(1);
+
+        foreach (var hole in blank.AlignmentHoles)
+        {
+            var c = sumX is { } s ? new Point2(s - hole.X, hole.Y) : hole;
+            var start = new Point2(c.X + radius, c.Y);
+
+            shapes.Add(new ArtShape
+            {
+                Subpaths =
+                [
+                    [new ArtSegment(ArtSweep.CounterClockwise, start, start, c)],
+                    [ArtSegment.Line(new Point2(c.X - arm, c.Y), new Point2(c.X + arm, c.Y))],
+                    [ArtSegment.Line(new Point2(c.X, c.Y - arm), new Point2(c.X, c.Y + arm))],
+                ],
+                StrokeWidthNm = hairline,
+            });
+        }
+
+        layers.Add(new SvgReference(
+            "stock", blank.AlignmentHoles.Count > 0 ? "Stock and holes" : "Stock", "#0000FF", shapes));
+
+        return layers;
+
+        static IReadOnlyList<IReadOnlyList<ArtSegment>> Rings(Paths64 paths) =>
+            [.. paths.Where(r => r.Count > 1).Select(r => (IReadOnlyList<ArtSegment>)
+                [.. r.Select((p, i) => ArtSegment.Line(
+                    new Point2(p.X, p.Y), new Point2(r[(i + 1) % r.Count].X, r[(i + 1) % r.Count].Y)))])];
     }
 
     /// <summary>Reflects realised geometry in the same vertical line the toolpaths use.</summary>

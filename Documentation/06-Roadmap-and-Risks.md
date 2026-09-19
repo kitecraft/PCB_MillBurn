@@ -2982,7 +2982,7 @@ but it asked the operator to follow a remembered record behind the Pre-cut tick 
 size and the as-cut holes, that no longer agree — and that could not be made clear in the window. If it
 comes back, it starts from what an operator would understand rather than from the mechanism.
 
-#### 6.17 The stock's alignment holes, marked in the SVGs — **requested, not started**
+#### 6.17 The stock's alignment holes, marked in the SVGs — **built as placing layers; Print and Cut not tried**
 
 Requested from the workshop, as part of the goal the whole app serves: **confidence in alignment, for
 everything.** The mill already has it — the stock's two waste holes are cut in the stock's own frame,
@@ -3034,6 +3034,41 @@ wants is an extent that is always the same**, and the marks this section emits c
 mark at two opposite corners of whatever the operator registers against makes every layer crop to
 the same box, and W/2, H/2 against the jig then works for all of them. Which box — the stock, or the
 cut-out board the jig takes today — is the first question to settle when this is built.
+
+**Tried by hand first.** Four SVGs were made from the test board's own exports and imported into
+Falcon and LightBurn: the mask with the board outline as a red hairline; with two small filled squares
+in the board's corners; the legend with the outline; and the mask with the stock and its holes. All
+imported at the size intended, each colour as its own layer, and switching a layer off moved nothing
+else. The mask with the outline, placed at W/2, H/2 against the jig and burned through tape onto milled
+copper, landed *"as best as I can expect."* The corner squares failed for a reason no test would
+catch: *"almost impossible to see. I mistook them for a dirty monitor at first."* And the stock file
+drew the request that settled the design — *"Would be even better with the outline as a third layer
+even. Why not? They are useful and easy enough to hide."*
+
+**Built on branch `007_SvgMarks`.** `ExportPlanner.ReferenceLayers` gives every SVG the board outline
+(red, `#FF0000`) and, with stock, the stock's rectangle with a ring the hole's size and a 2 mm cross at
+each alignment hole (blue, `#0000FF`), after the drawing (`#00E000`). `SvgWriter` writes them as real
+layers with explicit colours even in single-layer mode — being separate is their point. Mirrored with
+the drawing, about the frame's centreline. `ExportItem.Drawing` now includes them, so each file's
+summary and the project page say every file imports at the stock's size, and the page gives one
+placement instead of the per-file table (which stays for exports without them). On by default, against
+this project's habit, because what it prevents is silent.
+
+**Which box is a list**, under *Settings › Laser › Placing layers*, because it depends on what goes
+against the laser's origin and the workshop does it both ways. *Board outline, and the stock* (the
+default) makes every file import at the stock's size, for the stock before the board is cut out —
+the order the project page suggests. *Board outline only* makes it the board's, for a cut-out board
+against a jig, which is how the first burns were placed. And *None*. `--svg-marks
+stock|outline|off` overrides it from the command line.
+
+It found a bug on the way. An inverted, mirrored layer — the bottom copper's etch resist — is cut from
+the board region; the drawing was mirrored about the stock's centreline and the region about the
+board's, so on stock the board is not centred in (the default margins are 10 and 5) the resist came out
+5 mm across. `BoardRegion` now takes the caller's axis.
+
+**Still to do:** Print and Cut on the two holes in LightBurn, and the three items above — the flip two
+points cannot see, and pointer offset — want a burn registered on the holes rather than placed by a
+jig.
 
 **Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
 layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.

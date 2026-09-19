@@ -38,6 +38,7 @@ internal static class Program
             Console.WriteLine("                                 --stock-have the stock is already that size; cut nothing");
             Console.WriteLine("                                 --stock-holes two alignment holes in its waste border");
             Console.WriteLine("                                 --stock-holes-only with --stock-size: drill only those holes, cut nothing");
+            Console.WriteLine("                                 --svg-marks stock|outline|off placing layers in every SVG: outline and stock, outline, none (default: Settings)");
             Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
             Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
             Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
@@ -73,7 +74,7 @@ internal static class Program
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
-            Console.WriteLine("                                 --stock / --stock-size / --stock-have / --mill-holes / --thickness as for export");
+            Console.WriteLine("                                 --stock / --stock-size / --stock-have / --stock-holes / --mill-holes / --mill-tool / --mill-above / --thickness as for export");
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none records what a layer becomes");
             Console.WriteLine("  project info <project>         Report what a project contains");
             Console.WriteLine("  project refresh <p> [--apply]  Compare against the source folder; --apply takes the changes");
@@ -720,13 +721,19 @@ internal static class Program
         }
 
         // Job options too, for the same reason: a project configured from a script is a project
-        // somebody can check without clicking through the window to build it.
+        // somebody can check without clicking through the window to build it. All of them, as
+        // export reads them — --mill-tool and --mill-above were dropped here, so a saved project
+        // routed its holes with whichever end mills fitted rather than the one asked for.
+        var job = JobFor(args, null);
+
         project.Settings = project.Settings with
         {
             Job = project.Settings.Job with
             {
-                Blank = Blank(args),
-                MillLargeHoles = args.Contains("--mill-holes", StringComparer.OrdinalIgnoreCase),
+                Blank = job.Blank,
+                MillLargeHoles = job.MillLargeHoles,
+                MillDrillToolId = job.MillDrillToolId,
+                MillAboveMm = job.MillAboveMm,
             },
             BoardThicknessMm = thickness.Mm,
         };
@@ -1708,11 +1715,27 @@ internal static class Program
             alignment = alignment with { Moved = chosen };
         }
 
+        // The placing layers follow Settings › Laser, unless the command line says otherwise.
+        var machine = Argument(args, "--svg-marks") switch
+        {
+            null => app.Machine,
+            "stock" => app.Machine with { SvgPlacingLayers = SvgPlacingLayers.OutlineAndStock },
+            "outline" => app.Machine with { SvgPlacingLayers = SvgPlacingLayers.OutlineOnly },
+            "off" => app.Machine with { SvgPlacingLayers = SvgPlacingLayers.None },
+            _ => null,
+        };
+
+        if (machine is null)
+        {
+            Console.Error.WriteLine("--svg-marks takes stock, outline or off.");
+            return 1;
+        }
+
         var plan = blankOnly
             ? BlankOnlyPlan(board, settings, thicknessMm, framing, app, job)
             : ExportPlanner.Plan(
                 board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm), only,
-                framing: framing, machineSettings: app.Machine, job: job, alignment: alignment);
+                framing: framing, machineSettings: machine, job: job, alignment: alignment);
 
         // Aligned: only the files the alignment moves, under their own names, and no project page —
         // that page describes a whole export, and this is not one.

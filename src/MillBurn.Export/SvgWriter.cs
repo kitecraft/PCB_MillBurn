@@ -74,6 +74,11 @@ public static class SvgWriter
             }
         }
 
+        foreach (var reference in options.References)
+        {
+            WriteReference(sb, reference, page, options);
+        }
+
         sb.Append("</svg>\n");
         return sb.ToString();
     }
@@ -199,6 +204,30 @@ public static class SvgWriter
         foreach (var shape in layer.Shapes)
         {
             WriteShape(sb, shape, page, options, colour);
+        }
+
+        sb.Append("  </g>\n");
+    }
+
+    /// <summary>
+    /// A placing layer: declared a layer, so importers make it one, and coloured on every element
+    /// whatever the profile, because its colour is how it is told apart from the drawing.
+    /// </summary>
+    private static void WriteReference(StringBuilder sb, SvgReference reference, SvgPage page, SvgExportOptions options)
+    {
+        sb.Append(Invariant($"  <g id=\"{Escape(reference.Id)}\""));
+        sb.Append(Invariant($" inkscape:groupmode=\"layer\" inkscape:label=\"{Escape(reference.Label)}\">\n"));
+
+        foreach (var shape in reference.Shapes)
+        {
+            var d = BuildPathData(shape, page, options.Mirror);
+
+            if (d.Length > 0)
+            {
+                sb.Append("    <path d=\"").Append(d).Append('"')
+                  .Append(Invariant($" fill=\"none\" stroke=\"{reference.Colour}\""))
+                  .Append(Invariant($" stroke-width=\"{Num(Nm.ToMillimetres(Math.Max(shape.StrokeWidthNm, 0)))}\"/>\n"));
+            }
         }
 
         sb.Append("  </g>\n");

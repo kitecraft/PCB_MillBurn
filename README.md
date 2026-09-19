@@ -355,12 +355,13 @@ run the dry run first and read the pages beside the files.
   best as I can expect."*
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, and alignment measured from the
-stock's two waste holes.
+isolation, the routed channel between the boards of a panel, alignment measured from the
+stock's two waste holes, and the placing layers as the app writes them (tried by hand first, in
+Falcon and LightBurn).
 
-953 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+955 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next: rulers down the viewport, a numbered picture on the
-drilling and routing pages, better tab placement, and registration marks for placing a burn — then
+drilling and routing pages, better tab placement, and Print and Cut on the stock's two holes — then
 an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
 remembering and what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
 

@@ -626,10 +626,28 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
     is the stock rather than the artwork &mdash; so there is an empty border round the drawing. Some
     laser software imports the <em>drawing</em> and throws the border away, which puts the artwork at
     the origin instead of where it belongs. <strong>Place by the page, not by the content</strong>,
-    and do not centre. If your software cannot do that, the project page has a row for every SVG:
-    the size it will import at, where its lower-left corner goes, and where its centre goes from the
-    board&rsquo;s corner. Each file&rsquo;s numbers are its own &mdash; a mask&rsquo;s drawing is only
-    its outermost openings, so it imports much smaller than the copper, and at a different place.
+    and do not centre &mdash; unless every file carries the placing layers below, which is the
+    default.
+  </p>
+  <p>
+    <strong>Placing layers.</strong> Every SVG also carries the board outline in red and, when there
+    is stock, the stock and its two alignment holes in blue, each as a layer of its own. They are for
+    placing the file, not for burning: switch them off in the laser software before you burn. Because
+    they are in every file, software that imports the drawing imports every file at the same size
+    &mdash; the stock&rsquo;s, or the board&rsquo;s without stock &mdash; and centring each at half its
+    width and height puts that corner on the laser&rsquo;s origin. Tried in Creality Falcon and
+    LightBurn: each colour arrives as its own layer, and switching one off moves nothing else.
+    <strong>Settings &rsaquo; Laser &rsaquo; Placing layers</strong> chooses which, by what you put
+    against the laser&rsquo;s origin: <em>Board outline, and the stock</em> for the stock before the
+    board is cut out, so every file imports at the stock&rsquo;s size; <em>Board outline only</em> for
+    a cut-out board against a jig, so every file imports at the board&rsquo;s size; or
+    <em>None</em>.
+  </p>
+  <p>
+    Without them, the project page has a row for every SVG: the size it will import at, where its
+    lower-left corner goes, and where its centre goes from the board&rsquo;s corner. Each
+    file&rsquo;s numbers are its own &mdash; a mask&rsquo;s drawing is only its outermost openings,
+    so it imports much smaller than the copper, and at a different place.
   </p>
 </div>
 
@@ -1583,8 +1601,10 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  Each file is also written as a <em>single</em> layer. Some laser software creates one of its own
-  cut layers per imported object, which turns a board into several hundred of them.
+  Each drawing is also written as a <em>single</em> layer. Some laser software creates one of its own
+  cut layers per imported object, which turns a board into several hundred of them. The placing
+  layers are the exception, on purpose: two more, in colours of their own, so they can be switched
+  off.
 </p>
 
 <h2 id="viewer">Looking at a G-code file</h2>
@@ -1625,7 +1645,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   <strong>Edit &rsaquo; Settings&hellip;</strong> holds the numbers that describe your machine rather
   than your board, so they stay put when you open a different project. They are on tabs &mdash;
-  Machine, Milling, Dry run, Probing &amp; levelling, and New boards &mdash; and a tab with something
+  Machine, Milling, Laser, Dry run, Probing &amp; levelling, and New boards &mdash; and a tab with something
   wrong on it is marked.
 </p>
 

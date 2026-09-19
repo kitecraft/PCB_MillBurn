@@ -34,6 +34,19 @@ public sealed class SettingsWindow : Window
     private readonly Dictionary<string, CheckBox> _flags = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ComboBox> _outputs = new(StringComparer.Ordinal);
 
+    /// <summary>What every SVG carries for placing it, in <see cref="SvgPlacingLayers"/> order.</summary>
+    private readonly ComboBox _placing = new()
+    {
+        ItemsSource = new[]
+        {
+            "Board outline, and the stock",
+            "Board outline only",
+            "None",
+        },
+        Width = 230,
+        HorizontalAlignment = HorizontalAlignment.Left,
+    };
+
     /// <summary>What a short last lap becomes, in <see cref="ShortLastLap"/> order.</summary>
     private readonly ComboBox _shortLap = new()
     {
@@ -165,6 +178,20 @@ public sealed class SettingsWindow : Window
             "A flat lap at full depth takes the slope out of the floor the last ramp left. On a "
             + "through cut whose last ramp starts below the board there is no floor, so it is left "
             + "out; tick this to cut it anyway.");
+
+        body = Tab(tabs, "Laser");
+        Section(body, "Placing the SVGs");
+        body.Children.Add(Muted(
+            "Every SVG shares one page, the stock, so placing it by the page needs nothing more. "
+            + "Laser software that imports the drawing instead keeps only the drawing's own box — "
+            + "and a mask's box is just its outermost openings.", 11, new Thickness(0, 0, 0, 8)));
+        Choice(body, _placing, "Placing layers", (int)settings.Machine.SvgPlacingLayers,
+            "Drawn into every SVG as layers of their own — the board outline in red, the stock and "
+            + "its alignment holes in blue — so every file imports at the same size and one "
+            + "placement works for copper, mask and silkscreen alike. With the stock, that size is "
+            + "the stock's: for placing the stock before the board is cut out. The outline alone "
+            + "makes it the board's: for a cut-out board against a jig. Switch them off in the laser "
+            + "software before burning.");
 
         body = Tab(tabs, "Dry run", SettingsSection.DryRun);
         Section(body, "The job, with nothing cut");
@@ -569,6 +596,12 @@ public sealed class SettingsWindow : Window
                 _ => ShortLastLap.OwnLap,
             },
             FinishingLapOnThroughCuts = Flagged("finishingLap"),
+            SvgPlacingLayers = _placing.SelectedIndex switch
+            {
+                1 => SvgPlacingLayers.OutlineOnly,
+                2 => SvgPlacingLayers.None,
+                _ => SvgPlacingLayers.OutlineAndStock,
+            },
         },
         new DryRunSettings
         {
@@ -675,6 +708,7 @@ public sealed class SettingsWindow : Window
         _numbers["isolation"].Value = (decimal)new MillingDefaults().IsolationWidthMm;
         _shortLap.SelectedIndex = (int)machine.ShortLastLap;
         _flags["finishingLap"].IsChecked = machine.FinishingLapOnThroughCuts;
+        _placing.SelectedIndex = (int)machine.SvgPlacingLayers;
 
         _numbers["dryHeight"].Value = (decimal)dryRun.HeightMm;
         _flags["keepFeeds"].IsChecked = dryRun.KeepFeeds;
