@@ -63,6 +63,15 @@ public sealed record ExportItem
     /// </summary>
     public string? Bit { get; init; }
 
+    /// <summary>
+    /// What this file does, when the operation's own name would say something else — "Drill
+    /// alignment holes" for a stock program that cuts nothing out. Null uses the operation's name.
+    /// </summary>
+    public string? Doing { get; init; }
+
+    /// <summary>What this file does, in the words the export list uses.</summary>
+    public string DoingLabel => Doing ?? LayerOperations.Label(Operation);
+
     public int Bytes => System.Text.Encoding.UTF8.GetByteCount(Content);
 }
 
@@ -362,8 +371,9 @@ public static class ExportPlanner
 
         // First in the list, because everything else is referenced to the piece it makes. There is
         // no program when the blank is declared: the stock is already that size, and the app is
-        // being told what is on the table rather than asked to make it.
-        if (blank is { Resolved: true, Cut: true } && items.Count > 0)
+        // being told what is on the table rather than asked to make it — unless it was asked to
+        // drill the alignment holes into it, which is a program of its own.
+        if (blank.WritesProgram && items.Count > 0)
         {
             items.Insert(0, BlankProgram(
                 board, blank, settings, library, machine, framing,
@@ -1028,7 +1038,7 @@ public static class ExportPlanner
 
         var blank = BlankFor(board, settings, library, job);
 
-        if (blank is not { Resolved: true, Cut: true })
+        if (!blank.WritesProgram)
         {
             return (null, blank);
         }
@@ -1091,32 +1101,48 @@ public static class ExportPlanner
             // Worked out with the stock itself, because where they go depends on where the board sits
             // inside it and on the cutter that makes both.
             AlignmentHoles = blank.AlignmentHoles,
-            HoleDiameterNm = blank.HoleDiameterNm,
         };
 
         var toolpath = BlankOperation.Build(blank.Bounds, options);
 
-        // Linked like every other program. This one is emitted straight rather than through Assemble,
-        // so without this an alignment hole's laps lifted to safe height and plunged back into the hole
-        // they had just cut. The stock's own edges are unaffected: a deeper lap of the perimeter starts
-        // above where the last one finished, which is a plunge by definition and never a continuation.
+        // The holes first, as their own drilling operation with the same bit: the emitter changes tools
+        // only when the name changes, so the two run back to back with nothing in between.
+        var holes = BlankOperation.Holes(options);
+
+        // Linked like every other program. This one is emitted straight rather than through Assemble.
         var (linked, _) = PassLinker.Apply(toolpath);
 
         var shift = new Point2(-blank.Bounds.MinX, -blank.Bounds.MinY);
 
+        var size = Invariant($"{Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm");
+
+        // Holes only: the stock is already its size, so the program is the holes and nothing else.
+        // Nothing is cut free, so there are no tabs and no fresh edges to say anything about.
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — stock",
-            Toolpaths = [Translate(linked, shift)],
+            Toolpaths = blank.HolesOnly && holes is not null
+                ? [Translate(holes, shift)]
+                : holes is null
+                    ? [Translate(linked, shift)]
+                    : [Translate(holes, shift), Translate(linked, shift)],
             OriginShift = shift,
-            Notes =
-            [
-                Invariant($"Cut this first. Everything else in this export is referenced to the corner it makes."),
-                Invariant($"Fit the {tool.Name}: the Board outline layer's bit, which cuts the stock to size as well as cutting out the board."),
-                Invariant($"Stock {Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm. Work zero is its lower-left corner."),
-                "Tabs are on the top and right edges only: a stub on a datum edge stops the stock seating.",
-                "Deburr the two datum edges before first use — a fresh cut leaves a burr underneath.",
-            ],
+            Notes = blank.HolesOnly
+                ?
+                [
+                    "Run this first. Everything else in this export is referenced to the stock's lower-left corner.",
+                    Invariant($"Fit the {tool.Name}: the Board outline layer's bit."),
+                    Invariant($"Stock {size}, pre-cut, in the corner stop the right way up. Work zero is its lower-left corner."),
+                    "Only the alignment holes are drilled. The stock's edges are left as they are.",
+                ]
+                :
+                [
+                    Invariant($"Cut this first. Everything else in this export is referenced to the corner it makes."),
+                    Invariant($"Fit the {tool.Name}: the Board outline layer's bit, which cuts the stock to size as well as cutting out the board."),
+                    Invariant($"Stock {size}. Work zero is its lower-left corner."),
+                    "Tabs are on the top and right edges only: a stub on a datum edge stops the stock seating.",
+                    "Deburr the two datum edges before first use — a fresh cut leaves a burr underneath.",
+                ],
         };
 
         var (text, stats) = GcodeEmitter.Emit(job, new GcodeOptions
@@ -1125,19 +1151,34 @@ public static class ExportPlanner
             SafeZNm = Nm.FromMillimetres(machineSettings.SafeZMm),
             ApproachZNm = Nm.FromMillimetres(machineSettings.ApproachZMm),
             Decimals = machineSettings.Decimals,
-            CannedCycles = machineSettings.CannedCycles,
+
+            // Never canned cycles here. Drill alignment finds the waste holes by reading this program,
+            // and the reader does not interpret G81, so a canned hole is one it cannot see. Two plain
+            // plunges cost nothing on any controller.
+            CannedCycles = false,
         });
 
         var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(GcodeParser.Parse(text)), machine);
 
-        summary.Add(Invariant(
-            $"{Nm.ToMillimetreString(blank.Bounds.Width, 2)} x {Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm from a larger sheet"));
-        summary.Add(Invariant($"{tool.Name}, the Board outline's bit · {Nm.ToMillimetreString(options.TotalDepthNm, 2)} mm deep in {Nm.ToMillimetreString(options.DepthPerPassNm, 2)} mm passes"));
+        if (blank.HolesOnly)
+        {
+            summary.Add(Invariant($"Alignment holes only, in {size} pre-cut stock"));
+            summary.Add(Invariant($"{tool.Name}, the Board outline's bit · {Nm.ToMillimetreString(options.TotalDepthNm, 2)} mm deep, pecked {Nm.ToMillimetreString(options.DepthPerPassNm, 2)} mm at a time"));
+        }
+        else
+        {
+            summary.Add(Invariant($"{size} from a larger sheet"));
+            summary.Add(Invariant($"{tool.Name}, the Board outline's bit · {Nm.ToMillimetreString(options.TotalDepthNm, 2)} mm deep in {Nm.ToMillimetreString(options.DepthPerPassNm, 2)} mm passes"));
+        }
+
         summary.Add(Invariant($"{stats.CutLengthMm:F0} mm cutting, {measured.TravelMm:F0} mm travel"));
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
         summary.AddRange(blank.Notes);
 
-        warnings.Add("Cut this before anything else, and keep the piece the right way up — the lower-left corner of this rectangle is work zero for every other file in this export.");
+        // Named, not "this": the warning is shown in the checks and on the pages with no file beside it.
+        warnings.Add(blank.HolesOnly
+            ? "Drill the stock's alignment holes before anything else, with the stock in the corner stop the right way up — its lower-left corner is work zero for every other file in this export."
+            : "Cut the stock before anything else, and keep it the right way up — its lower-left corner is work zero for every other file in this export.");
         warnings.AddRange(ToolAdvice.For(tool));
 
         return new ExportItem
@@ -1149,6 +1190,7 @@ public static class ExportPlanner
             Operation = OperationKind.Outline,
             Output = OutputKind.Gcode,
             TargetName = BlankFileName(board),
+            Doing = blank.HolesOnly ? "Drill alignment holes" : null,
             Content = text,
             Summary = summary,
             Warnings = warnings,

@@ -77,12 +77,14 @@ public sealed record BlankOptions
     public bool AlignmentHoles { get; init; }
 
     /// <summary>
-    /// Their diameter, or zero for one the outline cutter can spiral comfortably.
+    /// On stock of a stated size, drill only the alignment holes and leave its edges alone.
     ///
-    /// A cutter needs room to spiral: a hole its own width is a plunge. Half as wide again is the
-    /// smallest that is not, and it is still small enough to sit in a 10 mm border.
+    /// For stock that already is that size — a pre-cut sheet — where cutting it again would take a
+    /// sliver off at best. The holes are the useful part: they give every later setup two known
+    /// places to check against. Only honoured with a stated size, with the stock set to be made on
+    /// the mill, and with holes asked for; otherwise it would quietly stop a grown stock being cut.
     /// </summary>
-    public double HoleDiameterMm { get; init; }
+    public bool HolesOnly { get; init; }
 
     public static BlankOptions Default { get; } = new();
 }
@@ -98,6 +100,15 @@ public sealed record BlankPlan
     /// <summary>True when the mill makes this piece, false when the operator already has it.</summary>
     public bool Cut { get; init; }
 
+    /// <summary>
+    /// True when the operator already has this piece and the mill only drills its alignment holes.
+    /// <see cref="Cut"/> is false then: nothing about the piece's size is the mill's.
+    /// </summary>
+    public bool HolesOnly { get; init; }
+
+    /// <summary>Whether this export writes a stock program: one that cuts the piece, or one that only drills its holes.</summary>
+    public bool WritesProgram => Resolved && (Cut || HolesOnly);
+
     /// <summary>Why there is no blank. Empty when there is one.</summary>
     public IReadOnlyList<string> Refusals { get; init; } = [];
 
@@ -110,7 +121,7 @@ public sealed record BlankPlan
     /// </summary>
     public IReadOnlyList<Point2> AlignmentHoles { get; init; } = [];
 
-    /// <summary>The diameter of those holes.</summary>
+    /// <summary>The diameter of those holes: the cutter's own, since each is a single plunge.</summary>
     public long HoleDiameterNm { get; init; }
 
     public static BlankPlan None { get; } = new();
@@ -207,9 +218,15 @@ public static class Blanks
                 $"The left and right borders differ ({Mm(left)} and {Mm(right)} mm) and this job has a mirrored layer. The flip is about the stock's centreline, so the design lands {Mm(Math.Abs(left - right))} mm from where equal borders would put it. Equalise them unless you have checked the arithmetic."));
         }
 
+        // Holes only is pre-cut stock as far as its size goes: the mill drills into it and cuts
+        // nothing off it, so everything said about a piece the mill did not make applies.
+        var holesOnly = options.HolesOnly && options.Cut && options.AlignmentHoles
+            && options.Sizing == BlankSizing.Stated;
+        var cut = options.Cut && !holesOnly;
+
         // Deliberately not a "Blank W x H" note: the caller leads with that, and a note that
         // repeats the headline pushes the ones that say something new further down the page.
-        if (!options.Cut)
+        if (!cut)
         {
             notes.Add("Pre-cut stock is a claim rather than a measurement: it fixes work zero, the shared page and the mirror axis, and guarantees nothing about the stock's size or squareness. Enter measured dimensions, and mark the datum corner yourself — nothing cuts a key into a piece it did not make.");
         }
@@ -217,12 +234,15 @@ public static class Blanks
         notes.Add(Invariant(
             $"The board uses {Fill(board, bounds):P0} of it."));
 
-        var (holes, diameter) = AlignmentHolesFor(options, board, bounds, cutterNm, notes);
+        var (holes, diameter) = AlignmentHolesFor(options, holesOnly, board, bounds, cutterNm, notes);
 
         return new BlankPlan
         {
             Bounds = bounds,
-            Cut = options.Cut,
+            Cut = cut,
+
+            // With nowhere to put them there is nothing to drill, and so no program at all.
+            HolesOnly = holesOnly && holes.Count > 0,
             Notes = notes,
             AlignmentHoles = holes,
             HoleDiameterNm = diameter,
@@ -237,13 +257,6 @@ public static class Blanks
     public static long HoleClearanceNm { get; } = Nm.FromMillimetres(1);
 
     /// <summary>
-    /// The hole a given cutter can spiral comfortably: half as wide again as the cutter, rounded up
-    /// to a tenth. A cutter needs room to spiral, and one the size of the hole is a plunge.
-    /// </summary>
-    public static long HoleDiameterFor(long cutterNm) =>
-        Nm.FromMillimetres(Math.Ceiling(cutterNm * 1.5 / Nm.PerMillimetre * 10) / 10);
-
-    /// <summary>
     /// Where the two alignment holes go, and how big they are.
     ///
     /// **As far apart as the stock allows**, because the angle two holes can resolve is the error in
@@ -252,7 +265,7 @@ public static class Blanks
     /// the stock's diagonal.
     /// </summary>
     private static (IReadOnlyList<Point2> Holes, long DiameterNm) AlignmentHolesFor(
-        BlankOptions options, Bounds board, Bounds bounds, long cutterNm, List<string> notes)
+        BlankOptions options, bool holesOnly, Bounds board, Bounds bounds, long cutterNm, List<string> notes)
     {
         if (!options.AlignmentHoles)
         {
@@ -265,9 +278,10 @@ public static class Blanks
             return ([], 0);
         }
 
-        var diameter = options.HoleDiameterMm > 0
-            ? Nm.FromMillimetres(options.HoleDiameterMm)
-            : HoleDiameterFor(cutterNm);
+        // Drilled straight down with the stock's own cutter, so a hole is exactly that cutter's width.
+        // It used to be spiralled out half as wide again, which took a helix and a lap of linking for
+        // nothing the check needs: the check needs a centre, and a plunge has only one.
+        var diameter = cutterNm;
 
         // What each hole needs from the edge it sits beside: its own radius, the cutter's, and the
         // clearance. Twice that is the narrowest border one fits in.
@@ -278,13 +292,14 @@ public static class Blanks
         if (bottom < reach * 2 || left < reach * 2)
         {
             notes.Add(Invariant(
-                $"No alignment holes: a {Mm(diameter)} mm hole needs {Mm(reach * 2)} mm of border, and the bottom and left borders are {Mm(bottom)} and {Mm(left)} mm. Widen them, or ask for a smaller hole."));
+                $"No alignment holes: a {Mm(diameter)} mm hole needs {Mm(reach * 2)} mm of border, and the bottom and left borders are {Mm(bottom)} and {Mm(left)} mm. Widen them."));
 
             return ([], 0);
         }
 
-        notes.Add(Invariant(
-            $"Two {Mm(diameter)} mm alignment holes in the waste — one in the bottom border, one in the left — cut before the edges, with the same bit. Check a later setup against them with Job > Drill alignment before anything is cut into the board."));
+        notes.Add(holesOnly
+            ? Invariant($"Only the alignment holes are drilled: two {Mm(diameter)} mm holes in the waste — one in the bottom border, one in the left — with the Board outline's bit, and the stock's edges are left as they are. Check a later setup against them with Job > Drill alignment before anything is cut into the board.")
+            : Invariant($"Two {Mm(diameter)} mm alignment holes in the waste — one in the bottom border, one in the left — drilled before the edges with the same bit. Check a later setup against them with Job > Drill alignment before anything is cut into the board."));
 
         return (
             [

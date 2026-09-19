@@ -53,6 +53,15 @@
             <Setter Property="Opacity" Value="0.85" />
         </Style>
 
+        <!-- A recent project on the empty panel: a line of text to click, not a row of buttons. -->
+        <Style Selector="Button.recent">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+
         <Style Selector="Button.swatch">
             <Setter Property="Padding" Value="0" />
             <Setter Property="MinWidth" Value="0" />
@@ -155,6 +164,8 @@
                         <Separator />
                         <MenuItem Header="_Save" Click="OnSaveClicked" InputGesture="Ctrl+S" />
                         <MenuItem Header="Save _as…" Click="OnSaveAsClicked" InputGesture="Ctrl+Shift+S" />
+                        <MenuItem Header="_Close project" Click="OnCloseProjectClicked" InputGesture="Ctrl+W"
+                                  IsEnabled="{Binding HasBoard}" />
                         <Separator />
                         <MenuItem Header="_Export…" Click="OnExportClicked" InputGesture="Ctrl+E"
                                   IsEnabled="{Binding HasBoard}" />
@@ -300,6 +311,9 @@
                                 <Button Content="Open project…" Click="OnOpenProjectClicked"
                                         HorizontalAlignment="Stretch"
                                         ToolTip.Tip="Open a .millburn project (Ctrl+O)" />
+
+                                <!-- The same list as File ▸ Open recent, filled whenever this panel shows. -->
+                                <StackPanel x:Name="RecentPanel" Spacing="0" Margin="0,10,0,0" />
                             </StackPanel>
 
                             <!-- PROJECT INFO -->
@@ -379,6 +393,13 @@
                                                   IsEnabled="{Binding CutTheBlank}"
                                                   ToolTip.Tip="Two small holes in the waste border, cut with the same bit before the edges are cut. A later setup can be checked against them with Job ▸ Drill alignment, before anything is cut into the board.">
                                             <TextBlock Text="Alignment holes in the waste" Classes="caption" />
+                                        </CheckBox>
+
+                                        <CheckBox IsChecked="{Binding StockHolesOnly, Mode=TwoWay}"
+                                                  IsVisible="{Binding CanAskForHolesOnly}"
+                                                  Margin="18,0,0,0"
+                                                  ToolTip.Tip="The stock is already this size: drill only the two alignment holes into it, and leave its edges alone. Put it in the corner stop the right way up first — its lower-left corner is work zero.">
+                                            <TextBlock Text="Export only the alignment holes" Classes="caption" />
                                         </CheckBox>
 
                                         <TextBlock Text="{Binding BlankSummary}"
@@ -744,6 +765,7 @@
                                                     <Button Classes="swatch"
                                                             Width="10" Height="10"
                                                             VerticalAlignment="Center"
+                                                            IsVisible="{Binding HasColour}"
                                                             Click="OnKindSwatchClicked"
                                                             ToolTip.Tip="Change this colour">
                                                         <Border CornerRadius="5"

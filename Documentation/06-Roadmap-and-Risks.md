@@ -2025,7 +2025,8 @@ than discovered after.
 - **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
 - **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
-- **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction. See 6.16.
+- **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction — built, then parked. See 6.16.
+- **The stock's alignment holes marked in the SVGs**, on a layer of their own, so a burn can be registered on the holes the mill made. See 6.17.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2772,14 +2773,14 @@ border at its top — very nearly the stock's diagonal apart, since the angle tw
 error in reading each divided by the distance between them. Each keeps its own radius, the cutter's, and
 a millimetre clear of the stock's cut, the board's outline and the corner. A border too narrow to hold
 one says so, by how much, and still cuts the stock; stock the mill did not make says so too. The default
-size is half as wide again as the cutter, so it can be spiralled rather than plunged, and
-`BlankOperation` cuts them with `SlotOperation.Holes` — the same code as a milled hole in a board,
-before the edges, while the stock is still part of the sheet, with no bit change.
+hole is the cutter's own width: `BlankOperation.Holes` drills each one straight down with the outline
+bit, pecked by its stepdown, before the edges, while the stock is still part of the sheet, with no bit
+change. The stock program never uses canned cycles, because Drill alignment finds the waste holes by
+reading it and the reader does not interpret `G81`.
 
-One thing the build turned up: the stock program is emitted straight rather than through `Assemble`, so
-it had never been through `PassLinker`. A hole's second lap lifted to safe height and plunged back into
-the hole it had just cut. Linking it there fixed that and left the perimeter alone, where a deeper lap
-starts above where the last finished and a plunge is what it should be.
+They were first spiralled out half as wide again as the cutter, through `SlotOperation.Holes` — the
+same code as a milled hole in a board. That was a workflow hiccup for no gain: the check needs a
+centre, and a plunge has exactly one. Changed to a drill on branch `004_DrillStockHoles`.
 
 **Part 2 built.** *Job ▸ Drill alignment* gained a tick — *Measure a second hole as well, to correct
 rotation* — which opens a second hole row, its own **Write test** button, and its own pair of offsets.
@@ -2893,7 +2894,7 @@ those are worth fixing rather than papering over.
 with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
 double-sided one with stock and alignment, and for a board whose name has a space in it.
 
-#### 6.16 A re-measured stock keeps the holes it was cut with — **requested, not started**
+#### 6.16 A re-measured stock keeps the holes it was cut with — **parked**
 
 Requested from the workshop, describing a workflow already in use: cut the stock to size with
 alignment holes in its waste; measure what came out; and if it is not quite the size asked for, set
@@ -2944,6 +2945,52 @@ distance apart, and 0.08 mm is far under the 0.5 mm refusal.
 still offers those holes in Drill alignment at the coordinates they were cut at rather than ones
 derived from the new size; the refusal still refuses to cut holes into stock the mill did not make;
 and a stock re-cut at a new size replaces the remembered holes rather than keeping stale ones.
+
+**Parked, 2026-09-19.** Built and verified on branch `005_StockKeepsItsHoles`, never merged. Correct,
+but it asked the operator to follow a remembered record behind the Pre-cut tick — two facts, the measured
+size and the as-cut holes, that no longer agree — and that could not be made clear in the window. If it
+comes back, it starts from what an operator would understand rather than from the mechanism.
+
+#### 6.17 The stock's alignment holes, marked in the SVGs — **requested, not started**
+
+Requested from the workshop, as part of the goal the whole app serves: **confidence in alignment, for
+everything.** The mill already has it — the stock's two waste holes are cut in the stock's own frame,
+and Drill alignment measures from them. The laser has nothing equivalent: the operator places an SVG
+by eye, and the first sign of a misplacement is the burn.
+
+**The laser does not read coordinates; it is told where the design goes.** So what the holes offer
+the laser is not a number but a target. Three ways to use them, depending on the software:
+
+- **Two-point registration** — LightBurn's *Print and Cut*. Jog the head over hole 1 and capture it,
+  then hole 2, and the software moves and turns the whole design to match. Two holes very nearly the
+  stock's diagonal apart are exactly what that wants, and 04 §4.3 planned for it: two marks, on their
+  own layer, as far apart as the stock allows.
+- **Camera overlay**, where the machine has one: drag the design until the drawn holes sit on the
+  real ones.
+- **Place, then check** — Creality Falcon, and anything without either. Place the stock against its
+  stop as usual, then frame the job or aim the pointer and confirm it lands in both holes before
+  anything burns.
+
+**What is emitted.** When the stock program drills holes — cut to size, or holes only — every SVG in
+the export gains an *Alignment holes* layer: at each hole, a ring the hole's own size and a cross at
+its centre, which is what a pointer or a camera is aimed at. A colour of its own, so both Falcon and
+LightBurn make it a layer that can be hidden or set not to burn; burned by mistake, it marks waste.
+Mirrored with the rest of a bottom-side file, which is right, because the holes go through the stock.
+Offered as a tick under *Alignment holes in the waste*, shown only when there are holes.
+
+**To settle when it is built:**
+
+- **Two points cannot see a flip.** A pair of points mirrored is indistinguishable from a pair
+  turned, so two-point registration fits a board placed the wrong way up and burns a mirror image.
+  The chamfered datum corner still catches it; a third, off-line mark (04 §4.3) would catch it in the
+  software. Say so on the page, at least.
+- **Single-layer mode** merges the drawing into one group for Falcon. The holes must stay a second
+  group in that mode — checked in Falcon itself, not assumed.
+- **Pointer and beam.** On many diode lasers the red dot is offset from the beam; aiming it into a
+  1 mm hole is only as good as that offset. The page says to check it with a low-power mark.
+
+**Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
+layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.
 
 ### Phase 7 — User documentation — **started**
 

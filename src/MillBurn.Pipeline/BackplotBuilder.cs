@@ -80,6 +80,12 @@ public static class BackplotBuilder
         var currentDepth = 0L;
         var cuts = new List<(long DepthNm, IReadOnlyList<Point2> Path)>();
 
+        // Where the tool went straight down below the surface, until it either cuts sideways (the
+        // start of a contour, which draws itself) or comes back up without having (a drilled hole,
+        // which draws nothing unless it is marked). Pecks come back to the same place and are one hole.
+        Point2? down = null;
+        var holes = new List<Point2>();
+
         void Flush()
         {
             if (currentRole is { } role && current.Count >= 2)
@@ -110,7 +116,30 @@ public static class BackplotBuilder
             // and reported instead of drawn, which is what the operator can actually use.
             if (!move.MovesInPlane)
             {
+                // By role rather than by Z, because the classifier already knows where the surface
+                // is — which on a levelled program is not Z zero.
+                if (role == BackplotRole.Plunge)
+                {
+                    down ??= move.To;
+                }
+                else if (role == BackplotRole.Retract && down is { } hole)
+                {
+                    var at = placement.Apply(hole);
+
+                    if (!holes.Any(h => h.DistanceTo(at) <= SameHoleNm))
+                    {
+                        holes.Add(at);
+                    }
+
+                    down = null;
+                }
+
                 continue;
+            }
+
+            if (role is BackplotRole.Cut or BackplotRole.Plunge or BackplotRole.Gouge)
+            {
+                down = null;
             }
 
             // Compare in the same frame the points are stored in. Comparing an offset point against
@@ -187,6 +216,12 @@ public static class BackplotBuilder
             layers.Add(new BackplotLayer("gcode-cut", "Cutting moves", BackplotPalette.Cut, through, true));
         }
 
+        if (holes.Count > 0)
+        {
+            layers.Add(new BackplotLayer(
+                "gcode-plunge", "Plunged holes", BackplotPalette.Plunge, [.. holes.Select(Ring)], true));
+        }
+
         Add(BackplotRole.Gouge, "gcode-gouge", "RAPID AT DEPTH", BackplotPalette.Gouge, true);
 
         return layers;
@@ -194,7 +229,32 @@ public static class BackplotBuilder
 
     /// <summary>The role layers' ids, in the order <see cref="Build(IReadOnlyList{BackplotMove}, Placement, long, bool)"/> adds them.</summary>
     private static readonly string[] RoleOrder =
-        ["gcode-travel", "gcode-long-travel", "gcode-cut-partial", "gcode-cut", "gcode-gouge"];
+        ["gcode-travel", "gcode-long-travel", "gcode-cut-partial", "gcode-cut", "gcode-plunge", "gcode-gouge"];
+
+    /// <summary>Pecks this close together are the same hole.</summary>
+    private static readonly long SameHoleNm = Nm.FromMillimetres(0.05);
+
+    /// <summary>
+    /// The mark for a plunged hole: a millimetre across, whatever the hole. A program does not say how
+    /// big its bit is, so the mark says where the hole is and not its size.
+    /// </summary>
+    private static readonly long HoleMarkRadiusNm = Nm.FromMillimetres(0.5);
+
+    private static IReadOnlyList<Point2> Ring(Point2 centre)
+    {
+        const int sides = 24;
+        var ring = new List<Point2>(sides + 1);
+
+        for (var i = 0; i <= sides; i++)
+        {
+            var angle = 2 * Math.PI * i / sides;
+            ring.Add(new Point2(
+                centre.X + (long)Math.Round(HoleMarkRadiusNm * Math.Cos(angle)),
+                centre.Y + (long)Math.Round(HoleMarkRadiusNm * Math.Sin(angle))));
+        }
+
+        return ring;
+    }
 
     /// <summary>
     /// How close two depths have to be to count as the same pass.

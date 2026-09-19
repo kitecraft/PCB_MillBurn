@@ -39,9 +39,6 @@ public sealed record BlankOutlineOptions
     /// </summary>
     public IReadOnlyList<Point2> AlignmentHoles { get; init; } = [];
 
-    /// <summary>The diameter of those holes.</summary>
-    public long HoleDiameterNm { get; init; }
-
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
 }
 
@@ -80,11 +77,7 @@ public static class BlankOperation
         var step = options.DepthPerPassNm > 0 ? options.DepthPerPassNm : depth;
         var steps = Math.Max(1, (int)Math.Ceiling(depth / (double)step));
 
-        // The alignment holes first, while the stock is still part of the sheet: a hole cut after the
-        // edges is a hole cut in a piece held only by its tabs. Same bit, so there is no change, and a
-        // helix rather than a plunge for the reason every other hole here is one.
-        var passes = HolePasses(options);
-        var group = passes.Count > 0 ? 1 : 0;
+        var passes = new List<ToolpathPass>();
 
         var depths = new List<long>();
 
@@ -122,7 +115,6 @@ public static class BlankOperation
                     // A loop with no tab to break it is closed, whether or not tabs were asked for.
                     Closed = runs.Count == 1 && run[^1].To == run[0].From,
                     Stack = 0,
-                    Group = group,
                 });
             }
         }
@@ -151,12 +143,6 @@ public static class BlankOperation
             }
         }
 
-        if (options.AlignmentHoles.Count > 0 && options.HoleDiameterNm > 0)
-        {
-            notes.Add(Invariant(
-                $"{options.AlignmentHoles.Count} alignment hole(s) {Mm(options.HoleDiameterNm)} mm across, cut in the waste before the edges, with this same bit."));
-        }
-
         if (key > 0)
         {
             notes.Add(Invariant(
@@ -174,31 +160,36 @@ public static class BlankOperation
     }
 
     /// <summary>
-    /// The alignment holes, spiralled out with the stock's own cutter.
+    /// The alignment holes, drilled straight down with the stock's own cutter, or null for none.
     ///
-    /// Built by the same code as a milled hole in a board, so a hole the cutter cannot spiral is
-    /// refused there rather than plunged here — and each one is a stack of its own, so the router
-    /// keeps its laps together.
+    /// A plunge rather than a helix, so a hole is the cutter's own width and its centre is a single
+    /// point the program names. Run before <see cref="Build"/>: a hole cut after the edges is a hole
+    /// in a piece held only by its tabs. Same bit, so there is no change between them. Pecked by the
+    /// stepdown the edges use, which is what this cutter is trusted to take in one bite.
     /// </summary>
-    private static List<ToolpathPass> HolePasses(BlankOutlineOptions options)
+    public static Toolpath? Holes(BlankOutlineOptions options)
     {
-        if (options.AlignmentHoles.Count == 0 || options.HoleDiameterNm <= 0)
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.AlignmentHoles.Count == 0)
         {
-            return [];
+            return null;
         }
 
-        var plan = SlotOperation.Holes(
-            [.. options.AlignmentHoles.Select((at, i) => new DrillSlotTarget(i + 1, at, at, options.HoleDiameterNm))],
-            new ToolLibrary { Tools = [options.Tool] },
-            new SlotOptions
-            {
-                BoardThicknessNm = options.BoardThicknessNm,
-                BreakThroughNm = options.BreakThroughNm,
-                ToolId = options.Tool.Id,
-            },
-            "Alignment holes");
+        var depth = options.TotalDepthNm;
+        var peck = options.DepthPerPassNm > 0 && options.DepthPerPassNm < depth ? options.DepthPerPassNm : 0;
 
-        return [.. plan.Toolpaths.SelectMany(t => t.Passes)];
+        return new Toolpath
+        {
+            Kind = ToolpathKind.Drill,
+            Label = "Alignment holes",
+            Tool = options.Tool,
+            Drills = [.. options.AlignmentHoles.Select(at => new DrillTarget(at, depth, peck))],
+            Notes =
+            [
+                Invariant($"{options.AlignmentHoles.Count} alignment hole(s) {Mm(options.Tool.DiameterNm)} mm across, drilled straight down in the waste."),
+            ],
+        };
     }
 
     /// <summary>One edge of the loop the cutter follows, and whether a tab may go on it.</summary>

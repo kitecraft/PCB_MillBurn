@@ -60,8 +60,13 @@ public static class BackplotPalette
     public static BoardLayerStyle PartialCut { get; } =
         new(new SKColor(0xFF, 0xD7, 0x40), 0.35f, Outlined: true, StrokePixels: 1.8f, ClosedRings: false);
 
+    /// <summary>
+    /// Cyan: a hole the program plunges straight into. A plunge has no extent in plan, so without a
+    /// mark it is invisible — and a hole that is not in the artwork, like the stock's waste holes, then
+    /// shows only as the rapid that goes to it. Not red, which means a gouge.
+    /// </summary>
     public static BoardLayerStyle Plunge { get; } =
-        new(new SKColor(0xFF, 0x17, 0x44), 1f, Outlined: true, StrokePixels: 2.5f, ClosedRings: false);
+        new(new SKColor(0x00, 0xE5, 0xFF), 1f, Outlined: true, StrokePixels: 1.8f, ClosedRings: false);
 
     /// <summary>Dashed and dim: present so the optimizer's work is visible, not to be read.</summary>
     public static BoardLayerStyle Travel { get; } =

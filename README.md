@@ -184,6 +184,42 @@ from and shows you what moved before it applies anything.
 
 ---
 
+## Optimised toolpaths
+
+A mill spends a surprising share of a job in the air, crossing the board from one cut to the next.
+MillBurn plans that part as carefully as the cuts themselves.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="art/screenshots/travel-pcb2gcode.png" alt="The rapids of pcb2gcode's outline program for a 66-board panel: long diagonal moves crossing the panel back and forth">
+<p><b>pcb2gcode's outline program</b> for the same panel, opened in MillBurn: 2,915 mm of travel.</p>
+</td>
+<td width="50%" valign="top">
+<img src="art/screenshots/travel-millburn.png" alt="The rapids of MillBurn's outline program for the same panel: short hops from one profile to the next, and one move back to the corner">
+<p><b>MillBurn's</b>, from the same Gerbers: 796 mm with the default settings, the trip back to the corner at the end included.</p>
+</td>
+</tr>
+</table>
+
+<sub>Travel only, drawn from the emitted G-code; the cutting moves are switched off. The two programs cut to different
+depths in different passes, so it is the travel that compares, not the cutting.</sub>
+
+- **The order is solved, not inherited.** Cuts are ordered to shorten the travel between them rather than taken in
+  the order the Gerber listed them. A closed contour can start at any of its corners, and the corner is chosen as
+  part of the same route.
+- **Deeper passes stay with their contour.** Each profile is finished to full depth while the tool is standing over
+  it, instead of the whole panel being crossed once per depth step.
+- **Inside pieces come out before the frame around them**, so nothing is cut loose while the cutter is still
+  working next to it.
+- **No lift where there is nothing to lift over.** When the next pass starts where the last one ended, in material
+  already cut, the tool carries on without going up to safe height and coming back down.
+
+pcb2gcode got the whole job working long before this project existed — see [Thanks](#thanks). This is one place
+where there was room to do more, and [Documentation/03](Documentation/03-Toolpath-Optimization.md) explains how.
+
+---
+
 ## See it
 
 <table>
@@ -289,7 +325,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.2.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.3.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 **Proven on metal:**
@@ -313,15 +349,16 @@ run the dry run first and read the pages beside the files.
   tab top, so the tabs are left partial instead of full thickness and the board snaps out.
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, and alignment measured from the stock's
-two waste holes.
+isolation, the routed channel between the boards of a panel, alignment measured from the stock's
+two waste holes, those holes drilled as straight plunges rather than spiralled, and pre-cut stock
+given its holes and nothing else.
 
 **Known rough edges, next in line:**
 
 - Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
   board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
 
-935 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+939 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next after the rough edges: rulers down the viewport, a numbered picture on the
 drilling and routing pages, better tab placement, and registration marks for placing a burn — then
 an MCP server over the same libraries, and solder paste. The full picture, including every bug worth

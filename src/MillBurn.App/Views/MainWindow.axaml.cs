@@ -47,6 +47,16 @@ public partial class MainWindow : Window
             if (DataContext is MainViewModel vm)
             {
                 vm.RedrawRequested += (_, _) => Viewport.InvalidateVisual();
+
+                // Refilled each time the empty panel comes back, because opening or saving a
+                // project in between changes the list.
+                vm.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(MainViewModel.ShowingNothing) && vm.ShowingNothing)
+                    {
+                        FillRecentPanel();
+                    }
+                };
             }
         };
 
@@ -58,7 +68,11 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         _fpsTest = args.Contains("--fpstest", StringComparer.OrdinalIgnoreCase);
 
-        Opened += (_, _) => OnOpened(args);
+        Opened += (_, _) =>
+        {
+            FillRecentPanel();
+            OnOpened(args);
+        };
     }
 
     // ------------------------------------------------------------------ window placement
@@ -189,6 +203,7 @@ public partial class MainWindow : Window
                 (Key.I, true, false) => () => OnOpenFolderClicked(this, new RoutedEventArgs()),
                 (Key.S, true, false) => () => OnSaveClicked(this, new RoutedEventArgs()),
                 (Key.S, true, true) => () => OnSaveAsClicked(this, new RoutedEventArgs()),
+                (Key.W, true, false) => () => OnCloseProjectClicked(this, new RoutedEventArgs()),
                 (Key.E, true, false) => () => OnExportClicked(this, new RoutedEventArgs()),
                 (Key.T, true, false) => () => OnEditToolsClicked(this, new RoutedEventArgs()),
                 (Key.D0, true, false) => () => OnFitClicked(this, new RoutedEventArgs()),
@@ -373,6 +388,14 @@ public partial class MainWindow : Window
             || args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
         {
             vm.Preview();
+        }
+
+        // "Show only this layer's toolpath" on the first layer whose name contains the text, so what
+        // that gesture hides — the stock's paths included — can be checked from a screenshot.
+        if (Argument(args, "--only-toolpath") is { } onlyName
+            && vm.Layers.FirstOrDefault(r => r.Label.Contains(onlyName, StringComparison.OrdinalIgnoreCase)) is { } onlyRow)
+        {
+            vm.OnlyToolpath(onlyRow);
         }
 
         // Loads a probe log at startup, so the export dialog's levelling row can be checked with a
@@ -763,7 +786,7 @@ public partial class MainWindow : Window
     /// is none. A fresh board with nothing configured costs nothing to replace, so prompting there
     /// would only teach people to dismiss the prompt without reading it.
     /// </summary>
-    private async Task<bool> ConfirmReplaceAsync()
+    private async Task<bool> ConfirmReplaceAsync(string doing = "replacing it")
     {
         if (DataContext is not MainViewModel vm || !vm.Project.NeedsSaving)
         {
@@ -773,7 +796,7 @@ public partial class MainWindow : Window
         var answer = await ConfirmWindow.AskAsync(
             this,
             "Unsaved changes",
-            $"{vm.Project.DisplayName} has unsaved changes. Save before replacing it?",
+            $"{vm.Project.DisplayName} has unsaved changes. Save before {doing}?",
             "Save",
             "Discard");
 
@@ -830,6 +853,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnCloseProjectClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel { HasBoard: true } vm && await ConfirmReplaceAsync("closing it"))
+        {
+            vm.CloseProject();
+        }
+    }
+
     /// <summary>
     /// Fills the recent list as the submenu opens, from the saved settings.
     ///
@@ -850,26 +881,13 @@ public partial class MainWindow : Window
         }
 
         var menu = RecentMenu;
-        var recents = vm.RecentProjects;
-
-        // Two projects of the same name, in different folders, are told apart by their folder — and
-        // only then, because these are full paths several levels deep and the name is usually enough.
-        var shared = recents
-            .GroupBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var recents = RecentNames(vm.RecentProjects);
 
         var items = new List<MenuItem>();
 
         for (var i = 0; i < recents.Count; i++)
         {
-            var path = recents[i];
-            var name = Path.GetFileNameWithoutExtension(path);
-
-            var shown = shared.Contains(name) && Path.GetDirectoryName(path) is { Length: > 0 } folder
-                ? $"{name}  —  {Path.GetFileName(folder)}"
-                : name;
+            var (path, shown) = recents[i];
 
             // Doubled, because a single underscore in a menu header is an accelerator: a project
             // called Millburn_Test_Board would otherwise be listed as "MillburnTest_Board". The
@@ -888,6 +906,96 @@ public partial class MainWindow : Window
         }
 
         menu.ItemsSource = items;
+    }
+
+    /// <summary>
+    /// Each recent project with the name to show for it. Two projects of the same name, in different
+    /// folders, are told apart by their folder — and only then, because these are full paths several
+    /// levels deep and the name is usually enough.
+    /// </summary>
+    private static List<(string Path, string Shown)> RecentNames(IReadOnlyList<string> recents)
+    {
+        var shared = recents
+            .GroupBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. recents.Select(path =>
+            {
+                var name = Path.GetFileNameWithoutExtension(path);
+
+                return (path, shared.Contains(name) && Path.GetDirectoryName(path) is { Length: > 0 } folder
+                    ? $"{name}  —  {Path.GetFileName(folder)}"
+                    : name);
+            }),
+        ];
+    }
+
+    /// <summary>The recent projects on the empty panel, under Open project. Nothing at all when there are none.</summary>
+    private void FillRecentPanel()
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        RecentPanel.Children.Clear();
+
+        if (vm.RecentProjects.Count == 0)
+        {
+            return;
+        }
+
+        RecentPanel.Children.Add(new TextBlock
+        {
+            Text = "Recent projects",
+            Classes = { "caption" },
+            Margin = new Thickness(2, 0, 0, 4),
+        });
+
+        foreach (var path in vm.RecentProjects)
+        {
+            // The name, and under it the folder it is in, dim. The folder is what tells two copies of
+            // a board apart, and it is a long path, so it gives up whole folders from the middle
+            // first: the drive and the project's own folder are the parts that identify it.
+            // TextBlocks rather than a string: string content is read for an access key, and a
+            // project called Millburn_Test_Board would lose its first underscore.
+            var button = new Button
+            {
+                Content = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = Path.GetFileNameWithoutExtension(path),
+                            TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis,
+                        },
+                        new TextBlock
+                        {
+                            Text = Path.GetDirectoryName(path) ?? string.Empty,
+                            Classes = { "caption" },
+                            TextTrimming = Avalonia.Media.TextTrimming.PathSegmentEllipsis,
+                        },
+                    },
+                },
+                Classes = { "recent" },
+            };
+
+            ToolTip.SetTip(button, path);
+            button.Click += async (_, _) =>
+            {
+                await OpenRecentAsync(path);
+
+                // A project that has gone is taken off the list, and the panel is still showing.
+                FillRecentPanel();
+            };
+
+            RecentPanel.Children.Add(button);
+        }
     }
 
     /// <summary>Opens a project from the recent list, or takes it off the list if it has gone.</summary>

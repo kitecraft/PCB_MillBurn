@@ -23,13 +23,15 @@ public sealed partial class MoveKindRow : ObservableObject
         IReadOnlyList<BoardSceneLayer> layers,
         IBrush swatch,
         bool visible,
-        Action changed)
+        Action changed,
+        bool hasColour = true)
     {
         ArgumentNullException.ThrowIfNull(layers);
 
         Id = id;
         Label = label;
         Swatch = swatch;
+        HasColour = hasColour;
         _layers = layers;
         _changed = changed;
 
@@ -42,6 +44,12 @@ public sealed partial class MoveKindRow : ObservableObject
     public string Label { get; }
 
     public IBrush Swatch { get; }
+
+    /// <summary>
+    /// Whether the chip has a colour to change. The stock's does not: it switches paths drawn in the
+    /// colours of their own kinds, and a dot there would recolour nothing.
+    /// </summary>
+    public bool HasColour { get; }
 
     /// <summary>How many runs this kind accounts for, for the tooltip.</summary>
     public int Runs => _layers.Sum(l => l.RingCount);

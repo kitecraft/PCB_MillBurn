@@ -745,7 +745,7 @@ public sealed class BlankTests(ITestOutputHelper output)
         var stock = plan.Bounds;
 
         Assert.Equal(2, plan.AlignmentHoles.Count);
-        Assert.Equal(Nm.FromMillimetres(1.5), plan.HoleDiameterNm);
+        Assert.Equal(cutter, plan.HoleDiameterNm);
 
         var clearance = (plan.HoleDiameterNm / 2) + (cutter / 2);
 
@@ -834,19 +834,101 @@ public sealed class BlankTests(ITestOutputHelper output)
         Assert.Contains(holes, h => h.DistanceTo(targets[0].At) < Nm.FromMillimetres(0.05));
         Assert.Contains(stock.Summary, s => s.Contains("alignment hole", StringComparison.OrdinalIgnoreCase));
 
-        // And each hole is entered once. The stock program is emitted straight rather than through
-        // Assemble, so it had to be linked on its own: without that, a hole's second lap lifted to
-        // safe height and plunged back into the hole it had just cut.
-        // Inside the hole's own circle, because a helix enters on its orbit rather than at the centre.
-        var inside = plan.Blank.HoleDiameterNm / 2.0;
+        // And each hole is drilled, not milled: everything below the surface there goes straight down
+        // and back up, with no sideways move and no arc. And with the same bit as the edges, so there
+        // is no tool change in the program at all.
+        var moves = GcodeParser.Parse(stock.Content).Moves;
 
         foreach (var hole in holes)
         {
-            var entries = GcodeParser.Parse(stock.Content).Moves
-                .Count(m => m.FromZNm >= 0 && m.ToZNm < 0 && m.From.DistanceTo(hole) < inside);
+            var there = moves
+                .Where(m => Math.Min(m.FromZNm, m.ToZNm) < 0 && m.From.DistanceTo(hole) < Nm.FromMillimetres(0.05))
+                .ToList();
 
-            Assert.Equal(1, entries);
+            Assert.NotEmpty(there);
+            Assert.All(there, m =>
+            {
+                Assert.False(m.IsArc);
+                Assert.Equal(m.From, m.To);
+            });
         }
+
+        Assert.DoesNotContain("M0\n", stock.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("G81", stock.Content, StringComparison.Ordinal);
+    }
+
+    // ------------------------------------------------------------------ holes only, on pre-cut stock
+
+    private static BlankOptions PreCutHolesOnly(double widthMm = 50, double heightMm = 60) => new()
+    {
+        Enabled = true,
+        Sizing = BlankSizing.Stated,
+        WidthMm = widthMm,
+        HeightMm = heightMm,
+        AlignmentHoles = true,
+        HolesOnly = true,
+    };
+
+    /// <summary>
+    /// Stock that is already its size gets its two holes and nothing else: every move below the
+    /// surface goes straight down or straight up, and the piece is treated as pre-cut in every
+    /// other respect — its size is a claim, and nothing cuts a key into it.
+    /// </summary>
+    [Fact]
+    public void HolesOnlyDrillsTheTwoHolesAndCutsNothingElse()
+    {
+        var plan = Plan(PreCutHolesOnly());
+
+        output.WriteLine(string.Join("\n", plan.Blank.Notes));
+
+        Assert.True(plan.Blank.HolesOnly);
+        Assert.False(plan.Blank.Cut);
+        Assert.Equal(2, plan.Blank.AlignmentHoles.Count);
+        Assert.Contains(plan.Blank.Notes, n => n.Contains("claim rather than a measurement", StringComparison.Ordinal));
+
+        var stock = Assert.Single(plan.Items, i => i.LayerFileName == ExportPlanner.StockLayer);
+        Assert.Same(stock, plan.Items[0]);
+        Assert.Equal("Drill alignment holes", stock.DoingLabel);
+
+        var below = GcodeParser.Parse(stock.Content).Moves
+            .Where(m => Math.Min(m.FromZNm, m.ToZNm) < 0)
+            .ToList();
+
+        Assert.NotEmpty(below);
+        Assert.All(below, m => Assert.Equal(m.From, m.To));
+        Assert.Equal(2, AlignmentTest.Targets(stock.Content).Count);
+    }
+
+    /// <summary>
+    /// Only with a stated size. Left set on a stock grown from the board — ticked, then Pre-cut size
+    /// unticked — it would quietly stop the stock being cut, so it is ignored there.
+    /// </summary>
+    [Fact]
+    public void HolesOnlyIsIgnoredOnStockGrownFromTheBoard()
+    {
+        var plan = Plan(WithHoles() with { HolesOnly = true });
+
+        Assert.False(plan.Blank.HolesOnly);
+        Assert.True(plan.Blank.Cut);
+
+        var stock = Assert.Single(plan.Items, i => i.LayerFileName == ExportPlanner.StockLayer);
+        Assert.Contains(GcodeParser.Parse(stock.Content).Moves, m => m.ToZNm < 0 && m.From != m.To);
+    }
+
+    /// <summary>With no room for the holes there is nothing to drill, so there is no stock program at all.</summary>
+    [Fact]
+    public void HolesOnlyWithNoRoomForTheHolesWritesNoStockProgram()
+    {
+        // The Pogo board is 20.89 x 36.88 mm, so this leaves about 3.5 mm all round: room enough for
+        // the stock, and not for a hole, which needs 4 mm with a 1 mm cutter.
+        var plan = Plan(PreCutHolesOnly(28, 44));
+
+        output.WriteLine(string.Join("\n", plan.Blank.Notes.Concat(plan.Blank.Refusals)));
+
+        Assert.True(plan.Blank.Resolved);
+        Assert.Contains(plan.Blank.Notes, n => n.StartsWith("No alignment holes:", StringComparison.Ordinal));
+        Assert.False(plan.Blank.HolesOnly);
+        Assert.DoesNotContain(plan.Items, i => i.LayerFileName == ExportPlanner.StockLayer);
     }
 
     // ------------------------------------------------------------------ it travels with the project
