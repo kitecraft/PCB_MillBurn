@@ -39,6 +39,9 @@ public sealed record BlankOutlineOptions
     /// </summary>
     public IReadOnlyList<Point2> AlignmentHoles { get; init; } = [];
 
+    /// <summary>What the alignment holes' pecks do with a depth that is not a whole number of them.</summary>
+    public ShortLastLap ShortLastLap { get; init; } = ShortLastLap.OwnLap;
+
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
 }
 
@@ -177,7 +180,9 @@ public static class BlankOperation
         }
 
         var depth = options.TotalDepthNm;
-        var peck = options.DepthPerPassNm > 0 && options.DepthPerPassNm < depth ? options.DepthPerPassNm : 0;
+        var peck = options.DepthPerPassNm > 0 && options.DepthPerPassNm < depth
+            ? Laps.EvenPeck(depth, options.DepthPerPassNm, options.ShortLastLap)
+            : 0;
 
         return new Toolpath
         {

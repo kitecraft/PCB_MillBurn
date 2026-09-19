@@ -2022,7 +2022,7 @@ than discovered after.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves — superseded by KiCad's drill map layers. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
-- **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
+- **Routing holes and slots properly** — done. Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own. See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
 - **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
 - **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction — built, then parked. See 6.16.
@@ -2627,7 +2627,7 @@ has copper on it and the outline has to go round that copper — and closes. The
 Both of this section's open items — remembering the correction in the project, and measuring two holes
 to tell a shift from a board that is not square — were built in 6.14, which is where they are described.
 
-#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority; lifts and floor lap fixed, settings not started**
+#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **done**
 
 Found on the test board at the machine: 0.8 mm board, "Spiral with" a 0.8 mm end mill (0.5 mm
 stepdown), the layer's 0.3 mm break-through, so 1.10 mm deep. Every milled hole and every slot was
@@ -2691,6 +2691,37 @@ leaves out the zero-length move to where the tool already is, and the export sum
 carried on separately from isolation's links. `SlotOperation` skips the flat lap when the last ramp
 starts strictly below the underside. On the test board: one entry into the material per hole and slot,
 three laps each. Items 3 and 4 (the sliver lap and break-through) wait for the settings.
+
+**The settings, built on branch `006_RoutingSettings`.** Split by where each answer already lives,
+the rule this project arrived at elsewhere: a value decided somewhere gets its source named rather
+than a second control, and a choice that depends on how the operator works gets a list with the old
+behaviour as its default.
+
+- **Depth per lap** is the cutter's stepdown and **ramp feed** the cutter's feed, both in the tool
+  library; **break-through** is the drill layer's own. No new controls — the routing file now names
+  all three: *"1.10 mm deep, 0.30 mm of it the layer's break-through: laps of 0.50 + 0.50 + 0.10 mm —
+  the 0.8 mm end mill's 0.50 mm stepdown … Each hole: one helix all the way down, and one lift. Fed at
+  600 mm/min, the cutter's feed."*
+- **The short last lap** is a machine-wide choice under *Settings › Milling*: keep it (the old rule),
+  spread the depth evenly — the same number of laps, none deeper than the stepdown — or fold a last
+  lap under a quarter of a step into the one before. `Laps.Depths` does the arithmetic for routing
+  and for the stock's alignment-hole pecks alike, so the 0.1 mm second peck goes with it.
+- **The finishing lap on a through cut** is a tick beside it, off as before.
+
+The same branch put Settings on tabs — Machine, Milling, Dry run, Probing & levelling, New boards —
+because one scrolling page had six sections; each problem that blocks Save names its tab and marks
+it.
+
+**Cut on metal, 2026-09-19.** The six non-plated holes (2.20 to 3.50 mm, 0.8 mm end mill) under each
+choice, the header checked against the laps each time: kept 0.50 + 0.50 + 0.20 in 47 s, spread
+0.40 × 3 with its flat lap in 50 s, folded 0.50 + 0.60 (break-through dropped to 0.20 mm to make a
+sliver) in 45 s, kept with the flat lap forced in 48 s — against an estimate of 37–58 s. Every hole
+through and to size, no complaint from the cutter on the folded 0.60 mm lap. The workshop chose
+*spread evenly*, finishing lap off, for its own machine; the default stays the old rule.
+
+The trial found one wrong sentence before it found anything wrong in the metal: at 1.20 mm the
+0.20 mm lap is too deep to fold, the laps stayed 0.50 + 0.50 + 0.20, and the note still said
+"folded into the lap before". It now says the lap was kept, and why.
 
 **Verified on metal:** both routing files cut on the test board, one continuous descent per feature, the
 plated file in 1:12 against an estimate of 0m 53s – 1m 31s and the non-plated in 0:47 against
@@ -2988,6 +3019,21 @@ Offered as a tick under *Alignment holes in the waste*, shown only when there ar
   group in that mode — checked in Falcon itself, not assumed.
 - **Pointer and beam.** On many diode lasers the red dot is offset from the beam; aiming it into a
   1 mm hole is only as good as that offset. The page says to check it with a low-power mark.
+
+**What the workshop does today (2026-09-19).** Both Falcon and LightBurn imported the 80 × 80 mm
+top-copper SVG as 68.63 × 66.09 mm — the drawing's own extent, the page thrown away, the trap the FAQ
+warns about. The workshop works with it rather than against it: in Falcon the image's centre is set
+to W/2, H/2, which puts the drawing's corner on the laser's 0,0, and the board goes against an L jig
+set to that origin. Burned through masking tape over milled copper, *"the lines were almost exactly
+lined up with the underlying milled board. Small variances."*
+
+That works because this copper layer reaches the board's edge on every side, so its extent is the
+board. A layer that does not — a mask or a legend, whose outermost shape is inset from the edge —
+crops smaller and lands off by the inset, with nothing to say so. **So what software that crops
+wants is an extent that is always the same**, and the marks this section emits can give it one: a
+mark at two opposite corners of whatever the operator registers against makes every layer crop to
+the same box, and W/2, H/2 against the jig then works for all of them. Which box — the stock, or the
+cut-out board the jig takes today — is the first question to settle when this is built.
 
 **Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
 layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.

@@ -131,8 +131,57 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
         var html = Plan(new BlankOptions { Enabled = true, LeftMm = 10, BottomMm = 10, RightMm = 10, TopMm = 10 })
             .Page!.Content;
 
-        Assert.Contains("Do not centre them", html, StringComparison.Ordinal);
-        Assert.Contains("10.00 mm right and 10.00 mm up", html, StringComparison.Ordinal);
+        Assert.Contains("imports the drawing", html, StringComparison.Ordinal);
+        Assert.Contains("<th>Imports as</th>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Each SVG gets its own numbers, from its own drawing. Measured in the workshop on the test
+    /// board in 80 × 80 stock: Falcon imported the top copper at 68.63 × 66.09, the legend at
+    /// 67.10 × 64.01 and the mask at 34.85 × 57.29 — and the page's one offset, the board's, was
+    /// right only for the copper.
+    /// </summary>
+    [Fact]
+    public void EachSvgSaysWhereItsOwnDrawingSits()
+    {
+        var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.MillburnTestBoard));
+
+        var settings = loaded.Layers.ToDictionary(
+            l => l.FileName,
+            l => new LayerOutputSettings
+            {
+                FileName = l.FileName,
+                Output = l.Role is LayerRole.TopCopper or LayerRole.TopSilk or LayerRole.TopMask
+                    ? OutputKind.Svg
+                    : LayerOperations.DefaultFor(l.Role),
+
+                // Inverted, for the etch resist, as in the workshop: everything inside the board
+                // edge except the copper, so this one drawing is exactly the board.
+                Invert = l.Role == LayerRole.TopCopper,
+            },
+            StringComparer.Ordinal);
+
+        var plan = ExportPlanner.Plan(
+            loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(0.9),
+            job: new JobOptions { Blank = new BlankOptions { Enabled = true, Sizing = BlankSizing.Stated, WidthMm = 80, HeightMm = 80, Cut = false } });
+
+        string Size(string layer)
+        {
+            var item = plan.Items.Single(i => i.TargetName.EndsWith(layer + ".svg", StringComparison.Ordinal));
+            var d = item.Drawing!.Value;
+            return Nm.ToMillimetreString(d.Width, 2) + " × " + Nm.ToMillimetreString(d.Height, 2);
+        }
+
+        output.WriteLine($"copper {Size("F_Cu")}, legend {Size("F_Silkscreen")}, mask {Size("F_Mask")}");
+
+        Assert.Equal("68.63 × 66.09", Size("F_Cu"));
+        Assert.Equal("67.10 × 64.01", Size("F_Silkscreen"));
+        Assert.Equal("34.85 × 57.29", Size("F_Mask"));
+
+        // The copper is the board, so its centre from the board's corner is half the board.
+        var html = plan.Page!.Content;
+        output.WriteLine(html[html.IndexOf("<h2>Placing", StringComparison.Ordinal)..]);
+        Assert.Contains("34.31 right, 33.05 up", html, StringComparison.Ordinal);
     }
 
     /// <summary>With no blank, work zero is the board's corner and there is no offset to add.</summary>

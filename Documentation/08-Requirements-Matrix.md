@@ -38,8 +38,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 31 | 10 | 4 | 17 | 0 |
-| 05 Viewer & export | 29 | 14 | 3 | 10 | 2 |
-| **Requirements** | **108** | **54** | **8** | **42** | **4** |
+| 05 Viewer & export | 29 | 15 | 3 | 9 | 2 |
+| **Requirements** | **108** | **55** | **8** | **41** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (13 proven, 1 partly, 3 never cut).
@@ -182,7 +182,7 @@ board being cut rather than from a document.
 | V21 | Choose one file per bit or one file with custom tool-change G-code | 06 §6.11 | **Not started** | for tool-change macros and automatic changers |
 | V22 | Drill alignment: hover test over a real hole, then aligned drilling, routing and outline files | 06 §6.12 | **Done** | `AlignmentTest`, `DrillAlignment`; Job › Drill alignment, `align`, `export --align [--align-outline]` |
 | V23 | Routed holes and slots: one continuous ramp per feature, no lift between laps, no floor lap under a through cut | 06 §6.13 | **Done** | `PassLinker` continuations; `SlotRoutingTests.OnTheTestBoardEachHoleAndSlotIsEnteredOnce`, `AThroughCutWhoseLastRampIsBelowTheBoardHasNoFloorLap` |
-| V24 | Routing settings: depth per lap, short last lap, break-through, finishing lap, ramp feed | 06 §6.13 | **Not started — priority** | defaults from the cutter and the layer |
+| V24 | Routing settings: depth per lap, short last lap, break-through, finishing lap, ramp feed | 06 §6.13 | **Done** | `Laps`, `MachineSettings.ShortLastLap`/`FinishingLapOnThroughCuts`, `SlotOperation.LapNotes`; stepdown, feed and break-through named from where they live; `RoutingSettingsTests` |
 | V25 | Board thickness saved with the project, and read by the CLI | 06 §6.13 | **Done** | `ProjectSettings.BoardThicknessMm`; `ProjectTests.TheBoardThicknessIsSavedWithTheProject`; CLI `ThicknessFor` |
 | V26 | Alignment holes in the stock's bottom and left waste borders, cut with the stock | 06 §6.14 | **Done** | `Blanks.AlignmentHolesFor`, `BlankOperation.Holes`; `BlankTests.TheAlignmentHolesSitInTheWasteAsFarApartAsTheStockAllows`, `TheStockProgramCutsTheHolesBeforeItsEdges` |
 | V27 | Drill alignment from two holes: translation and rotation, separation checked, saved with the project | 06 §6.14 | **Done** | `RigidFit.Solve`, `DrillAlignment.Apply`, `ProjectSettings.Alignment`; `RigidFitTests`, `AlignmentTests.ATurnMovesEveryHoleAlongWithIt`, `ProjectTests.TheDrillAlignmentIsSavedWithTheProject` |
@@ -258,7 +258,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.10 Drill hits drawn as an X | workshop | **Superseded** — drill map layers cover it |
 | 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
 | 6.12 Drill alignment | workshop | **Done** |
-| 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Partial** — lifts and floor lap fixed; settings not started |
+| 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Done** |
 | 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Done** — the holes are cut, and two of them give the turn |
 | 6.15 The project page names the commands that would rebuild the export | workshop | **Not started** |
 | 6.16 A re-measured stock keeps its alignment holes | workshop | **Parked** — built on a branch, not merged |

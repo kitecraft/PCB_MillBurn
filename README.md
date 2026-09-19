@@ -325,7 +325,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.3.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.4.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 **Proven on metal:**
@@ -347,19 +347,19 @@ run the dry run first and read the pages beside the files.
   *rotation* out as well as its shift — "as good as I can expect", from the machinist who asked for it.
   And tabs now come out the thickness the program promises: the outline cuts one extra pass at the
   tab top, so the tabs are left partial instead of full thickness and the board snaps out.
+- **Since v0.1.3.** Routed holes under each of the new short-last-lap choices — kept, spread evenly,
+  folded in, and with a finishing lap forced — every hole through and to size, each file's header
+  matching the laps it cut, and every run inside its estimate. Pre-cut stock given its two alignment
+  holes and nothing else, drilled as 0.8 mm plunges where the program put them. And an SVG placed in
+  Falcon by its own centre against an L jig, burned through masking tape onto milled copper: *"as
+  best as I can expect."*
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, alignment measured from the stock's
-two waste holes, those holes drilled as straight plunges rather than spiralled, and pre-cut stock
-given its holes and nothing else.
+isolation, the routed channel between the boards of a panel, and alignment measured from the
+stock's two waste holes.
 
-**Known rough edges, next in line:**
-
-- Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
-  board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
-
-939 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
-every push. Up next after the rough edges: rulers down the viewport, a numbered picture on the
+953 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+every push. Up next: rulers down the viewport, a numbered picture on the
 drilling and routing pages, better tab placement, and registration marks for placing a burn — then
 an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
 remembering and what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
