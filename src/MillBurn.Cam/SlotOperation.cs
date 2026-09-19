@@ -36,6 +36,12 @@ public sealed record SlotOptions
     /// </summary>
     public Guid? ToolId { get; init; }
 
+    /// <summary>What to do with a depth that is not a whole number of laps. The machine's choice.</summary>
+    public ShortLastLap ShortLastLap { get; init; } = ShortLastLap.OwnLap;
+
+    /// <summary>A flat lap at full depth even when the last ramp is already through. The machine's choice.</summary>
+    public bool FinishingLapOnThroughCuts { get; init; }
+
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
 }
 
@@ -180,7 +186,7 @@ public static class SlotOperation
                 Notes =
                 [
                     Invariant($"{Count(group.Count(), holes)} {Mm(width)} mm {(holes ? "across" : "wide")}, cut with the {tool.Name}."),
-                    Invariant($"{Mm(depth)} mm deep in {Mm(tool.StepdownNm > 0 ? tool.StepdownNm : depth)} mm steps, {(holes ? "spiralling down" : "ramping along the slot")} rather than plunging."),
+                    .. LapNotes(tool, options, holes),
                 ],
             });
 
@@ -204,6 +210,61 @@ public static class SlotOperation
     /// which on a slot that has to clear a connector's leg is the difference between fitting and
     /// nearly fitting.
     /// </summary>
+    /// <summary>
+    /// What one hole or slot comes to, and where each number in it came from.
+    ///
+    /// Every number here is decided somewhere else — the stepdown and the feed by the cutter, the
+    /// break-through by the layer, the short-lap rule by the machine settings — and nothing next to
+    /// the routing names any of those places. So the program says, so that changing the answer does
+    /// not start with guessing where it lives.
+    /// </summary>
+    public static IReadOnlyList<string> LapNotes(Tool tool, SlotOptions options, bool holes)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var depth = options.TotalDepthNm;
+        var depths = Laps.Depths(depth, tool.StepdownNm, options.ShortLastLap);
+        var flat = FlatLap(depths, options);
+
+        // Only said when there is a short lap to speak of: when the plain rule would leave one.
+        var plain = Laps.Depths(depth, tool.StepdownNm);
+        var whole = plain.Zip(plain.Prepend(0L), (to, from) => to - from).Distinct().Count() <= 1;
+
+        var stepFrom = tool.StepdownNm > 0
+            ? Invariant($"the {tool.Name}'s {Mm(tool.StepdownNm)} mm stepdown")
+            : "one lap: the cutter has no stepdown set";
+
+        // Fold in takes only a sliver. A short lap deeper than that is kept, and the note must not
+        // claim a fold that the laps it sits beside show did not happen.
+        var unfolded = options.ShortLastLap == ShortLastLap.FoldIn && depths.Count == plain.Count;
+
+        var shortLap = whole
+            ? string.Empty
+            : unfolded
+                ? ", a short last lap kept as its own lap: too deep to fold in, which takes only one under a quarter of the stepdown (Settings > Milling)"
+                : Invariant($", a short last lap {Laps.Name(options.ShortLastLap)} (Settings > Milling)");
+
+        return
+        [
+            Invariant($"{Mm(depth)} mm deep, {Mm(options.BreakThroughNm)} mm of it the layer's break-through: laps of {Laps.Describe(depths)} — {stepFrom}{shortLap}."),
+            Invariant($"Each {(holes ? "hole" : "slot")}: {(holes ? "one helix" : "one ramp")} all the way down{(flat ? ", then a flat lap at full depth" : string.Empty)}, and one lift. Fed at {tool.FeedMmPerMin.ToString(CultureInfo.InvariantCulture)} mm/min, the cutter's feed."),
+        ];
+    }
+
+    /// <summary>
+    /// Whether a flat lap follows the ramps. It takes the slope out of the floor the last ramp left;
+    /// under a through cut there may be no floor, when the last ramp starts below the underside and
+    /// every point along it is already through. Strictly below — a ramp starting exactly at the
+    /// underside leaves a skin at that point. The machine settings can ask for it regardless.
+    /// </summary>
+    private static bool FlatLap(IReadOnlyList<long> depths, SlotOptions options)
+    {
+        var lastRampFrom = depths.Count > 1 ? depths[^2] : 0L;
+
+        return options.FinishingLapOnThroughCuts || lastRampFrom <= options.BoardThicknessNm;
+    }
+
     private static IEnumerable<ToolpathPass> PassesFor(DrillSlotTarget slot, Tool tool, SlotOptions options)
     {
         var path = PathFor(slot, tool, options);
@@ -219,10 +280,9 @@ public static class SlotOperation
         var closed = path.Count > 2 && path[^1].To == path[0].From;
 
         var depth = options.TotalDepthNm;
-        var step = tool.StepdownNm > 0 ? tool.StepdownNm : depth;
-        var steps = Math.Max(1, (int)Math.Ceiling(depth / (double)step));
+        var depths = Laps.Depths(depth, tool.StepdownNm, options.ShortLastLap);
+        var steps = depths.Count;
         var previous = 0L;
-        var lastRampFrom = 0L;
 
         // An open slot is cut out and then back, rather than lifting and returning to the same end
         // each time: the tool finishes every pass exactly where the next one starts. A closed
@@ -232,8 +292,7 @@ public static class SlotOperation
 
         for (var i = 1; i <= steps; i++)
         {
-            var to = Math.Min(depth, i * step);
-            lastRampFrom = previous;
+            var to = depths[i - 1];
 
             yield return new ToolpathPass
             {
@@ -248,11 +307,8 @@ public static class SlotOperation
             previous = to;
         }
 
-        // The flat lap takes the slope out of the floor the last ramp left. Under a through cut there
-        // may be no floor to flatten: when the last ramp starts below the underside of the board,
-        // every point along it is already through, and another lap is time spent cutting spoilboard.
-        // Strictly below — a ramp starting exactly at the underside leaves a skin at that point.
-        if (lastRampFrom > options.BoardThicknessNm)
+        // Another lap under a through cut is time spent cutting spoilboard; see FlatLap.
+        if (!FlatLap(depths, options))
         {
             yield break;
         }

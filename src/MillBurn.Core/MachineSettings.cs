@@ -98,6 +98,21 @@ public sealed record MachineSettings
     /// and the board comes out with no holes and no error. Turn it on only for LinuxCNC or Mach3.
     /// </summary>
     public bool CannedCycles { get; init; }
+
+    /// <summary>
+    /// What a routed hole or slot does with a depth that is not a whole number of laps — and the
+    /// stock's alignment holes with their pecks. See <see cref="Core.ShortLastLap"/>.
+    /// </summary>
+    public ShortLastLap ShortLastLap { get; init; } = ShortLastLap.OwnLap;
+
+    /// <summary>
+    /// Always finish a routed hole or slot with a flat lap at full depth, even on a through cut.
+    ///
+    /// Off, as it always was: a flat lap flattens the floor the last ramp left sloping, and when the
+    /// last ramp already starts below the underside there is no floor — only spoilboard. On for
+    /// anybody who wants the wall cleaned up by one more lap regardless.
+    /// </summary>
+    public bool FinishingLapOnThroughCuts { get; init; }
 }
 
 /// <summary>What a dry run does, when one is asked for.</summary>
@@ -194,6 +209,19 @@ public sealed record LevelSettings
     public double Smoothing { get; init; }
 }
 
+/// <summary>Which part of the settings a problem is in.</summary>
+public enum SettingsSection
+{
+    Machine,
+    Milling,
+    DryRun,
+    Probing,
+    Levelling,
+}
+
+/// <summary>One thing wrong with the settings, and the section it is in.</summary>
+public readonly record struct SettingsProblem(SettingsSection Section, string Text);
+
 /// <summary>
 /// Whether a set of settings is self-consistent, and what to say if not.
 /// </summary>
@@ -212,6 +240,18 @@ public static class SettingsCheck
         DryRunSettings dryRun,
         ProbeSettings probe,
         LevelSettings level,
+        MillingDefaults? milling = null) =>
+        [.. Found(machine, dryRun, probe, level, milling).Select(p => p.Text)];
+
+    /// <summary>
+    /// The same problems, each with the section it belongs to, so a window that shows the sections
+    /// apart can say where each one is.
+    /// </summary>
+    public static IReadOnlyList<SettingsProblem> Found(
+        MachineSettings machine,
+        DryRunSettings dryRun,
+        ProbeSettings probe,
+        LevelSettings level,
         MillingDefaults? milling = null)
     {
         ArgumentNullException.ThrowIfNull(machine);
@@ -219,13 +259,13 @@ public static class SettingsCheck
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(level);
 
-        var problems = new List<string>();
+        var problems = new List<SettingsProblem>();
 
         if (milling is { } mill)
         {
             if (mill.IsolationWidthMm < 0)
             {
-                problems.Add("Isolation width cannot be negative. Zero means a single pass.");
+                problems.Add(new SettingsProblem(SettingsSection.Milling, "Isolation width cannot be negative. Zero means a single pass."));
             }
 
             // Not a hard limit on what the geometry can do — it is a limit on what anybody means.
@@ -233,19 +273,19 @@ public static class SettingsCheck
             // is much more likely to be millimetres typed where microns were meant.
             if (mill.IsolationWidthMm > 5)
             {
-                problems.Add("Isolation width above 5 mm would clear most of the copper off the board.");
+                problems.Add(new SettingsProblem(SettingsSection.Milling, "Isolation width above 5 mm would clear most of the copper off the board."));
             }
         }
 
         if (machine.SafeZMm <= 0)
         {
-            problems.Add("Safe height must be above work zero, or travel moves cross the board at "
-                + "or below the surface.");
+            problems.Add(new SettingsProblem(SettingsSection.Machine, "Safe height must be above work zero, or travel moves cross the board at "
+                + "or below the surface."));
         }
 
         if (machine.ApproachZMm <= 0)
         {
-            problems.Add("Approach height must be above work zero.");
+            problems.Add(new SettingsProblem(SettingsSection.Machine, "Approach height must be above work zero."));
         }
 
         if (machine.ApproachZMm >= machine.SafeZMm)
@@ -253,8 +293,8 @@ public static class SettingsCheck
             var approach = Invariant($"{machine.ApproachZMm:F2} mm");
             var safe = Invariant($"{machine.SafeZMm:F2} mm");
 
-            problems.Add($"Approach height ({approach}) must be below the safe height ({safe}) — "
-                + "the tool rapids down to it before feeding.");
+            problems.Add(new SettingsProblem(SettingsSection.Machine, $"Approach height ({approach}) must be below the safe height ({safe}) — "
+                + "the tool rapids down to it before feeding."));
         }
 
         // The dry run is meant to be visibly clear of everything the real job clears. Held lower
@@ -264,43 +304,43 @@ public static class SettingsCheck
             var held = Invariant($"{dryRun.HeightMm:F2} mm");
             var safe = Invariant($"{machine.SafeZMm:F2} mm");
 
-            problems.Add($"Dry-run height ({held}) is below the safe height ({safe}). A dry run "
-                + "should clear at least as much as the real job does.");
+            problems.Add(new SettingsProblem(SettingsSection.DryRun, $"Dry-run height ({held}) is below the safe height ({safe}). A dry run "
+                + "should clear at least as much as the real job does."));
         }
 
         if (probe.MaxDepthMm <= 0)
         {
-            problems.Add("Probe search depth must be greater than zero, or the probe never descends.");
+            problems.Add(new SettingsProblem(SettingsSection.Probing, "Probe search depth must be greater than zero, or the probe never descends."));
         }
 
         if (probe.FeedMmPerMin <= 0)
         {
-            problems.Add("Probe feed must be greater than zero.");
+            problems.Add(new SettingsProblem(SettingsSection.Probing, "Probe feed must be greater than zero."));
         }
 
         if (probe.SpacingMm <= 0)
         {
-            problems.Add("Probe spacing must be greater than zero.");
+            problems.Add(new SettingsProblem(SettingsSection.Probing, "Probe spacing must be greater than zero."));
         }
 
         if (probe.MaxPoints < 4)
         {
-            problems.Add("A probing grid needs at least four touches to describe a surface.");
+            problems.Add(new SettingsProblem(SettingsSection.Probing, "A probing grid needs at least four touches to describe a surface."));
         }
 
         if (level.SegmentMm <= 0)
         {
-            problems.Add("Levelling segment length must be greater than zero.");
+            problems.Add(new SettingsProblem(SettingsSection.Levelling, "Levelling segment length must be greater than zero."));
         }
 
         if (level.Smoothing is < 0 or > 1)
         {
-            problems.Add("Smoothing runs from 0 (through every probe point) to 1 (nearly a plane).");
+            problems.Add(new SettingsProblem(SettingsSection.Levelling, "Smoothing runs from 0 (through every probe point) to 1 (nearly a plane)."));
         }
 
         if (machine.Decimals is < 2 or > 5)
         {
-            problems.Add("Coordinate decimals should be between 2 and 5. Three is one micron.");
+            problems.Add(new SettingsProblem(SettingsSection.Machine, "Coordinate decimals should be between 2 and 5. Three is one micron."));
         }
 
         return problems;

@@ -1622,7 +1622,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <p>
   <strong>Edit &rsaquo; Settings&hellip;</strong> holds the numbers that describe your machine rather
-  than your board, so they stay put when you open a different project.
+  than your board, so they stay put when you open a different project. They are on tabs &mdash;
+  Machine, Milling, Dry run, Probing &amp; levelling, and New boards &mdash; and a tab with something
+  wrong on it is marked.
 </p>
 
 <div class="warn">
@@ -1649,6 +1651,12 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <li><strong>Canned drilling cycles</strong> &mdash; off, and leave them off for GRBL. It ignores
     what it cannot parse, so a drill file would travel the whole pattern without drilling anything
     and without complaining. LinuxCNC and Mach3 do support them.</li>
+  <li><strong>Routed holes and slots</strong>, on the Milling tab &mdash; what to do when the depth
+    is not a whole number of laps (1.10&nbsp;mm in 0.50&nbsp;mm steps is 0.50 + 0.50 + 0.10): keep
+    the short lap, spread the depth evenly, or fold a sliver into the lap before. And whether a
+    through cut still gets a flat lap at full depth. The depth of each lap is the cutter&rsquo;s
+    stepdown in the tool library, and the distance through the board is the drill layer&rsquo;s
+    break-through; the routing file says which of each it used.</li>
   <li><strong>Dry run</strong> &mdash; how high it is held, and whether it keeps your feeds so the
     run takes as long as the real one.</li>
   <li><strong>Probing</strong> &mdash; grid spacing, feed, search depth, edge margin, and the most
@@ -1671,7 +1679,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <p>
   Four settings decide every time estimate, and three of them are things only your controller knows.
-  <strong>Settings &rsaquo; The machine &rsaquo; Read from a <code>$$</code> dump&hellip;</strong>
+  <strong>Settings &rsaquo; Machine &rsaquo; Read from a <code>$$</code> dump&hellip;</strong>
   takes them straight from it: send <code>$$</code> in your sender, paste back what it replies, and
   the app fills in what it found. Anything not in the paste is left alone, so a partial one is fine.
 </p>

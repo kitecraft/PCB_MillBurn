@@ -120,6 +120,40 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// Each problem says which section it is in, so the settings window can mark the tab it is on.
+    /// With the sections on separate tabs, a problem that did not say where it was would leave the
+    /// operator opening every tab to find the number Save is waiting on.
+    /// </summary>
+    [Fact]
+    public void EachProblemSaysWhichSectionItIsIn()
+    {
+        var found = SettingsCheck.Found(
+            new MachineSettings { SafeZMm = 2, ApproachZMm = 3 },
+            new DryRunSettings { HeightMm = 1 },
+            new ProbeSettings { MaxPoints = 2 },
+            new LevelSettings { Smoothing = 2 },
+            new MillingDefaults { IsolationWidthMm = -1 });
+
+        output.WriteLine(string.Join("\n", found.Select(p => $"{p.Section}: {p.Text}")));
+
+        Assert.Contains(found, p => p.Section == SettingsSection.Machine && p.Text.Contains("Approach height", StringComparison.Ordinal));
+        Assert.Contains(found, p => p.Section == SettingsSection.DryRun && p.Text.StartsWith("Dry-run height", StringComparison.Ordinal));
+        Assert.Contains(found, p => p.Section == SettingsSection.Probing && p.Text.Contains("four touches", StringComparison.Ordinal));
+        Assert.Contains(found, p => p.Section == SettingsSection.Levelling && p.Text.StartsWith("Smoothing", StringComparison.Ordinal));
+        Assert.Contains(found, p => p.Section == SettingsSection.Milling && p.Text.StartsWith("Isolation width", StringComparison.Ordinal));
+
+        // And the plain list is the same problems, in the same order.
+        Assert.Equal(
+            found.Select(p => p.Text),
+            SettingsCheck.Problems(
+                new MachineSettings { SafeZMm = 2, ApproachZMm = 3 },
+                new DryRunSettings { HeightMm = 1 },
+                new ProbeSettings { MaxPoints = 2 },
+                new LevelSettings { Smoothing = 2 },
+                new MillingDefaults { IsolationWidthMm = -1 }));
+    }
+
+    /// <summary>
     /// A dry run held lower than the job's own travel height proves less than the job does, which
     /// is backwards for the thing you run to reassure yourself.
     /// </summary>

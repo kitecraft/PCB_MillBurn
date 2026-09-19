@@ -353,13 +353,8 @@ isolation, the routed channel between the boards of a panel, alignment measured 
 two waste holes, those holes drilled as straight plunges rather than spiralled, and pre-cut stock
 given its holes and nothing else.
 
-**Known rough edges, next in line:**
-
-- Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
-  board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
-
 939 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
-every push. Up next after the rough edges: rulers down the viewport, a numbered picture on the
+every push. Up next: rulers down the viewport, a numbered picture on the
 drilling and routing pages, better tab placement, and registration marks for placing a burn — then
 an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
 remembering and what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).

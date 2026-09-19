@@ -479,6 +479,13 @@ public partial class MainWindow : Window
         if (args.Contains("--settings", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new SettingsWindow(vm.Settings) { RequestedThemeVariant = ActualThemeVariant };
+
+            // Which tab to open on, so each can be checked from a screenshot.
+            if (Argument(args, "--settings-tab") is { } tab)
+            {
+                editor.ShowTab(tab);
+            }
+
             editor.Show(this);
             _captureInstead = editor;
         }

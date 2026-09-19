@@ -33,7 +33,28 @@ public sealed class SettingsWindow : Window
     private readonly Dictionary<string, NumericUpDown> _numbers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckBox> _flags = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ComboBox> _outputs = new(StringComparer.Ordinal);
+
+    /// <summary>What a short last lap becomes, in <see cref="ShortLastLap"/> order.</summary>
+    private readonly ComboBox _shortLap = new()
+    {
+        ItemsSource = new[]
+        {
+            "Keep it as its own lap",
+            "Spread the depth evenly",
+            "Fold it into the lap before",
+        },
+        Width = 230,
+        HorizontalAlignment = HorizontalAlignment.Left,
+    };
     private readonly StackPanel _problems = new() { Spacing = 2, Margin = new Thickness(0, 8, 0, 0) };
+
+    private TabControl? _tabs;
+
+    /// <summary>Each tab's header, by name, so a tab with a problem on it can say so.</summary>
+    private readonly Dictionary<string, TextBlock> _tabHeaders = new(StringComparer.Ordinal);
+
+    /// <summary>Which tab each section of the settings is on.</summary>
+    private readonly Dictionary<SettingsSection, string> _tabOf = [];
     private readonly Button _save;
 
     public SettingsChoice? Result { get; private set; }
@@ -45,7 +66,7 @@ public sealed class SettingsWindow : Window
         Title = "Settings";
         AppIcon.Apply(this);
         Width = 640;
-        Height = 780;
+        Height = 640;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this[!BackgroundProperty] = new DynamicResourceExtension("PageBackground");
 
@@ -77,15 +98,25 @@ public sealed class SettingsWindow : Window
         Grid.SetRow(heading, 0);
         root.Children.Add(heading);
 
-        var body = new StackPanel { Spacing = 2, Margin = new Thickness(0, 12) };
+        // Tabs, because one long page had grown to six sections and a scroll. Each tab scrolls on its
+        // own; the problems and the buttons stay underneath all of them, because Save is refused
+        // while anything is wrong and a problem on a tab nobody is looking at must still be seen.
+        var tabs = new TabControl { Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(0) };
+        _tabs = tabs;
 
-        Section(body, "The machine");
-        body.Children.Add(FromDump());
+        var body = Tab(tabs, "Machine", SettingsSection.Machine);
+        Section(body, "Heights");
         Number(body, "safeZ", "Safe height", "mm", settings.Machine.SafeZMm, 0.5, 50, 0.5,
             "Every travel move in every program crosses the board at this height. Raise it above "
             + "anything that stands proud of the stock — clamps, tape, a probe clip.");
         Number(body, "approachZ", "Approach height", "mm", settings.Machine.ApproachZMm, 0.05, 10, 0.05,
             "Where a rapid descent stops and the plunge feed takes over. Must be below the safe height.");
+
+        Section(body, "Speed and acceleration");
+        body.Children.Add(Muted(
+            "These four decide how long a job is estimated to take. The controller knows all of "
+            + "them, so reading them from it beats typing them in.", 11, new Thickness(0, 0, 0, 8)));
+        body.Children.Add(FromDump());
         Number(body, "rapid", "Rapid rate", "mm/min", settings.Machine.RapidMmPerMin, 100, 20000, 100,
             "Used for the time estimates, and for a dry run with the programmed feeds turned off. "
             + "Never written into a file: G0 carries no feed word.");
@@ -104,20 +135,42 @@ public sealed class SettingsWindow : Window
             "GRBL's $11. How far the controller may cut a corner to carry speed through it, which is "
             + "what puts a real machine between “stops at every vertex” and “never "
             + "slows down”.");
+
+        Section(body, "What goes into the file");
         Number(body, "decimals", "Coordinate decimals", "", settings.Machine.Decimals, 2, 5, 1,
             "Three is one micron, which is past every machine this targets.");
         Flag(body, "canned", "Emit canned drilling cycles (G81/G83)", settings.Machine.CannedCycles,
             "GRBL does not implement these and ignores what it cannot parse, so a drill file would "
             + "travel the whole pattern without drilling anything. LinuxCNC and Mach3 do support them.");
 
-        Section(body, "Milling");
+        body = Tab(tabs, "Milling", SettingsSection.Milling);
+        Section(body, "Isolation");
         Number(body, "isolation", "Isolation width", "mm", settings.Milling.IsolationWidthMm, 0, 5, 0.05,
             "How wide a gap to clear either side of every trace, on a layer that has just been "
             + "imported. One lap of a 30° V-bit at 0.05 mm deep is 0.127 mm — enough to separate "
             + "the nets and too narrow to see, solder across, or survive handling. Each layer can "
             + "be changed afterwards; this is only where it starts. Zero means one lap.");
 
-        Section(body, "Dry run");
+        Section(body, "Routed holes and slots");
+        body.Children.Add(Muted(
+            "The depth of each lap is the cutter's stepdown, set in the tool library, and the "
+            + "distance through the board is the drill layer's break-through. These two decide what "
+            + "happens around them.", 11, new Thickness(0, 0, 0, 8)));
+        Choice(body, _shortLap, "Short last lap", (int)settings.Machine.ShortLastLap,
+            "When the depth is not a whole number of laps — 1.10 mm in 0.50 mm steps is 0.50 + 0.50 "
+            + "+ 0.10. Spread evenly: three laps of 0.37, none deeper than the stepdown. Fold in: "
+            + "0.50 + 0.60, one lap fewer and that lap a little over the stepdown, only when the "
+            + "short one is under a quarter of a step. The stock's alignment holes are pecked the same way.");
+        Flag(body, "finishingLap", "Finish through cuts with a flat lap", settings.Machine.FinishingLapOnThroughCuts,
+            "A flat lap at full depth takes the slope out of the floor the last ramp left. On a "
+            + "through cut whose last ramp starts below the board there is no floor, so it is left "
+            + "out; tick this to cut it anyway.");
+
+        body = Tab(tabs, "Dry run", SettingsSection.DryRun);
+        Section(body, "The job, with nothing cut");
+        body.Children.Add(Muted(
+            "A dry run is a copy of the program held clear of the board: the same moves in the same "
+            + "order, to watch before anything touches copper.", 11, new Thickness(0, 0, 0, 8)));
         Number(body, "dryHeight", "Held at", "mm", settings.DryRun.HeightMm, 1, 50, 0.5,
             "How far above work zero the tool is held. High enough to see daylight under it from "
             + "across the workshop, which is the point.");
@@ -125,6 +178,7 @@ public sealed class SettingsWindow : Window
             "So the dry run takes as long as the real job. Turning it off runs everything at the "
             + "rapid rate: quicker to watch, and it no longer tells you the time.");
 
+        body = Tab(tabs, "Probing & levelling", SettingsSection.Probing, SettingsSection.Levelling);
         Section(body, "Probing");
         Number(body, "spacing", "Grid spacing", "mm", settings.Probe.SpacingMm, 1, 100, 1,
             "The bow of a clamped board is a long smooth shape, so 10 mm predicts the surface "
@@ -151,6 +205,7 @@ public sealed class SettingsWindow : Window
             + "because a probe repeats to a few microns and a surface forced through that noise "
             + "ripples in a way the board does not.");
 
+        body = Tab(tabs, "New boards");
         Section(body, "When a folder is imported");
         body.Children.Add(Muted(
             "What each kind of layer becomes before you change anything. Layers with nothing in "
@@ -190,9 +245,8 @@ public sealed class SettingsWindow : Window
 
         body.Children.Add(presets);
 
-        var scroller = new ScrollViewer { Content = body };
-        Grid.SetRow(scroller, 1);
-        root.Children.Add(scroller);
+        Grid.SetRow(tabs, 1);
+        root.Children.Add(tabs);
 
         Grid.SetRow(_problems, 2);
         root.Children.Add(_problems);
@@ -295,18 +349,71 @@ public sealed class SettingsWindow : Window
 
         return new StackPanel
         {
-            Margin = new Thickness(0, 2, 0, 6),
+            Margin = new Thickness(0, 2, 0, 12),
             Children = { read, said },
         };
     }
 
-    private static void Section(Panel into, string title) =>
-        into.Children.Add(new TextBlock
+    /// <summary>Opens on the tab whose name starts with the text given, when there is one.</summary>
+    public void ShowTab(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (_tabs?.Items.OfType<TabItem>().FirstOrDefault(t =>
+                t.Header is TextBlock h && h.Text?.StartsWith(name, StringComparison.OrdinalIgnoreCase) == true) is { } tab)
         {
-            Text = title,
-            FontWeight = FontWeight.SemiBold,
-            Margin = new Thickness(0, 14, 0, 4),
+            _tabs.SelectedItem = tab;
+        }
+    }
+
+    /// <summary>A tab, and the panel its rows go into.</summary>
+    private StackPanel Tab(TabControl tabs, string name, params SettingsSection[] sections)
+    {
+        var body = new StackPanel { Spacing = 2, Margin = new Thickness(2, 8, 14, 12) };
+
+        // A TextBlock, not a string: Fluent draws a string header at a heading's size, which four
+        // of these do not fit beside each other at.
+        var header = new TextBlock { Text = name, FontSize = 14, FontWeight = FontWeight.SemiBold };
+        _tabHeaders[name] = header;
+
+        foreach (var section in sections)
+        {
+            _tabOf[section] = name;
+        }
+
+        tabs.Items.Add(new TabItem
+        {
+            Header = header,
+            Padding = new Thickness(10, 4),
+            MinHeight = 0,
+            Content = new ScrollViewer { Content = body },
         });
+
+        return body;
+    }
+
+    /// <summary>
+    /// A heading within a tab: larger, in the accent colour and ruled off, so it reads as the start
+    /// of a group rather than as one more label in the rows beneath it.
+    /// </summary>
+    private static void Section(Panel into, string title)
+    {
+        var rule = new Border
+        {
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(0, 0, 0, 4),
+            Margin = new Thickness(0, 18, 0, 8),
+            Child = Token(new TextBlock
+            {
+                Text = title,
+                FontSize = 16,
+                FontWeight = FontWeight.SemiBold,
+            }, "InteractivePrimary"),
+        };
+
+        rule[!Border.BorderBrushProperty] = new DynamicResourceExtension("Border");
+        into.Children.Add(rule);
+    }
 
     private void Number(
         Panel into, string key, string label, string unit,
@@ -375,6 +482,23 @@ public sealed class SettingsWindow : Window
             : Indented(help));
     }
 
+    /// <summary>A labelled drop-down, laid out like the number rows, with its help underneath.</summary>
+    private static void Choice(Panel into, ComboBox box, string label, int selected, string help)
+    {
+        box.SelectedIndex = selected;
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("170,Auto,*") };
+        var name = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(box, 1);
+        row.Children.Add(name);
+        row.Children.Add(box);
+
+        into.Children.Add(row);
+        into.Children.Add(Indented(help));
+    }
+
     private void ApplyPreset(ImportDefaults preset)
     {
         static int Index(OutputKind kind) => kind switch
@@ -438,6 +562,13 @@ public sealed class SettingsWindow : Window
             JunctionDeviationMm = Value("junction"),
             Decimals = (int)Value("decimals"),
             CannedCycles = Flagged("canned"),
+            ShortLastLap = _shortLap.SelectedIndex switch
+            {
+                1 => ShortLastLap.SpreadEvenly,
+                2 => ShortLastLap.FoldIn,
+                _ => ShortLastLap.OwnLap,
+            },
+            FinishingLapOnThroughCuts = Flagged("finishingLap"),
         },
         new DryRunSettings
         {
@@ -479,16 +610,41 @@ public sealed class SettingsWindow : Window
     private void Recheck()
     {
         var chosen = Chosen();
-        var problems = SettingsCheck.Problems(
+        var problems = SettingsCheck.Found(
             chosen.Machine, chosen.DryRun, chosen.Probe, chosen.Level, chosen.Milling);
         var notes = SettingsCheck.Notes(chosen.Machine, chosen.Probe);
 
         _problems.Children.Clear();
 
+        // Each problem says which tab it is on, and that tab's header is marked, so the number to
+        // change can be found without opening every tab in turn.
+        var marked = problems
+            .Select(p => _tabOf.GetValueOrDefault(p.Section))
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var (name, header) in _tabHeaders)
+        {
+            header.Text = marked.Contains(name) ? name + " •" : name;
+            header.ClearValue(TextBlock.ForegroundProperty);
+
+            if (marked.Contains(name))
+            {
+                Token(header, "DrcViolation");
+            }
+        }
+
         foreach (var problem in problems)
         {
+            var where = _tabOf.GetValueOrDefault(problem.Section);
+
             _problems.Children.Add(Token(
-                new TextBlock { Text = problem, FontSize = 11, TextWrapping = TextWrapping.Wrap },
+                new TextBlock
+                {
+                    Text = where is null ? problem.Text : where + ": " + problem.Text,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                },
                 "DrcViolation"));
         }
 
@@ -517,6 +673,8 @@ public sealed class SettingsWindow : Window
         _flags["canned"].IsChecked = machine.CannedCycles;
 
         _numbers["isolation"].Value = (decimal)new MillingDefaults().IsolationWidthMm;
+        _shortLap.SelectedIndex = (int)machine.ShortLastLap;
+        _flags["finishingLap"].IsChecked = machine.FinishingLapOnThroughCuts;
 
         _numbers["dryHeight"].Value = (decimal)dryRun.HeightMm;
         _flags["keepFeeds"].IsChecked = dryRun.KeepFeeds;

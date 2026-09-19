@@ -816,6 +816,8 @@ public static class ExportPlanner
             BoardThicknessNm = boardThicknessNm,
             BreakThroughNm = setting.BreakThroughNm,
             ToolId = job.MillDrillToolId,
+            ShortLastLap = machineSettings.ShortLastLap,
+            FinishingLapOnThroughCuts = machineSettings.FinishingLapOnThroughCuts,
         };
 
         var targets = new List<DrillSlotTarget>(layer.Drill.Slots.Count);
@@ -1101,6 +1103,7 @@ public static class ExportPlanner
             // Worked out with the stock itself, because where they go depends on where the board sits
             // inside it and on the cutter that makes both.
             AlignmentHoles = blank.AlignmentHoles,
+            ShortLastLap = machineSettings.ShortLastLap,
         };
 
         var toolpath = BlankOperation.Build(blank.Bounds, options);
