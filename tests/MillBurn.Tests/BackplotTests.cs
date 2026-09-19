@@ -120,6 +120,45 @@ public sealed class BackplotTests
         GcodeBackplot.Classify(GcodeParser.Parse(gcode));
 
     /// <summary>
+    /// A hole the program plunges straight into is marked, because a plunge has no extent in plan
+    /// and would otherwise draw nothing at all. Found on the stock's waste holes: drilled rather than
+    /// spiralled, they showed only as the rapid that went to them. Pecks into one hole are one mark,
+    /// and a plunge that goes on to cut sideways is the start of a contour, which draws itself.
+    /// </summary>
+    [Fact]
+    public void APlungedHoleIsMarkedAndAContourStartIsNot()
+    {
+        var moves = Classify(string.Join(
+            '\n',
+            "G21 G90",
+            "G0 Z2.000",
+
+            // A hole, pecked twice.
+            "G0 X5.000 Y5.000",
+            "G0 Z0.500",
+            "G1 Z-1.000 F60",
+            "G0 Z0.500",
+            "G1 Z-1.100 F60",
+            "G0 Z2.000",
+
+            // A contour: down, then along.
+            "G0 X20.000 Y5.000",
+            "G0 Z0.500",
+            "G1 Z-0.100 F60",
+            "G1 X30.000 Y5.000 F600",
+            "G0 Z2.000",
+            "M30"));
+
+        var layers = BackplotBuilder.Build(moves);
+        var holes = Assert.Single(layers, l => l.Id == "gcode-plunge");
+        var mark = Assert.Single(holes.Runs);
+
+        // A ring round the hole, closed.
+        Assert.Equal(mark[0], mark[^1]);
+        Assert.All(mark, p => Assert.InRange(p.DistanceTo(new Point2(Mm(5), Mm(5))), Mm(0.49), Mm(0.51)));
+    }
+
+    /// <summary>
     /// A cut is a cut wherever the stock top happens to be, not only below Z zero.
     ///
     /// Found on a levelled coupon. Levelling writes the measured height of the surface into every

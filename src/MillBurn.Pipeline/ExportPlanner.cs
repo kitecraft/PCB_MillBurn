@@ -1143,7 +1143,8 @@ public static class ExportPlanner
         summary.Add(Invariant($"{measured.TimeRange()} · {stats.Lines:N0} lines"));
         summary.AddRange(blank.Notes);
 
-        warnings.Add("Cut this before anything else, and keep the piece the right way up — the lower-left corner of this rectangle is work zero for every other file in this export.");
+        // Named, not "this": the warning is shown in the checks and on the pages with no file beside it.
+        warnings.Add("Cut the stock before anything else, and keep it the right way up — its lower-left corner is work zero for every other file in this export.");
         warnings.AddRange(ToolAdvice.For(tool));
 
         return new ExportItem

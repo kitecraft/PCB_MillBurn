@@ -320,6 +320,18 @@ public sealed partial class MainViewModel : ViewModelBase
         StatusMessage = "New project. Import a Gerber folder to begin.";
     }
 
+    /// <summary>
+    /// Puts the project away, back to the empty panel. The same as a new project underneath; it is
+    /// here under its own name because that is the name somebody looks for in a File menu.
+    /// </summary>
+    public void CloseProject()
+    {
+        var name = _project.DisplayName;
+
+        NewProject();
+        StatusMessage = $"Closed {name}.";
+    }
+
 
 
     // ------------------------------------------------------------------ opening a program
@@ -1280,7 +1292,10 @@ public sealed partial class MainViewModel : ViewModelBase
         var status = StatusMessage;
         InspectRefresh();
 
-        if (RefreshItems.Count == 0)
+        // Quiet about re-exports too. A file KiCad wrote again with nothing changed differs only in
+        // its date stamp, and none of those is ticked, so Apply took nothing and the same list came
+        // back on every open, for good. Refresh source still lists them, for anyone who wants them.
+        if (RefreshItems.Count == 0 || _plan is { AffectsBoard: false })
         {
             CancelRefresh();
             StatusMessage = status;
