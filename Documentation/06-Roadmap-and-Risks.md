@@ -2772,14 +2772,14 @@ border at its top — very nearly the stock's diagonal apart, since the angle tw
 error in reading each divided by the distance between them. Each keeps its own radius, the cutter's, and
 a millimetre clear of the stock's cut, the board's outline and the corner. A border too narrow to hold
 one says so, by how much, and still cuts the stock; stock the mill did not make says so too. The default
-size is half as wide again as the cutter, so it can be spiralled rather than plunged, and
-`BlankOperation` cuts them with `SlotOperation.Holes` — the same code as a milled hole in a board,
-before the edges, while the stock is still part of the sheet, with no bit change.
+hole is the cutter's own width: `BlankOperation.Holes` drills each one straight down with the outline
+bit, pecked by its stepdown, before the edges, while the stock is still part of the sheet, with no bit
+change. The stock program never uses canned cycles, because Drill alignment finds the waste holes by
+reading it and the reader does not interpret `G81`.
 
-One thing the build turned up: the stock program is emitted straight rather than through `Assemble`, so
-it had never been through `PassLinker`. A hole's second lap lifted to safe height and plunged back into
-the hole it had just cut. Linking it there fixed that and left the perimeter alone, where a deeper lap
-starts above where the last finished and a plunge is what it should be.
+They were first spiralled out half as wide again as the cutter, through `SlotOperation.Holes` — the
+same code as a milled hole in a board. That was a workflow hiccup for no gain: the check needs a
+centre, and a plunge has exactly one. Changed to a drill on branch `004_DrillStockHoles`.
 
 **Part 2 built.** *Job ▸ Drill alignment* gained a tick — *Measure a second hole as well, to correct
 rotation* — which opens a second hole row, its own **Write test** button, and its own pair of offsets.

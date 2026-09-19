@@ -1091,15 +1091,15 @@ public static class ExportPlanner
             // Worked out with the stock itself, because where they go depends on where the board sits
             // inside it and on the cutter that makes both.
             AlignmentHoles = blank.AlignmentHoles,
-            HoleDiameterNm = blank.HoleDiameterNm,
         };
 
         var toolpath = BlankOperation.Build(blank.Bounds, options);
 
-        // Linked like every other program. This one is emitted straight rather than through Assemble,
-        // so without this an alignment hole's laps lifted to safe height and plunged back into the hole
-        // they had just cut. The stock's own edges are unaffected: a deeper lap of the perimeter starts
-        // above where the last one finished, which is a plunge by definition and never a continuation.
+        // The holes first, as their own drilling operation with the same bit: the emitter changes tools
+        // only when the name changes, so the two run back to back with nothing in between.
+        var holes = BlankOperation.Holes(options);
+
+        // Linked like every other program. This one is emitted straight rather than through Assemble.
         var (linked, _) = PassLinker.Apply(toolpath);
 
         var shift = new Point2(-blank.Bounds.MinX, -blank.Bounds.MinY);
@@ -1107,7 +1107,9 @@ public static class ExportPlanner
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — stock",
-            Toolpaths = [Translate(linked, shift)],
+            Toolpaths = holes is null
+                ? [Translate(linked, shift)]
+                : [Translate(holes, shift), Translate(linked, shift)],
             OriginShift = shift,
             Notes =
             [
@@ -1125,7 +1127,11 @@ public static class ExportPlanner
             SafeZNm = Nm.FromMillimetres(machineSettings.SafeZMm),
             ApproachZNm = Nm.FromMillimetres(machineSettings.ApproachZMm),
             Decimals = machineSettings.Decimals,
-            CannedCycles = machineSettings.CannedCycles,
+
+            // Never canned cycles here. Drill alignment finds the waste holes by reading this program,
+            // and the reader does not interpret G81, so a canned hole is one it cannot see. Two plain
+            // plunges cost nothing on any controller.
+            CannedCycles = false,
         });
 
         var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(GcodeParser.Parse(text)), machine);

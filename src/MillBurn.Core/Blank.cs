@@ -76,14 +76,6 @@ public sealed record BlankOptions
     /// </summary>
     public bool AlignmentHoles { get; init; }
 
-    /// <summary>
-    /// Their diameter, or zero for one the outline cutter can spiral comfortably.
-    ///
-    /// A cutter needs room to spiral: a hole its own width is a plunge. Half as wide again is the
-    /// smallest that is not, and it is still small enough to sit in a 10 mm border.
-    /// </summary>
-    public double HoleDiameterMm { get; init; }
-
     public static BlankOptions Default { get; } = new();
 }
 
@@ -110,7 +102,7 @@ public sealed record BlankPlan
     /// </summary>
     public IReadOnlyList<Point2> AlignmentHoles { get; init; } = [];
 
-    /// <summary>The diameter of those holes.</summary>
+    /// <summary>The diameter of those holes: the cutter's own, since each is a single plunge.</summary>
     public long HoleDiameterNm { get; init; }
 
     public static BlankPlan None { get; } = new();
@@ -237,13 +229,6 @@ public static class Blanks
     public static long HoleClearanceNm { get; } = Nm.FromMillimetres(1);
 
     /// <summary>
-    /// The hole a given cutter can spiral comfortably: half as wide again as the cutter, rounded up
-    /// to a tenth. A cutter needs room to spiral, and one the size of the hole is a plunge.
-    /// </summary>
-    public static long HoleDiameterFor(long cutterNm) =>
-        Nm.FromMillimetres(Math.Ceiling(cutterNm * 1.5 / Nm.PerMillimetre * 10) / 10);
-
-    /// <summary>
     /// Where the two alignment holes go, and how big they are.
     ///
     /// **As far apart as the stock allows**, because the angle two holes can resolve is the error in
@@ -265,9 +250,10 @@ public static class Blanks
             return ([], 0);
         }
 
-        var diameter = options.HoleDiameterMm > 0
-            ? Nm.FromMillimetres(options.HoleDiameterMm)
-            : HoleDiameterFor(cutterNm);
+        // Drilled straight down with the stock's own cutter, so a hole is exactly that cutter's width.
+        // It used to be spiralled out half as wide again, which took a helix and a lap of linking for
+        // nothing the check needs: the check needs a centre, and a plunge has only one.
+        var diameter = cutterNm;
 
         // What each hole needs from the edge it sits beside: its own radius, the cutter's, and the
         // clearance. Twice that is the narrowest border one fits in.
@@ -278,13 +264,13 @@ public static class Blanks
         if (bottom < reach * 2 || left < reach * 2)
         {
             notes.Add(Invariant(
-                $"No alignment holes: a {Mm(diameter)} mm hole needs {Mm(reach * 2)} mm of border, and the bottom and left borders are {Mm(bottom)} and {Mm(left)} mm. Widen them, or ask for a smaller hole."));
+                $"No alignment holes: a {Mm(diameter)} mm hole needs {Mm(reach * 2)} mm of border, and the bottom and left borders are {Mm(bottom)} and {Mm(left)} mm. Widen them."));
 
             return ([], 0);
         }
 
         notes.Add(Invariant(
-            $"Two {Mm(diameter)} mm alignment holes in the waste — one in the bottom border, one in the left — cut before the edges, with the same bit. Check a later setup against them with Job > Drill alignment before anything is cut into the board."));
+            $"Two {Mm(diameter)} mm alignment holes in the waste — one in the bottom border, one in the left — drilled before the edges with the same bit. Check a later setup against them with Job > Drill alignment before anything is cut into the board."));
 
         return (
             [

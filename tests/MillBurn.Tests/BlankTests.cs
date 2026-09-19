@@ -745,7 +745,7 @@ public sealed class BlankTests(ITestOutputHelper output)
         var stock = plan.Bounds;
 
         Assert.Equal(2, plan.AlignmentHoles.Count);
-        Assert.Equal(Nm.FromMillimetres(1.5), plan.HoleDiameterNm);
+        Assert.Equal(cutter, plan.HoleDiameterNm);
 
         var clearance = (plan.HoleDiameterNm / 2) + (cutter / 2);
 
@@ -834,19 +834,27 @@ public sealed class BlankTests(ITestOutputHelper output)
         Assert.Contains(holes, h => h.DistanceTo(targets[0].At) < Nm.FromMillimetres(0.05));
         Assert.Contains(stock.Summary, s => s.Contains("alignment hole", StringComparison.OrdinalIgnoreCase));
 
-        // And each hole is entered once. The stock program is emitted straight rather than through
-        // Assemble, so it had to be linked on its own: without that, a hole's second lap lifted to
-        // safe height and plunged back into the hole it had just cut.
-        // Inside the hole's own circle, because a helix enters on its orbit rather than at the centre.
-        var inside = plan.Blank.HoleDiameterNm / 2.0;
+        // And each hole is drilled, not milled: everything below the surface there goes straight down
+        // and back up, with no sideways move and no arc. And with the same bit as the edges, so there
+        // is no tool change in the program at all.
+        var moves = GcodeParser.Parse(stock.Content).Moves;
 
         foreach (var hole in holes)
         {
-            var entries = GcodeParser.Parse(stock.Content).Moves
-                .Count(m => m.FromZNm >= 0 && m.ToZNm < 0 && m.From.DistanceTo(hole) < inside);
+            var there = moves
+                .Where(m => Math.Min(m.FromZNm, m.ToZNm) < 0 && m.From.DistanceTo(hole) < Nm.FromMillimetres(0.05))
+                .ToList();
 
-            Assert.Equal(1, entries);
+            Assert.NotEmpty(there);
+            Assert.All(there, m =>
+            {
+                Assert.False(m.IsArc);
+                Assert.Equal(m.From, m.To);
+            });
         }
+
+        Assert.DoesNotContain("M0\n", stock.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("G81", stock.Content, StringComparison.Ordinal);
     }
 
     // ------------------------------------------------------------------ it travels with the project
