@@ -187,7 +187,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </div>
 
 <p>
-  From the command line: <code>millburn export &lt;folder&gt; --dry-run --write</code>, with
+  From the command line: <code>millburn-cli export &lt;folder&gt; --dry-run --write</code>, with
   <code>--dry-run-height&nbsp;&lt;mm&gt;</code> if 5&nbsp;mm is not the clearance you want.
 </p>
 
@@ -395,7 +395,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   Every test writes one, not only the probed ones, because a test worth running once is usually
   worth running again with the same numbers and a different bit. On the command line the same file
-  works as a starting point: <code>millburn testcut --reopen depth-test.testcut.json</code>, and
+  works as a starting point: <code>millburn-cli testcut --reopen depth-test.testcut.json</code>, and
   anything you add after it still wins.
 </p>
 
@@ -896,7 +896,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <p>
   So to level both sides you probe twice. Cut the top, flip and re-register, probe again, import the
   new map, and export the bottom with <em>flipped</em> chosen. Or level that one file on its own:
-  <code>millburn level Board-B_Cu.nc --map second-probe.log</code>. On the command line the export
+  <code>millburn-cli level Board-B_Cu.nc --map second-probe.log</code>. On the command line the export
   takes <code>--level-side top|bottom</code>, and defaults to top.
 </p>
 
@@ -974,9 +974,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <p>
   From the command line:
-  <code>millburn probe &lt;folder&gt;</code>,
-  then <code>millburn export &lt;folder&gt; --level &lt;log&gt; --write</code>.
-  There is also <code>millburn level &lt;program.nc&gt; --map &lt;log&gt;</code>, which will level
+  <code>millburn-cli probe &lt;folder&gt;</code>,
+  then <code>millburn-cli export &lt;folder&gt; --level &lt;log&gt; --write</code>.
+  There is also <code>millburn-cli level &lt;program.nc&gt; --map &lt;log&gt;</code>, which will level
   <em>any</em> G-code, not only ours.
 </p>
 
@@ -1815,7 +1815,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <p>
   From the command line:
-  <code>millburn export &lt;folder&gt; --start-gcode &lt;file or text&gt; --end-gcode &lt;&hellip;&gt;</code>.
+  <code>millburn-cli export &lt;folder&gt; --start-gcode &lt;file or text&gt; --end-gcode &lt;&hellip;&gt;</code>.
 </p>
 
 <h2 id="panel">The board pane: what is drawn, and what gets cut</h2>

@@ -2036,7 +2036,7 @@ internal static class Program
 
         if (tool is null)
         {
-            Console.Error.WriteLine($"No tool matching '{wanted}'. Try: millburn tools list");
+            Console.Error.WriteLine($"No tool matching '{wanted}'. Try: millburn-cli tools list");
             return 1;
         }
 
@@ -2217,7 +2217,7 @@ internal static class Program
             File.WriteAllText(probePath, probe);
 
             Line($"  probe       {Path.GetFileName(probePath)}");
-            Line($"              run it, keep the log, then: millburn level {Path.GetFileName(output)} --map <log>");
+            Line($"              run it, keep the log, then: millburn-cli level {Path.GetFileName(output)} --map <log>");
         }
 
         foreach (var note in report.Notes)

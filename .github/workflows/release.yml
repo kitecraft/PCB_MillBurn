@@ -63,11 +63,9 @@ jobs:
       - name: Publish
         shell: bash
         run: |
-          version="${TAG#[vV]}"
-          out="out/${{ matrix.rid }}"
-          dotnet publish src/MillBurn.App -c Release -r ${{ matrix.rid }} --self-contained -p:Version="$version" -o "$out"
-          dotnet publish src/MillBurn.Cli -c Release -r ${{ matrix.rid }} --self-contained -p:Version="$version" -o "$out"
-          cp LICENSE THIRD-PARTY-NOTICES.md "$out/"
+          # One script for the release and for anyone building locally, so the two cannot drift:
+          # MillBurn and millburn-cli as single files, the help beside them, and nothing else.
+          bash build/publish.sh ${{ matrix.rid }} "out/${{ matrix.rid }}" "${TAG#[vV]}"
 
       - name: Archive (Windows)
         if: runner.os == 'Windows'

@@ -50,7 +50,8 @@ UGS, Candle, LightBurn and LinuxCNC already do that well.
 ## Quick start
 
 1. **Get it.** Download the latest [release](https://github.com/kitecraft/PCB_MillBurn/releases/latest)
-   for Windows or Linux, unpack it anywhere, and run `MillBurn.App`. It is self-contained — you do not
+   for Windows or Linux, unpack it anywhere, and run `MillBurn` (`MillBurn.exe` on Windows) — the
+   folder holds it, `millburn-cli` and the help, nothing else. It is self-contained — you do not
    need .NET installed. (On a fresh Debian or Ubuntu you may need `sudo apt install libfontconfig1`.)
 2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
    folder…`. Drill files come along with it. Exporting from KiCad? The
@@ -278,29 +279,29 @@ Point it at any Gerber export folder and look at your board — fast, correct, a
 ## The CLI
 
 The whole pipeline is scriptable, and it is the same code the window runs. The executable is
-`MillBurn.Cli`, called `millburn` below; from a source tree, `dotnet run --project src/MillBurn.Cli --`
-takes its place. Run it with no arguments for the full list.
+`millburn-cli`, beside `MillBurn` in the download; from a source tree, `dotnet run --project
+src/MillBurn.Cli --` takes its place. Run it with no arguments for the full list.
 
 ```sh
-millburn board   <gerber-folder> --png board.png          # detect layers, render headlessly
-millburn inspect <folder>                                  # what was understood, and what was not
+millburn-cli board   <gerber-folder> --png board.png          # detect layers, render headlessly
+millburn-cli inspect <folder>                                  # what was understood, and what was not
 
-millburn export  <folder-or-project> --write -o out/       # every layer, one file each
-millburn export  <folder> --set F_Cu.gbr=svg- --write      # svg- inverts
-millburn export  <folder> --dry-run --write                # + a .dryrun.nc beside each program
-millburn export  <folder> --stock 10,10,10,10 --write      # cut the stock to size, 10 mm border
+millburn-cli export  <folder-or-project> --write -o out/       # every layer, one file each
+millburn-cli export  <folder> --set F_Cu.gbr=svg- --write      # svg- inverts
+millburn-cli export  <folder> --dry-run --write                # + a .dryrun.nc beside each program
+millburn-cli export  <folder> --stock 10,10,10,10 --write      # cut the stock to size, 10 mm border
 
-millburn testcut depth --tool "30°" --from 0.02 --step 0.02
-millburn probe   <folder> --spacing 8                      # a G38.2 grid to run and log
-millburn export  <folder> --level probe.log --write        # bend every program to the surface
-millburn level   anyones.nc --map probe.log                # works on any G-code, not just ours
+millburn-cli testcut depth --tool "30°" --from 0.02 --step 0.02
+millburn-cli probe   <folder> --spacing 8                      # a G38.2 grid to run and log
+millburn-cli export  <folder> --level probe.log --write        # bend every program to the surface
+millburn-cli level   anyones.nc --map probe.log                # works on any G-code, not just ours
 
-millburn align   <project> --hole 3 --at 23.74,47.83       # the drill alignment test
-millburn align   <project> --hole 3 --at 23.74,47.83 --hole2 11 --at2 40.49,70.77   # and the turn
-millburn export  <project> --align 0.12,-0.05 --align-turn 0.3 --align-about 23.62,47.88 --write
+millburn-cli align   <project> --hole 3 --at 23.74,47.83       # the drill alignment test
+millburn-cli align   <project> --hole 3 --at 23.74,47.83 --hole2 11 --at2 40.49,70.77   # and the turn
+millburn-cli export  <project> --align 0.12,-0.05 --align-turn 0.3 --align-about 23.62,47.88 --write
 
-millburn project save <folder> -o board.millburn
-millburn tools list
+millburn-cli project save <folder> -o board.millburn
+millburn-cli tools list
 ```
 
 ---
@@ -391,21 +392,22 @@ warning is a failed build, which is the point.
 
 ### Publishing
 
-Self-contained, so nothing has to be installed on the target. The app and the CLI go to the same
-directory and share their runtime.
+Self-contained, so nothing has to be installed on the target, and single-file: each program is one
+file with its libraries and the .NET runtime inside it, renamed `MillBurn` and `millburn-cli`. One
+script does it, for the release and for a local build alike:
 
 ```sh
-dotnet publish src/MillBurn.App -c Release -r win-x64   --self-contained -o out/windows
-dotnet publish src/MillBurn.Cli -c Release -r win-x64   --self-contained -o out/windows
-
-dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/linux
-dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
+build/publish.sh win-x64   out/windows
+build/publish.sh linux-x64 out/linux
 ```
 
-**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves the launchers
-non-executable — NTFS has no execute bit — so either `chmod +x MillBurn.App MillBurn.Cli` after copying
+It empties the output folder first. The two programs start about 50 ms slower than unbundled ones,
+because each unpacks itself as it starts.
+
+**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves them
+non-executable — NTFS has no execute bit — so either `chmod +x MillBurn millburn-cli` after copying
 them across, or publish on Linux. Pushing a `v*` tag runs [`release.yml`](.github/workflows/release.yml),
-which does exactly that and attaches both archives to the release.
+which runs the same script on Linux and attaches both archives to the release.
 
 ---
 
