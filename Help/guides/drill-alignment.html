@@ -184,9 +184,9 @@
 
 <p>
   This guide finds that error by looking at it, with the spindle off, before anything is drilled.
-  Bring the bit down just above a real pad, see how far off centre it is, enter that as an offset,
-  and look again. When it sits dead centre, write the files again with the offset built in. Two or
-  three tries is usually enough.
+  Bring the bit down just above a real pad, jog it to the middle of the pad, and type the two numbers
+  the machine shows. When the test lands dead centre on its own, write the files again with that
+  correction built in. Two or three tries is usually enough.
 </p>
 
 <figure class="photo">
@@ -291,16 +291,18 @@
 </p>
 
 <figure>
-  <img src="images/drill-alignment-dialog.png" width="640" height="590"
-       alt="The Drill alignment dialog: a file and a hole to test with, Move X by and Move Y by, the stopping height, Board outline too, and the folder the files go to.">
+  <img src="images/drill-alignment-dialog.png" width="640" height="982"
+       alt="The Drill alignment dialog: ticks for the stock's waste holes and for a flipped board, a file and a hole to test with, boxes for where the hole really is, the stopping height, a list of the programs to write again with drilling, slots and the outline ticked, and the folder the files go to.">
   <figcaption>The dialog stays open while you test, and closes when the aligned files are
     written.</figcaption>
 </figure>
 
 <p>
-  Check <strong>Files go to</strong>. The test file and the aligned files are written there. By
-  default that is the folder you last exported to; <em>Change&hellip;</em> picks another. A long
-  path is shortened in the middle: hover over it to see all of it, or widen the window.
+  Check <strong>Files go to</strong>. The test file and the aligned files are written there.
+  <em>Change&hellip;</em> picks another, and that choice is remembered: the next time you open this
+  dialog it starts where you last put alignment files, whatever the Export dialog is set to. Before
+  there has been one, it starts at the folder you last exported to. A long path is shortened in the
+  middle: hover over it to see all of it, or widen the window.
 </p>
 
 <h3 id="step-2"><span class="step-number">2</span>Pick a file and a hole</h3>
@@ -317,10 +319,10 @@
   in and pick any hole that has already been drilled.
 </p>
 
-<h3 id="step-3"><span class="step-number">3</span>Test at 0, 0</h3>
+<h3 id="step-3"><span class="step-number">3</span>Test where the program thinks the hole is</h3>
 
 <p>
-  Leave <strong>Move X by</strong> and <strong>Move Y by</strong> at <code>0.000</code> and press
+  The two boxes already hold the hole&rsquo;s own coordinates, so leave them alone and press
   <strong>Write test</strong>. The file is <code>YourProject.align-test.nc</code>. Open it in your
   sender and run it.
 </p>
@@ -369,8 +371,8 @@
     <text x="118" y="92" class="d-text">Bit tip</text>
     <line x1="160" y1="96" x2="206" y2="106" class="d-line"/>
 
-    <text x="234" y="95" class="d-strong">Move X by +0.15</text>
-    <text x="310" y="140" class="d-strong">Move Y by −0.05</text>
+    <text x="234" y="95" class="d-strong">0.15 mm in X</text>
+    <text x="310" y="140" class="d-strong">0.05 mm in Y</text>
 
     <!-- Which way is which -->
     <line x1="34" y1="264" x2="84" y2="264" class="d-line" marker-end="url(#axis)"/>
@@ -380,51 +382,39 @@
     <text x="548" y="286" text-anchor="end" class="d-muted">Seen from above · not to scale</text>
   </svg>
   <figcaption>
-    The offset is how far the tip has to <em>go</em>: from where it is to where it should be. Here
-    it is short of the centre in X and past it in Y.
+    The tip is short of the centre in X and past it in Y. You do not have to work out by how much:
+    jog it to the centre and read the machine.
   </figcaption>
 </figure>
-
-<p>
-  <strong>Which way is plus?</strong> A positive number moves the tip towards the machine&rsquo;s +X
-  or +Y. If you are not sure which way that is over the board, jog 1&nbsp;mm in +X and watch where
-  the tip goes.
-</p>
-
-<h4>By eye</h4>
-
-<p>
-  Use something whose size you know as a ruler. The pad&rsquo;s size is in your design, and the
-  bit&rsquo;s diameter is on the bit. If a 1.0&nbsp;mm drill sits about a quarter of its own width
-  left of centre, that is about 0.25&nbsp;mm. A guess gets you close, and the next test shows what
-  is left.
-</p>
-
-<h4>By jogging, for an exact number</h4>
 
 <p>When the test has finished the machine is idle, so the jog controls work.</p>
 
 <ol>
   <li>Jog X and Y only, in 0.01&nbsp;mm steps, until the tip sits on the centre. Leave Z where it
     is, or raise it a little first if the board is not flat. Raising Z does not change X or Y.</li>
-  <li>Read the <em>work</em> position in your sender.</li>
-  <li>Subtract the hole&rsquo;s position from the dialog&rsquo;s <strong>Hole</strong> list. The
-    result is the offset to enter, whatever you had entered before.</li>
+  <li>Read the <em>work</em> position in your sender. That is where the hole really is.</li>
 </ol>
 
-<pre>                          X          Y
-Hole 3, from the list     55.625     58.305
-Work position, centred    55.795     58.255
-                          ------     ------
-Move X by / Move Y by     +0.170     -0.050</pre>
-
-<h3 id="step-5"><span class="step-number">5</span>Enter the offset and test again</h3>
+<h3 id="step-5"><span class="step-number">5</span>Type where it really is, and test again</h3>
 
 <p>
-  Type the numbers into <strong>Move X by</strong> and <strong>Move Y by</strong>. Enter the
-  <strong>whole offset</strong> from where the test started, not just the extra since your last
-  try. Press <strong>Write test</strong> again. It overwrites the same file, so reload it in your
-  sender (most senders keep the copy they first opened), then run it.
+  The <strong>It is really at</strong> row, an X box and a Y box side by side, starts out
+  holding the position the test just used &mdash; where the program thinks the hole is. Replace them
+  with the numbers you just read off the machine. There is nothing to add up and nothing to subtract:
+  the dialog works out the correction and shows it underneath, so you can see at a glance whether it
+  is the few hundredths you expect.
+</p>
+
+<pre>                          X          Y
+The test sent the bit to  55.625     58.305
+You jogged it to          55.795     58.255     &lt;- type these two
+                          ------     ------
+The dialog says           +0.170     -0.050     &lt;- and works this out</pre>
+
+<p>
+  Press <strong>Write test</strong> again. It overwrites the same file, so reload it in your sender
+  (most senders keep the copy they first opened), then run it: this time it should go straight to the
+  middle of the hole.
 </p>
 
 <div class="note">
@@ -442,21 +432,21 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <div class="table-wrap">
 <table>
   <thead>
-    <tr><th>Test</th><th>Move X by</th><th>Move Y by</th><th>What you see</th><th>Next</th></tr>
+    <tr><th>Test</th><th>Sent the bit to</th><th>What you see</th><th>Next</th></tr>
   </thead>
   <tbody>
     <tr>
-      <td class="num">1</td><td class="num">0.000</td><td class="num">0.000</td>
-      <td>Tip about 0.15&nbsp;mm short of centre in X, and 0.05&nbsp;mm past it in Y</td>
-      <td>Enter +0.15 and &minus;0.05</td>
+      <td class="num">1</td><td class="num">55.625, 58.305</td>
+      <td>Tip short of the centre; jogging to it reads 55.795, 58.255</td>
+      <td>Type those two</td>
     </tr>
     <tr>
-      <td class="num">2</td><td class="num">+0.150</td><td class="num">&minus;0.050</td>
-      <td>Still a hair short in X, about 0.02&nbsp;mm</td>
-      <td>Enter +0.17 (the whole offset, not +0.02)</td>
+      <td class="num">2</td><td class="num">55.795, 58.255</td>
+      <td>Nearly there; jogging the last hair reads 55.795, 58.260</td>
+      <td>Type those two</td>
     </tr>
     <tr>
-      <td class="num">3</td><td class="num">+0.170</td><td class="num">&minus;0.050</td>
+      <td class="num">3</td><td class="num">55.795, 58.260</td>
       <td>Dead centre</td>
       <td>Check a hole on the far side</td>
     </tr>
@@ -467,14 +457,16 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <h3 id="step-6"><span class="step-number">6</span>Check a hole on the far side</h3>
 
 <p>
-  Pick a hole near the opposite corner of the board and write a test with the same offset. If that
-  one is centred too, the offset is right everywhere on the board.
+  Pick a hole near the opposite corner of the board. Its boxes fill with its own coordinates plus the
+  correction you have just found, so pressing <strong>Write test</strong> sends the bit where that
+  hole ought to be. If it lands centred there too, the correction is right everywhere on the board.
 </p>
 
 <p>
-  If it is out by a different amount, the board is not square to the machine. An offset moves every
-  hole by the same amount, so it cannot correct a board that is sitting at an angle. Square the board
-  up and start again from step 3.
+  If it is out by a different amount, the board is sitting at an angle. An offset moves every hole by
+  the same amount, so on its own it cannot correct that &mdash; but a second measurement can. Either
+  square the board up and start again from step 3, or measure that far hole properly and let the turn
+  be worked out: <a href="#rotation">measuring a second hole</a>, below.
 </p>
 
 <figure>
@@ -488,9 +480,10 @@ Move X by / Move Y by     +0.170     -0.050</pre>
 <h3 id="step-7"><span class="step-number">7</span>Write the aligned files</h3>
 
 <p>
-  Press <strong>Write aligned files</strong>. Every drilling and slot file is written again with
-  the offset built in, and so is the board outline unless you untick <strong>Board outline
-  too</strong>. The dialog closes. For the test board, that is:
+  Press <strong>Write aligned files</strong>. Everything ticked under <strong>Write again,
+  aligned</strong> is written again with the offset built in &mdash; drilling, slots and the board
+  outline, unless you have changed the ticks (see <a href="#what-moves">choosing what gets written
+  again</a>). The dialog closes. For the test board, that is:
 </p>
 
 <div class="table-wrap">
@@ -505,7 +498,7 @@ Move X by / Move Y by     +0.170     -0.050</pre>
     <tr><td><code>…-PTH-drl.slots.aligned.nc</code><br><code>…-NPTH-drl.slots.aligned.nc</code></td>
       <td>Routed slots and milled holes</td></tr>
     <tr><td><code>…-Edge_Cuts.aligned.nc</code></td>
-      <td>The board outline, when <em>Board outline too</em> is ticked</td></tr>
+      <td>The board outline, while it is ticked</td></tr>
     <tr><td><code>…-PTH-drl.drilling.aligned.html</code><br><code>…slots.aligned.html</code></td>
       <td>The pages that go with them, listing the aligned files</td></tr>
   </tbody>
@@ -534,13 +527,161 @@ Move X by / Move Y by     +0.170     -0.050</pre>
   sender&rsquo;s recent-files list can pick one by mistake.
 </p>
 
+<h2 id="waste-holes">The stock&rsquo;s waste holes</h2>
+
+<p>
+  If the project cuts its own stock, tick <strong>Alignment holes in the waste</strong> under
+  <em>Project info</em> and the stock program puts two small holes in the borders that get thrown
+  away &mdash; one near the right-hand end of the bottom border, one near the top of the left. They are
+  cut in the same program, in the same setup, with the same end mill as the stock&rsquo;s edges, so
+  their positions are not measured at all: they are exactly where the file says, in the frame every
+  other program is written in.
+</p>
+
+<p>
+  Tick <strong>Use the stock&rsquo;s two waste holes</strong> in the alignment dialog and the hole
+  lists show those two instead of the board&rsquo;s. Three things make them worth using:
+</p>
+
+<ul>
+  <li><strong>They exist before anything is drilled.</strong> A board hole can only line up a step
+    that comes <em>after</em> drilling. The waste holes can line up the drilling itself.</li>
+  <li><strong>They are nearly the stock&rsquo;s diagonal apart</strong>, which is a longer baseline
+    than almost any pair of board holes &mdash; and the turn&rsquo;s accuracy is the error in reading
+    each hole divided by the distance between them.</li>
+  <li><strong>They survive.</strong> They are holes in a piece of copper-clad: an etch, a re-clamp,
+    a coat of paint and a trip to the other machine all leave them exactly where they were. Then
+    they are cut off with the waste.</li>
+</ul>
+
+<p>
+  Fit the end mill that cut them &mdash; the dialog names it &mdash; rather than a drill, and hover
+  over them the same way as any other hole.
+</p>
+
+<h3 id="flipped">Working on the other side</h3>
+
+<p>
+  The waste holes go right through, so the same two can be used with the board turned over. Tick
+  <strong>The board is flipped over, and I am measuring from the back</strong>: the hole positions
+  mirror about the stock&rsquo;s vertical centreline, which is the axis the app mirrors a bottom-side
+  program about and the only one that puts the stock back in the same corner. The list shows the
+  mirrored coordinates, and the test program sends the bit to them.
+</p>
+
+<p>
+  Because the two holes are deliberately <em>not</em> symmetric &mdash; one low and right, one high and
+  left &mdash; a board that went back the wrong way up shows itself: the numbers come out large
+  instead of a few hundredths.
+</p>
+
+<h2 id="what-moves">Choosing what gets written again</h2>
+
+<p>
+  The list under <strong>Write again, aligned</strong> is every G-code program this export writes, one
+  tick each. Drilling, routed slots and the board outline start ticked. The copper does not, because
+  on a first side the copper is the thing you measured against &mdash; moving it would move the
+  target along with the correction.
+</p>
+
+<p>
+  <strong>On a flipped board that changes.</strong> Cut the top copper, etch it, turn the stock over,
+  and the bottom copper is now the program that has to land on what is already there. Tick it. This is
+  what the list is for: which programs have to follow the board depends on the workflow, and MillBurn
+  cannot know yours. Programs written for the flipped side are marked <em>flipped side</em> in the
+  list, and if the ticks disagree with the flip box &mdash; a correction measured face-up being
+  written into a bottom-side program, or the other way round &mdash; the dialog says so rather than
+  writing it quietly.
+</p>
+
+<p>
+  The stock is never in the list. It is cut before there is anything on the board to line up with, and
+  it is the work zero the correction itself is measured from.
+</p>
+
+<h2 id="rotation">Measuring a second hole, when the board is not square</h2>
+
+<p>
+  Everything above assumes the board sits square to the machine, so that one hole put right puts every
+  hole right. Sometimes it does not: a jig with a little play in it, or a board clamped back down
+  after etching, can sit a fraction of a degree over. At the hole you measured, that looks exactly
+  like an offset &mdash; it is the holes at the <em>other end</em> of the board that come out wrong,
+  and by more the further away they are.
+</p>
+
+<p>
+  A quarter of a degree is 0.3&nbsp;mm across a 70&nbsp;mm board. That is a hole off the edge of its
+  pad, from an error too small to see at the hole you were looking at.
+</p>
+
+<p>
+  Tick <strong>Measure a second hole as well, to correct rotation</strong>. A second hole row appears,
+  already set to the hole furthest from the first one, with its own <strong>Write test</strong>
+  button. Then:
+</p>
+
+<ol>
+  <li>Leave the first hole&rsquo;s numbers as you measured them in steps&nbsp;3 to&nbsp;5.</li>
+  <li>Press <strong>Write test</strong> on the second row, run that file, and jog until the tip sits
+    dead centre over <em>that</em> hole.</li>
+  <li>Type what the machine says into the second hole&rsquo;s own <strong>It is really at</strong>
+    row. Each row is read against its own hole, so the second row is
+    not a correction to the first &mdash; nothing carries over between them.</li>
+</ol>
+
+<p>
+  The line under the second row then tells you what the two measurements came to:
+</p>
+
+<pre class="wrap">The board is turned 0.2618&deg; anticlockwise, and the two holes measured +0.010 mm against their known distance apart. Every hole is moved to match.</pre>
+
+<p>
+  The two test files are written under separate names &mdash;
+  <code>&hellip;.align-test-first.nc</code> and <code>&hellip;.align-test-second.nc</code> &mdash; so
+  there is no way to run one thinking it is the other.
+</p>
+
+<h3>The distance check</h3>
+
+<p>
+  Two holes are a known distance apart, and you have just measured that distance. Copper-clad does not
+  stretch, so if the two disagree, one of the holes was read wrongly &mdash; the wrong hole in the
+  list, or a number off the wrong axis. A few hundredths is measurement. More than half a millimetre
+  and MillBurn will not write the files at all; it says what the two distances were, and you can
+  measure again.
+</p>
+
+<p>
+  The same goes for two holes close together: below 10&nbsp;mm apart, a hole read a hundredth out
+  swings the angle more than the angle itself, so it asks for two holes at opposite ends of the board
+  instead of answering with a number it cannot stand behind.
+</p>
+
+<h3>What comes out</h3>
+
+<p>
+  The same files as before, with the turn built into every coordinate rather than applied by the
+  machine &mdash; GRBL has no coordinate rotation of its own. Circles stay circles; the arcs are
+  turned along with everything else. The header says both halves of what was done:
+</p>
+
+<pre class="wrap">( Aligned with the drill alignment test: every move turned 0.2618 degrees about X23.620 Y47.878 mm, then shifted X+0.170 Y-0.050 mm, from the plain export. )</pre>
+
+<p>
+  The turn is taken about the first hole you measured, so that hole lands exactly where you put it and
+  the rest of the board follows the angle.
+</p>
+
 <h2>Worth knowing</h2>
 
 <ul>
   <li>
-    <strong>The offset is not saved in the project.</strong> A later Export writes the plain files,
-    without the offset. To get aligned files again, reopen the dialog and write them; the numbers are
-    still there until you close MillBurn.
+    <strong>The correction is saved with the project.</strong> Write the aligned files and the shift,
+    the turn and the date are kept in the project file. Next time you open the dialog it offers them
+    back with <strong>Use it</strong>, so a board that is still clamped where it was does not have to
+    be measured again. If the board has moved since, ignore it and measure: the date is shown for
+    exactly that decision. A plain Export still writes plain files &mdash; the aligned ones come from
+    this dialog, or from <code>--align</code> on the command line.
   </li>
   <li>
     <strong>The outline step, after re-clamping.</strong> If the board came off the machine after
@@ -556,7 +697,10 @@ Move X by / Move Y by     +0.170     -0.050</pre>
   <li>
     <strong>From the command line:</strong> <code>align &lt;project&gt; --hole 3 --offset 0.17,-0.05</code>
     writes the test file, and <code>export &lt;project&gt; --align 0.17,-0.05 --align-outline --write</code>
-    writes the aligned files.
+    writes the aligned files. Adding <code>--hole2 11 --offset2 -0.02,0.03</code> to the
+    <code>align</code> command works out the turn from two measured holes and prints the
+    <code>export</code> line to run, and <code>--align saved</code> uses the correction already kept
+    in the project.
   </li>
 </ul>
 

@@ -461,6 +461,45 @@ it, so the only boundary that needs one is between the job and the stock — whi
 772 mm as a side effect, because the inner profiles became closed contours again instead of
 four tabbed runs each.
 
+**A tab is only a tab if something cut down to its top.** Reported from the workshop after a set of
+edge cuts: every tab was left at the full thickness of the board, so the piece had to be sawn out.
+The tab region is cut only by the passes *shallower* than the tab, and nothing made sure there was
+one — a 0.8 mm board, 0.90 mm of total depth and a cutter whose step down is 1.00 mm has exactly one
+pass, deeper than the tab, so the gap was jumped on every pass the profile had. The same arithmetic
+was quietly wrong on ordinary boards too: 1.6 mm in 0.4 mm steps put the deepest shallow pass at
+0.80 mm, leaving 1.10 mm under a tab whose own header promised 0.50 mm. The step down is the
+cutter's and the tab height is ours, and the two need not divide into each other at all, so
+`OutlineOperation` now always cuts the depth the tab's top sits at, whatever the steps work out to.
+A tab taller than the whole cut cannot be cut down by anything, and says so in the program and in the
+export report rather than leaving a board that will not come free. `OutlineTabTests` pins the
+material left under a tab to the number the header quotes. `BlankOperation` had the same defect and
+the same fix: the stock's tabs were cut by whichever of the outline's steps happened to land above
+them, or by none at all.
+
+**Cut on metal, 2026-09-19.** Confirmed on the test board: the outline runs the extra pass at the
+tab top and the tabs come out partial rather than full thickness. The fix changed every outline
+program in the release, so this was the one result v0.1.2 was held for.
+
+**And the picture lost the tabs as soon as the cutting found them.** Reported within the hour: the
+outline's cut line stopped showing where the tabs were. It had never really shown them — before the
+fix nothing cut the tab at all, so *every* pass jumped the gap and the gap was in the drawing by
+accident. Cutting the tab down properly put a shallow pass across it, and drawing every pass in one
+colour let that pass paint over the gap the deep ones leave. The fix is the one the workshop
+suggested: `BackplotBuilder` splits the cuts into the passes that reach the program's full depth and
+the ones that do not, and draws only the first set. A tab then reads as a gap in the line, which is
+exactly what the material does.
+
+The shallower passes are kept as their own layer rather than dropped, so nothing is lost — a file
+from somebody else's CAM may have real work that no deeper pass covers — but they are **off until
+asked for**. Drawn by default they were worse than the problem: on a job full of ramps, a helix into
+every hole and a perimeter that spirals down, nearly every run is a part-depth one, and all of them
+together laid a yellow wash over the whole board. Reported from the workshop within the hour, which
+is the second time this feature has been corrected by somebody looking at it rather than at the code.
+It is not split for a merged program — the single file the Mill button writes — where isolation at
+0.05 mm is not a part-depth version of an outline at 0.9 mm. No new kind of control: the move-kind
+chips are built from whatever layers the backplot produces, so the new one appears beside *Cutting
+moves* and *Long rapids* with its own colour and switch.
+
 **Drill files written as Gerber X2 now drill.** KiCad's *Generate Drill Files* offers X2 instead of
 Excellon; picking it produced a Gerber full of circles that realised beautifully and drilled nothing,
 and the board would have come off the machine solid with no warning. `GerberDrills` reads the holes
@@ -1979,12 +2018,14 @@ than discovered after.
 - **The tool library, once it has more than a handful in it** — filter, sort, copy. See 6.6.
 - **Teaching the conventions** — a coachmark the first time, and a first-run walkthrough. See 6.7.
 - **The viewer leaves a gap in every outline ring** — done. See 6.8.
-- **Open recent**, off the File menu. See 6.9.
+- **Open recent**, off the File menu — built. See 6.9.
 - **Drill hits drawn as an X**, with their own toggle under Toolpath moves — superseded by KiCad's drill map layers. See 6.10.
 - **Bit changes: one file per bit** (built), **or one file with custom tool-change G-code**. See 6.11.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - **Routing holes and slots properly — priority.** Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own (not started). See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
+- **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
+- **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction. See 6.16.
 - Material-removal simulation as a first-class view and test oracle.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
@@ -2428,7 +2469,7 @@ close verb on a backplot run, and a third test asserting the two palettes agree 
 are — so adding a style and forgetting which it is fails a test rather than producing a picture
 somebody has to notice.
 
-#### 6.9 Open recent — **scheduled, not started, small**
+#### 6.9 Open recent — **built**
 
 Requested from the workshop: a **Open recent** item in the File menu that opens a submenu on hover,
 listing the last few projects.
@@ -2456,6 +2497,31 @@ What the implementation has to decide:
 **Done when** the submenu lists real recent projects, opening one is indistinguishable from opening
 it through the dialog including the unsaved-work guard, a moved project reports itself once and
 leaves, and the whole thing is checkable from a headless screenshot like every other menu here.
+
+**Built after v0.1.1.** *File ▸ Open recent* fills itself as it opens — from the settings, not from a
+copy, because the list changes as projects are opened and saved, including by the menu itself. Each
+entry opens through `ConfirmReplaceAsync` and `OpenProject`, the same path as `Ctrl+O`. A project that
+has gone is taken off the list and said so in the status bar, once, when it is asked for rather than
+whenever the menu is drawn — a drive that is unplugged today is not a project that has gone. The first
+nine carry number accelerators, the folder appears only when two projects share a file name, an
+underscore in a name is doubled so it is not eaten as an accelerator, and an empty list shows one
+disabled line.
+
+Two things came out of building it. The list stores **full paths**: the same project opened from the
+window and passed to the CLI as `WorkingFolder/board.millburn` was two entries. And a list written
+before that holds both, so `Migrate` tidies one as it is read.
+
+**The bug that got out, and what it cost.** Filling the list when *its own* submenu opened meant it was
+never filled at all: a `MenuItem` with no children is not a submenu, so it drew no arrow, never opened,
+and never raised the event that would have filled it. From the workshop: *"I open a project, then open
+another project. The 'Open recent' still has no ellipse and no available projects to select."* It is now
+filled when the **File** menu opens, and once at startup, so the item is a submenu from the first click.
+
+That went out because the last clause of *Done when* could not be met as written: a menu's popup is its
+own visual root, so a headless screenshot of the window catches the File menu highlighted and nothing of
+the list — a `--recent` flag that opened the menu was written, tried and taken out again. What replaced
+it is a `--recent` flag that **prints** the entries the menu would show, which catches an empty list, a
+duplicate, or a name mangled by an accelerator, from a terminal.
 
 #### 6.10 Drill hits drawn as an X — **superseded**
 
@@ -2537,7 +2603,8 @@ run it actually produces.
 
 Requested from the workshop, for holes that have to land in pads already on the board: a small hole
 in a small pad leaves a few tenths either side, and a drilling origin slightly out puts holes on the
-edge of their pads. The board is assumed square to the machine, so the correction is an origin shift.
+edge of their pads. The correction here is an origin shift, measured at one hole, which is right for a
+board sitting square to the machine; 6.14 adds the turn, for a board that is not.
 
 **Job › Drill alignment…** opens a dialog that stays open while tests are written, because finding
 the offset is a loop. Pick a drilling or routing file and a hole in it; **Write test** writes
@@ -2556,9 +2623,8 @@ has copper on it and the outline has to go round that copper — and closes. The
   not. The stock is cut as an outline but is told apart by its layer name and never moves.
 - The test refuses a hover height at or below the surface.
 
-Not done: remembering the offset in the project, so a later full export stays aligned; and checking
-two holes at once to tell a shift from a stock that is not square. Both are now part of 6.14. The help page says to hover over a
-hole at the far side too.
+Both of this section's open items — remembering the correction in the project, and measuring two holes
+to tell a shift from a board that is not square — were built in 6.14, which is where they are described.
 
 #### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **priority; lifts and floor lap fixed, settings not started**
 
@@ -2629,6 +2695,14 @@ three laps each. Items 3 and 4 (the sliver lap and break-through) wait for the s
 plated file in 1:12 against an estimate of 0m 53s – 1m 31s and the non-plated in 0:47 against
 0m 37s – 0m 58s; and the plated slots and holes in one file with the chosen 0.8 mm end mill.
 
+**And the second lift, after v0.1.1.** Each feature still ended with a retract and the next began with
+one, so every hole carried a `G0 Z` to the height it was already at — and so did the end of every
+program. The emitter now tracks whether the tool is already clear and writes the line only when it is
+not, which is every emitted program rather than only routing: on the test board the non-plated routing
+file goes from 14 lifts to 7 and the plated from 20 to 10, and an isolation program's rapid count falls
+by a fifth. Nothing about the cutting moves: the golden snapshots' feed and arc counts and their time
+estimates are unchanged.
+
 **Found alongside: board thickness is not the project's.** It is an app setting
 (`AppSettings.BoardThicknessMm`), so a project for a 1.6 mm board opened after working on a 0.8 mm
 one is exported 0.8 mm shallow, with nothing on screen saying so. And the CLI `export` does not read
@@ -2643,13 +2717,14 @@ slider, and records it whenever the outputs are recorded — on every change and
 `export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
 `project info` print which; `project save --thickness` records one.
 
-#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **scheduled, not started; build together**
+#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **built**
 
 Requested from the workshop, after the first boards cut on stock. The stock (5.6) gives every setup a
 datum and helps alignment a great deal, but small amounts of play in jigs and clamps can still throw the
-accuracy off — enough to be annoying at best, and to lose a board at worst. Drill alignment (6.12)
-corrects a *shift*, measured at one hole, and assumes the board sits square to the machine; it cannot
-correct stock that has been clamped a fraction of a degree turned.
+accuracy off — enough to be annoying at best, and to lose a board at worst. Drill alignment as 6.12
+built it corrects a *shift*, measured at one hole, and assumes the board sits square to the machine: it
+could not correct stock clamped back down a fraction of a degree turned, which is what this section is
+for.
 
 **Part 1 — alignment holes in the stock's waste.** Options under *Build on stock*: one small hole in the
 bottom waste border and one in the left. Cut in the same program and the same setup as the stock's
@@ -2689,6 +2764,186 @@ ones give a translation and a rotation: the two-point case of the fit already de
 
 Built together because each is half of the other: the holes exist to be measured, and a rotation needs
 two known places to measure.
+
+**Part 1 built.** *Project info ▸ Alignment holes in the waste*, and `--stock-holes` from the command
+line. `Blanks.Resolve` places them, because it is what knows the stock, the board inside it and the
+cutter that makes both: one centred across the bottom border at its right-hand end, one across the left
+border at its top — very nearly the stock's diagonal apart, since the angle two holes can resolve is the
+error in reading each divided by the distance between them. Each keeps its own radius, the cutter's, and
+a millimetre clear of the stock's cut, the board's outline and the corner. A border too narrow to hold
+one says so, by how much, and still cuts the stock; stock the mill did not make says so too. The default
+size is half as wide again as the cutter, so it can be spiralled rather than plunged, and
+`BlankOperation` cuts them with `SlotOperation.Holes` — the same code as a milled hole in a board,
+before the edges, while the stock is still part of the sheet, with no bit change.
+
+One thing the build turned up: the stock program is emitted straight rather than through `Assemble`, so
+it had never been through `PassLinker`. A hole's second lap lifted to safe height and plunged back into
+the hole it had just cut. Linking it there fixed that and left the perimeter alone, where a deeper lap
+starts above where the last finished and a plunge is what it should be.
+
+**Part 2 built.** *Job ▸ Drill alignment* gained a tick — *Measure a second hole as well, to correct
+rotation* — which opens a second hole row, its own **Write test** button, and its own pair of offsets.
+It starts on the hole furthest from the first, since the angle two holes resolve is the error in
+reading each divided by the distance between them. Both rows are measured from where the program puts
+their own hole, so nothing carries over between them and a mistake at one cannot bias the other; the
+two test files are named `…align-test-first.nc` and `…align-test-second.nc` so neither can be run as
+the other. `RigidFit.Solve` (MillBurn.Align) turns the two measurements into a turn and a shift — the
+two-point case of 04 §4.2, and small enough to be trigonometry rather than an SVD, which is why
+MathNet is not used here. It refuses two holes under 10 mm apart, and refuses a measured separation
+more than 0.5 mm from the known one: copper-clad does not stretch, so that is a misread hole, and
+fitting it would spread one bad reading across every hole on the board. `DrillAlignment` carries
+`RotationDegrees` and `PivotNm`, and `ExportPlanner` applies the whole correction after the shift and
+after mirroring — in the work coordinates the operator measured in — to every point of every pass,
+arc centres included, since GRBL has no `G68`. The header says both halves: *turned 0.3 degrees about
+X23.620 Y47.878 mm, then shifted X+0.100 Y-0.060 mm*. The correction is saved with the project
+(`ProjectSettings.Alignment`) with the date it was found, and offered back on the dialog with a
+**Use it** button rather than applied silently — an alignment is only true while the board has not
+moved, and the operator is the only one who knows that. The CLI has the same: `align … --hole2 N
+--offset2 x,y` prints the fit, the distance check and the `export` line to run, and `export --align
+x,y --align-turn deg --align-about x,y`, or `--align saved`, writes the files.
+
+Verified on the test board by putting a known turn in and reading it back out: two holes 28.42 mm
+apart, the second moved as a 0.3° turn about the first would move it, fitted to 0.3° with the
+separation check reading zero, and the exported program's two measured holes landing on exactly the
+positions that were fed in, with every hole between them following the angle.
+
+**Part 3 — the waste holes as targets, either side up, and a say in what moves.** Asked for from the
+workshop as soon as Part 2 was running, and the last of it changes a rule rather than adding a
+control.
+
+- **Use the stock's two waste holes.** A tick swaps the hole lists over to the stock's own program.
+  Worth having because of *when* they exist: a board hole can only align a step that comes after
+  drilling, so aligning the drilling itself had nothing to measure against until now. They are also
+  nearly the stock's diagonal apart — a longer baseline than any pair of board holes — and cut in the
+  same program and setup as the stock's edges, so their coordinates are defined rather than measured
+  (§4.1's argument, applied to fiducials). The two are picked out of the emitted program by matching
+  the plan's hole centres: the stock cuts its own edges below the surface too, and on square stock
+  that perimeter reads as one more round feature. Where they are still comes from the program.
+- **The board is flipped over.** The holes go through, so the same two serve both sides. The tick
+  mirrors them about the stock's vertical centreline — the axis a bottom-side program is mirrored
+  about, and the only one that puts the stock back in the same corner — for the hole list, the test
+  program and the fit. The pair is deliberately not symmetric, so a board put back the wrong way up
+  reads as centimetres out rather than hundredths.
+- **What moves is now a list, not a rule.** *Drilling, routing and optionally the outline; copper
+  never* is right for a first side and wrong for a second: cut the top copper, etch it, turn the stock
+  over, and the bottom copper is the program that has to land on what is already there. So
+  `DrillAlignment.Moved` names the programs, `ExportPlanner.Movable` lists what an export writes, and
+  the dialog shows one tick per program with the old rule as the default. Programs for the flipped
+  side are marked, and ticks that disagree with the flip box are called out — said rather than
+  refused, because drilling from the back of a flipped board is a real thing to want. The stock is
+  never in the list, whoever asks for it.
+- **The CLI has all three**: `align --waste-holes --flipped`, and `export --align-moves
+  drilling,"bottom copper"`, which matches on what the dialog shows and refuses a name that matches
+  nothing rather than writing fewer files than were asked for.
+- **Where the hole really is, not how far away it is.** Also from the workshop, once the dialog had
+  been used in anger: the machine already shows the position of the tip once it is jogged onto the
+  hole, so asking for the *difference* between that and the program's number is asking the operator
+  to do arithmetic the app can do. The two boxes now take the measured position — pre-filled with
+  where the test is about to send the bit, so they always start by saying what will happen — and the
+  correction is derived and shown underneath, where its size is still worth a look: a few hundredths
+  is an alignment, half a millimetre is the wrong hole. The offset never appears as an input again.
+  `align --at x,y` and `--at2 x,y` are the same thing on the command line, and produce the same fit
+  as the `--offset` form they sit beside.
+
+Verified on the test board: the waste holes list as two holes and no perimeter, at X86.380 Y5.000 and
+X5.000 Y83.840 on 88.63 mm-wide stock, mirroring to X2.250 and X83.630 when flipped; and
+`--align-moves "bottom copper"` wrote exactly one file, the mirrored isolation program, turned and
+shifted.
+
+**Cut on metal, 2026-09-18.** Drills and edge cuts run from a two-hole correction: *"The results were
+as good as I can expect."* The same run is what turned up the tabs left at full thickness, which is
+its own fix above and belongs to the outline rather than to the alignment.
+
+#### 6.15 The companion page names the commands that would rebuild it — **requested, not started**
+
+Requested from the workshop: *"in the project html companion file that is written on export, can we
+add a new section at the bottom for the cli command used to create the export... or maybe, a list of
+cli commands that would be the fastest way to replicate the outputs using the cli. This would give
+those power users a big head start on setting up their own pipelines."*
+
+**The second framing is the right one.** A record of the command that was run is only available when
+a command was run, and most exports come from the window, where there was none. Deriving the
+commands that *would* reproduce this export works either way, and is more useful in the case that
+matters: somebody who has set the job up by clicking, likes the result, and now wants it repeatable.
+That is exactly the move from the app to a pipeline, and today it means reading the CLI's help and
+guessing which flags correspond to what they ticked.
+
+**It is the same principle the rest of the export already follows** — derive the description from
+what was emitted, never from what was intended. The commands come off the finished plan: the layer
+settings it used, the thickness, the stock, the alignment. A block written from the *settings* could
+name flags the export ignored, which is worse than no block at all, because it would be tried.
+
+**Expect it to be a short script, not one line.** A double-sided job with stock, a probe and an
+alignment is several invocations in an order that matters, and the order is half the value. So the
+section is the sequence, with a line of prose before each saying what it produces — close to what
+"Suggested running order" already does for the files, which is the section it should sit beside in
+tone.
+
+**Every path has to be quoted and relative**, because board names have spaces in them (`Arduino Mega
+2560`) and an absolute path from the machine that exported is wrong on the machine that runs it.
+`--set` values need the same care: layer names have spaces too.
+
+**It must be honest about what it cannot express.** Anything the window can do that the CLI cannot —
+if such a gap exists when this is built — gets named in the block as a comment rather than quietly
+omitted, so a script that does less than the export is not handed over as if it did the same. Worth
+checking both ways while building it: this is the kind of feature that finds missing CLI flags, and
+those are worth fixing rather than papering over.
+
+**Done when** an export of the test board writes a block that, pasted into a shell in a fresh folder
+with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
+double-sided one with stock and alignment, and for a board whose name has a space in it.
+
+#### 6.16 A re-measured stock keeps the holes it was cut with — **requested, not started**
+
+Requested from the workshop, describing a workflow already in use: cut the stock to size with
+alignment holes in its waste; measure what came out; and if it is not quite the size asked for, set
+the stock to **Pre-cut** and type the measured dimensions, which fixes work zero, the shared page
+and the mirror axis to the piece actually on the table.
+
+**The correction step throws the holes away.** `Blank.AlignmentHolesFor` refuses outright on pre-cut
+stock — *"nothing cuts holes into a piece of stock it did not make"* — so the moment the measured
+size is entered the stock program has no holes in it, `WasteHoles()` comes back empty, and the
+waste-hole tick in Drill alignment greys out saying this job cuts none. The holes are sitting in the
+stock on the machine; the app has simply stopped believing in them.
+
+That refusal is right about *cutting* and wrong about *knowing*. It conflates two things that need
+separating: cutting holes into stock the mill did not make (never), and knowing where holes already
+cut are (which is the whole point of the pre-cut correction).
+
+**And the positions would be wrong even if they survived.** Both holes are anchored to the far
+edges — `bounds.MaxX - reach` and `bounds.MaxY - reach`, with the near coordinate at the middle of
+its border — so every one of their four coordinates is a function of the stock's size. Change the
+size by 0.08 mm and the app moves the holes 0.08 mm. They did not move.
+
+**Which is the better datum is the real question, and the answer is the holes.** A hole is placed by
+rapids from work zero, so its position carries positioning error only. The perimeter is a cut
+contour, carrying the cutter's diameter error and its deflection as well — which is exactly why the
+piece measured differently from what was asked for. So the measured size and the as-cut holes
+disagree, and the holes are the more trustworthy of the two.
+
+**Both are still needed, for different jobs.** The measured size is what fixes the mirror axis: the
+flip is about the stock's centreline, and on a piece 0.08 mm narrow that centreline is 0.04 mm from
+nominal, which is the error the operator entered the measurement to remove. The holes are what fixes
+where the design sits. So this is not a matter of choosing one — it is keeping two facts that come
+from different places and no longer agree.
+
+**Where the numbers should come from.** The same rule the rest of this codebase follows: record what
+was emitted. When a stock program is written with alignment holes, their coordinates are a fact about
+that program, so save them with the project the way `ProjectSettings.Alignment` already saves a
+correction, and stop recomputing them from a size that has since changed. A later re-cut of the stock
+replaces them; nothing else does.
+
+**The trap it closes is silent.** In waste-hole mode the dialog offers each hole at the position the
+app believes, and the operator types where it really is; the fit maps one onto the other and that
+transform is written into every ticked program. Believe the hole is 0.08 mm from where it is and
+that 0.08 mm goes straight into the board's drilling. The separation check does not catch it — two
+holes whose assumed positions are each wrong by a similar amount still measure nearly their expected
+distance apart, and 0.08 mm is far under the 0.5 mm refusal.
+
+**Done when** stock cut with alignment holes, then switched to Pre-cut with measured dimensions,
+still offers those holes in Drill alignment at the coordinates they were cut at rather than ones
+derived from the new size; the refusal still refuses to cut holes into stock the mill did not make;
+and a stock re-cut at a new size replaces the remembered holes rather than keeping stale ones.
 
 ### Phase 7 — User documentation — **started**
 

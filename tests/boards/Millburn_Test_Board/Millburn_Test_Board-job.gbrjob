@@ -5,7 +5,7 @@
       "Application": "Pcbnew",
       "Version": "10.0.0"
     },
-    "CreationDate": "2026-09-13T13:48:08-06:00"
+    "CreationDate": "2026-09-18T12:42:35-06:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
@@ -72,6 +72,11 @@
       "Path": "Millburn_Test_Board-B_Mask.gbr",
       "FileFunction": "SolderMask,Bot",
       "FilePolarity": "Negative"
+    },
+    {
+      "Path": "Millburn_Test_Board-User_Comments.gbr",
+      "FileFunction": "Other,User",
+      "FilePolarity": "Positive"
     },
     {
       "Path": "Millburn_Test_Board-Edge_Cuts.gbr",

@@ -1352,7 +1352,7 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 </p>
 
 <p>
-  Step by step, with how to measure the offset exactly:
+  Step by step, with pictures:
   <a href="guides/drill-alignment.html">the drill alignment guide</a>.
 </p>
 
@@ -1361,20 +1361,46 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   <li>Pick a file and a hole, and press <strong>Write test</strong>. Run the test file in your sender:
     with the spindle off, it moves over that hole and stops the tip just above the surface
     &mdash; 0.1&nbsp;mm by default &mdash; and stays there.</li>
-  <li>If the tip is off-centre, change X or Y, write the test again, reload it in your sender and run
-    it. The dialog stays open for this.</li>
-  <li>When the tip sits on the centre, press <strong>Write aligned files</strong>. Every drilling and
-    routing file is written again, moved by that amount, as <code>&hellip;.aligned.nc</code> beside the
-    original, with its page. So is the board outline, unless you untick <em>Board outline too</em>, so
-    the board is cut out round the same copper. Run the aligned files instead of the originals.</li>
+  <li>If the tip is off-centre, jog it to the middle of the hole and type the X and Y your sender
+    shows into <em>It is really at X</em> and <em>It is really at Y</em>. Nothing to add up: the
+    dialog works out the correction and shows it. Write the test again, reload it in your sender and
+    run it to check. The dialog stays open for this.</li>
+  <li>When the tip lands on the centre by itself, press <strong>Write aligned files</strong>.
+    Everything ticked is written again, moved to match, as <code>&hellip;.aligned.nc</code> beside the
+    original, with its page. Run the aligned files instead of the originals.</li>
 </ol>
 
 <p>
-  <strong>It moves the holes and the outline, and nothing else.</strong> The copper files are what the
-  holes are being lined up with, so they stay where they are, and so does the stock, which is cut
-  before there is anything on it to line up with. The board is assumed square to the machine, so one
-  hole right means every hole right. Hover over a hole at the far side of the board as well: if that
-  one is out by a different amount, the stock is not square, and no single move will fix it.
+  <strong>It moves what you tick.</strong> Drilling, routed slots and the board outline start ticked,
+  and the copper does not: on a first side the copper is what the holes are being lined up with, so
+  moving it would move the target along with the correction. Turn the board over to work the other
+  side, though, and the bottom copper is exactly what has to land on what is already there &mdash; so
+  the dialog lists every program the export writes and you say which ones follow the board. The stock
+  is never in that list: it is cut before there is anything on the board to line up with, and it is
+  the work zero the correction itself is measured from.
+</p>
+
+<p>
+  <strong>If the project cuts its own stock, use the waste holes.</strong> Two small holes in the
+  borders that get thrown away, cut by the stock program in the same setup and with the same end mill
+  as the stock&rsquo;s edges &mdash; so where they are is defined by the file rather than measured.
+  They exist before anything is drilled, which means they can line up the drilling itself; they are
+  nearly the stock&rsquo;s diagonal apart, which is what the turn&rsquo;s accuracy depends on; and
+  they go right through, so the same two work with the board flipped over for the other side. Tick
+  <em>Alignment holes in the waste</em> under Project info to cut them, and <em>Use the stock&rsquo;s
+  two waste holes</em> in the dialog to measure them.
+</p>
+
+<p>
+  <strong>If the board is not square to the machine, measure a second hole.</strong> One hole right
+  means every hole right only while the board sits square; a board a fraction of a degree over looks
+  fine at the hole you measured and misses by the length of the arc at the far end. Tick
+  <em>Measure a second hole as well, to correct rotation</em>, hover over a hole at the opposite end,
+  and type what that one reads: the two together give the turn as well as the shift, and it is built
+  into every coordinate of the files that are written. The two holes are also a known distance apart,
+  which is checked against the distance you just measured &mdash; a disagreement of more than half a
+  millimetre means a hole was read wrongly, and nothing is written.
+  <a href="guides/drill-alignment.html#rotation">The guide walks through it.</a>
 </p>
 
 <h2 id="drills">Holes of different sizes, and drill files that are Gerbers</h2>
@@ -1846,12 +1872,23 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 <h3>Toolpath moves</h3>
 
 <p>
-  Under the list, after a <strong>Preview</strong>: <strong>Cutting moves</strong>, <strong>Travel
-  moves</strong>, <strong>Long rapids</strong>, <strong>RAPID AT DEPTH</strong> if there is one, and
-  the <strong>Substrate</strong>. These are not layers &mdash; no file makes one and none can be
+  Under the list, after a <strong>Preview</strong>: <strong>Cutting moves</strong>,
+  <strong>Part-depth passes</strong> where there are any, <strong>Travel moves</strong>,
+  <strong>Long rapids</strong>, <strong>RAPID AT DEPTH</strong> if there is one, and the
+  <strong>Substrate</strong>. These are not layers &mdash; no file makes one and none can be
   exported &mdash; so they are a filter across the whole drawing rather than rows pretending to be
   files. A path is drawn when <em>its layer&rsquo;s</em> zig-zag is on <em>and</em> its kind of move
   is ticked here.
+</p>
+
+<p>
+  <strong>Cutting moves are the passes that reach the program&rsquo;s full depth.</strong> That is
+  what makes tabs visible: where the board outline leaves a tab the cutter never goes through, so the
+  line simply stops and starts again either side of it. <strong>Part-depth passes</strong> are the
+  shallower ones &mdash; the ramp into a hole, the first laps round a profile &mdash; and they are
+  <em>off</em> until you tick them, because on a job full of ramps they are most of the program and
+  laying them over the board tints the whole picture instead of telling you anything. A program that
+  works at one depth, like isolation, has no part-depth passes and no chip for them.
 </p>
 
 <p>
@@ -1872,8 +1909,9 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   This includes the things the app draws itself rather than reading from a file. They are not in the
   layer list &mdash; they are the <a href="#panel"><strong>Toolpath moves</strong></a> row of chips
   underneath it: the <strong>Substrate</strong>, and, after a <strong>Preview</strong>,
-  <strong>Cutting moves</strong>, <strong>Travel moves</strong>, <strong>Long rapids</strong> and
-  <strong>RAPID AT DEPTH</strong>. Click the coloured dot on a chip to change it. Those are often
+  <strong>Cutting moves</strong>, <strong>Part-depth passes</strong>, <strong>Travel moves</strong>,
+  <strong>Long rapids</strong> and <strong>RAPID AT DEPTH</strong>. Click the coloured dot on a chip
+  to change it. Those are often
   the ones that most need changing. The backplot palette deliberately picks hues the board does not
   use, so a program is never invisible against the copper it was made from — but which hues those
   are depends on which layers you have showing.

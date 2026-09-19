@@ -31,7 +31,7 @@ public sealed record BoardLayer
     /// <summary>The drill file behind this layer, when it is one.</summary>
     public ExcellonFile? Drill { get; init; }
 
-    public string Label => LayerRoleInfo.Label(Role);
+    public string Label => LayerRoleInfo.Label(Role, FileName);
 
     public double AreaMm2 => Polygons.AreaMm2(Area);
 

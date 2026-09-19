@@ -16,4 +16,14 @@ public sealed record AlignSettings
     /// heading for the copper rather than for the air above it.
     /// </summary>
     public double FeedMmPerMin { get; init; } = 100;
+
+    /// <summary>
+    /// Where the last alignment run wrote its files, or null before there has been one.
+    ///
+    /// Its own memory rather than the export folder's: the test file and the aligned programs are
+    /// written over and over during one session and often into a folder of their own beside the
+    /// plain export, and starting at the export folder every time meant re-picking that folder on
+    /// every visit. Remembering it here also keeps the export dialog pointing where it was.
+    /// </summary>
+    public string? LastFolder { get; init; }
 }

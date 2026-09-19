@@ -138,6 +138,12 @@ public static class GcodeEmitter
         sb.Append("G17\n");
         sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
 
+        // Whether the tool is already at safe height. A pass that lifts at its end is followed by a
+        // pass that lifts at its start, and the second line does nothing: the routing files had one
+        // for every hole and slot. Tracked here rather than asked of the geometry, because it is a
+        // property of what has just been written.
+        var up = true;
+
         foreach (var toolpath in job.Toolpaths)
         {
             if (toolpath.Passes.Count == 0 && toolpath.Drills.Count == 0)
@@ -159,7 +165,12 @@ public static class GcodeEmitter
                 // changer, which is every machine this targets.
                 if (currentTool is not null)
                 {
-                    sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
+                    if (!up)
+                    {
+                        sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
+                        up = true;
+                    }
+
                     sb.Append("M5\n");
                     Comment($"Change tool to {toolpath.Tool}");
                     sb.Append("M0\n");
@@ -196,12 +207,20 @@ public static class GcodeEmitter
                     plunges++;
                 }
 
-                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract, at);
+                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract, at, up);
                 cut += pass.LengthNm;
+                up = retract;
             }
 
             foreach (var drill in toolpath.Drills)
             {
+                // A drill starts by crossing to its hole, so the tool has to be clear first.
+                if (!up)
+                {
+                    sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
+                    up = true;
+                }
+
                 rapid += at.DistanceTo(drill.At);
                 EmitDrill(sb, drill, toolpath.Tool, options, Mm);
                 at = drill.At;
@@ -211,7 +230,14 @@ public static class GcodeEmitter
         }
 
         sb.Append('\n');
-        sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
+
+        // The last lift, unless the last thing written was one: the program parks at safe height
+        // either way, and a line telling the tool to go where it is says nothing.
+        if (!up)
+        {
+            sb.Append("G0 Z").Append(Mm(options.SafeZNm)).Append('\n');
+        }
+
         sb.Append("M5\n");
         sb.Append("G0 X").Append(Mm(options.Origin.X)).Append(" Y").Append(Mm(options.Origin.Y)).Append('\n');
 
@@ -241,7 +267,8 @@ public static class GcodeEmitter
         Func<long, string> mm,
         bool linked,
         bool retract,
-        Point2 from)
+        Point2 from,
+        bool alreadyUp)
     {
         var start = pass.Start;
         var feed = tool.FeedMmPerMin.ToString(CultureInfo.InvariantCulture);
@@ -267,8 +294,13 @@ public static class GcodeEmitter
         }
         else
         {
-            // Up, across, down. Never across at depth.
-            sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+            // Up, across, down. Never across at depth — but the tool may be up already, and a second
+            // line telling it to go where it is is noise in the file.
+            if (!alreadyUp)
+            {
+                sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+            }
+
             sb.Append("G0 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y)).Append('\n');
             sb.Append("G0 Z").Append(mm(options.ApproachZNm)).Append('\n');
             sb.Append("G1 Z").Append(mm(-entry))

@@ -33,6 +33,15 @@ public sealed record BlankOutlineOptions
     /// </summary>
     public long KeyNm { get; init; } = Nm.FromMillimetres(3);
 
+    /// <summary>
+    /// Centres of the alignment holes to cut in the waste, in the same coordinates as the stock.
+    /// Worked out by <c>Blanks.Resolve</c>, which knows where the board sits inside the stock.
+    /// </summary>
+    public IReadOnlyList<Point2> AlignmentHoles { get; init; } = [];
+
+    /// <summary>The diameter of those holes.</summary>
+    public long HoleDiameterNm { get; init; }
+
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
 }
 
@@ -70,15 +79,36 @@ public static class BlankOperation
         var depth = options.TotalDepthNm;
         var step = options.DepthPerPassNm > 0 ? options.DepthPerPassNm : depth;
         var steps = Math.Max(1, (int)Math.Ceiling(depth / (double)step));
-        var passes = new List<ToolpathPass>();
+
+        // The alignment holes first, while the stock is still part of the sheet: a hole cut after the
+        // edges is a hole cut in a piece held only by its tabs. Same bit, so there is no change, and a
+        // helix rather than a plunge for the reason every other hole here is one.
+        var passes = HolePasses(options);
+        var group = passes.Count > 0 ? 1 : 0;
+
+        var depths = new List<long>();
 
         for (var i = 1; i <= steps; i++)
         {
-            var at = Math.Min(depth, i * step);
+            depths.Add(Math.Min(depth, i * step));
+        }
 
+        // The depth the tabs start at is always cut, exactly as the board outline does it: the step
+        // down belongs to the cutter and the tab height to us, so nothing makes them divide into each
+        // other, and a tab nothing ever cut down to holds the full thickness of the sheet.
+        var tabTop = depth - options.TabHeightNm - options.BreakThroughNm;
+        var addedForTabs = options.TabsPerEdge > 0 && tabTop > 0 && !depths.Contains(tabTop);
+
+        if (addedForTabs)
+        {
+            depths.Add(tabTop);
+            depths.Sort();
+        }
+
+        foreach (var at in depths)
+        {
             // Tabs only once the cut is deep enough to need them, exactly as the board outline does.
-            var tabbed = options.TabsPerEdge > 0
-                && at > depth - options.TabHeightNm - options.BreakThroughNm;
+            var tabbed = options.TabsPerEdge > 0 && at > tabTop;
 
             var runs = Runs(edges, tabbed ? options : null);
 
@@ -92,6 +122,7 @@ public static class BlankOperation
                     // A loop with no tab to break it is closed, whether or not tabs were asked for.
                     Closed = runs.Count == 1 && run[^1].To == run[0].From,
                     Stack = 0,
+                    Group = group,
                 });
             }
         }
@@ -106,6 +137,24 @@ public static class BlankOperation
         {
             notes.Add(Invariant(
                 $"{options.TabsPerEdge} tab(s) on the top and right edges only, {Mm(options.TabWidthNm)} mm wide. The bottom and left edges are the datum and are cut clean."));
+
+            if (addedForTabs)
+            {
+                notes.Add(Invariant(
+                    $"One extra pass at {Mm(tabTop)} mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the sheet."));
+            }
+
+            if (tabTop <= 0)
+            {
+                notes.Add(Invariant(
+                    $"The tabs are {Mm(options.TabHeightNm)} mm tall and this cut is only {Mm(depth)} mm deep, so nothing is cut away at them: they hold the full thickness of the sheet and have to be cut by hand."));
+            }
+        }
+
+        if (options.AlignmentHoles.Count > 0 && options.HoleDiameterNm > 0)
+        {
+            notes.Add(Invariant(
+                $"{options.AlignmentHoles.Count} alignment hole(s) {Mm(options.HoleDiameterNm)} mm across, cut in the waste before the edges, with this same bit."));
         }
 
         if (key > 0)
@@ -122,6 +171,34 @@ public static class BlankOperation
             Passes = passes,
             Notes = notes,
         };
+    }
+
+    /// <summary>
+    /// The alignment holes, spiralled out with the stock's own cutter.
+    ///
+    /// Built by the same code as a milled hole in a board, so a hole the cutter cannot spiral is
+    /// refused there rather than plunged here — and each one is a stack of its own, so the router
+    /// keeps its laps together.
+    /// </summary>
+    private static List<ToolpathPass> HolePasses(BlankOutlineOptions options)
+    {
+        if (options.AlignmentHoles.Count == 0 || options.HoleDiameterNm <= 0)
+        {
+            return [];
+        }
+
+        var plan = SlotOperation.Holes(
+            [.. options.AlignmentHoles.Select((at, i) => new DrillSlotTarget(i + 1, at, at, options.HoleDiameterNm))],
+            new ToolLibrary { Tools = [options.Tool] },
+            new SlotOptions
+            {
+                BoardThicknessNm = options.BoardThicknessNm,
+                BreakThroughNm = options.BreakThroughNm,
+                ToolId = options.Tool.Id,
+            },
+            "Alignment holes");
+
+        return [.. plan.Toolpaths.SelectMany(t => t.Passes)];
     }
 
     /// <summary>One edge of the loop the cutter follows, and whether a tab may go on it.</summary>

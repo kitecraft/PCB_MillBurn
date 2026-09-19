@@ -138,9 +138,15 @@
                 BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto" Margin="6,2">
                 <Menu Grid.Column="0">
-                    <MenuItem Header="_File">
+                    <!--
+                        The recent list is filled when this menu opens, not when its own submenu does:
+                        a MenuItem with no children is not a submenu at all, so it shows no arrow, never
+                        opens, and never gets the chance to fill itself.
+                    -->
+                    <MenuItem Header="_File" SubmenuOpened="OnFileMenuOpened">
                         <MenuItem Header="_New project" Click="OnNewClicked" InputGesture="Ctrl+N" />
                         <MenuItem Header="_Open project…" Click="OnOpenProjectClicked" InputGesture="Ctrl+O" />
+                        <MenuItem Header="Open _recent" x:Name="RecentMenu" SubmenuOpened="OnRecentOpened" />
                         <Separator />
                         <MenuItem Header="_Import Gerber folder…" Click="OnOpenFolderClicked" InputGesture="Ctrl+I" />
                         <MenuItem Header="_Refresh from source"
@@ -367,6 +373,12 @@
                                         <CheckBox IsChecked="{Binding CutTheBlank, Mode=TwoWay}"
                                                   ToolTip.Tip="Cut with the bit chosen for the Board outline layer, so the stock and the board need no tool change. Off when the stock is already this size — nothing is cut, and the app is simply told what is on the table.">
                                             <TextBlock Text="Cut the stock to size on the mill" Classes="caption" />
+                                        </CheckBox>
+
+                                        <CheckBox IsChecked="{Binding StockAlignmentHoles, Mode=TwoWay}"
+                                                  IsEnabled="{Binding CutTheBlank}"
+                                                  ToolTip.Tip="Two small holes in the waste border, cut with the same bit before the edges are cut. A later setup can be checked against them with Job ▸ Drill alignment, before anything is cut into the board.">
+                                            <TextBlock Text="Alignment holes in the waste" Classes="caption" />
                                         </CheckBox>
 
                                         <TextBlock Text="{Binding BlankSummary}"
@@ -771,25 +783,34 @@
                             <TextBlock Text="{Binding RefreshSummary}"
                                        FontSize="12" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextPrimary}" />
-                            <ItemsControl ItemsSource="{Binding RefreshItems}" MaxHeight="220">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:RefreshItem">
-                                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-                                            <CheckBox Grid.Column="0"
-                                                      IsChecked="{Binding Selected, Mode=TwoWay}"
-                                                      VerticalAlignment="Top" />
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding Label}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource TextPrimary}" />
-                                                <TextBlock Text="{Binding Detail}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource TextSecondary}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                            <!--
+                                The cap belongs on a ScrollViewer, not on the ItemsControl: an
+                                ItemsControl does not scroll, so a MaxHeight on it alone sliced the
+                                sixth of nine files in half and hid the rest with nothing to say so.
+                                Every file here is a change the operator is being asked to approve,
+                                so one that cannot be reached is one that gets applied unread.
+                            -->
+                            <ScrollViewer MaxHeight="220" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding RefreshItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:RefreshItem">
+                                            <Grid ColumnDefinitions="Auto,*" Margin="0,2,6,0">
+                                                <CheckBox Grid.Column="0"
+                                                          IsChecked="{Binding Selected, Mode=TwoWay}"
+                                                          VerticalAlignment="Top" />
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Label}"
+                                                               FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimary}" />
+                                                    <TextBlock Text="{Binding Detail}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextSecondary}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Apply" Click="OnApplyRefreshClicked"
                                         IsVisible="{Binding RefreshItems.Count}"

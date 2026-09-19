@@ -130,10 +130,49 @@ public sealed record AppSettings
     public AppSettings WithoutColour(LayerRole role) =>
         this with { LayerColours = LayerColours.Remove(role) };
 
+    /// <summary>
+    /// Puts a project at the top of the recent list.
+    ///
+    /// Stored as a full path, because the same project reached two ways — opened from the window, and
+    /// passed to the CLI as <c>WorkingFolder/board.millburn</c> — is one project, and a list comparing
+    /// the strings it was given listed it twice.
+    /// </summary>
     public AppSettings WithRecent(string path)
     {
-        var trimmed = RecentProjects.Where(p => !string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
-        return this with { RecentProjects = [path, .. trimmed.Take(9)] };
+        var full = Full(path);
+        var trimmed = RecentProjects.Where(p => !string.Equals(p, full, StringComparison.OrdinalIgnoreCase));
+
+        return this with { RecentProjects = [full, .. trimmed.Take(9)] };
+    }
+
+    /// <summary>
+    /// Drops one project from the recent list: it has been moved, renamed or deleted.
+    ///
+    /// Taken off when it is found to be missing rather than filtered out when the list is shown. A
+    /// list that quietly hid what it could not find would keep hiding it, and a project on a drive
+    /// that happens to be unplugged is not gone.
+    /// </summary>
+    public AppSettings WithoutRecent(string path) => this with
+    {
+        RecentProjects = [.. RecentProjects.Where(p => !string.Equals(p, Full(path), StringComparison.OrdinalIgnoreCase))],
+    };
+
+    /// <summary>
+    /// An absolute path to compare and store, or the path as given when it cannot be made one.
+    ///
+    /// A recent list is only useful if the same project is recognised however it was named, and only
+    /// safe if a path it cannot understand is left alone rather than thrown away.
+    /// </summary>
+    private static string Full(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return path;
+        }
     }
 
     // ------------------------------------------------------------------ persistence
@@ -175,6 +214,21 @@ public sealed record AppSettings
     /// </summary>
     private static AppSettings Migrate(AppSettings settings)
     {
+        // The recent list once stored whatever path it was handed, so a file written by an older
+        // build holds the same project twice — opened from the window as a full path, and from the
+        // CLI as a relative one. Tidied on the way in, so the menu neither lists it twice nor has to
+        // explain which is which.
+        var recents = settings.RecentProjects
+            .Select(Full)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .ToImmutableArray();
+
+        if (!recents.SequenceEqual(settings.RecentProjects, StringComparer.OrdinalIgnoreCase))
+        {
+            settings = settings with { RecentProjects = recents };
+        }
+
         if (settings.SubstrateColour is not { } substrate)
         {
             return settings;

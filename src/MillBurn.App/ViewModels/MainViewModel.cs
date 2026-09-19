@@ -274,6 +274,21 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Recently opened and saved projects, most recent first: what File ▸ Open recent lists.</summary>
+    public IReadOnlyList<string> RecentProjects => Settings.RecentProjects;
+
+    /// <summary>
+    /// Takes a project off the recent list, and says so. Called when one turns out not to be there
+    /// any more — the file is the only thing that can tell us, and only when somebody asks for it.
+    /// </summary>
+    public void ForgetRecent(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        SaveSettings(Settings.WithoutRecent(path));
+        StatusMessage = $"{Path.GetFileName(path)} is not there any more, so it has been taken off the recent list.";
+    }
+
     public bool SaveProject(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -605,6 +620,85 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Whether the aligned files include the board outline. On unless unticked this session.</summary>
     public bool AlignmentOutline { get; set; } = true;
 
+    /// <inheritdoc cref="AlignmentXMm"/>
+    public double AlignmentSecondXMm { get; set; }
+
+    /// <inheritdoc cref="AlignmentXMm"/>
+    public double AlignmentSecondYMm { get; set; }
+
+    /// <summary>Whether a second hole was measured this session, which is what finds the rotation.</summary>
+    public bool AlignmentUseSecond { get; set; }
+
+    /// <summary>The alignment saved with this project, or null if this board has never had one found.</summary>
+    public AlignmentRecord? SavedAlignment => _project.Settings.Alignment;
+
+    /// <summary>
+    /// Keeps the alignment with the project, so the next session starts from what the machine already
+    /// told this board rather than from zero.
+    /// </summary>
+    private void RememberAlignment(DrillAlignment alignment)
+    {
+        _project.Settings = _project.Settings with
+        {
+            Alignment = AlignmentRecord.From(alignment, AlignmentFlipped),
+        };
+
+        _project.Touch();
+    }
+
+    /// <summary>
+    /// The stock's own program, when this job builds on stock — where the waste holes are read from.
+    ///
+    /// From the emitted program, like every other hole the dialog offers, so the coordinates are the
+    /// ones the machine will be sent to rather than the ones the planner started from.
+    /// </summary>
+    public ExportItem? StockProgram() => PlanExport(OutputKind.Gcode) is { } plan
+        ? plan.Items.FirstOrDefault(i => i.LayerFileName == ExportPlanner.StockLayer)
+        : null;
+
+    /// <summary>
+    /// Where the stock's alignment holes are in its program's own coordinates.
+    ///
+    /// Used to pick them out of that program: the stock cuts its perimeter below the surface too, and
+    /// on square stock that reads as one more round feature. The coordinates still come from the
+    /// emitted program — these say which of its features are the holes.
+    /// </summary>
+    public IReadOnlyList<Point2> WasteHoles()
+    {
+        if (PlanExport(OutputKind.Gcode) is not { } plan || _board is null || !plan.Blank.Resolved)
+        {
+            return [];
+        }
+
+        var frame = plan.FrameFor(_board.Bounds);
+
+        return [.. plan.Blank.AlignmentHoles.Select(h => new Point2(h.X - frame.MinX, h.Y - frame.MinY))];
+    }
+
+    /// <summary>Every G-code program this export would write, as Drill alignment offers them.</summary>
+    public IReadOnlyList<MovableProgram> MovablePrograms() => PlanExport(OutputKind.Gcode) is { } plan
+        ? ExportPlanner.Movable(plan)
+        : [];
+
+    /// <summary>
+    /// How wide the frame every program is referenced to is: the stock's, or the board's without one.
+    ///
+    /// The axis a flipped board mirrors about. A hole at X in the program is at this width minus X
+    /// once the stock is turned over left-to-right and put back in the same corner.
+    /// </summary>
+    public long FrameWidthNm() => PlanExport(OutputKind.Gcode) is { } plan && _board is { } board
+        ? plan.FrameFor(board.Bounds).Width
+        : 0;
+
+    /// <summary>What the operator last chose to move, or null while the default rule stands.</summary>
+    public System.Collections.Immutable.ImmutableArray<string>? AlignmentMoved { get; set; }
+
+    /// <summary>Whether the alignment is being measured with the board flipped over.</summary>
+    public bool AlignmentFlipped { get; set; }
+
+    /// <summary>Whether the holes being measured are the stock's waste holes rather than the board's.</summary>
+    public bool AlignmentWasteHoles { get; set; }
+
     /// <summary>Whether this export has a board outline program for the alignment to move.</summary>
     public bool HasOutlineProgram() => PlanExport(OutputKind.Gcode) is { } plan
         && plan.Items.Any(ExportPlanner.IsBoardOutline);
@@ -612,6 +706,39 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Remembers the alignment test's hover height, which is a setting rather than a per-job number.</summary>
     public void SaveAlignHover(double hoverMm) =>
         SaveSettings(Settings with { Align = Settings.Align with { HoverMm = hoverMm } });
+
+    /// <summary>
+    /// Remembers where the alignment files go, so the next visit starts there.
+    ///
+    /// Kept apart from the export folder: these files are usually written into a folder of their
+    /// own, over and over during one session, and choosing it again every time is the sort of thing
+    /// that gets a file written next to the wrong programs.
+    /// </summary>
+    public void SaveAlignFolder(string folder)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+
+        if (!string.Equals(Settings.Align.LastFolder, folder, StringComparison.Ordinal))
+        {
+            SaveSettings(Settings with { Align = Settings.Align with { LastFolder = folder } });
+        }
+    }
+
+    /// <summary>
+    /// Where Job › Drill alignment opens: where it last wrote, then where the last export went, then
+    /// the folder the board came from.
+    /// </summary>
+    public string AlignFolder()
+    {
+        if (Settings.Align.LastFolder is { } mine && Directory.Exists(mine))
+        {
+            return mine;
+        }
+
+        return Settings.LastExportFolder is { } last && Directory.Exists(last)
+            ? last
+            : Project.OriginFolder ?? Environment.CurrentDirectory;
+    }
 
     /// <summary>Writes the alignment test for one hole of one file, overwriting the last one.</summary>
     public bool WriteAlignmentTest(
@@ -686,10 +813,21 @@ public sealed partial class MainViewModel : ViewModelBase
                 }
             }
 
+            var turn = alignment.IsShiftOnly
+                ? string.Empty
+                : string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $" and turned {alignment.RotationDegrees:0.####}°");
+
+            var moved = string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"moved X{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.XNm)} Y{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.YNm)} mm{turn}");
+
+            RememberAlignment(alignment);
+
             StatusMessage = string.Create(
                 System.Globalization.CultureInfo.InvariantCulture,
-                $"Wrote {written} aligned file(s), moved X{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.XNm)} "
-                + $"Y{MillBurn.Gcode.AlignmentTest.FormatOffset(alignment.YNm)} mm, to {folder}. Run the .aligned files instead of the originals.");
+                $"Wrote {written} aligned file(s), {moved}, to {folder}. Run the .aligned files instead of the originals.");
 
             return written;
         }
@@ -1981,6 +2119,13 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial double BlankBorderMm { get; set; } = 10;
 
+    /// <summary>
+    /// Cut two small holes in the stock's waste border, as a reference for checking a later setup.
+    /// Off by default: they are waste, but they are also time on the machine.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool StockAlignmentHoles { get; set; }
+
     /// <summary>What the blank works out to, or why it does not. Shown under the fields.</summary>
     [ObservableProperty]
     public partial string BlankSummary { get; set; } = string.Empty;
@@ -2005,6 +2150,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
     partial void OnBlankBorderMmChanged(double value) => SaveBlank();
 
+    partial void OnStockAlignmentHolesChanged(bool value) => SaveBlank();
+
     private void SaveBlank()
     {
         if (_loadingJob)
@@ -2023,6 +2170,7 @@ public sealed partial class MainViewModel : ViewModelBase
             WidthMm = BlankWidthMm,
             HeightMm = BlankHeightMm,
             Cut = CutTheBlank,
+            AlignmentHoles = StockAlignmentHoles,
         };
 
         _project.Settings = _project.Settings with { Job = _project.Settings.Job with { Blank = blank } };
@@ -2104,6 +2252,7 @@ public sealed partial class MainViewModel : ViewModelBase
             BlankWidthMm = job.Blank.WidthMm;
             BlankHeightMm = job.Blank.HeightMm;
             BlankBorderMm = job.Blank.LeftMm;
+            StockAlignmentHoles = job.Blank.AlignmentHoles;
 
             // Inside the guard, not after it. A new list is a new source for the "Spiral with"
             // combo, and a combo given a new source clears its selection and then restores it —

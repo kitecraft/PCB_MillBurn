@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using MillBurn.Cam;
 using MillBurn.Core;
@@ -35,16 +36,23 @@ internal static class Program
             Console.WriteLine("                                 --stock <l,b,r,t mm> cut the stock to size too, this much bigger than the board");
             Console.WriteLine("                                 --stock-size <WxH mm> the stock is this rectangle instead");
             Console.WriteLine("                                 --stock-have the stock is already that size; cut nothing");
+            Console.WriteLine("                                 --stock-holes two alignment holes in its waste border");
             Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
             Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
             Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
             Console.WriteLine("                                 --probe also writes a probing routine for the board");
             Console.WriteLine("                                 --level <log> bends every program to a probed surface");
             Console.WriteLine("                                 --level-side top|bottom which face the map was probed on");
-            Console.WriteLine("                                 --align <x,y mm> only the drilling and routing files, moved this much, as .aligned");
+            Console.WriteLine("                                 --align <x,y mm|saved> only the drilling and routing files, moved this much, as .aligned");
+            Console.WriteLine("                                 --align-turn <deg> --align-about <x,y mm> turned as well, about that hole");
             Console.WriteLine("                                 --align-outline the board outline too");
+            Console.WriteLine("                                 --align-moves <names> exactly these programs instead, e.g. drilling,\"bottom copper\"");
             Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
-            Console.WriteLine("                                 --file <part of a name> --hole <n> --offset <x,y mm> --hover <mm> -o <file>");
+            Console.WriteLine("                                 --file <part of a name> --hole <n> --hover <mm> -o <file>");
+            Console.WriteLine("                                 --at <x,y mm> where the hole really is, as the machine shows it; or --offset <x,y mm>");
+            Console.WriteLine("                                 --hole2 <n> --at2 <x,y mm> a second hole measured: prints the turn to export with");
+            Console.WriteLine("                                 --waste-holes the stock's two holes rather than the board's");
+            Console.WriteLine("                                 --flipped the board is turned over: the same holes, mirrored");
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
@@ -827,8 +835,11 @@ internal static class Program
         foreach (var source in project.Sources.OrderBy(s => LayerRoleInfo.DrawOrder(s.Role)).ThenBy(s => s.FileName, StringComparer.Ordinal))
         {
             var overridden = source.RoleOverridden ? " (role set by hand)" : "";
-            Line($"  {LayerRoleInfo.Label(source.Role),-18} {source.FileName}{overridden}");
-            Line($"  {"",-18} content {source.ContentHash[..12]}  geometry {source.GeometryHash[..12]}");
+
+            // The same label the panel shows, so a board with two drill maps or three drawing
+            // layers reads the same here as it does there. Widened to fit the longest of them.
+            Line($"  {LayerRoleInfo.Label(source.Role, source.FileName),-22} {source.FileName}{overridden}");
+            Line($"  {"",-22} content {source.ContentHash[..12]}  geometry {source.GeometryHash[..12]}");
         }
 
         return 0;
@@ -1356,7 +1367,9 @@ internal static class Program
             Line($"  long rapids {measured.LongTravelCount} over 10 mm");
         }
 
-        foreach (var layer in BackplotBuilder.Build(backplot, Undo(job.OriginShift)))
+        // One file for the whole job, so the depths in it belong to different operations: an
+        // isolation pass is not a part-depth version of the outline's through cut.
+        foreach (var layer in BackplotBuilder.Build(backplot, Undo(job.OriginShift), splitByDepth: false))
         {
             Line($"  layer       {layer.Id,-20} {layer.Runs.Count,5} runs, {layer.Runs.Sum(r => r.Count),7:N0} points");
         }
@@ -1384,7 +1397,11 @@ internal static class Program
 
         if (png is not null)
         {
-            RenderBackplotPng(board, BackplotBuilder.Build(backplot, Undo(job.OriginShift)), png, 1400);
+            RenderBackplotPng(
+                board,
+                BackplotBuilder.Build(backplot, Undo(job.OriginShift), splitByDepth: false),
+                png,
+                1400);
             Line($"  png         {png}");
         }
 
@@ -1634,16 +1651,60 @@ internal static class Program
 
         if (Argument(args, "--align") is { } alignText)
         {
-            if (Alignment(alignText) is not { } parsedAlignment)
+            // "saved" is the correction this project already carries, found at the machine last time.
+            // Reusable only while the board has not moved since, which is why it has to be asked for.
+            var parsedAlignment = string.Equals(alignText, "saved", StringComparison.OrdinalIgnoreCase)
+                ? project?.Settings.Alignment?.ToAlignment()
+                : Alignment(alignText);
+
+            if (parsedAlignment is null)
             {
-                Console.Error.WriteLine("--align wants X,Y in mm, e.g. 0.12,-0.05.");
+                Console.Error.WriteLine(string.Equals(alignText, "saved", StringComparison.OrdinalIgnoreCase)
+                    ? "--align saved needs a project with an alignment saved in it. Run `align` and export with the numbers it gives."
+                    : "--align wants X,Y in mm, e.g. 0.12,-0.05.");
+
                 return 1;
             }
 
             alignment = parsedAlignment with
             {
-                Outline = args.Contains("--align-outline", StringComparer.OrdinalIgnoreCase),
+                Outline = parsedAlignment.Outline
+                    || args.Contains("--align-outline", StringComparer.OrdinalIgnoreCase),
             };
+
+            // The turn, when a second hole was measured. Both flags or neither: a turn with no pivot
+            // would turn the board about work zero, which is not where anything was measured.
+            var turnText = Argument(args, "--align-turn");
+
+            if (turnText is not null || Argument(args, "--align-about") is not null)
+            {
+                if (turnText is null
+                    || !double.TryParse(turnText, NumberStyles.Float, CultureInfo.InvariantCulture, out var degrees)
+                    || Argument(args, "--align-about") is not { } aboutText
+                    || Alignment(aboutText) is not { } about)
+                {
+                    Console.Error.WriteLine("--align-turn wants degrees and --align-about the hole it turns about, e.g. --align-turn 0.42 --align-about 12.5,9.0. Both, or neither.");
+                    return 1;
+                }
+
+                alignment = alignment with { RotationDegrees = degrees, PivotNm = about.Offset };
+            }
+        }
+
+        // Which programs are written again. Named rather than ruled, because on a flipped board the
+        // copper is the thing that has to follow what is already there — see Job › Drill alignment.
+        if (alignment is not null && Argument(args, "--align-moves") is { } movesText)
+        {
+            var listing = ExportPlanner.Movable(ExportPlanner.Plan(
+                board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thicknessMm),
+                OutputKind.Gcode, framing: framing, machineSettings: app.Machine, job: job));
+
+            if (Chosen(movesText, listing) is not { } chosen)
+            {
+                return 1;
+            }
+
+            alignment = alignment with { Moved = chosen };
         }
 
         var plan = blankOnly
@@ -2417,15 +2478,24 @@ internal static class Program
             board, settings, ToolLibrary.LoadOrDefault(), Nm.FromMillimetres(thickness.Mm),
             OutputKind.Gcode, machineSettings: app.Machine, job: JobFor(args, project));
 
-        var files = plan.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
+        var waste = args.Contains("--waste-holes", StringComparer.OrdinalIgnoreCase);
+
+        // The stock's two waste holes: cut with the stock's own edges, so their coordinates are known
+        // rather than measured, and they exist before anything is drilled.
+        var files = waste
+            ? [.. plan.Items.Where(i => i.LayerFileName == ExportPlanner.StockLayer)]
+            : plan.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
 
         if (files.Count == 0)
         {
-            Console.Error.WriteLine("This job has no drilling or routing files to align.");
+            Console.Error.WriteLine(waste
+                ? "This job cuts no stock, so it has no waste holes. Build on stock with --stock, and ask for the holes with --stock-holes."
+                : "This job has no drilling or routing files to align.");
+
             return 1;
         }
 
-        var wanted = Argument(args, "--file");
+        var wanted = waste ? null : Argument(args, "--file");
         var file = wanted is null
             ? files[0]
             : files.FirstOrDefault(f => f.TargetName.Contains(wanted, StringComparison.OrdinalIgnoreCase));
@@ -2443,6 +2513,36 @@ internal static class Program
         }
 
         var targets = AlignmentTest.Targets(file.Content);
+
+        if (waste)
+        {
+            // The stock cuts its own edges below the surface too, and on square stock that perimeter
+            // reads as one more round feature. The plan says which features are the holes; the
+            // program still says where they are.
+            var frame = plan.FrameFor(board.Bounds);
+
+            var holes = plan.Blank.AlignmentHoles
+                .Select(h => new Point2(h.X - frame.MinX, h.Y - frame.MinY))
+                .ToList();
+
+            targets = [.. targets.Where(t => holes.Any(h => h.DistanceTo(t.At) <= Nm.FromMillimetres(0.5)))];
+
+            if (targets.Count == 0)
+            {
+                Console.Error.WriteLine("The stock program has no alignment holes in it. Add --stock-holes and cut the stock again.");
+                return 1;
+            }
+        }
+
+        // Turned over left-to-right about the stock's vertical centreline — the axis a bottom-side
+        // program is mirrored about, and the only one that puts the stock back in the same corner.
+        // The holes go through, so the same two can be hovered over from either side.
+        if (args.Contains("--flipped", StringComparer.OrdinalIgnoreCase))
+        {
+            var width = plan.FrameFor(board.Bounds).Width;
+
+            targets = [.. targets.Select(t => t with { At = new Point2(width - t.At.X, t.At.Y) })];
+        }
 
         Console.WriteLine(file.TargetName);
 
@@ -2470,6 +2570,25 @@ internal static class Program
             }
 
             offset = parsed;
+        }
+
+        // Or where the hole really is, which is what the machine shows once the tip is on its centre:
+        // nobody has to subtract that from where the program puts it.
+        if (Argument(args, "--at") is { } atText)
+        {
+            if (Alignment(atText) is not { } at)
+            {
+                Console.Error.WriteLine("--at wants the X,Y the machine shows with the tip on the hole, e.g. 23.74,47.83.");
+                return 1;
+            }
+
+            offset = new DrillAlignment(at.XNm - target.At.X, at.YNm - target.At.Y);
+        }
+
+        // Two holes measured: report the turn rather than writing another test.
+        if (Argument(args, "--hole2") is not null || Argument(args, "--offset2") is not null)
+        {
+            return Fit(args, targets, target, offset.Offset);
         }
 
         var hover = Number(args, "--hover", app.Align.HoverMm);
@@ -2529,6 +2648,121 @@ internal static class Program
             ? "the app's setting"
             : "the app's setting — this project does not record one yet");
     }
+
+    /// <summary>
+    /// What two measured holes say: the turn, the shift, the distance check — and the export command
+    /// that applies them.
+    ///
+    /// It prints the flags rather than writing the files, because the fit is the part worth reading
+    /// before anything is cut: a turn of two degrees on a board that should be square means the stock
+    /// moved in the jig, and the answer to that is to re-clamp it, not to export around it.
+    /// </summary>
+    private static int Fit(
+        string[] args, IReadOnlyList<AlignmentTarget> targets, AlignmentTarget first, Point2 firstOffset)
+    {
+        var secondNumber = (int)Number(args, "--hole2", 0);
+
+        if (targets.FirstOrDefault(t => t.Number == secondNumber) is not { } second)
+        {
+            Console.Error.WriteLine($"--hole2 wants the number of the second hole measured; there is no hole {secondNumber} in this file.");
+            return 1;
+        }
+
+        if (second.Number == first.Number)
+        {
+            Console.Error.WriteLine("--hole2 is the same hole as --hole. Measure two holes at opposite ends of the board.");
+            return 1;
+        }
+
+        Point2 secondOffset;
+
+        if (Argument(args, "--at2") is { } at2Text)
+        {
+            if (Alignment(at2Text) is not { } at2)
+            {
+                Console.Error.WriteLine("--at2 wants the X,Y the machine shows with the tip on the second hole.");
+                return 1;
+            }
+
+            secondOffset = at2.Offset - second.At;
+        }
+        else if (Argument(args, "--offset2") is { } text && Alignment(text) is { } parsed)
+        {
+            secondOffset = parsed.Offset;
+        }
+        else
+        {
+            Console.Error.WriteLine("--offset2 wants X,Y in mm for the second hole, e.g. 0.14,-0.03 — or --at2 for where it really is.");
+            return 1;
+        }
+
+        var fit = RigidFit.Solve(
+            first.At, first.At + firstOffset, second.At, second.At + secondOffset);
+
+        if (!fit.Found)
+        {
+            Console.Error.WriteLine(fit.Refusal);
+            return 1;
+        }
+
+        var turn = fit.RotationDegrees == 0
+            ? "square to the machine"
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"turned {fit.RotationDegrees:0.####} degrees {(fit.RotationDegrees > 0 ? "anticlockwise" : "clockwise")}");
+
+        var degreesText = fit.RotationDegrees.ToString("0.#####", CultureInfo.InvariantCulture);
+
+        Console.WriteLine();
+        Line($"  holes       {first.Kind} {first.Number} and {second.Kind} {second.Number}, {Nm.ToMillimetreString((long)Math.Round(first.At.DistanceTo(second.At)), 2)} mm apart");
+        Line($"  measured    {AlignmentTest.FormatOffset(fit.SeparationErrorNm)} mm against that distance");
+        Line($"  board       {turn}");
+        Line($"  correction  X{AlignmentTest.FormatOffset(fit.OffsetNm.X)} Y{AlignmentTest.FormatOffset(fit.OffsetNm.Y)} mm about X{Nm.ToMillimetreString(fit.PivotNm.X, 3)} Y{Nm.ToMillimetreString(fit.PivotNm.Y, 3)}");
+        Console.WriteLine();
+        Line($"  export with --align {Nm.ToMillimetreString(fit.OffsetNm.X, 3)},{Nm.ToMillimetreString(fit.OffsetNm.Y, 3)} --align-turn {degreesText} --align-about {Nm.ToMillimetreString(fit.PivotNm.X, 3)},{Nm.ToMillimetreString(fit.PivotNm.Y, 3)}");
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Which programs <c>--align-moves</c> names, or null when one of the names matches nothing.
+    ///
+    /// Matched on what the dialog shows — "Drilling · Plated holes" — so a word from either half
+    /// picks it out: <c>--align-moves drilling,outline</c>, or <c>--align-moves "bottom copper"</c>.
+    /// A name that matches nothing stops the export and lists what there was, rather than quietly
+    /// writing fewer files than were asked for.
+    /// </summary>
+    private static ImmutableArray<string>? Chosen(string text, IReadOnlyList<MovableProgram> listing)
+    {
+        var chosen = new List<string>();
+
+        foreach (var wanted in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var matched = listing
+                .Where(p => p.Key.Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                    || Describe(p).Contains(wanted, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (matched.Count == 0)
+            {
+                Console.Error.WriteLine($"--align-moves: nothing here is called '{wanted}'. This export writes:");
+
+                foreach (var program in listing)
+                {
+                    Console.Error.WriteLine("  " + Describe(program));
+                }
+
+                return null;
+            }
+
+            chosen.AddRange(matched.Select(m => m.Key));
+        }
+
+        return [.. chosen.Distinct(StringComparer.Ordinal)];
+    }
+
+    private static string Describe(MovableProgram program) =>
+        program.What + " · " + program.LayerLabel;
 
     /// <summary>"0.12,-0.05" as a drill alignment, or null if it is not two numbers.</summary>
     private static DrillAlignment? Alignment(string text)
@@ -2610,6 +2844,7 @@ internal static class Program
                 WidthMm = w,
                 HeightMm = h,
                 Cut = !declared,
+                AlignmentHoles = HasOption(args, "--stock-holes"),
             };
         }
 
@@ -2618,7 +2853,12 @@ internal static class Program
             .Select(v => double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : double.NaN)
             .ToList();
 
-        var options = new BlankOptions { Enabled = true, Cut = !declared };
+        var options = new BlankOptions
+        {
+            Enabled = true,
+            Cut = !declared,
+            AlignmentHoles = HasOption(args, "--stock-holes"),
+        };
 
         return borders.Count switch
         {

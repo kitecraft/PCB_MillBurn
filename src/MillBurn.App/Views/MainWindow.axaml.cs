@@ -327,6 +327,23 @@ public partial class MainWindow : Window
 
         // Opens the tool editor for a screenshot, so the dialog is checkable headlessly like
         // everything else. Non-modal on purpose: a modal one would block the capture.
+        // Filled once at startup as well as when the File menu opens, so the item is a submenu from
+        // the first click rather than after the first visit.
+        FillRecent();
+
+        // The recent list, printed rather than shown. A menu's popup is its own visual root and never
+        // lands in a screenshot, which is how an Open recent that never opened at all got as far as
+        // the workshop; printing what the menu would list is checkable from a terminal.
+        if (args.Contains("--recent", StringComparer.OrdinalIgnoreCase))
+        {
+            FillRecent();
+
+            foreach (var item in (RecentMenu.ItemsSource ?? Array.Empty<object>()).OfType<MenuItem>())
+            {
+                Console.WriteLine($"recent: {item.Header}" + (item.IsEnabled ? string.Empty : "  (disabled)"));
+            }
+        }
+
         if (args.Contains("--tools", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
@@ -342,6 +359,14 @@ public partial class MainWindow : Window
         if (args.Contains("--expand", StringComparer.OrdinalIgnoreCase))
         {
             ExpandLayers(true);
+        }
+
+        // The refresh review, so the one panel that only appears when a source folder has moved on
+        // is checkable from a screenshot like every other part of the window. Read-only: it compares
+        // the project against its folder and applies nothing.
+        if (args.Contains("--refresh", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.InspectRefresh();
         }
 
         if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase)
@@ -412,7 +437,14 @@ public partial class MainWindow : Window
         // The drill alignment dialog, for a screenshot, like every other window here.
         if (args.Contains("--align", StringComparer.OrdinalIgnoreCase) && vm.HasBoard)
         {
-            var align = new AlignmentWindow(vm, Environment.CurrentDirectory)
+            // With the second hole open, for a screenshot of the rotation half: it is hidden until
+            // asked for, and a screenshot cannot tick a box.
+            vm.AlignmentUseSecond = args.Contains("--align-turn", StringComparer.OrdinalIgnoreCase);
+            vm.AlignmentWasteHoles = args.Contains("--align-waste", StringComparer.OrdinalIgnoreCase);
+            vm.AlignmentFlipped = args.Contains("--align-flipped", StringComparer.OrdinalIgnoreCase);
+
+            // The folder the menu would open it at, so the screenshot shows what the operator sees.
+            var align = new AlignmentWindow(vm, vm.AlignFolder())
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -798,6 +830,86 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Fills the recent list as the submenu opens, from the saved settings.
+    ///
+    /// Built on opening rather than bound once: the list changes whenever a project is opened or
+    /// saved — including by this very menu — and a menu built at startup would be one project behind
+    /// for the rest of the session.
+    /// </summary>
+    private void OnFileMenuOpened(object? sender, RoutedEventArgs e) => FillRecent();
+
+    /// <summary>Kept for a submenu opened on its own; the File menu has normally filled it already.</summary>
+    private void OnRecentOpened(object? sender, RoutedEventArgs e) => FillRecent();
+
+    private void FillRecent()
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        var menu = RecentMenu;
+        var recents = vm.RecentProjects;
+
+        // Two projects of the same name, in different folders, are told apart by their folder — and
+        // only then, because these are full paths several levels deep and the name is usually enough.
+        var shared = recents
+            .GroupBy(p => Path.GetFileNameWithoutExtension(p), StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var items = new List<MenuItem>();
+
+        for (var i = 0; i < recents.Count; i++)
+        {
+            var path = recents[i];
+            var name = Path.GetFileNameWithoutExtension(path);
+
+            var shown = shared.Contains(name) && Path.GetDirectoryName(path) is { Length: > 0 } folder
+                ? $"{name}  —  {Path.GetFileName(folder)}"
+                : name;
+
+            // Doubled, because a single underscore in a menu header is an accelerator: a project
+            // called Millburn_Test_Board would otherwise be listed as "MillburnTest_Board". The
+            // number in front is the accelerator instead, for the first nine.
+            var header = shown.Replace("_", "__", StringComparison.Ordinal);
+            var item = new MenuItem { Header = i < 9 ? $"_{i + 1}  {header}" : header };
+
+            ToolTip.SetTip(item, path);
+            item.Click += async (_, _) => await OpenRecentAsync(path);
+            items.Add(item);
+        }
+
+        if (items.Count == 0)
+        {
+            items.Add(new MenuItem { Header = "No projects yet", IsEnabled = false });
+        }
+
+        menu.ItemsSource = items;
+    }
+
+    /// <summary>Opens a project from the recent list, or takes it off the list if it has gone.</summary>
+    private async Task OpenRecentAsync(string path)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (!File.Exists(path))
+        {
+            vm.ForgetRecent(path);
+            return;
+        }
+
+        if (await ConfirmReplaceAsync())
+        {
+            vm.OpenProject(path);
+        }
+    }
+
     private async void OnOpenProjectClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm || !await ConfirmReplaceAsync())
@@ -944,8 +1056,8 @@ public partial class MainWindow : Window
     /// object and that claim does not depend on which design happens to be loaded.
     /// </summary>
     /// <summary>
-    /// Job › Drill alignment. Files go to the last export folder, because the aligned files belong
-    /// beside the ones they replace and the test file beside both.
+    /// Job › Drill alignment. Files go where the last alignment run put them, or beside the last
+    /// export: the aligned files belong beside the ones they replace, and the test file beside both.
     /// </summary>
     private async void OnAlignClicked(object? sender, RoutedEventArgs e)
     {
@@ -954,11 +1066,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var folder = vm.Settings.LastExportFolder is { } last && Directory.Exists(last)
-            ? last
-            : vm.Project.OriginFolder ?? Environment.CurrentDirectory;
-
-        var window = new AlignmentWindow(vm, folder) { RequestedThemeVariant = ActualThemeVariant };
+        var window = new AlignmentWindow(vm, vm.AlignFolder()) { RequestedThemeVariant = ActualThemeVariant };
         await window.ShowDialog(this);
     }
 

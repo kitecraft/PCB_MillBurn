@@ -1,3 +1,4 @@
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
@@ -374,5 +375,99 @@ public sealed class BackplotTests
         Assert.True(
             chopped.PessimisticTime > single.PessimisticTime * 3,
             $"short moves should cost far more: {chopped.PessimisticTime} vs {single.PessimisticTime}");
+    }
+
+    // ------------------------------------------------------------------ what the picture says about depth
+
+    /// <summary>
+    /// The cut lines are split by how deep they go, so a tab reads as a gap.
+    ///
+    /// Reported from the workshop, right after the tabs themselves were fixed: the outline's cut line
+    /// stopped showing where the tabs were. Before the fix nothing cut the tab at all, so every pass
+    /// jumped the gap and the gap was in the picture by accident. Cutting the tab down properly put a
+    /// shallow pass across it, and drawing every pass in one colour let that shallow pass paint over
+    /// the gap the deep ones leave.
+    ///
+    /// So the passes that reach the program's full depth are one layer and the shallower ones another,
+    /// dimmed underneath: the bright line is where the cutter goes through, which is exactly the
+    /// question "where does this board stay attached" — and nothing is hidden.
+    /// </summary>
+    [Fact]
+    public void TabsShowAsGapsInTheFullDepthCutLine()
+    {
+        // 30 x 20 mm of 0.8 mm board, cut with tabs: two depth passes plus the tab pass.
+        var outline = OutlineOperation.Build(
+            [[new(0, 0), new(Mm(30), 0), new(Mm(30), Mm(20)), new(0, Mm(20))]],
+            new OutlineOptions
+            {
+                Tool = Tool.DefaultOutlineMill,
+                BoardThicknessNm = Mm(0.8),
+                DepthPerPassNm = Mm(0.5),
+                TabCount = 4,
+                Keep = [],
+            });
+
+        var (text, _) = GcodeEmitter.Emit(
+            new Job { Name = "tabs", Toolpaths = [outline] }, new GcodeOptions());
+
+        var layers = BackplotBuilder.Build(GcodeBackplot.Classify(GcodeParser.Parse(text)));
+
+        var cut = layers.Single(l => l.Id == "gcode-cut");
+        var partial = layers.Single(l => l.Id == "gcode-cut-partial");
+
+        // Four tabs break the deepest passes into four runs each; the pass over the tabs is whole.
+        Assert.Equal(0, cut.Runs.Count % 4);
+        Assert.All(cut.Runs, r => Assert.NotEqual(r[0], r[^1]));
+        Assert.Contains(partial.Runs, r => r[0] == r[^1]);
+
+        // The full-depth line is what is drawn; the shallower passes are there to be turned on, not
+        // laid over the board. A ramped program is nearly all part-depth runs, and showing those by
+        // default tints the whole picture instead of saying anything.
+        Assert.True(cut.VisibleByDefault);
+        Assert.False(partial.VisibleByDefault);
+    }
+
+    /// <summary>
+    /// A program that cuts everything at one depth — isolation, engraving — has no shallower passes
+    /// to dim, so its picture is exactly what it was.
+    /// </summary>
+    [Fact]
+    public void OneDepthMeansOneCutLayer()
+    {
+        var layers = BackplotBuilder.Build(Classify(
+            """
+            G21 G90
+            G1 Z-0.05 F60
+            G1 X10 Y0 F200
+            G1 X10 Y10
+            G0 Z2
+            """));
+
+        Assert.Contains(layers, l => l.Id == "gcode-cut");
+        Assert.DoesNotContain(layers, l => l.Id == "gcode-cut-partial");
+    }
+
+    /// <summary>
+    /// A merged program — the single file the Mill button writes — is not split, because isolation at
+    /// 0.05 mm is not a part-depth version of an outline that goes through at 0.9 mm.
+    /// </summary>
+    [Fact]
+    public void AMergedProgramIsNotSplitByDepth()
+    {
+        var moves = Classify(
+            """
+            G21 G90
+            G1 Z-0.05 F60
+            G1 X10 Y0 F200
+            G0 Z2
+            G0 X0 Y0
+            G1 Z-0.9 F60
+            G1 X10 Y10 F200
+            G0 Z2
+            """);
+
+        Assert.Contains(BackplotBuilder.Build(moves), l => l.Id == "gcode-cut-partial");
+        Assert.DoesNotContain(
+            BackplotBuilder.Build(moves, splitByDepth: false), l => l.Id == "gcode-cut-partial");
     }
 }

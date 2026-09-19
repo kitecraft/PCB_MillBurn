@@ -4,14 +4,14 @@ GridStripConnector_Panelized
 GridStripConnector_Panelized-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
-  lines     6079
-  sha256    f60f69819f26dcd5
+  lines     5917
+  sha256    6d4fd1a8103a3f6d
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   51 profiles · inner pieces cut before the frame around them
   summary   50 of them enclose nothing and are cut from the inside — slots, windows, or the channels between the boards of a panel
-  summary   13209 mm cutting, 1850 mm travel
-  summary   56m 32s – 58m 55s · 6,078 lines
-  summary   Simplified: 51,250 → 4,740 moves, 314 arcs (91 % fewer)
+  summary   13786 mm cutting, 1850 mm travel
+  summary   58m 29s – 1h 0m · 5,916 lines
+  summary   Simplified: 58,084 → 4,838 moves, 378 arcs (92 % fewer)
   comment   ( PCB_MillBurn - GridStripConnector_Panelized-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 66.150, -126.850 mm. )
   comment   ( Board outline )
@@ -19,22 +19,23 @@ GridStripConnector_Panelized-Edge_Cuts.nc
   comment   ( 50 of those are no wider than the cutter, so each is one pass down its middle rather than a lap around both of its sides. )
   comment   ( Cut on the outside: 1. Cut from the inside: 50, because they enclose nothing — so the pieces either side of them keep their size. )
   comment   ( 4 tabs, 3.0 mm wide, 0.50 mm of material left under each. )
+  comment   ( One extra pass at 1.10 mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the board. )
   comment   ( Tabs on the 1 outer profile[s] only; the 50 inside are held by whatever joins them in the design. )
   control   M3 S10000 · M5 · M30
-  depths    -1.900, -1.600, -1.200, -0.800, -0.400
-  moves     1059 rapid, 4690 feed, 314 arc
-  distance  13208.54 mm cutting, 1850.41 mm travel
-  plunges   528
+  depths    -1.900, -1.600, -1.200, -1.100, -0.800, -0.400
+  moves     797 rapid, 4725 feed, 378 arc
+  distance  13785.51 mm cutting, 1850.41 mm travel
+  plunges   530
   extent    -0.500 .. 165.200 x -0.500 .. 107.400 mm
 
 GridStripConnector_Panelized-F_Cu.nc
   operation Isolation routing
   layer     Top copper
-  lines     6616
-  sha256    034d12146a891751
+  lines     6417
+  sha256    88c70931dc84d03c
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
   summary   11329 mm cutting, 924 mm travel
-  summary   1h 2m – 1h 4m · 6,615 lines
+  summary   1h 2m – 1h 4m · 6,416 lines
   summary   Simplified: 75,768 → 5,610 moves, 2,640 arcs (93 % fewer)
   summary   Ordering: 1030 mm rapid → 924 mm (10 % less)
   comment   ( PCB_MillBurn - GridStripConnector_Panelized-F_Cu — Isolation routing )
@@ -44,7 +45,7 @@ GridStripConnector_Panelized-F_Cu.nc
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
   control   M3 S10000 · M5 · M30
   depths    -0.050
-  moves     795 rapid, 3168 feed, 2640 arc
+  moves     596 rapid, 3168 feed, 2640 arc
   distance  11329.59 mm cutting, 924.04 mm travel
   plunges   396
   extent    0.000 .. 163.714 x -0.014 .. 105.913 mm

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using Clipper2Lib;
 using MillBurn.Cam;
@@ -92,20 +93,127 @@ public sealed record ExportCompanion(string TargetName, string Content, string D
 /// <param name="Outline">Move the board outline program too.</param>
 public sealed record DrillAlignment(long XNm, long YNm, bool Outline = false)
 {
+    /// <summary>
+    /// Exactly which programs move, as <see cref="KeyFor(string, OperationKind)"/> keys, or null for
+    /// the rule above: drilling and routing, plus the outline when <see cref="Outline"/> is set.
+    ///
+    /// Named rather than ruled because the rule only fits the first side of a board. Cut the top
+    /// copper, etch it, flip the stock over, and the *bottom* copper is now the thing that has to
+    /// land on what is already there — the one program the rule refuses to move, because on the first
+    /// side copper is what everything else is measured against. Which programs are in that position
+    /// depends on the workflow, and a workflow is the operator's, so the dialog lists the export's
+    /// programs and they say.
+    /// </summary>
+    public ImmutableArray<string>? Moved { get; init; }
+
+    /// <summary>Identifies one program group — one layer's drilling, or its slots, or the outline.</summary>
+    public static string KeyFor(string layerFileName, OperationKind operation) =>
+        layerFileName + "|" + operation;
+
+    /// <summary>The key for a file already written.</summary>
+    public static string KeyFor(ExportItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        return KeyFor(item.LayerFileName, item.Operation);
+    }
+
     /// <summary>Added before the extension: <c>Board-PTH-drl.bit1-1.00mm.aligned.nc</c>.</summary>
     public const string Suffix = ".aligned";
 
     public Point2 Offset => new(XNm, YNm);
+
+    /// <summary>
+    /// How far the board is turned on the table, in degrees, anticlockwise about <see cref="PivotNm"/>.
+    ///
+    /// A shift alone assumes the stock is square to the machine, and a jig with play in it does not
+    /// promise that: measured at one hole a turned board looks like a shift, and the holes at the far
+    /// end come out wrong by the rest of the arc. Found by measuring two holes — see
+    /// <c>RigidFit</c> — and baked into the coordinates here, because GRBL has no <c>G68</c>.
+    /// </summary>
+    public double RotationDegrees { get; init; }
+
+    /// <summary>
+    /// What the rotation turns about, in work coordinates. Normally the first hole measured, so that
+    /// hole lands exactly where it was measured and the rotation accounts for the other.
+    /// </summary>
+    public Point2 PivotNm { get; init; }
+
+    /// <summary>True when this is a shift and nothing more.</summary>
+    public bool IsShiftOnly => RotationDegrees == 0;
+
+    /// <summary>
+    /// Where a point ends up: turned about the pivot, then moved. In that order, because the pivot is
+    /// a place on the table rather than a place in the design.
+    /// </summary>
+    public Point2 Apply(Point2 at)
+    {
+        if (IsShiftOnly)
+        {
+            return new Point2(at.X + XNm, at.Y + YNm);
+        }
+
+        var (sin, cos) = Math.SinCos(RotationDegrees * Math.PI / 180);
+        double dx = at.X - PivotNm.X;
+        double dy = at.Y - PivotNm.Y;
+
+        return new Point2(
+            PivotNm.X + (long)Math.Round((dx * cos) - (dy * sin)) + XNm,
+            PivotNm.Y + (long)Math.Round((dx * sin) + (dy * cos)) + YNm);
+    }
 
     /// <summary>Whether this alignment moves an export's file: what is written again, aligned.</summary>
     public bool Moves(ExportItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        // Never the stock: it is cut before there is any copper to line up with, and it is work zero.
-        return ExportPlanner.IsDrillOrRouting(item) || (Outline && ExportPlanner.IsBoardOutline(item));
+        // Never the stock, whoever asks: it is cut before there is anything on the board to line up
+        // with, and it is the work zero everything else — this correction included — is measured from.
+        if (item.Output != OutputKind.Gcode || item.LayerFileName == ExportPlanner.StockLayer)
+        {
+            return false;
+        }
+
+        return Moved is { } chosen
+            ? chosen.Contains(KeyFor(item))
+            : ExportPlanner.IsDrillOrRouting(item) || (Outline && ExportPlanner.IsBoardOutline(item));
+    }
+
+    /// <summary>
+    /// The same question about a program that has not been written yet, which is how the planner knows
+    /// whether to write it aligned.
+    /// </summary>
+    public bool Moves(string layerFileName, OperationKind operation, bool slots = false)
+    {
+        ArgumentNullException.ThrowIfNull(layerFileName);
+
+        if (layerFileName == ExportPlanner.StockLayer)
+        {
+            return false;
+        }
+
+        return Moved is { } chosen
+            ? chosen.Contains(KeyFor(layerFileName, operation))
+            : operation == OperationKind.Drilling
+                || slots
+                || (Outline && operation == OperationKind.Outline);
     }
 }
+
+/// <summary>
+/// One group of programs Drill alignment can move, as the dialog lists it.
+/// </summary>
+/// <param name="Key">What <see cref="DrillAlignment.Moved"/> names it by.</param>
+/// <param name="What">"Drilling", "Routed slots", "Board outline", "Isolation".</param>
+/// <param name="LayerLabel">The layer it belongs to, as the layer list names it.</param>
+/// <param name="Files">How many files it is — drilling is one per bit.</param>
+/// <param name="Mirrored">
+/// Whether it is written for the flipped board. A correction measured with the board flipped over
+/// belongs to these; one measured the right way up belongs to the others.
+/// </param>
+/// <param name="MovedByDefault">Whether it moves when nothing is chosen: drilling and routing.</param>
+public sealed record MovableProgram(
+    string Key, string What, string LayerLabel, int Files, bool Mirrored, bool MovedByDefault);
 
 /// <summary>Everything a single Export would write.</summary>
 public sealed record ExportPlan
@@ -478,10 +586,9 @@ public static class ExportPlanner
 
         var target = TargetNameFor(layer.FileName, operation, OutputKind.Gcode);
 
-        // The alignment moves drilling, and the outline when asked; never the copper it is measured against.
-        var aligned = operation == OperationKind.Drilling || (operation == OperationKind.Outline && alignment?.Outline == true)
-            ? alignment
-            : null;
+        // The alignment moves what it was told to move — by default drilling, and the outline when
+        // asked; never the stock, and never a program the operator did not name.
+        var aligned = alignment?.Moves(layer.FileName, operation) == true ? alignment : null;
 
         var files = AssembleEach(
             board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
@@ -592,8 +699,43 @@ public static class ExportPlanner
 
         return item.Output == OutputKind.Gcode
             && item.Operation == OperationKind.Outline
-            && item.LayerFileName != StockLayer;
+            && item.LayerFileName != StockLayer
+            // Routed slots are written as an outline operation on a drill layer. They are drilling
+            // work, and they are not the program that cuts the board out.
+            && !item.TargetName.Contains(".slots.", StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The G-code programs in an export, grouped the way Drill alignment offers them: one row per
+    /// layer and operation — a layer's drilling, its slots, the board outline, a side's copper.
+    ///
+    /// The stock is never in the list. Every other program is, because which ones have to follow
+    /// copper already on the board is a property of the workflow rather than of the file: on a first
+    /// side it is the drilling, on a flipped board it is the copper that has not been cut yet.
+    /// </summary>
+    public static IReadOnlyList<MovableProgram> Movable(ExportPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return [.. plan.Items
+            .Where(i => i.Output == OutputKind.Gcode && i.LayerFileName != StockLayer)
+            .GroupBy(DrillAlignment.KeyFor)
+            .Select(g => new MovableProgram(
+                g.Key,
+                ProgramLabel(g.First()),
+                g.First().LayerLabel,
+                g.Count(),
+                g.First().Mirrored,
+                g.Any(IsDrillOrRouting)))];
+    }
+
+    /// <summary>What one group of files is, in the words its own page uses.</summary>
+    private static string ProgramLabel(ExportItem item) => item switch
+    {
+        _ when item.TargetName.Contains(".slots.", StringComparison.Ordinal) => "Routed slots",
+        _ when IsBoardOutline(item) => "Board outline",
+        _ => LayerOperations.Label(item.Operation),
+    };
 
     /// <summary>A drilling or routing program: what Job › Drill alignment moves.</summary>
     public static bool IsDrillOrRouting(ExportItem item)
@@ -745,11 +887,17 @@ public static class ExportPlanner
         // program.
         var stem = Path.GetFileNameWithoutExtension(layer.FileName);
 
+        // Slots are written as an outline operation on a drill layer, so they are asked for by that
+        // name — the same key the dialog listed them under.
+        var aligned = alignment?.Moves(layer.FileName, OperationKind.Outline, slots: true) == true
+            ? alignment
+            : null;
+
         var files = AssembleEach(
             board, frame, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
             stem + ".slots.nc",
             "Routed slots",
-            boardThicknessNm, machine, effort, framing, machineSettings, alignment);
+            boardThicknessNm, machine, effort, framing, machineSettings, aligned);
 
         if (files.Count == 0)
         {
@@ -785,7 +933,7 @@ public static class ExportPlanner
             files[0] with
             {
                 Companion = new ExportCompanion(
-                    stem + ".slots" + (alignment is null ? string.Empty : DrillAlignment.Suffix) + ".html",
+                    stem + ".slots" + (aligned is null ? string.Empty : DrillAlignment.Suffix) + ".html",
                     html,
                     $"{cutters}{where}{missing}"),
             },
@@ -939,16 +1087,27 @@ public static class ExportPlanner
             BoardThicknessNm = thicknessNm,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             BreakThroughNm = OutlineSetting(board, settings)?.BreakThroughNm ?? new BlankOutlineOptions().BreakThroughNm,
+
+            // Worked out with the stock itself, because where they go depends on where the board sits
+            // inside it and on the cutter that makes both.
+            AlignmentHoles = blank.AlignmentHoles,
+            HoleDiameterNm = blank.HoleDiameterNm,
         };
 
         var toolpath = BlankOperation.Build(blank.Bounds, options);
+
+        // Linked like every other program. This one is emitted straight rather than through Assemble,
+        // so without this an alignment hole's laps lifted to safe height and plunged back into the hole
+        // they had just cut. The stock's own edges are unaffected: a deeper lap of the perimeter starts
+        // above where the last one finished, which is a plunge by definition and never a continuation.
+        var (linked, _) = PassLinker.Apply(toolpath);
 
         var shift = new Point2(-blank.Bounds.MinX, -blank.Bounds.MinY);
 
         var job = new Job
         {
             Name = Path.GetFileNameWithoutExtension(board.Source ?? "board") + " — stock",
-            Toolpaths = [Translate(toolpath, shift)],
+            Toolpaths = [Translate(linked, shift)],
             OriginShift = shift,
             Notes =
             [
@@ -1064,12 +1223,9 @@ public static class ExportPlanner
             ? Point2.Origin
             : new Point2(-frame.MinX, -frame.MinY);
 
-        // The drill alignment, on top. Added to the shift rather than to the geometry, so it lands in
-        // work coordinates after any mirroring — the frame the operator measured it in at the machine.
-        if (alignment is not null)
-        {
-            shift = new Point2(shift.X + alignment.XNm, shift.Y + alignment.YNm);
-        }
+        // The drill alignment is applied after the shift rather than folded into it: a rotation turns
+        // about a place on the table, so it has to happen in work coordinates — the frame the operator
+        // measured it in — and after any mirroring, for the same reason.
 
         // A bottom-side layer is drawn as seen through the board, so cutting it as-is produces a
         // mirror image. The flip is baked in here rather than left to the operator, and the file
@@ -1091,8 +1247,22 @@ public static class ExportPlanner
             var moved = Invariant(
                 $"X{AlignmentTest.FormatOffset(alignment.XNm)} Y{AlignmentTest.FormatOffset(alignment.YNm)} mm");
 
-            notes.Add(Invariant($"Aligned with the drill alignment test: every move shifted {moved} from the plain export."));
-            summary.Add(Invariant($"Aligned: shifted {moved}"));
+            if (alignment.IsShiftOnly)
+            {
+                notes.Add(Invariant(
+                    $"Aligned with the drill alignment test: every move shifted {moved} from the plain export."));
+                summary.Add(Invariant($"Aligned: shifted {moved}"));
+            }
+            else
+            {
+                var turned = Invariant($"{alignment.RotationDegrees:0.####}");
+                var about = Invariant(
+                    $"X{Nm.ToMillimetreString(alignment.PivotNm.X, 3)} Y{Nm.ToMillimetreString(alignment.PivotNm.Y, 3)} mm");
+
+                notes.Add(Invariant(
+                    $"Aligned with the drill alignment test: every move turned {turned} degrees about {about}, then shifted {moved}, from the plain export."));
+                summary.Add(Invariant($"Aligned: turned {turned}°, shifted {moved}"));
+            }
         }
 
         var mirrored = setting.MirrorFor(layer.Role);
@@ -1166,7 +1336,9 @@ public static class ExportPlanner
             var (linkedPath, linkStep) = PassLinker.Apply(ordered);
             links += linkStep;
 
-            prepared.Add(Translate(linkedPath, shift));
+            var shifted = Translate(linkedPath, shift);
+
+            prepared.Add(alignment is null ? shifted : Aligned(shifted, alignment));
         }
 
         var job = new Job
@@ -1529,6 +1701,14 @@ public static class ExportPlanner
         {
             warnings.Add("No tabs: the board comes free on the last pass and will be thrown by the cutter.");
         }
+        else if (options.TotalDepthNm - options.TabHeightNm - setting.BreakThroughNm <= 0)
+        {
+            // Nothing can be cut away at the tab, so the piece stays attached by its full thickness.
+            // Worth a line in the report as well as in the program: at the machine it looks like a
+            // cut that simply did not work.
+            warnings.Add(Invariant(
+                $"The tabs are {Nm.ToMillimetreString(options.TabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board."));
+        }
 
         if (tool.Kind == ToolKind.VBit)
         {
@@ -1777,6 +1957,22 @@ public static class ExportPlanner
             Drills = [.. toolpath.Drills.Select(d => d with { At = Flip(d.At) })],
         };
     }
+
+    /// <summary>
+    /// Every point of a toolpath moved by the drill alignment, arc centres included.
+    ///
+    /// A rotation about the centre keeps an arc an arc — same radius, same sweep — so there is nothing
+    /// to rebuild; the three points each go through the same transform.
+    /// </summary>
+    private static Toolpath Aligned(Toolpath toolpath, DrillAlignment alignment) => toolpath with
+    {
+        Passes = [.. toolpath.Passes.Select(p => p with
+        {
+            Path = [.. p.Path.Select(s => new ArtSegment(
+                s.Sweep, alignment.Apply(s.From), alignment.Apply(s.To), alignment.Apply(s.Centre)))],
+        })],
+        Drills = [.. toolpath.Drills.Select(d => d with { At = alignment.Apply(d.At) })],
+    };
 
     private static Toolpath Translate(Toolpath toolpath, Point2 by) => toolpath with
     {

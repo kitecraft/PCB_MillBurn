@@ -11,9 +11,9 @@ namespace MillBurn.Tests;
 /// routing files again with it.
 ///
 /// A small hole in a small pad leaves a few tenths either side, so a drilling origin slightly out puts
-/// holes on the edge of their pads. The board is assumed square to the machine, so the fix is an
-/// origin shift — and every one of these tests is about that shift being exactly the number typed, on
-/// exactly the files it is meant for.
+/// holes on the edge of their pads. The fix is an origin shift, and — when a second hole says the board
+/// is not square to the machine — a turn with it. Every one of these tests is about that correction
+/// being exactly what was measured, on exactly the files it is meant for.
 /// </summary>
 public sealed class AlignmentTests(ITestOutputHelper output)
 {
@@ -276,6 +276,241 @@ public sealed class AlignmentTests(ITestOutputHelper output)
             {
                 Assert.All(files, f => Assert.Contains(f.TargetName, page.Content, StringComparison.Ordinal));
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ what moves
+
+    /// <summary>
+    /// Named programs move and nothing else does — including the copper, which the default rule never
+    /// moves and which a flipped board's workflow needs moved.
+    /// </summary>
+    [Fact]
+    public void OnlyTheProgramsNamedAreMoved()
+    {
+        var plain = Plan();
+        var movable = ExportPlanner.Movable(plain);
+
+        Assert.NotEmpty(movable);
+
+        // The copper: exactly what the default rule refuses to move.
+        var copper = movable.First(m => m.What.StartsWith("Isolation", StringComparison.Ordinal));
+        var alignment = new DrillAlignment(Nm.FromMillimetres(0.2), 0) { Moved = [copper.Key] };
+
+        var aligned = Plan(alignment);
+        var moved = aligned.Items.Where(alignment.Moves).ToList();
+
+        output.WriteLine($"moved: {string.Join(", ", moved.Select(m => m.TargetName))}");
+
+        Assert.All(moved, m => Assert.Equal(copper.Key, DrillAlignment.KeyFor(m)));
+        Assert.All(moved, m => Assert.EndsWith(".aligned.nc", m.TargetName, StringComparison.Ordinal));
+
+        // And the drilling, which the default rule always moves, is untouched here.
+        foreach (var drill in plain.Items.Where(ExportPlanner.IsDrillOrRouting))
+        {
+            Assert.Equal(
+                drill.Content,
+                Assert.Single(aligned.Items, i => i.TargetName == drill.TargetName).Content);
+        }
+    }
+
+    /// <summary>
+    /// The stock is never moved, however it is named. It is cut before there is anything on the board
+    /// to line up with, and it is the work zero the correction itself is measured from.
+    /// </summary>
+    [Fact]
+    public void TheStockIsNeverMovedEvenWhenNamed()
+    {
+        var job = new JobOptions { Blank = new BlankOptions { Enabled = true } };
+        var plain = Plan(job: job);
+
+        var stock = Assert.Single(plain.Items, i => i.LayerFileName == ExportPlanner.StockLayer);
+
+        var alignment = new DrillAlignment(Nm.FromMillimetres(0.3), 0)
+        {
+            Moved = [DrillAlignment.KeyFor(stock)],
+        };
+
+        Assert.False(alignment.Moves(stock));
+        Assert.DoesNotContain(ExportPlanner.Movable(plain), m => m.Key == DrillAlignment.KeyFor(stock));
+
+        var aligned = Plan(alignment, job);
+
+        Assert.Equal(
+            stock.Content,
+            Assert.Single(aligned.Items, i => i.LayerFileName == ExportPlanner.StockLayer).Content);
+    }
+
+    /// <summary>
+    /// The listing tells the dialog what it needs to draw a row: what each group is, whose layer it
+    /// belongs to, how many files it is, and which side of the board it is written for.
+    /// </summary>
+    [Fact]
+    public void TheMovableListDescribesEveryGcodeProgram()
+    {
+        var plan = Plan();
+        var movable = ExportPlanner.Movable(plan);
+
+        foreach (var program in movable)
+        {
+            output.WriteLine($"{program.Key}  {program.What} · {program.LayerLabel}  {program.Files} file(s)");
+        }
+
+        // Every G-code file except the stock is in exactly one group.
+        var files = plan.Items.Where(i => i.Output == OutputKind.Gcode && i.LayerFileName != ExportPlanner.StockLayer).ToList();
+
+        Assert.Equal(files.Count, movable.Sum(m => m.Files));
+        Assert.Equal(movable.Select(m => m.Key).Distinct().Count(), movable.Count);
+        Assert.Contains(movable, m => m.What == "Drilling" && m.MovedByDefault);
+        Assert.Contains(movable, m => m.What == "Isolation routing" && !m.MovedByDefault);
+        Assert.All(movable, m => Assert.False(string.IsNullOrWhiteSpace(m.LayerLabel)));
+    }
+
+    /// <summary>
+    /// Routed slots are written as an outline operation on a drill layer, which is not the program
+    /// that cuts the board out — and the two must not be confused, because one moves by default and
+    /// the other only when asked.
+    /// </summary>
+    [Fact]
+    public void SlotsAreNotTheBoardOutline()
+    {
+        var plan = Plan(job: new JobOptions { MillLargeHoles = true });
+        var slots = plan.Items.Where(i => i.TargetName.Contains(".slots.", StringComparison.Ordinal)).ToList();
+
+        Assert.NotEmpty(slots);
+        Assert.All(slots, s => Assert.False(ExportPlanner.IsBoardOutline(s)));
+        Assert.All(slots, s => Assert.True(ExportPlanner.IsDrillOrRouting(s)));
+    }
+
+    // ------------------------------------------------------------------ a board that is also turned
+
+    /// <summary>
+    /// A correction with a turn in it moves every hole to where the turn puts it — not just the one it
+    /// was measured at.
+    ///
+    /// This is the whole point of measuring twice. A shift alone lands the hole it was measured at and
+    /// misses the far end of the board by the length of the arc, which on a 70 mm board at half a degree
+    /// is most of a pad.
+    /// </summary>
+    [Fact]
+    public void ATurnMovesEveryHoleAlongWithIt()
+    {
+        var turned = new DrillAlignment(Nm.FromMillimetres(0.12), Nm.FromMillimetres(-0.05))
+        {
+            RotationDegrees = 0.6,
+            PivotNm = new Point2(Nm.FromMillimetres(12), Nm.FromMillimetres(9)),
+        };
+
+        var plain = Plan();
+        var aligned = Plan(turned);
+
+        var drill = plain.Items.Where(ExportPlanner.IsDrillOrRouting).ToList();
+
+        Assert.NotEmpty(drill);
+
+        var checkedHoles = 0;
+
+        foreach (var original in drill)
+        {
+            var name = Path.GetFileNameWithoutExtension(original.TargetName) + ".aligned.nc";
+            var moved = Assert.Single(aligned.Items, i => i.TargetName == name);
+
+            var before = AlignmentTest.Targets(original.Content);
+            var after = AlignmentTest.Targets(moved.Content);
+
+            output.WriteLine($"{original.TargetName}: {before.Count} holes turned");
+
+            Assert.NotEmpty(before);
+            Assert.Equal(before.Count, after.Count);
+
+            for (var i = 0; i < before.Count; i++)
+            {
+                // A micron of slack: the coordinates are written to the machine's decimals, and a
+                // milled hole's centre is read back from the arcs that cut it.
+                Assert.True(
+                    turned.Apply(before[i].At).DistanceTo(after[i].At) <= Nm.FromMillimetres(0.001),
+                    $"{original.TargetName} hole {before[i].Number}: {turned.Apply(before[i].At)} vs {after[i].At}");
+
+                checkedHoles++;
+            }
+
+            // The note says both halves of what was done, and where the turn was taken about.
+            Assert.Contains("turned 0.6 degrees about X12.000 Y9.000 mm", moved.Content, StringComparison.Ordinal);
+            Assert.Contains("then shifted X+0.120 Y-0.050 mm", moved.Content, StringComparison.Ordinal);
+        }
+
+        output.WriteLine($"{checkedHoles} holes checked");
+    }
+
+    /// <summary>
+    /// A turned arc is the same arc, turned: same radius, same sweep.
+    ///
+    /// The risk is the centre. An arc is written as a point and an offset to its centre, and a rotation
+    /// applied to the endpoints but not the centre leaves a command the machine will not accept — or
+    /// worse, one it will, cutting an arc of the wrong radius through the board.
+    /// </summary>
+    [Fact]
+    public void ATurnKeepsEveryArcTheSameSize()
+    {
+        var turned = new DrillAlignment(Nm.FromMillimetres(0.2), Nm.FromMillimetres(0.1))
+        {
+            RotationDegrees = -1.25,
+            PivotNm = new Point2(Nm.FromMillimetres(20), Nm.FromMillimetres(15)),
+        };
+
+        var job = new JobOptions { MillLargeHoles = true };
+        var plain = Plan(job: job);
+        var aligned = Plan(turned, job);
+
+        var arcs = 0;
+
+        foreach (var original in plain.Items.Where(ExportPlanner.IsDrillOrRouting))
+        {
+            var name = Path.GetFileNameWithoutExtension(original.TargetName) + ".aligned.nc";
+            var moved = Assert.Single(aligned.Items, i => i.TargetName == name);
+
+            var before = GcodeParser.Parse(original.Content).Moves.Where(m => m.IsArc).ToList();
+            var after = GcodeParser.Parse(moved.Content).Moves.Where(m => m.IsArc).ToList();
+
+            Assert.Equal(before.Count, after.Count);
+
+            for (var i = 0; i < before.Count; i++)
+            {
+                var was = before[i].From.DistanceTo(before[i].Centre);
+                var now = after[i].From.DistanceTo(after[i].Centre);
+
+                Assert.True(
+                    Math.Abs(was - now) <= Nm.FromMillimetres(0.001),
+                    $"{original.TargetName} arc {i}: radius {was} became {now}");
+
+                Assert.Equal(before[i].Kind, after[i].Kind);
+                arcs++;
+            }
+        }
+
+        output.WriteLine($"{arcs} arcs checked");
+        Assert.True(arcs > 0, "this board should have milled holes to check");
+    }
+
+    /// <summary>
+    /// The copper is what the measurement was made against, so it never moves — turn or no turn. The
+    /// same rule as the shift, and worth its own test: a rotation is applied in a different place.
+    /// </summary>
+    [Fact]
+    public void ATurnLeavesTheCopperWhereItIs()
+    {
+        var turned = new DrillAlignment(Nm.FromMillimetres(0.12), 0)
+        {
+            RotationDegrees = 0.9,
+            PivotNm = new Point2(Nm.FromMillimetres(10), Nm.FromMillimetres(10)),
+        };
+
+        var plain = Plan();
+        var aligned = Plan(turned);
+
+        foreach (var other in plain.Items.Where(i => !ExportPlanner.IsDrillOrRouting(i)))
+        {
+            Assert.Equal(other.Content, Assert.Single(aligned.Items, i => i.TargetName == other.TargetName).Content);
         }
     }
 }

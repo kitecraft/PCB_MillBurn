@@ -325,6 +325,23 @@ public static class OutlineOperation
             allDepths.Add(depth);
         }
 
+        // A tab is only a tab if something cut down to its top.
+        //
+        // Reported from the workshop: a 0.8 mm board, 0.90 mm of total depth, a cutter whose step
+        // down is 1.00 mm — one pass, deeper than the tab, so the gap was jumped on the only pass
+        // the profile had and every "tab" was left at the full thickness of the board. The piece
+        // does not come free, and nothing in the file says why. The step down is the cutter's and
+        // the tab height is ours, so the two need not divide into each other at all: cut the depth
+        // the tab's top sits at, whatever the steps work out to.
+        var tabTopNm = options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
+        var addedForTabs = options.TabCount > 0 && tabTopNm > 0 && !shallowDepths.Contains(tabTopNm);
+
+        if (addedForTabs)
+        {
+            shallowDepths.Add(tabTopNm);
+            shallowDepths.Sort();
+        }
+
         for (var c = 0; c < contours.Count; c++)
         {
             var contour = contours[c];
@@ -426,6 +443,20 @@ public static class OutlineOperation
 
             notes.Add(Invariant(
                 $"{options.TabCount} tabs, {tabWidth} mm wide, {tabHeight} mm of material left under each."));
+
+            if (addedForTabs)
+            {
+                notes.Add(Invariant(
+                    $"One extra pass at {Nm.ToMillimetreString(tabTopNm, 2)} mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the board."));
+            }
+
+            // A tab as tall as the board is the board. Said plainly, because what it looks like at
+            // the machine is a cut that simply did not release the piece.
+            if (tabTopNm <= 0)
+            {
+                notes.Add(Invariant(
+                    $"The tabs are {tabHeight} mm tall and this cut is only {total} mm deep, so nothing is cut away at them: they hold the full thickness of the board and have to be cut by hand."));
+            }
 
             if (depths.Count > outerCount)
             {

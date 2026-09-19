@@ -93,6 +93,65 @@ public sealed class ProjectTests : IDisposable
         Assert.Null(ProjectFile.Open(path).Settings.BoardThicknessMm);
     }
 
+    /// <summary>
+    /// The drill alignment found at the machine is kept with the board it was found on, turn and all,
+    /// so the next session starts from it instead of from the operator's memory of it.
+    /// </summary>
+    [Fact]
+    public void TheDrillAlignmentIsSavedWithTheProject()
+    {
+        var project = Load(CopyBoard());
+        var found = DateTimeOffset.Now;
+
+        var alignment = new AlignmentRecord
+        {
+            XMm = 0.12,
+            YMm = -0.05,
+            RotationDegrees = 0.42,
+            PivotXMm = 12.5,
+            PivotYMm = 9,
+            Outline = true,
+            Moved = ["Board-B_Cu.gbr|Isolation"],
+            Flipped = true,
+            Found = found,
+        };
+
+        project.Settings = project.Settings with { Alignment = alignment };
+        var path = Scratch("aligned" + ProjectFile.Extension);
+
+        ProjectFile.Save(project, path);
+
+        var saved = ProjectFile.Open(path).Settings.Alignment;
+
+        Assert.NotNull(saved);
+        Assert.Equal(0.42, saved.RotationDegrees);
+        Assert.Equal(found.ToUnixTimeSeconds(), saved.Found?.ToUnixTimeSeconds());
+
+        // Which programs it moved, and which way up the board was — both decide what the numbers mean.
+        Assert.Equal(["Board-B_Cu.gbr|Isolation"], saved.Moved);
+        Assert.True(saved.Flipped);
+        Assert.Equal(saved.Moved, saved.ToAlignment().Moved);
+
+        // And it comes back as the same correction, to the nanometre.
+        var correction = saved.ToAlignment();
+
+        Assert.Equal(Nm.FromMillimetres(0.12), correction.XNm);
+        Assert.Equal(Nm.FromMillimetres(-0.05), correction.YNm);
+        Assert.Equal(new Point2(Nm.FromMillimetres(12.5), Nm.FromMillimetres(9)), correction.PivotNm);
+        Assert.True(correction.Outline);
+    }
+
+    /// <summary>A board that has never been aligned reopens with no correction, rather than a zero one.</summary>
+    [Fact]
+    public void AProjectThatWasNeverAlignedReopensWithNoCorrection()
+    {
+        var path = Scratch("unaligned" + ProjectFile.Extension);
+
+        ProjectFile.Save(Load(CopyBoard()), path);
+
+        Assert.Null(ProjectFile.Open(path).Settings.Alignment);
+    }
+
     [Fact]
     public void AProjectSurvivesASaveAndReopen()
     {

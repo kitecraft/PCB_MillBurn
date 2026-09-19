@@ -45,6 +45,42 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     /// <summary>
+    /// The drill alignment's own folder, kept apart from the export's.
+    ///
+    /// The alignment files are written over and over during one session, usually into a folder of
+    /// their own beside the plain export; starting at the export folder each time meant picking the
+    /// same folder again on every visit, which is how a file ends up beside the wrong programs.
+    /// </summary>
+    [Fact]
+    public void TheAlignmentFolderIsRememberedApartFromTheExportFolder()
+    {
+        new AppSettings
+        {
+            LastExportFolder = @"C:\jobs\out",
+            Align = new AlignSettings { HoverMm = 0.15, LastFolder = @"C:\jobs\out\aligned" },
+        }.Save(Path_);
+
+        var read = AppSettings.LoadOrDefault(Path_);
+
+        Assert.Equal(@"C:\jobs\out\aligned", read.Align.LastFolder);
+        Assert.Equal(@"C:\jobs\out", read.LastExportFolder);
+        Assert.Equal(0.15, read.Align.HoverMm);
+    }
+
+    /// <summary>A settings file written before the folder was kept reads back with none, not an empty one.</summary>
+    [Fact]
+    public void SettingsFromBeforeTheAlignmentFolderExistedHaveNone()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path_, """{ "Align": { "HoverMm": 0.2 } }""");
+
+        var read = AppSettings.LoadOrDefault(Path_);
+
+        Assert.Null(read.Align.LastFolder);
+        Assert.Equal(0.2, read.Align.HoverMm);
+    }
+
+    /// <summary>
     /// Losing preferences is an inconvenience; failing to start is not. The file is also left alone
     /// rather than overwritten, so a hand-editing mistake stays recoverable.
     /// </summary>
@@ -81,8 +117,65 @@ public sealed class AppSettingsTests : IDisposable
             .WithRecent("a.millburn");
 
         // Compared as an array: ImmutableArray<T>.Equals is reference equality, so Assert.Equal
-        // on two of them tests identity rather than contents.
-        Assert.Equal(["a.millburn", "b.millburn"], settings.RecentProjects.ToArray());
+        // on two of them tests identity rather than contents. Stored as full paths.
+        Assert.Equal(
+            [Path.GetFullPath("a.millburn"), Path.GetFullPath("b.millburn")],
+            settings.RecentProjects.ToArray());
+    }
+
+    /// <summary>
+    /// A project that has gone comes off the list, and nothing else moves. Taken off when it is found
+    /// to be missing, rather than hidden whenever the list is drawn: a project on a drive that is
+    /// unplugged today is still a project.
+    /// </summary>
+    [Fact]
+    public void ForgettingARecentProjectLeavesTheRestInOrder()
+    {
+        var settings = new AppSettings()
+            .WithRecent("a.millburn")
+            .WithRecent("b.millburn")
+            .WithRecent("c.millburn")
+            .WithoutRecent("B.MILLBURN");
+
+        Assert.Equal(
+            [Path.GetFullPath("c.millburn"), Path.GetFullPath("a.millburn")],
+            settings.RecentProjects.ToArray());
+
+        // Forgetting one that is not there changes nothing.
+        Assert.Equal(
+            settings.RecentProjects.ToArray(),
+            settings.WithoutRecent("never-opened.millburn").RecentProjects.ToArray());
+    }
+
+    /// <summary>
+    /// The same project named two ways is one project. Opened from the window it arrives as a full
+    /// path and from the CLI as whatever was typed, and the list held both.
+    /// </summary>
+    [Fact]
+    public void TheSameProjectUnderTwoPathsIsListedOnce()
+    {
+        var relative = Path.Combine("boards", "a.millburn");
+
+        var settings = new AppSettings()
+            .WithRecent(Path.GetFullPath(relative))
+            .WithRecent(relative);
+
+        Assert.Equal([Path.GetFullPath(relative)], settings.RecentProjects.ToArray());
+    }
+
+    /// <summary>
+    /// A list written before paths were stored absolute holds the same project twice, and the menu
+    /// then showed it twice with a folder beside each to tell them apart. Tidied when it is read.
+    /// </summary>
+    [Fact]
+    public void AnOlderRecentListIsTidiedWhenItIsRead()
+    {
+        var relative = Path.Combine("boards", "a.millburn");
+        var full = Path.GetFullPath(relative);
+
+        new AppSettings { RecentProjects = [relative, full] }.Save(Path_);
+
+        Assert.Equal([full], AppSettings.LoadOrDefault(Path_).RecentProjects.ToArray());
     }
 
     [Fact]
@@ -95,7 +188,7 @@ public sealed class AppSettingsTests : IDisposable
         }
 
         Assert.Equal(10, settings.RecentProjects.Length);
-        Assert.Equal("p29.millburn", settings.RecentProjects[0]);
+        Assert.Equal(Path.GetFullPath("p29.millburn"), settings.RecentProjects[0]);
     }
 
     /// <summary>
