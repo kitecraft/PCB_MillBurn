@@ -325,7 +325,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.2.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.3.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 **Proven on metal:**
@@ -349,15 +349,16 @@ run the dry run first and read the pages beside the files.
   tab top, so the tabs are left partial instead of full thickness and the board snaps out.
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, and alignment measured from the stock's
-two waste holes.
+isolation, the routed channel between the boards of a panel, alignment measured from the stock's
+two waste holes, those holes drilled as straight plunges rather than spiralled, and pre-cut stock
+given its holes and nothing else.
 
 **Known rough edges, next in line:**
 
 - Routing holes and slots has no settings of its own yet: each lap is the cutter's stepdown, so a
   board a little thicker than a multiple of it gets a short last lap. Settings for that are coming.
 
-935 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+939 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next after the rough edges: rulers down the viewport, a numbered picture on the
 drilling and routing pages, better tab placement, and registration marks for placing a burn — then
 an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
