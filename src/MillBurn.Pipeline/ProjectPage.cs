@@ -121,7 +121,20 @@ public static class ProjectPage
 
         var cutsBlank = context.Blank is { Resolved: true, Cut: true };
 
-        if (cutsBlank)
+        if (context.Blank is { Resolved: true, HolesOnly: true })
+        {
+            page.Append("<li><strong>Put the stock in the corner stop and drill its alignment holes</strong>");
+
+            if (context.OutlineCutter is { } holeBit)
+            {
+                page.Append(" with the <strong>").Append(Escape(holeBit)).Append("</strong> — the "
+                    + "Board outline layer's bit");
+            }
+
+            page.Append(". The stock's edges are left as they are; its lower-left corner is work zero "
+                + "for every file here.</li>\n");
+        }
+        else if (cutsBlank)
         {
             page.Append("<li><strong>Cut the stock to size</strong>");
 
@@ -325,7 +338,9 @@ public static class ProjectPage
 
     private static string Kind(ExportItem item) => item.TargetName switch
     {
-        var n when n.Contains(".stock.", StringComparison.Ordinal) => "Cuts the stock to size",
+        var n when n.Contains(".stock.", StringComparison.Ordinal) => item.Doing is null
+            ? "Cuts the stock to size"
+            : "Drills the stock's alignment holes",
         var n when n.Contains(".slots.", StringComparison.Ordinal) => "Slots and milled holes",
         var n when n.Contains(".dryrun.", StringComparison.Ordinal) => "The same path, in the air",
         var n when n.Contains(".levelled.", StringComparison.Ordinal) => "Bent to the probed surface",

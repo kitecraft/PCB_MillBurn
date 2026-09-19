@@ -395,6 +395,13 @@
                                             <TextBlock Text="Alignment holes in the waste" Classes="caption" />
                                         </CheckBox>
 
+                                        <CheckBox IsChecked="{Binding StockHolesOnly, Mode=TwoWay}"
+                                                  IsVisible="{Binding CanAskForHolesOnly}"
+                                                  Margin="18,0,0,0"
+                                                  ToolTip.Tip="The stock is already this size: drill only the two alignment holes into it, and leave its edges alone. Put it in the corner stop the right way up first — its lower-left corner is work zero.">
+                                            <TextBlock Text="Export only the alignment holes" Classes="caption" />
+                                        </CheckBox>
+
                                         <TextBlock Text="{Binding BlankSummary}"
                                                    Classes="caption"
                                                    TextWrapping="Wrap"

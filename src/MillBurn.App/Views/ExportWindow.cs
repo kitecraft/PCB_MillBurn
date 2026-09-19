@@ -401,7 +401,7 @@ public sealed class ExportWindow : Window
         });
         header.Children.Add(Token(new TextBlock
         {
-            Text = $"{item.LayerLabel} · {LayerOperations.Label(item.Operation)} · {item.Bytes:N0} bytes",
+            Text = $"{item.LayerLabel} · {item.DoingLabel} · {item.Bytes:N0} bytes",
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
         }, "TextSecondary"));

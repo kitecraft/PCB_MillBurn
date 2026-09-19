@@ -37,6 +37,7 @@ internal static class Program
             Console.WriteLine("                                 --stock-size <WxH mm> the stock is this rectangle instead");
             Console.WriteLine("                                 --stock-have the stock is already that size; cut nothing");
             Console.WriteLine("                                 --stock-holes two alignment holes in its waste border");
+            Console.WriteLine("                                 --stock-holes-only with --stock-size: drill only those holes, cut nothing");
             Console.WriteLine("                                 --mill-holes spirals out holes no drill in your library can make");
             Console.WriteLine("                                 --mill-tool <name> which end mill to spiral with");
             Console.WriteLine("                                 --mill-above <mm> mill at and above this, not the library's largest drill");
@@ -1810,7 +1811,9 @@ internal static class Program
         {
             var b = plan.Blank.Bounds;
 
-            var how = plan.Blank.Cut ? "cut to size on the mill" : "pre-cut";
+            var how = plan.Blank.HolesOnly
+                ? "pre-cut, alignment holes drilled on the mill"
+                : plan.Blank.Cut ? "cut to size on the mill" : "pre-cut";
 
             Line($"  stock       {Nm.ToMillimetreString(b.Width, 2)} x {Nm.ToMillimetreString(b.Height, 2)} mm, {how} — work zero is its lower-left corner");
 
@@ -1838,7 +1841,7 @@ internal static class Program
         foreach (var item in plan.Items)
         {
             Line($"  {item.TargetName}");
-            Line($"  {"",-4}{item.LayerLabel} · {LayerOperations.Label(item.Operation)} · {item.Bytes:N0} bytes");
+            Line($"  {"",-4}{item.LayerLabel} · {item.DoingLabel} · {item.Bytes:N0} bytes");
 
             foreach (var line in item.Summary)
             {
@@ -2844,7 +2847,8 @@ internal static class Program
                 WidthMm = w,
                 HeightMm = h,
                 Cut = !declared,
-                AlignmentHoles = HasOption(args, "--stock-holes"),
+                AlignmentHoles = HasOption(args, "--stock-holes") || HasOption(args, "--stock-holes-only"),
+                HolesOnly = HasOption(args, "--stock-holes-only"),
             };
         }
 

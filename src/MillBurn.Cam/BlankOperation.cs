@@ -187,7 +187,7 @@ public static class BlankOperation
             Drills = [.. options.AlignmentHoles.Select(at => new DrillTarget(at, depth, peck))],
             Notes =
             [
-                Invariant($"{options.AlignmentHoles.Count} alignment hole(s) {Mm(options.Tool.DiameterNm)} mm across, drilled straight down in the waste before the edges, with the same bit."),
+                Invariant($"{options.AlignmentHoles.Count} alignment hole(s) {Mm(options.Tool.DiameterNm)} mm across, drilled straight down in the waste."),
             ],
         };
     }

@@ -598,10 +598,12 @@ public sealed partial class MainViewModel : ViewModelBase
 
             File.WriteAllText(path, item.Content);
 
+            var done = blank.HolesOnly ? "its alignment holes drilled with the" : "cut with the";
+
             StatusMessage = string.Create(
                 CultureInfo.InvariantCulture,
                 $"Wrote {Path.GetFileName(path)}: a {Nm.ToMillimetreString(blank.Bounds.Width, 2)} × "
-                + $"{Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm stock, cut with the "
+                + $"{Nm.ToMillimetreString(blank.Bounds.Height, 2)} mm stock, {done} "
                 + $"{ExportPlanner.OutlineCutter(_board, settings, Library).Name}.");
 
             return true;
@@ -2141,6 +2143,17 @@ public sealed partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool StockAlignmentHoles { get; set; }
 
+    /// <summary>
+    /// On pre-cut stock, drill only the alignment holes and leave the edges alone. Offered only with
+    /// Pre-cut size, Cut the stock to size and Alignment holes all ticked: anywhere else it means
+    /// nothing, and hidden it cannot surprise anybody.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool StockHolesOnly { get; set; }
+
+    /// <summary>Whether "Export only the alignment holes" is offered.</summary>
+    public bool CanAskForHolesOnly => BlankIsStated && CutTheBlank && StockAlignmentHoles;
+
     /// <summary>What the blank works out to, or why it does not. Shown under the fields.</summary>
     [ObservableProperty]
     public partial string BlankSummary { get; set; } = string.Empty;
@@ -2151,11 +2164,16 @@ public sealed partial class MainViewModel : ViewModelBase
         SaveBlank();
     }
 
-    partial void OnBlankIsStatedChanged(bool value) => SaveBlank();
+    partial void OnBlankIsStatedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanAskForHolesOnly));
+        SaveBlank();
+    }
 
     partial void OnCutTheBlankChanged(bool value)
     {
         OnPropertyChanged(nameof(CanWriteBlank));
+        OnPropertyChanged(nameof(CanAskForHolesOnly));
         SaveBlank();
     }
 
@@ -2165,7 +2183,13 @@ public sealed partial class MainViewModel : ViewModelBase
 
     partial void OnBlankBorderMmChanged(double value) => SaveBlank();
 
-    partial void OnStockAlignmentHolesChanged(bool value) => SaveBlank();
+    partial void OnStockAlignmentHolesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanAskForHolesOnly));
+        SaveBlank();
+    }
+
+    partial void OnStockHolesOnlyChanged(bool value) => SaveBlank();
 
     private void SaveBlank()
     {
@@ -2186,6 +2210,7 @@ public sealed partial class MainViewModel : ViewModelBase
             HeightMm = BlankHeightMm,
             Cut = CutTheBlank,
             AlignmentHoles = StockAlignmentHoles,
+            HolesOnly = StockHolesOnly,
         };
 
         _project.Settings = _project.Settings with { Job = _project.Settings.Job with { Blank = blank } };
@@ -2217,9 +2242,11 @@ public sealed partial class MainViewModel : ViewModelBase
         // Which bit cuts it, said where the blank is set up. There is deliberately no second picker
         // here — the blank and the board come out with one cutter — but that has to be visible, or
         // the only place the answer lives is a row further down that nobody connects with this.
-        var cutWith = blank.Cut
-            ? $"Cut with the Board outline's bit ({cutter.Name}). "
-            : string.Empty;
+        var cutWith = plan.HolesOnly
+            ? $"Holes drilled with the Board outline's bit ({cutter.Name}). "
+            : plan.Cut
+                ? $"Cut with the Board outline's bit ({cutter.Name}). "
+                : string.Empty;
 
         BlankSummary = plan.Resolved
             ? string.Create(CultureInfo.InvariantCulture,
@@ -2268,6 +2295,7 @@ public sealed partial class MainViewModel : ViewModelBase
             BlankHeightMm = job.Blank.HeightMm;
             BlankBorderMm = job.Blank.LeftMm;
             StockAlignmentHoles = job.Blank.AlignmentHoles;
+            StockHolesOnly = job.Blank.HolesOnly;
 
             // Inside the guard, not after it. A new list is a new source for the "Spiral with"
             // combo, and a combo given a new source clears its selection and then restores it —
