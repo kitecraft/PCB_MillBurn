@@ -494,10 +494,7 @@ public partial class MainWindow : Window
         // question here rather than a formality.
         if (args.Contains("--about", StringComparer.OrdinalIgnoreCase))
         {
-            var about = new AboutWindow(AboutWindow.Version(), "20 September 2026")
-            {
-                RequestedThemeVariant = ActualThemeVariant,
-            };
+            var about = AboutWindow.For(this, "20 September 2026");
 
             about.Show(this);
             _captureInstead = about;

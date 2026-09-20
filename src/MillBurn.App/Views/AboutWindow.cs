@@ -58,12 +58,31 @@ public sealed class AboutWindow : Window
         Caption();
     }
 
-    /// <summary>Shows it, and returns when it is closed.</summary>
-    public static Task ShowAsync(Window owner)
+    /// <summary>
+    /// Shows it, and returns when it is closed.
+    ///
+    /// The variant is taken from the owner, as every dialog here does: the theme is set on the main
+    /// window rather than on the application, so a window that does not ask inherits the system's
+    /// idea instead of the one the operator chose — which shows up as a light dialog in front of a
+    /// dark app.
+    /// </summary>
+    public static Task ShowAsync(Window owner) => For(owner).ShowDialog(owner);
+
+    /// <summary>
+    /// The window, themed like its owner. One factory so the screenshot path and the menu build it
+    /// the same way — the theme bug this exists to prevent was invisible in a screenshot precisely
+    /// because that path set the variant and the menu did not.
+    /// </summary>
+    /// <param name="owner">The window it belongs to, and whose theme it takes.</param>
+    /// <param name="built">A fixed build date, for a screenshot that should not change every build.</param>
+    internal static AboutWindow For(Window owner, string? built = null)
     {
         ArgumentNullException.ThrowIfNull(owner);
 
-        return new AboutWindow(Version(), Built()).ShowDialog(owner);
+        return new AboutWindow(Version(), built ?? Built())
+        {
+            RequestedThemeVariant = owner.ActualThemeVariant,
+        };
     }
 
     /// <summary>"0.1.5", without the "+commit" a build may append.</summary>
