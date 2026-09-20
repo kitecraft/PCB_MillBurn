@@ -326,8 +326,22 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.4.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.5.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
+
+<table>
+<tr>
+<td><img src="art/screenshots/board-top.jpg" alt="The finished board, top side: black soldermask with copper pads and drilled holes showing through, a legend reading MillBurn V 1.1, and a registration cross in two corners"></td>
+<td><img src="art/screenshots/board-bottom.jpg" alt="The same board from the bottom: mask openings on every pad, the holes drilled through the middle of them, and the milled outline with its fingers"></td>
+</tr>
+</table>
+
+<img src="art/screenshots/board-pads.jpg" alt="Close-up of the bottom side: mask openings sitting on their pads, holes centred in the pads, and fine traces running between them under the mask">
+
+<sub>A double-sided board, start to finish, on a sub-$500 mill and a diode laser. Stock cut and its
+alignment holes drilled on the mill; both coppers burned through paint on the laser and etched; drilled,
+slotted and cut out back on the mill, every file corrected by the two-hole alignment; then the mask
+openings and legend burned on the laser, both sides. Every step but the etch came out of one project.</sub>
 
 **Proven on metal:**
 
@@ -354,11 +368,18 @@ run the dry run first and read the pages beside the files.
   holes and nothing else, drilled as 0.8 mm plunges where the program put them. And an SVG placed in
   Falcon by its own centre against an L jig, burned through masking tape onto milled copper: *"as
   best as I can expect."*
+- **Since v0.1.4 — the whole mixed workflow, in the photographs above.** 1.6 mm double-sided clad:
+  stock cut to size with its two waste holes, painted, both coppers burned on the laser and etched,
+  then back to the mill for drilling, slots and the cut-out — **every one of those files corrected by
+  the two-hole alignment measured from the waste holes**, which takes out the board's rotation as well
+  as a zero set by eye against its edges. Then the soldermask openings and the legend, both sides, on
+  the laser. The placing layers in each SVG carried the placement: stock and outline while the board
+  was still in its stock, outline alone once it was cut out. *"The mask and silkscreen alignment is
+  perfect"*, with the 0.3 mm vias landing inside their pads on a machine whose own errors are
+  measured in [09 §1](Documentation/09-Machine-Accuracy-Investigations.md).
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, alignment measured from the
-stock's two waste holes, and the placing layers as the app writes them (tried by hand first, in
-Falcon and LightBurn).
+isolation, and the routed channel between the boards of a panel.
 
 955 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next: rulers down the viewport, a numbered picture on the

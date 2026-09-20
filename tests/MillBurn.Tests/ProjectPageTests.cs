@@ -192,7 +192,9 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
         output.WriteLine($"copper {Size(plan, "F_Cu")}, legend {Size(plan, "F_Silkscreen")}, mask {Size(plan, "F_Mask")}");
 
         Assert.Equal("68.63 × 66.09", Size(plan, "F_Cu"));
-        Assert.Equal("67.10 × 64.01", Size(plan, "F_Silkscreen"));
+        // 64.06, not the 64.01 Falcon read: the legend was redrawn in KiCad on 2026-09-19, after that
+        // measurement and before this board's Gerbers were re-exported into the corpus.
+        Assert.Equal("67.10 × 64.06", Size(plan, "F_Silkscreen"));
         Assert.Equal("34.85 × 57.29", Size(plan, "F_Mask"));
 
         // The copper is the board, so its centre from the board's corner is half the board.
