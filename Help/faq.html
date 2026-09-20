@@ -45,6 +45,7 @@
     <li><a href="#alignment">Lining the holes up with the pads</a></li>
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
+    <li><a href="#version">Which version am I running, and is there a newer one?</a></li>
     <li><a href="#viewer">Looking at a G-code file</a></li>
     <li><a href="#settings">Settings: safe height, and the rest of the machine</a></li>
     <li><a href="#framing">My machine needs its own lines at the start</a></li>
@@ -1605,6 +1606,34 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   cut layers per imported object, which turns a board into several hundred of them. The placing
   layers are the exception, on purpose: two more, in colours of their own, so they can be switched
   off.
+</p>
+
+<h2 id="version">Which version am I running, and is there a newer one?</h2>
+
+<p>
+  <strong>Help &rsaquo; About PCB_MillBurn</strong> says which version this is and the day it was
+  built &mdash; the two things a bug report needs &mdash; and has a <strong>Check for updates</strong>
+  button beside them.
+</p>
+
+<p>
+  The check happens <em>only</em> when you press it. The app asks GitHub for the tag of the newest
+  release and compares it with this build; nothing about you, your machine or your boards is sent,
+  and nothing is downloaded. If there is a newer one, a button appears that opens its page in your
+  browser, and you install it the same way you installed this one: unzip it somewhere and run it.
+  Your settings, tool library and projects live elsewhere and are untouched.
+</p>
+
+<p>
+  With no network &mdash; the usual state of a workshop &mdash; it says it could not reach GitHub,
+  and gives you the address to look at later. It never guesses: a version it cannot read is reported
+  as unreadable rather than quietly as &ldquo;up to date&rdquo;.
+</p>
+
+<p>
+  The window also draws the <strong>travel optimizer running live</strong> on a scatter of holes: the
+  dashed route is the order a naive tool would drill them in, the solid one is what the optimizer
+  makes of it, and the numbers underneath are its own. It is the same code every export runs.
 </p>
 
 <h2 id="viewer">Looking at a G-code file</h2>

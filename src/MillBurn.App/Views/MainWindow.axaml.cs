@@ -490,6 +490,19 @@ public partial class MainWindow : Window
             _captureInstead = editor;
         }
 
+        // About, for a screenshot: it draws a live optimizer run, so "does it render" is a real
+        // question here rather than a formality.
+        if (args.Contains("--about", StringComparer.OrdinalIgnoreCase))
+        {
+            var about = new AboutWindow(AboutWindow.Version(), "20 September 2026")
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            about.Show(this);
+            _captureInstead = about;
+        }
+
         if (args.Contains("--framing", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new FramingWindow(vm.Framing) { RequestedThemeVariant = ActualThemeVariant };
@@ -1627,13 +1640,9 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The version comes first: it is the one thing a bug report needs from here, and the issue form
-    /// sends people to this window for it.
+    /// sends people to this window for it. <see cref="AboutWindow"/> has the rest.
     /// </summary>
-    private async void OnAboutClicked(object? sender, RoutedEventArgs e) =>
-        await ConfirmWindow.NoteAsync(
-            this,
-            "PCB_MillBurn",
-            $"Version {AppVersion()}. Gerber to G-code for the mill and SVG for the laser. MIT licensed.");
+    private async void OnAboutClicked(object? sender, RoutedEventArgs e) => await AboutWindow.ShowAsync(this);
 
     /// <summary>"0.1.0", without the "+commit" a build may append to the informational version.</summary>
     private static string AppVersion()

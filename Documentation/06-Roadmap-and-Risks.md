@@ -2032,6 +2032,7 @@ than discovered after.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
+- **About, and a check for updates**: built — see 6.23.
 - **Machine checks**: backlash, axis scale, squareness, what a bit really cuts, lost steps, tram — measured with calipers and a loupe, the way the test cuts measure a bit. See 6.22.
 - **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.24 mm closer than the program asked. See 6.21, and 09 §1 for how that number was arrived at.
 - **Which way up is this stock?**: a datum corner that can be seen from across the bench on a nearly square piece. See 6.20.
@@ -3413,6 +3414,38 @@ they belong in the machine's own firmware or in its frame.
 
 **Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
 cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 103.10.
+
+#### 6.23 About, and a check for updates — **built**
+
+Asked for from the workshop, and the reasoning is short: *"how about a button on the about page to
+check for a new version? And, at the same time, that about page could use some spiffying up."* The
+window was one line of text in a note dialog, and the app ships as a zip that nothing tells you has
+been superseded.
+
+**The check is a button and never anything else.** The app has to work with no network — it is a
+workshop tool — so nothing here reaches out on its own, on a timer, or at startup. Pressing it asks
+GitHub for the latest release's tag, with a user agent naming the app and nothing else: no
+identifier, no board, no telemetry, and no download. The window says so in a line, because people
+are right to wonder.
+
+**Four answers, and one of them is "no idea".** Up to date; a newer one, with a button to its page;
+ahead of the latest release, which is what a local build of main is; or unreadable. That last one
+matters: `ReleaseCheck.Compare` refuses rather than guesses, because "you are up to date" is the one
+wrong answer that stops somebody looking. Offline is reported as the fact it is, with the address to
+try later.
+
+**Split so the decisions can be tested.** `MillBurn.Core.ReleaseCheck` parses the answer and compares
+the versions — a string in, an answer out, no network — and `AboutWindow` supplies the request in four
+lines. `ReleaseCheckTests` covers a captive portal's HTML, a rate-limit message, an empty body, a tag
+with no link, three-part against four-part versions, and the informational version's `+commit` suffix.
+
+**And the window itself.** The mark, the version, the build date read from the executable's own
+timestamp (a single-file build has no assembly on disk to ask), links to the release notes, the
+questions-and-answers page and the third-party notices that ship beside it — and, in the middle, the
+travel optimizer running live on a scatter of pads: the dashed route is nearest-unvisited-hole, the
+drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres underneath are the
+plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
+and it is the only thing in this release a person who never reads a roadmap will notice.
 
 ### Phase 7 — User documentation — **started**
 
