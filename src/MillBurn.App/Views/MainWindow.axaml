@@ -216,6 +216,8 @@
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
                         <MenuItem Header="_Test cuts…" Click="OnTestCutsClicked" />
+                        <!-- Needs no board: what it measures belongs to the machine. -->
+                        <MenuItem Header="_Machine checks…" Click="OnMachineChecksClicked" />
                         <MenuItem Header="Drill _alignment…" Click="OnAlignClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
