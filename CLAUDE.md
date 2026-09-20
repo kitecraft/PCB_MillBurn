@@ -1,11 +1,12 @@
-# Working on PCB_MillBurn
+# CLAUDE.md
 
-The app turns Gerbers into files that drive a mill and a laser. A wrong number is somebody's ruined
-board, so the standards below are practical rather than ceremonial.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository.
 
-Full detail: [CONTRIBUTING.md](CONTRIBUTING.md) for process,
-[Documentation/10](Documentation/10-Style-and-Voice.md) for style,
-[Sprints/](Sprints) for what the current sprint is about.
+**Read [AGENTS.md](AGENTS.md) first.** It holds the briefing every assistant needs — environment,
+commands, layout, testing conventions, the rules that shape the code, the process, and the traps.
+This file holds only what is specific to Claude Code, so that there is one place to keep current
+rather than two that drift.
 
 ## Before merging anything
 
@@ -13,56 +14,24 @@ Full detail: [CONTRIBUTING.md](CONTRIBUTING.md) for process,
 with an eye on anything that could affect performance: the UI's responsiveness, the geometry
 pipeline, the optimizer, or the size and shape of the emitted G-code and SVG. **If it finds
 anything, run it again at maximum effort** before fixing — the second pass is where the expensive
-problems surface.
+problems surface, and it is cheaper than a bug report from somebody's workshop.
 
-**Run `/describe-test` on tests that were just written or changed.** A context-free subagent reads
-the test back in plain language; check that account against the test and against the code. It is
-there to catch a test and a bug that agree with each other.
+## After writing or changing a test
 
-## Branches and commits
+**Run `/describe-test`.** A subagent with none of this conversation's context reads the test back in
+plain language — its steps, its inputs with their literal values, its assertions, and what would
+have to break for it to fail. Check that account against the test *and* against the production code.
+It exists to catch a test and a bug that agree with each other, which is the failure mode a test
+written beside its code is most prone to.
 
-- `main` holds released code. Never commit to it directly.
-- `release/X.Y.Z` is the sprint's integration branch; story branches are `NNN_ShortName`, taken from
-  it and **squashed** back into it, one commit per story. The sprint in progress is `release/0.2.0`.
-- **Versions:** a sprint moves the middle digit, an urgent mid-sprint fix moves the last one, and a
-  change to a CLI workflow or to a saved file's shape is labelled **Breaking** at the top of the
-  notes — pre-1.0 there is no separate major to carry it. Saved artefacts each hold a
-  `SchemaVersion`: read every older format, refuse a newer one by name.
-- The release branch merges into `main` with a merge commit, then a `vX.Y.Z` tag is pushed, which is
-  what builds the release.
-- Ask before committing, merging, pushing or publishing. The workshop's own machine runs what this
-  produces.
+Skills live in `.claude/skills/`.
 
-## Verify by running, not by tests passing
+## Working here
 
-Every serious bug in this project was found by looking at output. A green suite is necessary and not
-sufficient.
-
-- `dotnet test PCB_MillBurn.slnx` — zero warnings; the build treats them as errors.
-- `dotnet run --project src/MillBurn.App -- <board> --shot out.png` renders headlessly; flags
-  include `--preview`, `--settings`, `--settings-tab`, `--about`, `--machine-check`, `--align`,
-  `--only-toolpath`, `--size WxH`, `--theme`.
-- `millburn-cli export <board> --write -o <dir>` prints travel, line counts and time estimates —
-  the numbers to quote when a change claims to make something faster or tighter.
-- `bash build/publish.sh win-x64 out/windows` is what a release ships. Publish only when the app is
-  closed, and check by **running the published binary**: single-file builds are compressed, so
-  searching the exe for a string proves nothing.
-
-## The rules that shape the code
-
-- **Refuse rather than guess** in anything that writes a file or reports a number somebody will act
-  on.
-- **A value decided elsewhere gets its source named**, not a second control that can disagree with
-  the first.
-- **A rule that encodes a workflow becomes a list of choices**, with the old behaviour as the
-  default.
-- **Nanometres inside, millimetres at the edges.**
-- **Comments say why.** Record the defect a shape prevents, so the next tidy-up does not reinvent it.
-- **New features need tests**; a bug fix needs a test that fails without it.
-
-## Things that have bitten before
-
-- Quoted heredocs still eat backslashes — use the Edit tool for text with escapes.
-- `Invariant($"…" + "…")` does not compile: concatenation makes it a `string`.
-- The workshop leaves the app open; a publish then fails on locked files.
-- Headless runs that open a project add it to the real recent-projects list.
+- **Ask before committing, merging, pushing or publishing.** The author's own mill and laser run
+  what this produces.
+- **Verify by running**, not by a green suite: `--shot` renders the real window headlessly, and the
+  CLI prints the travel and line-count numbers to quote for any performance claim. AGENTS.md lists
+  the flags.
+- **The workshop is the source of requirements.** When the author reports something from the bench,
+  their words go into the roadmap with the measurement that backs them, and the fix cites it.
