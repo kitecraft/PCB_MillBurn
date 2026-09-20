@@ -4329,6 +4329,71 @@
 			(justify left bottom)
 		)
 	)
+	(gr_text "1.0 .8 .5"
+		(at 174.0318 120.624 90)
+		(layer "F.SilkS")
+		(uuid "a9850983-566a-4eef-be37-3ffda7116506")
+		(effects
+			(font
+				(size 1.5 1.5)
+				(thickness 0.3)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
+	(gr_text "1.0 .8"
+		(at 174.147 128.524 90)
+		(layer "F.SilkS")
+		(uuid "babe1103-bd47-43ea-b60e-6a7cdeaac19b")
+		(effects
+			(font
+				(size 1.5 1.5)
+				(thickness 0.3)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
+	(gr_text ".5    .8    1.0"
+		(at 150.097 143.841 0)
+		(layer "F.SilkS")
+		(uuid "7a7bf317-6906-4f14-a69b-b54c7594f6bc")
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
+	(gr_text "V 1.1"
+		(at 180.3402 123.1882 90)
+		(layer "F.SilkS")
+		(uuid "f6f18c42-d571-4013-9f6d-dc1ba67ba90f")
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.5)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
+	(gr_text "MillBurn"
+		(at 180.3402 137.1582 90)
+		(layer "F.SilkS")
+		(uuid "b2e6dff6-3165-4f78-b4b3-f2c265f6aeb3")
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.5)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
 	(segment
 		(start 161.032 111.689)
 		(end 171.192 111.689)
@@ -6313,6 +6378,40 @@
 				(xy 126.601204 82.974669) (xy 126.550908 83.109518) (xy 126.5445 83.169123) (xy 114.8005 83.169123)
 				(xy 114.8005 79.4895) (xy 114.819454 79.394212) (xy 114.87343 79.31343) (xy 114.954212 79.259454)
 				(xy 115.0495 79.2405) (xy 170.114108 79.2405) (xy 170.171847 79.2405)
+			)
+		)
+	)
+	(zone
+		(layer "F.SilkS")
+		(uuid "731d8b66-8979-44bd-ae49-e089c7aa479f")
+		(hatch none 0.5)
+		(connect_pads
+			(clearance 0.5)
+		)
+		(min_thickness 0.25)
+		(fill yes
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+			(smoothing chamfer)
+			(radius 1)
+			(island_removal_mode 0)
+		)
+		(polygon
+			(pts
+				(xy 148.519083 129.840825) (xy 175.019425 129.84) (xy 175.019535 140.839736) (xy 148.519425 140.84)
+			)
+		)
+		(filled_polygon
+			(layer "F.SilkS")
+			(island yes)
+			(pts
+				(xy 174.035102 129.859714) (xy 174.055745 129.876349) (xy 174.983114 130.803681) (xy 175.016601 130.865003)
+				(xy 175.019435 130.891363) (xy 175.019524 139.788374) (xy 174.99984 139.855413) (xy 174.983206 139.876055)
+				(xy 174.055853 140.803425) (xy 173.99453 140.836911) (xy 173.968172 140.839745) (xy 161.76948 140.839868)
+				(xy 149.570785 140.839989) (xy 149.503746 140.820305) (xy 149.483105 140.803672) (xy 148.555713 139.876317)
+				(xy 148.522226 139.814995) (xy 148.519392 139.788638) (xy 148.519115 130.892188) (xy 148.538797 130.825148)
+				(xy 148.555431 130.804506) (xy 149.482765 129.877114) (xy 149.544087 129.843627) (xy 149.570445 129.840792)
+				(xy 161.769254 129.840412) (xy 173.968062 129.840032)
 			)
 		)
 	)

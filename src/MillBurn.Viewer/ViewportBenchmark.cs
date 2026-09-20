@@ -10,7 +10,7 @@ namespace MillBurn.Viewer;
 ///
 /// Runs the same <see cref="ToolpathRenderer"/> the window uses, against an offscreen surface, so
 /// the reported number is the real cost of the real draw code. Invoked with
-/// <c>MillBurn.App.exe --bench</c>.
+/// <c>MillBurn.exe --bench</c>.
 /// </summary>
 public static class ViewportBenchmark
 {

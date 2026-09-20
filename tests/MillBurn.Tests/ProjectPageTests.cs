@@ -136,13 +136,11 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Each SVG gets its own numbers, from its own drawing. Measured in the workshop on the test
-    /// board in 80 × 80 stock: Falcon imported the top copper at 68.63 × 66.09, the legend at
-    /// 67.10 × 64.01 and the mask at 34.85 × 57.29 — and the page's one offset, the board's, was
-    /// right only for the copper.
+    /// The test board with its top copper (inverted, for the etch resist, as in the workshop — so
+    /// that drawing is exactly the board), legend and mask as SVG, and the bottom copper inverted
+    /// too. Mirrored, as a bottom layer is.
     /// </summary>
-    [Fact]
-    public void EachSvgSaysWhereItsOwnDrawingSits()
+    private static ExportPlan TestBoard(SvgPlacingLayers marks, BlankOptions? blank = null)
     {
         var loaded = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.MillburnTestBoard));
 
@@ -151,37 +149,154 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
             l => new LayerOutputSettings
             {
                 FileName = l.FileName,
-                Output = l.Role is LayerRole.TopCopper or LayerRole.TopSilk or LayerRole.TopMask
+                Output = l.Role is LayerRole.TopCopper or LayerRole.TopSilk or LayerRole.TopMask or LayerRole.BottomCopper
                     ? OutputKind.Svg
                     : LayerOperations.DefaultFor(l.Role),
-
-                // Inverted, for the etch resist, as in the workshop: everything inside the board
-                // edge except the copper, so this one drawing is exactly the board.
-                Invert = l.Role == LayerRole.TopCopper,
+                Invert = l.Role is LayerRole.TopCopper or LayerRole.BottomCopper,
             },
             StringComparer.Ordinal);
 
-        var plan = ExportPlanner.Plan(
+        return ExportPlanner.Plan(
             loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(0.9),
-            job: new JobOptions { Blank = new BlankOptions { Enabled = true, Sizing = BlankSizing.Stated, WidthMm = 80, HeightMm = 80, Cut = false } });
+            machineSettings: new MachineSettings { SvgPlacingLayers = marks },
+            job: new JobOptions { Blank = blank ?? PreCut80 });
+    }
 
-        string Size(string layer)
-        {
-            var item = plan.Items.Single(i => i.TargetName.EndsWith(layer + ".svg", StringComparison.Ordinal));
-            var d = item.Drawing!.Value;
-            return Nm.ToMillimetreString(d.Width, 2) + " × " + Nm.ToMillimetreString(d.Height, 2);
-        }
+    /// <summary>80 × 80 mm pre-cut stock, given its two alignment holes and nothing else.</summary>
+    private static readonly BlankOptions PreCut80 = new()
+    {
+        Enabled = true, Sizing = BlankSizing.Stated, WidthMm = 80, HeightMm = 80,
+        Cut = true, AlignmentHoles = true, HolesOnly = true,
+    };
 
-        output.WriteLine($"copper {Size("F_Cu")}, legend {Size("F_Silkscreen")}, mask {Size("F_Mask")}");
+    private static string Size(ExportPlan plan, string layer)
+    {
+        var d = Svg(plan, layer).Drawing!.Value;
+        return Nm.ToMillimetreString(d.Width, 2) + " × " + Nm.ToMillimetreString(d.Height, 2);
+    }
 
-        Assert.Equal("68.63 × 66.09", Size("F_Cu"));
-        Assert.Equal("67.10 × 64.01", Size("F_Silkscreen"));
-        Assert.Equal("34.85 × 57.29", Size("F_Mask"));
+    private static ExportItem Svg(ExportPlan plan, string layer) =>
+        plan.Items.Single(i => i.TargetName.EndsWith(layer + ".svg", StringComparison.Ordinal));
+
+    /// <summary>
+    /// Each SVG gets its own numbers, from its own drawing. Measured in the workshop on the test
+    /// board in 80 × 80 stock: Falcon imported the top copper at 68.63 × 66.09, the legend at
+    /// 67.10 × 64.01 and the mask at 34.85 × 57.29 — and the page's one offset, the board's, was
+    /// right only for the copper. This is the page with the placing layers turned off.
+    /// </summary>
+    [Fact]
+    public void EachSvgSaysWhereItsOwnDrawingSits()
+    {
+        var plan = TestBoard(SvgPlacingLayers.None);
+
+        output.WriteLine($"copper {Size(plan, "F_Cu")}, legend {Size(plan, "F_Silkscreen")}, mask {Size(plan, "F_Mask")}");
+
+        Assert.Equal("68.63 × 66.09", Size(plan, "F_Cu"));
+        // 64.06, not the 64.01 Falcon read: the legend was redrawn in KiCad on 2026-09-19, after that
+        // measurement and before this board's Gerbers were re-exported into the corpus.
+        Assert.Equal("67.10 × 64.06", Size(plan, "F_Silkscreen"));
+        Assert.Equal("34.85 × 57.29", Size(plan, "F_Mask"));
 
         // The copper is the board, so its centre from the board's corner is half the board.
         var html = plan.Page!.Content;
         output.WriteLine(html[html.IndexOf("<h2>Placing", StringComparison.Ordinal)..]);
         Assert.Contains("34.31 right, 33.05 up", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<g id=\"board-outline\"", Svg(plan, "F_Mask").Content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// What the placing layers are for: with the board outline and the stock in every file, every
+    /// file imports at the stock's size, and one placement works for all of them. Tried by hand in
+    /// Falcon and LightBurn before this was built.
+    /// </summary>
+    [Fact]
+    public void WithThePlacingLayersEveryFileImportsAtTheSameSize()
+    {
+        var plan = TestBoard(SvgPlacingLayers.OutlineAndStock);
+
+        foreach (var layer in new[] { "F_Cu", "F_Silkscreen", "F_Mask", "B_Cu" })
+        {
+            Assert.Equal("80.00 × 80.00", Size(plan, layer));
+
+            var svg = Svg(plan, layer);
+            Assert.Contains("<g id=\"board-outline\" inkscape:groupmode=\"layer\" inkscape:label=\"Board outline\">", svg.Content, StringComparison.Ordinal);
+            Assert.Contains("<g id=\"stock\" inkscape:groupmode=\"layer\" inkscape:label=\"Stock and holes\">", svg.Content, StringComparison.Ordinal);
+            Assert.Contains("stroke=\"#FF0000\"", svg.Content, StringComparison.Ordinal);
+            Assert.Contains("stroke=\"#0000FF\"", svg.Content, StringComparison.Ordinal);
+            Assert.Contains(svg.Summary, s => s.Contains("Settings › Laser", StringComparison.Ordinal));
+        }
+
+        // The centre is measured from the corner of what the file imports as — the stock's, here,
+        // since the stock layer makes the box. From the board's corner it is a number the operator
+        // cannot use, and the workshop hit exactly that.
+        Assert.Contains("<th>Centre, from the stock's corner</th>", plan.Page!.Content, StringComparison.Ordinal);
+        Assert.Contains("40.00 right, 40.00 up", plan.Page.Content, StringComparison.Ordinal);
+
+        // And the project page gives one placement instead of a table to look things up in.
+        Assert.Contains("Every SVG also carries the board outline, and the stock with its holes", plan.Page!.Content, StringComparison.Ordinal);
+        Assert.Contains("puts the stock's corner on the laser's origin", plan.Page.Content, StringComparison.Ordinal);
+
+        // The outline alone, for a board already cut out and put against a jig: the board's box,
+        // though there is stock, and no stock layer.
+        var cutOut = TestBoard(SvgPlacingLayers.OutlineOnly);
+        Assert.Equal("68.63 × 66.09", Size(cutOut, "F_Mask"));
+        Assert.DoesNotContain("<g id=\"stock\"", Svg(cutOut, "F_Mask").Content, StringComparison.Ordinal);
+        Assert.Contains("puts the board's corner on the laser's origin, for a board already cut out", cutOut.Page!.Content, StringComparison.Ordinal);
+
+        // With the outline alone the box is the board, so its centre is measured from the board.
+        Assert.Contains("<th>Centre, from the board's corner</th>", cutOut.Page.Content, StringComparison.Ordinal);
+        Assert.Contains("34.31 right, 33.05 up", cutOut.Page.Content, StringComparison.Ordinal);
+
+        // Without stock, the box is the board's.
+        var bare = TestBoard(SvgPlacingLayers.OutlineAndStock, new BlankOptions());
+        Assert.Equal("68.63 × 66.09", Size(bare, "F_Mask"));
+        Assert.DoesNotContain("<g id=\"stock\"", Svg(bare, "F_Mask").Content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An inverted bottom layer on stock the board is not centred in. The drawing is mirrored about
+    /// the stock's centreline; the board region it is cut from used to be mirrored about the board's,
+    /// which differ by half the difference in the margins — so the resist came out shifted by twice
+    /// that. With 10 mm on the left and 5 on the right, 5 mm.
+    /// </summary>
+    [Fact]
+    public void AnInvertedBottomLayerIsCutFromTheBoardWhereTheMirrorPutsIt()
+    {
+        var plan = TestBoard(SvgPlacingLayers.None, new BlankOptions
+        {
+            Enabled = true, LeftMm = 10, RightMm = 5, BottomMm = 10, TopMm = 5,
+        });
+
+        var bottom = Svg(plan, "B_Cu").Drawing!.Value;
+
+        // Mirrored about the stock's centreline, the board's 10 mm on the left becomes 5.
+        output.WriteLine($"bottom copper from {Nm.ToMillimetreString(bottom.MinX, 2)} to {Nm.ToMillimetreString(bottom.MaxX, 2)}");
+        Assert.Equal("5.00", Nm.ToMillimetreString(bottom.MinX, 2));
+        Assert.Equal("68.63", Nm.ToMillimetreString(bottom.Width, 2));
+
+        // And the placing layer goes with it: in the same file, the red outline runs exactly along
+        // the inverted copper's edge.
+        var marked = Svg(TestBoard(SvgPlacingLayers.OutlineAndStock, new BlankOptions
+        {
+            Enabled = true, LeftMm = 10, RightMm = 5, BottomMm = 10, TopMm = 5,
+        }), "B_Cu").Content;
+
+        Assert.Equal(XRange(marked, "artwork"), XRange(marked, "board-outline"));
+    }
+
+    /// <summary>The least and greatest X in one group's paths, from M and L commands only.</summary>
+    private static (double, double) XRange(string svg, string group)
+    {
+        var xs = System.Xml.Linq.XDocument.Parse(svg).Descendants()
+            .Where(e => (string?)e.Attribute("id") == group)
+            .SelectMany(g => g.Descendants())
+            .Select(e => (string?)e.Attribute("d"))
+            .Where(d => d is not null)
+            .SelectMany(d => System.Text.RegularExpressions.Regex.Matches(d!, @"[ML]\s*(-?\d+(?:\.\d+)?)"))
+            .Select(m => Math.Round(double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), 2))
+            .ToList();
+
+        return (xs.Min(), xs.Max());
     }
 
     /// <summary>With no blank, work zero is the board's corner and there is no offset to add.</summary>

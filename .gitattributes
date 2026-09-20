@@ -10,6 +10,10 @@
 *.yml       text
 *.json      text
 
+# Shell scripts run under bash on every platform, and bash reads a carriage return as part of the
+# command. LF everywhere, including a Windows checkout.
+*.sh        text eol=lf
+
 # Gerber / Excellon / G-code corpus files: keep bytes exactly as supplied, since golden tests
 # compare them and some tools are sensitive to line endings.
 *.gbr       -text

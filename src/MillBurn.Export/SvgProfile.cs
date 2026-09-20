@@ -116,4 +116,28 @@ public sealed record SvgExportOptions
     public DateTimeOffset? Timestamp { get; init; }
 
     public string? Title { get; init; }
+
+    /// <summary>
+    /// Layers written after the drawing, each in a colour of its own, for placing the file rather
+    /// than for burning: the board outline, the stock and its holes. See <see cref="SvgReference"/>.
+    /// </summary>
+    public IReadOnlyList<SvgReference> References { get; init; } = [];
 }
+
+/// <summary>
+/// A layer that is there to place the drawing, not to be burned.
+///
+/// Laser software that imports by content keeps only the drawing's own box, and every layer's box
+/// is different — a mask is its outermost openings, a legend stops short of the edge. Drawing the
+/// same outline into every file makes that box the same for all of them, so one placement works
+/// for each. Tried by hand in Creality Falcon and LightBurn before it was built: both import each
+/// colour as a layer of its own, and switching one off does not move the rest.
+///
+/// Always a real layer with an explicit colour, even in <see cref="SvgExportOptions.SingleLayer"/>
+/// mode — being a separate, visible, switch-off-able layer is the whole point of it.
+/// </summary>
+/// <param name="Id">The SVG element id.</param>
+/// <param name="Label">The layer's name, as the laser software shows it.</param>
+/// <param name="Colour">A colour the drawing does not use, so it arrives as its own layer.</param>
+/// <param name="Shapes">Hairlines, in source coordinates.</param>
+public sealed record SvgReference(string Id, string Label, string Colour, IReadOnlyList<ArtShape> Shapes);

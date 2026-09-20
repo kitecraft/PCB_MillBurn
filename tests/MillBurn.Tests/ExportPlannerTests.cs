@@ -552,11 +552,15 @@ public sealed class ExportPlannerTests
     /// <c>M</c> and <c>L</c> take plain x,y pairs; an <c>A</c> puts five other numbers in front of
     /// its endpoint, so taking every other number across a whole path would silently read radii as
     /// coordinates.
+    ///
+    /// The drawing only: the placing layers after it span the board or the stock by design, so
+    /// they would say nothing about whether the drawing moved.
     /// </summary>
     private static List<double> PathXValues(string svg) =>
     [
         .. XDocument.Parse(svg)
             .Descendants()
+            .Where(e => e.Ancestors().Any(a => (string?)a.Attribute("id") == "artwork"))
             .Select(e => e.Attribute("d")?.Value)
             .Where(d => d is not null)
             .SelectMany(d => System.Text.RegularExpressions.Regex.Matches(

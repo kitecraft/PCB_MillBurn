@@ -2031,7 +2031,11 @@ than discovered after.
 - Rest machining / multi-tool bulk clearing.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
-- Solder-paste stencil generation.
+- **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
+- **Machine checks**: backlash, axis scale, squareness, what a bit really cuts, lost steps, tram — measured with calipers and a loupe, the way the test cuts measure a bit. See 6.22.
+- **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.24 mm closer than the program asked. See 6.21, and 09 §1 for how that number was arrived at.
+- **Which way up is this stock?**: a datum corner that can be seen from across the bench on a nearly square piece. See 6.20.
+- **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
 - Machine-profile sharing.
 
 #### 6.1 Rulers — **scheduled, not started**
@@ -2886,6 +2890,13 @@ shifted.
 as good as I can expect."* The same run is what turned up the tabs left at full thickness, which is
 its own fix above and belongs to the outline rather than to the alignment.
 
+**And from the stock's waste holes, 2026-09-20** — the half that had never been run. A whole
+double-sided board: the board went back on the mill with no jig at all, zeroed by eye against its two
+edges, and the two-hole test measured from the waste holes took out both that rough zero and the
+board's rotation. Three drilling files, two routing files and the outline all ran from it, and the
+0.3 mm vias landed inside their pads. *"The test will not only compensate for any rotation of the
+placement, but will also fix the not-perfect X/Y origin setting."*
+
 #### 6.15 The companion page names the commands that would rebuild it — **requested, not started**
 
 Requested from the workshop: *"in the project html companion file that is written on export, can we
@@ -2982,7 +2993,7 @@ but it asked the operator to follow a remembered record behind the Pre-cut tick 
 size and the as-cut holes, that no longer agree — and that could not be made clear in the window. If it
 comes back, it starts from what an operator would understand rather than from the mechanism.
 
-#### 6.17 The stock's alignment holes, marked in the SVGs — **requested, not started**
+#### 6.17 The stock's alignment holes, marked in the SVGs — **built and used on metal; Print and Cut not tried**
 
 Requested from the workshop, as part of the goal the whole app serves: **confidence in alignment, for
 everything.** The mill already has it — the stock's two waste holes are cut in the stock's own frame,
@@ -3035,8 +3046,360 @@ mark at two opposite corners of whatever the operator registers against makes ev
 the same box, and W/2, H/2 against the jig then works for all of them. Which box — the stock, or the
 cut-out board the jig takes today — is the first question to settle when this is built.
 
+**Tried by hand first.** Four SVGs were made from the test board's own exports and imported into
+Falcon and LightBurn: the mask with the board outline as a red hairline; with two small filled squares
+in the board's corners; the legend with the outline; and the mask with the stock and its holes. All
+imported at the size intended, each colour as its own layer, and switching a layer off moved nothing
+else. The mask with the outline, placed at W/2, H/2 against the jig and burned through tape onto milled
+copper, landed *"as best as I can expect."* The corner squares failed for a reason no test would
+catch: *"almost impossible to see. I mistook them for a dirty monitor at first."* And the stock file
+drew the request that settled the design — *"Would be even better with the outline as a third layer
+even. Why not? They are useful and easy enough to hide."*
+
+**Built on branch `007_SvgMarks`.** `ExportPlanner.ReferenceLayers` gives every SVG the board outline
+(red, `#FF0000`) and, with stock, the stock's rectangle with a ring the hole's size and a 2 mm cross at
+each alignment hole (blue, `#0000FF`), after the drawing (`#00E000`). `SvgWriter` writes them as real
+layers with explicit colours even in single-layer mode — being separate is their point. Mirrored with
+the drawing, about the frame's centreline. `ExportItem.Drawing` now includes them, so each file's
+summary and the project page say every file imports at the stock's size, and the page gives one
+placement instead of the per-file table (which stays for exports without them). On by default, against
+this project's habit, because what it prevents is silent.
+
+**Which box is a list**, under *Settings › Laser › Placing layers*, because it depends on what goes
+against the laser's origin and the workshop does it both ways. *Board outline, and the stock* (the
+default) makes every file import at the stock's size, for the stock before the board is cut out —
+the order the project page suggests. *Board outline only* makes it the board's, for a cut-out board
+against a jig, which is how the first burns were placed. And *None*. `--svg-marks
+stock|outline|off` overrides it from the command line.
+
+It found a bug on the way. An inverted, mirrored layer — the bottom copper's etch resist — is cut from
+the board region; the drawing was mirrored about the stock's centreline and the region about the
+board's, so on stock the board is not centred in (the default margins are 10 and 5) the resist came out
+5 mm across. `BoardRegion` now takes the caller's axis.
+
+**Used on metal, 2026-09-20**, through a whole double-sided board, and the list settled itself: *stock
+and outline* while the board was still in its stock, for the two copper burns, then *outline only* once
+it was cut out, for the mask openings and the legend. The workshop switched between them without being
+told to, because each matches what goes against the laser's jig at that step — which is the argument the
+setting was given a list for. The result: *"The mask and silkscreen alignment is perfect."*
+
+**Still to do:** Print and Cut on the two holes in LightBurn, and the three items above — the flip two
+points cannot see, and pointer offset — want a burn registered on the holes rather than placed by a
+jig.
+
 **Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
 layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.
+
+#### 6.18 A paste stencil to 3D-print — **requested, not started**
+
+Requested from the workshop, and ranked ahead of the paste extruder (Phase 9), which stays long
+term: *"A Job option to create a solder paste stencil that can be made by 3D printing … MillBurn
+would produce the STL file and the user can slice it as they see fit."*
+
+**A dialog of its own, from the Job menu** — *Job › Paste stencil…*:
+
+- **Which paste layer**, from a drop-down, because a board can have two. With none, everything is
+  disabled and the dialog says a paste layer is needed and how to export one from KiCad.
+- **Stencil size**, width and height, with the paste layer centred in it.
+- **Thickness** — the stencil's overall thickness.
+- **Design foil thickness** — the foil the paste layer was drawn for, 0.10 to 0.15 mm, which with
+  each aperture's area sets the volume every pad should get.
+- **Thinner where shrinking cannot do it**, as an option: steps only for the apertures that need
+  them (below).
+- **Step margin** — how much bigger than the apertures in it a thinner area is, and a **merge
+  distance**, so steps that nearly touch become one area instead of a crowd of islands.
+- **Generate and save…** opens a save dialog, writes the `.stl`, and comes **back to the dialog**,
+  because a board often wants more than one stencil: top and bottom, or two thicknesses to compare.
+
+**It is about volume: shrink first, thin only where shrinking fails.** The workshop's correction
+to the first draft, which thinned the stencil: *"Maybe narrower and shorter is in fact a better way
+… It's about volume, not width/height."* A printed stencil is thick — 0.2 to 0.3 mm where a bought
+foil is 0.12 — so an aperture the paste layer's own size puts down 1.7 to 2.5 times the paste it was
+designed for, and bridges. Every aperture's **target volume** is Phase 9's: its area × the design
+foil thickness. At the stencil's thickness, that volume means a smaller hole, so the aperture
+**shrinks** — narrower and shorter, keeping its proportions — until area × thickness is the target.
+
+Shrinking has one limit, and it is the one stencil makers design around: paste only leaves a hole
+that is open enough for its depth. IPC-7525's **area ratio** — the opening's area over its wall area
+— has to stay at or above 0.66. Worked through for this section:
+
+| Pad | Stencil | Full size gives | Shrunk to the right volume | Area ratio |
+|---|---|---|---|---|
+| QFN thermal 3.0 × 3.0 | 0.3 mm | 2.5× the paste | 1.90 × 1.90 | 1.58 — releases |
+| 0805 1.0 × 1.3 | 0.2 mm | 1.7× | 0.77 × 1.01 | 1.09 — releases |
+| SOIC 0.6 × 1.5 | 0.2 mm | 1.7× | 0.46 × 1.16 | 0.83 — releases |
+| SOIC 0.6 × 1.5 | 0.3 mm | 2.5× | 0.38 × 0.95 | 0.45 — keeps its paste |
+| 0402 0.5 × 0.55 | 0.2 mm | 1.7× | 0.39 × 0.43 | 0.51 — keeps its paste |
+
+So shrinking is the right lever for large and mid-size pads, and small pads are where it runs out.
+Per aperture, in order: **shrink** to the target volume; where that breaks the area ratio, shrink
+only as far as release allows and, if steps are on, put the aperture in a **thinner step** where the
+right volume and release both hold; where neither works, **refuse and name the pad** rather than
+write a stencil that will not deliver it. The dialog reports each pad's target and delivered volume
+and the total, so an over- or under-fed pad is a number on screen before it is a bridge on the board.
+
+**What printing changes.** A printer cannot make any thickness: it makes whole layers, so steps snap
+to a **layer height** the operator gives (0.1 mm, 0.05 mm on resin). Nor any hole: an FDM nozzle
+cannot make a hole much smaller than itself, so a **smallest printable opening** is an option too,
+and an aperture that would have to shrink below it is refused and named like one that will not
+release. Printed stencils are thick by stencil standards, and
+a printer's smallest hole is far bigger than a laser's, so the dialog says plainly that fine pitch is
+where this stops working — the same warning Phase 9 plans for dispensing.
+
+**Which way up.** The side against the board stays flat, so it seals; steps are cut from the
+squeegee side, as on a bought step stencil, and the flat side is the one that prints on the bed. A
+bottom paste stencil is mirrored, since it is used from the board's underside.
+
+**Confidence in alignment, here too.** A stencil is only as good as its registration, and a printed
+part can locate itself: an optional **locating lip** under the stencil, following the board outline
+with a clearance, deep enough to catch the board's edge and shallower than the board, so the stencil
+drops over the cut-out board and cannot be placed wrong. That serves the goal the whole app is for
+better than centring by eye. To settle when it is built, alongside the paste layer centred in the
+stencil: whether the lip, when chosen, should centre the board rather than the paste.
+
+**Where it lives.** `src/MillBurn.Cam/StencilOperation.cs` turns apertures into regions by
+thickness — steps are Clipper offsets and unions, and the merge distance is a closing (offset out,
+union, offset back). `src/MillBurn.Export/StlWriter.cs` extrudes each region and writes binary STL:
+new, because nothing in the app is 3D yet, and polygons with holes need triangulating (a small
+library such as LibTessDotNet, or ear clipping written here). `stencil <project>` on the command line
+takes the same options, as every export does.
+
+**Done when** the test board's `F_Paste` gives a watertight STL (every edge shared by exactly two
+triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
+prints and slices without repair, and paste printed through it on a real board lands on the pads.
+
+#### 6.19 A dry run that is the real run, raised — **requested, not started**
+
+Requested from the workshop: *"The dry-run could be much better representative of a real run. The
+lack of z-moves lowers the usefulness of the current dry-run too much. What if the dry-run was just a
+copy of the real run, then, ensure the spindle is OFF, then, raise the entire thing by X mm (default
+3)."*
+
+**Why it is better.** `DryRun.Rewrite` holds every move at one height, so what it shows is the path
+in plan and nothing else: no plunge, no lift, no ramp, no helix, and none of the Z travel that is a
+quarter of a real program's time on the workshop's machine (`$112 = 100`), so a flat run's time is
+not the real run's time. A raised copy moves exactly as the real program does, only higher — every
+descent visible at its real place and speed, and the time the real time.
+
+**The rewrite.** Every Z word in absolute mode becomes Z + the rise, 3 mm by default; the canned
+cycles' R plane rises with it. The spindle is stopped at the top, as now, and every `M3`/`M4` is
+dropped rather than trusted to be harmless. Feeds kept, as now, unless the operator turns them off.
+
+**Where it has to refuse, as the flat one already does:**
+
+- **The lowest point must still clear the stock.** Raised by 3 mm, the deepest cut on a 1.6 mm board
+  with 0.3 mm break-through ends 1.1 mm above it; a deeper program, or a smaller rise, would not. So
+  the check becomes *nothing moves below work zero plus a clearance*, read back out of the rewritten
+  text like the current one, and a program that fails it is refused with the rise it would need —
+  never quietly raised further, because the operator asked for a number and should know it changed.
+- **`G92` and `G10`** rewrite the coordinate system, so a raised Z word no longer means what it did.
+  Refused.
+- **`G53`** moves are in machine coordinates — a tool-change position in someone's end G-code — and
+  are left exactly as written.
+- **`G38.x` probing** would feel for a surface that is now 3 mm further away. Refused.
+- **`G91`**, as now.
+
+**The flat dry run stays, as a choice.** It still has a use — a quick look at extents and order, and
+it cannot plunge anything by construction — so *Settings › Dry run* becomes a list: *a raised copy of
+the real run* (by default, since it is the one that answers more) or *held flat*, each with its
+height. The export's dry-run tick is unchanged.
+
+**Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
+with every plunge in the air, and its run time lands where the real program's does.
+
+#### 6.20 Which way up is this stock? — **requested, not started**
+
+From the workshop, cutting the 78.63 x 76.09 mm test stock: *"Might need a better way to orient the
+board. On this mostly square board, the chamfer corner isn't quite enough for a visual check for
+orientation. It's too square."*
+
+**The datum corner is already marked** — `BlankOperation` chamfers it 3 mm in the same pass as the
+edges, and the stock program says so. On an oblong piece that is enough, because the shape itself
+says which way round it goes. On a nearly square one it is not: a 3 mm chamfer on a 78 mm edge is a
+detail you have to go looking for, and every one of the four corners is a candidate until you find
+it. Getting it wrong puts every later file on the wrong face or the wrong way round, and the stock
+is the thing everything else is measured from.
+
+**The holes do not settle it either.** Turned 180 degrees, the two waste holes land very nearly
+where each other were — 2.50, 74.29 and 76.83, 2.50 on this piece — so a glance at them confirms
+nothing. That near-symmetry is not an accident: they sit in the two borders, as far apart as the
+stock allows.
+
+**Ideas, none chosen:**
+
+- **A chamfer sized for the piece**, rather than a fixed 3 mm: a proportion of the shorter edge, with
+  a floor and a ceiling. Costs nothing, cuts in the pass that is already running, and makes the mark
+  unmissable on a big piece.
+- **A second, smaller chamfer** on one neighbouring corner, so the pattern of corners is different
+  from every angle. Unambiguous under both 180 degrees and a flip — the flip being the one the datum
+  corner cannot catch today.
+- **A notch in a waste edge**, on the top or right only. Never on the two datum edges, which have to
+  stay clean to seat in the corner stop.
+- **A mark, not a cut**: the letters of the corner engraved shallowly in the waste, or burned in by
+  the laser as part of a placing layer — free on the laser, and readable rather than inferred.
+
+**To settle:** whether the mark should also survive the board being cut out of the stock, since after
+that the waste is scrap and the board's own outline has to carry the orientation; and whether a flip
+needs to be as loudly marked as a turn.
+
+**Done when** somebody who has not seen the piece before can say which corner is the datum from
+across the bench, and the stock program and project page say what to look for.
+
+#### 6.21 Every hole approached from the same side — **found in the workshop, not started**
+
+Found while checking the laser against the stock's waste holes, 2026-09-19, and worth recording in
+full because every party was innocent until the last measurement.
+
+**What was seen.** A burn of the *Stock and holes* placing layer landed with its cross 0.14 mm right
+of the top-left waste hole and 0.7 mm right of the bottom-right one — the error growing with X, which
+looks exactly like a scale error. It was not one. The whole investigation, wrong turns included, is
+[09 §1](09-Machine-Accuracy-Investigations.md); in short:
+
+- A 100 mm line burned on the laser measured 100 mm to within 0.05 mm, so the laser's motion is right.
+- Falcon reported the imported design as 78.63 x 76.09 mm, the stock's own size, and its ruler
+  measured the two crosses 103.34 mm apart — which is what `stock.nc` drills, 74.33 across and 71.79
+  up. So the file and the software are right.
+- The cut stock measured 78.6 x 76.16 mm against 78.63 x 76.09, so the mill's scale is right.
+
+**What was wrong.** The holes — and, separately, the laser, which turned out to be 0.25° out of
+square. Pins in both holes, read over the outsides and between the insides and averaged, put them
+**103.10 mm** apart against the 103.338 the program asks: **0.24 mm close**. The first reading, 102.8
+mm taken across the holes themselves, and the offsets read off photographs, both overstated it.
+
+**Backlash of about 0.17 mm on X, if that is what it is.** The two holes are approached from opposite
+directions — the bottom-right one moving +X, the top-left one moving -X — so the slack is taken up on
+opposite sides and the pair ends up **twice** the backlash closer together. The stock's outer size
+stays right because its outline is one continuous loop, where backlash shows as a small step at a
+direction change rather than as a size error: a piece that measures true, with two holes in it that do
+not. The alternative is that the mill is out of square by about 0.13°, which would produce the same
+0.24 mm on this diagonal, and 6.22's four-hole check is what tells the two apart. Either way the fix
+below is worth having, because it costs seconds and removes one of the two candidates entirely.
+
+**Nothing already built can correct it.** The two-hole alignment fits a rotation and a shift; this
+error is neither, and no rigid fit can push two points apart.
+
+**What to build.**
+
+- **Approach every hole from the same side.** Overshoot the position by a set distance and come back
+  to it, so the slack is taken up the same way for every hole — alignment holes, drilling files, the
+  start of a routed feature, and the alignment test's own moves. The approach happens at travel
+  height, over air. GRBL has no backlash compensation, so the program has to carry it.
+- **A distance, and a direction, in the machine settings.** The overshoot has to exceed the backlash,
+  so it is the operator's number (a millimetre is plenty for a machine worth cutting with); the
+  direction is one pair of signs, -X and -Y by default. To settle: what to do when the approach point
+  would fall outside the machine's soft limits near work zero — approach from the other side and say
+  so, or refuse.
+- **A backlash check, beside the test cuts.** A program that drills the same pair of holes approached
+  from both directions: measure the two pairs, and the difference is twice the backlash. That turns a
+  number nobody knows into one the operator can write on the machine — and it is the same shape as
+  `testcut`, which already exists to measure a bit rather than guess it.
+
+**Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 103.10,
+and a burn registered on them lands on both.
+
+#### 6.22 Machine checks: measure the machine, not only the bit — **requested, not started**
+
+From the workshop, after 6.21 turned a laser mystery into a quarter of a millimetre in the holes and
+a quarter of a degree of skew in the laser ([09 §1](09-Machine-Accuracy-Investigations.md)): *"Since MillBurn is
+aimed at people with inexpensive desktop mills (typical is the 3018 mill), overall machine accuracy
+may be as important as the drill tests are for the bits themselves."*
+
+The test cuts already refuse to trust a V-bit's label and measure the tip instead (*Test cuts:
+checking the library against a caliper*, in Phase 5 above). This is the same argument one level up:
+nothing about a 3018-class machine is known to the tolerance the app quietly assumes — that a commanded millimetre is a
+millimetre, that X and Y are square, that an 0.8 mm end mill cuts an 0.8 mm slot. Each is
+measurable in an afternoon with the tools the workshop actually owns: **digital calipers, a loupe,
+and perhaps a dial indicator**.
+
+Two rules shape every check below, and they come from what a caliper is good at. **It reads edges
+well and centres badly**, so a check gives two faces to measure between. And **it reads 0.01 mm**,
+so a check amplifies its error — over the longest baseline the stock allows, and, where the physics
+allows, by arranging for the error to appear twice.
+
+##### The backlash check, in full
+
+**What it exploits.** Backlash is the slack between screw and nut: the axis takes it up only when it
+reverses. A feature positioned by a move arriving in +X therefore sits a fixed distance from one
+positioned by a move arriving in −X, and that distance *is* the backlash. Arrange for one pair to be
+displaced one way and another pair the other way, and the difference between the two pairs is
+**twice** it.
+
+**What is cut.** Plunges, not milled features: a plunged hole's position is decided by the move that
+arrived at it and by nothing else, while a milled pocket's edges are also cut on moves of their own,
+each with its own reversal to confuse the reading. Six plunges with one end mill, in three rows, at a
+span the stock can hold — 60 mm by default, the longer the better:
+
+| Row | Left hole approached | Right hole approached | Spacing should read |
+|---|---|---|---|
+| 1 — the reference | moving +X | moving +X | the programmed span |
+| 2 | moving −X | moving +X | the span **plus** the backlash |
+| 3 | moving +X | moving −X | the span **minus** the backlash |
+
+Each approach is made at travel height: rapid past the hole by a few millimetres, then back to it, so
+the last motion before the plunge is in the direction the row calls for. Row 1 is the control: both
+holes take the slack up the same way, so their spacing is the machine's true one and confirms the
+program did what it says.
+
+**What is measured.** For each row, the **outer** distance across the pair and the **inner** distance
+between them, both with calipers on the hole walls. Their average is the centre-to-centre distance,
+and the hole diameter drops out of it — which matters, because the hole is never exactly the bit's
+size, and because measuring two hole centres directly is the thing calipers cannot do. It is the
+reading that went wrong in the workshop's first attempt — 102.8 mm across the holes themselves — and
+came right when pins went in them: 103.9 outside, 102.3 inside, 103.10 mm between the centres, with
+`outside − inside = 1.60 mm` confirming the pair as it went ([09 §1](09-Machine-Accuracy-Investigations.md)).
+
+**The arithmetic**, which the companion page states rather than leaves to the bench:
+
+> backlash = (row 2 − row 3) ÷ 2
+
+and row 1 minus the programmed span is a scale check thrown in free: more than a few hundredths over
+60 mm and the axis's steps-per-millimetre is worth looking at before anything else.
+
+**Then the same again for Y**, rows running the other way, because the two axes are independent. On
+the workshop's machine the whole positioning error is 0.24 mm on a 103 mm diagonal, which is about
+0.17 mm of backlash if it sits in X alone — and might instead be 0.13° of skew, which is what the
+squareness check below is for.
+
+**What the number is for.** It sets the approach overshoot in 6.21, which has to exceed the
+backlash to take it up; it tells the operator whether the anti-backlash nut wants
+adjusting or replacing; and it is the number that says whether a machine can hold an 0.2 mm isolation
+gap at all. It is worth re-measuring when anything changes, because it wears.
+
+**What the check must say out loud.** Use the same bit for all six plunges and do not change the
+collet between them. Deburr before measuring. Take each reading three times. And never measure from
+the stock's edges, which were cut by the machine being tested.
+
+##### The other checks, sketched
+
+- **Axis scale.** Two fine scribed lines as far apart as the stock allows, measured and compared
+  against the commanded distance; the correction goes into the controller's steps-per-millimetre, not
+  into the app. The mill's version of the 100 mm line the workshop burned on the laser.
+- **Squareness.** A large scribed square, both diagonals measured; their difference over the square's
+  size is the error angle. 0.2 mm across 60 mm is about 0.1°, which puts the far corner of a 100 mm
+  board 0.2 mm out, and no amount of levelling or two-hole alignment touches it.
+- **Effective cutter diameter.** One straight slot, its width measured: what the bit *cuts*, runout
+  and deflection included. Isolation width depends on it directly, and the result belongs in the tool
+  library beside the V-bit tip width the test cuts already measure.
+- **Return to zero.** Scribe a cross, run a long fast pattern, scribe it again: two crosses that do
+  not coincide are lost steps, and the answer is a lower feed or acceleration rather than a better
+  toolpath.
+- **Spindle tram.** Nearly free, because the probe grid already exists: the dominant tilt in a height
+  map *is* the tram, and the levelling report could say so — "0.08 mm of tilt across 60 mm, mostly in
+  X, which is the machine rather than the board". Levelling hides it; knowing it lets it be fixed.
+- **Tool-change repeatability.** Touch off, cut a witness, change tools, touch off, cut beside it: how
+  much Z moves between bits, which is exactly what a mixed-bit job in one setup depends on.
+
+##### Where it lives
+
+*Job › Machine checks…*, beside *Test cuts…*, and `machine-check <name>` on the command line. Each
+writes a program and a companion page that says what to measure, where, and what the number means —
+the test cuts' own shape, which is already proven. Results are typed back in the same way a test cut
+is reopened, so the app can keep them: backlash feeds 6.21's overshoot, effective diameter feeds the
+tool library, and scale, squareness and tram are **reported and never silently applied**, because
+they belong in the machine's own firmware or in its frame.
+
+**Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
+cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 103.10.
 
 ### Phase 7 — User documentation — **started**
 

@@ -113,6 +113,40 @@ public sealed record MachineSettings
     /// anybody who wants the wall cleaned up by one more lap regardless.
     /// </summary>
     public bool FinishingLapOnThroughCuts { get; init; }
+
+    /// <summary>
+    /// What every SVG carries, as layers of its own, for placing it rather than burning.
+    /// See <see cref="Core.SvgPlacingLayers"/>.
+    ///
+    /// On by default, unlike most new choices here, because the thing it prevents is silent: laser
+    /// software that imports by content crops each file to its own drawing, and a mask cropped to
+    /// its outermost openings lands millimetres out with nothing to say so. Tried in Falcon and
+    /// LightBurn first: each colour arrives as its own layer and switching it off moves nothing.
+    /// </summary>
+    public SvgPlacingLayers SvgPlacingLayers { get; init; } = SvgPlacingLayers.OutlineAndStock;
+}
+
+/// <summary>
+/// Which placing layers go into every SVG. A list, because which is right depends on what the
+/// operator puts against the laser's origin — and the box the layers make is what a content-importing
+/// laser program will centre.
+/// </summary>
+public enum SvgPlacingLayers
+{
+    /// <summary>
+    /// The board outline, and the stock with its alignment holes when there is stock. Every file
+    /// imports at the stock's size: for placing the stock, before the board is cut out.
+    /// </summary>
+    OutlineAndStock,
+
+    /// <summary>
+    /// The board outline alone. Every file imports at the board's size: for placing a board that has
+    /// already been cut out, against a jig at the laser's origin — the way the workshop does it.
+    /// </summary>
+    OutlineOnly,
+
+    /// <summary>None: each file is its drawing alone, for software that places by the page.</summary>
+    None,
 }
 
 /// <summary>What a dry run does, when one is asked for.</summary>

@@ -307,19 +307,61 @@ public static class ProjectPage
             + "below needs doing.</li>\n");
         page.Append("</ul>\n");
 
-        page.Append("<div class=\"warn\"><p><strong>If your laser software imports the drawing "
-            + "rather than the page</strong>, it throws the empty border away and keeps only the "
-            + "drawing's own box, which is different for every file. The size it shows on import says "
-            + "which it did. Then place each file by its own row: its lower-left corner at the first "
-            + "pair of numbers when ")
-            .Append(context.Blank.Resolved ? "the stock's corner" : "the board's corner")
-            .Append(" is on the laser's origin, or its centre at the second when the ")
-            .Append(context.Blank.Resolved ? "cut-out board's" : "board's")
-            .Append(" corner is. One file's numbers are wrong for another.</p></div>\n");
+        var placing = svgs[0].PlacingLayers;
+        var stock = context.Blank.Resolved;
+
+        // Which box the placing layers make: the stock's if its layer is in the file, the board's if
+        // only the outline is — chosen in Settings › Laser by what goes against the laser's origin.
+        var withStock = placing.Any(p => p.StartsWith("Stock", StringComparison.Ordinal));
+
+        if (placing.Count > 0)
+        {
+            // The layers make every file's box the same, so the advice is one placement, not a lookup.
+            var holes = placing.Contains("Stock and holes");
+
+            page.Append("<div class=\"note\"><p><strong>Every SVG also carries the board outline")
+                .Append(withStock ? (holes ? ", and the stock with its holes" : ", and the stock") : string.Empty)
+                .Append(withStock
+                    ? (holes
+                        ? "</strong>, as layers of their own: the board outline in red, the stock and its holes in blue"
+                        : "</strong>, as layers of their own: the board outline in red, the stock in blue")
+                    : "</strong>, as a layer of its own, in red")
+                .Append(". They are for placing the file, not for burning, so switch them off in the "
+                    + "laser software before you burn. Because every file has them, software that "
+                    + "imports the drawing rather than the page imports every file at the same size — ")
+                .Append(withStock ? "the stock's" : "the board's")
+                .Append(" — and centring each at half its width and height puts ")
+                .Append(withStock ? "the stock's" : "the board's")
+                .Append(" corner on the laser's origin")
+                .Append(!withStock && stock ? ", for a board already cut out and put against a jig there" : string.Empty)
+                .Append(".</p></div>\n");
+        }
+        else
+        {
+            page.Append("<div class=\"warn\"><p><strong>If your laser software imports the drawing "
+                + "rather than the page</strong>, it throws the empty border away and keeps only the "
+                + "drawing's own box, which is different for every file. The size it shows on import says "
+                + "which it did. Then place each file by its own row: its lower-left corner at the first "
+                + "pair of numbers when ")
+                .Append(stock ? "the stock's corner" : "the board's corner")
+                .Append(" is on the laser's origin, or its centre at the second when the ")
+                .Append(stock ? "cut-out board's" : "board's")
+                .Append(" corner is. One file's numbers are wrong for another — Settings › Laser can "
+                    + "draw the board outline into every file to make them the same.</p></div>\n");
+        }
+
+        // The centre is measured from the corner of whatever the file imports as, because that is
+        // what the operator puts on the origin: the stock's corner when the stock layer makes the
+        // box, the board's otherwise. Measured from the board's corner while the box was the
+        // stock's, the workshop had to work the right number out themselves.
+        var from = withStock ? "the stock's" : "the board's";
+        var originX = withStock ? 0 : boardX;
+        var originY = withStock ? 0 : boardY;
 
         page.Append("<table>\n<thead><tr><th>File</th><th>Imports as</th>"
-            + "<th>Lower-left, from the page's corner</th><th>Centre, from the board's corner</th>"
-            + "</tr></thead>\n<tbody>\n");
+            + "<th>Lower-left, from the page's corner</th><th>Centre, from ")
+            .Append(from)
+            .Append(" corner</th></tr></thead>\n<tbody>\n");
 
         foreach (var item in svgs)
         {
@@ -329,7 +371,7 @@ public static class ProjectPage
                 .Append(Nm.ToMillimetreString(d.Width, 2)).Append(" × ")
                 .Append(Nm.ToMillimetreString(d.Height, 2)).Append(" mm</td><td>")
                 .Append(Pair(d.MinX, d.MinY)).Append("</td><td>")
-                .Append(Pair(d.Centre.X - boardX, d.Centre.Y - boardY)).Append("</td></tr>\n");
+                .Append(Pair(d.Centre.X - originX, d.Centre.Y - originY)).Append("</td></tr>\n");
         }
 
         page.Append("</tbody>\n</table>\n");

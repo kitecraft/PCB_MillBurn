@@ -50,7 +50,8 @@ UGS, Candle, LightBurn and LinuxCNC already do that well.
 ## Quick start
 
 1. **Get it.** Download the latest [release](https://github.com/kitecraft/PCB_MillBurn/releases/latest)
-   for Windows or Linux, unpack it anywhere, and run `MillBurn.App`. It is self-contained — you do not
+   for Windows or Linux, unpack it anywhere, and run `MillBurn` (`MillBurn.exe` on Windows) — the
+   folder holds it, `millburn-cli` and the help, nothing else. It is self-contained — you do not
    need .NET installed. (On a fresh Debian or Ubuntu you may need `sudo apt install libfontconfig1`.)
 2. **Open a board.** Drag your Gerber export folder onto the window, or `File ▸ Import Gerber
    folder…`. Drill files come along with it. Exporting from KiCad? The
@@ -278,29 +279,29 @@ Point it at any Gerber export folder and look at your board — fast, correct, a
 ## The CLI
 
 The whole pipeline is scriptable, and it is the same code the window runs. The executable is
-`MillBurn.Cli`, called `millburn` below; from a source tree, `dotnet run --project src/MillBurn.Cli --`
-takes its place. Run it with no arguments for the full list.
+`millburn-cli`, beside `MillBurn` in the download; from a source tree, `dotnet run --project
+src/MillBurn.Cli --` takes its place. Run it with no arguments for the full list.
 
 ```sh
-millburn board   <gerber-folder> --png board.png          # detect layers, render headlessly
-millburn inspect <folder>                                  # what was understood, and what was not
+millburn-cli board   <gerber-folder> --png board.png          # detect layers, render headlessly
+millburn-cli inspect <folder>                                  # what was understood, and what was not
 
-millburn export  <folder-or-project> --write -o out/       # every layer, one file each
-millburn export  <folder> --set F_Cu.gbr=svg- --write      # svg- inverts
-millburn export  <folder> --dry-run --write                # + a .dryrun.nc beside each program
-millburn export  <folder> --stock 10,10,10,10 --write      # cut the stock to size, 10 mm border
+millburn-cli export  <folder-or-project> --write -o out/       # every layer, one file each
+millburn-cli export  <folder> --set F_Cu.gbr=svg- --write      # svg- inverts
+millburn-cli export  <folder> --dry-run --write                # + a .dryrun.nc beside each program
+millburn-cli export  <folder> --stock 10,10,10,10 --write      # cut the stock to size, 10 mm border
 
-millburn testcut depth --tool "30°" --from 0.02 --step 0.02
-millburn probe   <folder> --spacing 8                      # a G38.2 grid to run and log
-millburn export  <folder> --level probe.log --write        # bend every program to the surface
-millburn level   anyones.nc --map probe.log                # works on any G-code, not just ours
+millburn-cli testcut depth --tool "30°" --from 0.02 --step 0.02
+millburn-cli probe   <folder> --spacing 8                      # a G38.2 grid to run and log
+millburn-cli export  <folder> --level probe.log --write        # bend every program to the surface
+millburn-cli level   anyones.nc --map probe.log                # works on any G-code, not just ours
 
-millburn align   <project> --hole 3 --at 23.74,47.83       # the drill alignment test
-millburn align   <project> --hole 3 --at 23.74,47.83 --hole2 11 --at2 40.49,70.77   # and the turn
-millburn export  <project> --align 0.12,-0.05 --align-turn 0.3 --align-about 23.62,47.88 --write
+millburn-cli align   <project> --hole 3 --at 23.74,47.83       # the drill alignment test
+millburn-cli align   <project> --hole 3 --at 23.74,47.83 --hole2 11 --at2 40.49,70.77   # and the turn
+millburn-cli export  <project> --align 0.12,-0.05 --align-turn 0.3 --align-about 23.62,47.88 --write
 
-millburn project save <folder> -o board.millburn
-millburn tools list
+millburn-cli project save <folder> -o board.millburn
+millburn-cli tools list
 ```
 
 ---
@@ -325,8 +326,22 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.4.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.5.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
+
+<table>
+<tr>
+<td><img src="art/screenshots/board-top.jpg" alt="The finished board, top side: black soldermask with copper pads and drilled holes showing through, a legend reading MillBurn V 1.1, and a registration cross in two corners"></td>
+<td><img src="art/screenshots/board-bottom.jpg" alt="The same board from the bottom: mask openings on every pad, the holes drilled through the middle of them, and the milled outline with its fingers"></td>
+</tr>
+</table>
+
+<img src="art/screenshots/board-pads.jpg" alt="Close-up of the bottom side: mask openings sitting on their pads, holes centred in the pads, and fine traces running between them under the mask">
+
+<sub>A double-sided board, start to finish, on a sub-$500 mill and a diode laser. Stock cut and its
+alignment holes drilled on the mill; both coppers burned through paint on the laser and etched; drilled,
+slotted and cut out back on the mill, every file corrected by the two-hole alignment; then the mask
+openings and legend burned on the laser, both sides. Every step but the etch came out of one project.</sub>
 
 **Proven on metal:**
 
@@ -353,14 +368,22 @@ run the dry run first and read the pages beside the files.
   holes and nothing else, drilled as 0.8 mm plunges where the program put them. And an SVG placed in
   Falcon by its own centre against an L jig, burned through masking tape onto milled copper: *"as
   best as I can expect."*
+- **Since v0.1.4 — the whole mixed workflow, in the photographs above.** 1.6 mm double-sided clad:
+  stock cut to size with its two waste holes, painted, both coppers burned on the laser and etched,
+  then back to the mill for drilling, slots and the cut-out — **every one of those files corrected by
+  the two-hole alignment measured from the waste holes**, which takes out the board's rotation as well
+  as a zero set by eye against its edges. Then the soldermask openings and the legend, both sides, on
+  the laser. The placing layers in each SVG carried the placement: stock and outline while the board
+  was still in its stock, outline alone once it was cut out. *"The mask and silkscreen alignment is
+  perfect"*, with the 0.3 mm vias landing inside their pads on a machine whose own errors are
+  measured in [09 §1](Documentation/09-Machine-Accuracy-Investigations.md).
 
 **Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, the routed channel between the boards of a panel, and alignment measured from the
-stock's two waste holes.
+isolation, and the routed channel between the boards of a panel.
 
-953 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+955 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
 every push. Up next: rulers down the viewport, a numbered picture on the
-drilling and routing pages, better tab placement, and registration marks for placing a burn — then
+drilling and routing pages, better tab placement, and Print and Cut on the stock's two holes — then
 an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
 remembering and what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
 
@@ -390,21 +413,22 @@ warning is a failed build, which is the point.
 
 ### Publishing
 
-Self-contained, so nothing has to be installed on the target. The app and the CLI go to the same
-directory and share their runtime.
+Self-contained, so nothing has to be installed on the target, and single-file: each program is one
+file with its libraries and the .NET runtime inside it, renamed `MillBurn` and `millburn-cli`. One
+script does it, for the release and for a local build alike:
 
 ```sh
-dotnet publish src/MillBurn.App -c Release -r win-x64   --self-contained -o out/windows
-dotnet publish src/MillBurn.Cli -c Release -r win-x64   --self-contained -o out/windows
-
-dotnet publish src/MillBurn.App -c Release -r linux-x64 --self-contained -o out/linux
-dotnet publish src/MillBurn.Cli -c Release -r linux-x64 --self-contained -o out/linux
+build/publish.sh win-x64   out/windows
+build/publish.sh linux-x64 out/linux
 ```
 
-**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves the launchers
-non-executable — NTFS has no execute bit — so either `chmod +x MillBurn.App MillBurn.Cli` after copying
+It empties the output folder first. The two programs start about 50 ms slower than unbundled ones,
+because each unpacks itself as it starts.
+
+**One asymmetry, and it will bite.** Publishing Linux binaries *from Windows* leaves them
+non-executable — NTFS has no execute bit — so either `chmod +x MillBurn millburn-cli` after copying
 them across, or publish on Linux. Pushing a `v*` tag runs [`release.yml`](.github/workflows/release.yml),
-which does exactly that and attaches both archives to the release.
+which runs the same script on Linux and attaches both archives to the release.
 
 ---
 
@@ -521,6 +545,9 @@ panelises so much better than this ever would that panelising is deliberately no
 Sabogal's [**KiCad-Arduino-Boards**](https://github.com/sabogalc/KiCad-Arduino-Boards), two of the
 test boards. · And the **gSender**, **Candle**, **LinuxCNC** and **LightBurn** communities, who make the
 machines actually run — this app only writes the files.
+
+And to **RAVNIR**, a Nordic music project from Switzerland, for the beat that drove a very high
+development cadence.
 
 ---
 
