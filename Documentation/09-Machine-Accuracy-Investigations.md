@@ -9,7 +9,7 @@ what the machines actually did, and why some features exist.
 
 ---
 
-## 1. The waste-hole crosses that did not line up — 2026-09-19
+## 1. The waste-hole crosses that did not line up — 2026-09-19, closed 2026-09-20
 
 ### What was being done
 
@@ -107,9 +107,54 @@ The techniques that worked, all with digital calipers and a loupe:
   Both diagonals should read 84.853 mm; about 0.20 mm of difference would confirm the mill is out of
   square rather than loose.
 
+### How it ended — 2026-09-20
+
+Two more coupons, both hand-written and both measured with pins and calipers.
+
+**The mill is square to about a sixteenth of a degree.** Four holes at the corners of a 60 mm square,
+every one approached from below-left so that backlash cancelled: the diagonals came to 84.800 and
+84.700 mm against a nominal 84.853. A 0.100 mm difference is 0.068° — and it is also the workshop's
+own measurement spread, so it is a ceiling rather than a figure.
+
+**And it has almost no slack.** Three rows of two holes 60 mm apart, the rows differing only in which
+side each hole was approached from, so that row 2 minus row 3 is twice the backlash. Backlash does not
+grow with distance, so a 60 mm coupon carries the same signal as a long one, and that signal — 0.34 mm
+if backlash were the 0.17 mm the earlier arithmetic suggested — would have stood well clear of the
+noise. It did not appear:
+
+| Axis | Row 1, the control | Row 2 | Row 3 | Difference | Backlash |
+|---|---|---|---|---|---|
+| X | 60.6 | 60.5 | 60.6 | −0.1 | none measurable |
+| Y | 60.8 | 60.8 | 60.7 | +0.1 | ≤ 0.05 mm |
+
+Row 1 should read the 60 mm span plus one pin, 60.8, and on Y it did exactly — which says the method
+was sound rather than merely consistent.
+
+**So the mill's 0.24 mm was never one fault.** It is the sum of three small ones, none of which is
+worth chasing on a machine of this class:
+
+| Contribution | Along that diagonal |
+|---|---|
+| Squareness, 0.068° | 0.06 mm |
+| Backlash, ≤ 0.05 mm on each side of X | 0.07 mm |
+| What is left, inside the measurement's own ±0.1 | ~0.1 mm |
+
+The sign works out too: the waste holes' diagonal runs *down*-right, the opposite of the square's long
+diagonal, and a skew that lengthens one shortens the other.
+
+**The laser's 0.25° is the dominant error by a factor of four** — 0.22 mm on the same diagonal against
+the mill's 0.06 — so squaring that gantry is the one adjustment worth making.
+
+**What it taught the plan.** 6.21's one-sided approach is still worth building, because it costs a
+couple of seconds and removes a variable for good, but it is no longer a fix for anything measured: on
+this machine it buys about 0.07 mm. And 6.22's checks earned their place twice over — the backlash
+check's most useful answer here was *none*, which is a thing an operator cannot otherwise learn. Both
+pages must say what this investigation ran into repeatedly: **with pins and calipers a difference under
+0.1 mm is not a measurement**, and for scale and squareness — which grow with distance, unlike
+backlash — the answer to that is a longer baseline.
+
 ### Still open
 
-The mill's four-hole check, and then squaring the laser's gantry — the usual loop of burning a large
-square, shifting one end of the gantry along Y to shorten the long diagonal, and burning it again.
-Neither Falcon's software nor GRBL can compensate for a skew, so the frame is the only place to fix
-it.
+Squaring the laser's gantry — the usual loop of burning a large square, shifting one end of the gantry
+along Y to shorten the long diagonal, and burning it again. Neither Falcon's software nor GRBL can
+compensate for a skew, so the frame is the only place to fix it.

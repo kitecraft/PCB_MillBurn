@@ -3266,6 +3266,14 @@ square. Pins in both holes, read over the outsides and between the insides and a
 **103.10 mm** apart against the 103.338 the program asks: **0.24 mm close**. The first reading, 102.8
 mm taken across the holes themselves, and the offsets read off photographs, both overstated it.
 
+**Measured since: there is almost none.** Three rows of two holes, the rows differing only in
+approach direction, put the backlash at 0.05 mm or less on both axes — see
+[09 §1](09-Machine-Accuracy-Investigations.md), which closes with the 0.24 mm being three small
+effects rather than one. So this section is no longer a fix for anything measured; it is worth
+building because it costs a couple of seconds a hole and takes a variable off the table for good, on
+machines that have not been measured at all. What follows is the reasoning that was written before
+those measurements.
+
 **Backlash of about 0.17 mm on X, if that is what it is.** The two holes are approached from opposite
 directions — the bottom-right one moving +X, the top-left one moving -X — so the slack is taken up on
 opposite sides and the pair ends up **twice** the backlash closer together. The stock's outer size
@@ -3355,10 +3363,15 @@ came right when pins went in them: 103.9 outside, 102.3 inside, 103.10 mm betwee
 and row 1 minus the programmed span is a scale check thrown in free: more than a few hundredths over
 60 mm and the axis's steps-per-millimetre is worth looking at before anything else.
 
-**Then the same again for Y**, rows running the other way, because the two axes are independent. On
-the workshop's machine the whole positioning error is 0.24 mm on a 103 mm diagonal, which is about
-0.17 mm of backlash if it sits in X alone — and might instead be 0.13° of skew, which is what the
-squareness check below is for.
+**Then the same again for Y**, rows running the other way, because the two axes are independent. Run
+by hand on the workshop's machine, both axes came back with no backlash worth the name — under 0.05 mm
+— which is exactly the kind of answer this check exists to give: *none* is a fact an operator cannot
+otherwise learn, and it sent the search somewhere else.
+
+**And it has to say what it cannot see.** Every reading in that investigation carried about ±0.1 mm,
+so a difference smaller than that is not a measurement, and the page must say so rather than print a
+number to three decimals. Backlash does not grow with distance, so 60 mm of span is as good as 200 —
+but scale and squareness do, and there the answer to a noisy caliper is a longer baseline.
 
 **What the number is for.** It sets the approach overshoot in 6.21, which has to exceed the
 backlash to take it up; it tells the operator whether the anti-backlash nut wants
