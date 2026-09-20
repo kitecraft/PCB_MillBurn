@@ -219,6 +219,34 @@ public sealed class HelpPagesTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The notices ship as a page, not as the repository's markdown: a .md opens in whatever owns
+    /// that extension, which is a code editor on one machine and nothing at all on another, and
+    /// About's own button is what people press. Two copies of a licence list is a thing that drifts,
+    /// so every package the markdown names has to appear on the page.
+    /// </summary>
+    [Fact]
+    public void TheShippedNoticesNameEveryPackageTheRepositoryDoes()
+    {
+        var markdown = File.ReadAllText(Path.Combine(Path.GetDirectoryName(Directory)!, "THIRD-PARTY-NOTICES.md"));
+        var page = Pages()["third-party.html"];
+
+        // The table rows of the markdown name a package first; a bare name or a [name](link).
+        var packages = System.Text.RegularExpressions.Regex
+            .Matches(markdown, @"^\| (?:\[([^\]]+)\]\([^)]*\)|([A-Za-z][\w.{}, ]*?))\s*(?:\(\+[^)]*\))?\s*\|", System.Text.RegularExpressions.RegexOptions.Multiline)
+            .Select(m => (m.Groups[1].Success ? m.Groups[1] : m.Groups[2]).Value.Trim())
+            .Where(name => name is not ("Package" or "Path" or "---"))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var missing = packages.Where(name => !page.Contains(name, StringComparison.Ordinal)).ToList();
+
+        output.WriteLine($"{packages.Count} named in the markdown: {string.Join(", ", packages)}");
+
+        Assert.NotEmpty(packages);
+        Assert.True(missing.Count == 0, "on THIRD-PARTY-NOTICES.md but not on the shipped page: " + string.Join(", ", missing));
+    }
+
+    /// <summary>
     /// The pages ship beside the executable rather than as embedded resources, so they have to be
     /// copied by the build. A help menu that opens a file that is not there is worse than no help
     /// menu, and it only shows up in a published build.

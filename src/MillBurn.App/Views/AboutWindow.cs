@@ -187,7 +187,7 @@ public sealed class AboutWindow : Window
 
         row.Children.Add(Link("Release notes", () => Open(ReleasesPage)));
         row.Children.Add(Link("Questions and answers", () => Beside("Help", "faq.html")));
-        row.Children.Add(Link("Third-party notices", () => Beside(null, "THIRD-PARTY-NOTICES.md")));
+        row.Children.Add(Link("Third-party notices", () => Beside("Help", "third-party.html")));
 
         var close = new Button { Content = "Close", IsCancel = true, MinWidth = 88, HorizontalAlignment = HorizontalAlignment.Right };
         close.Click += (_, _) => Close();
