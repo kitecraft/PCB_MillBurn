@@ -23,7 +23,11 @@ there to catch a test and a bug that agree with each other.
 
 - `main` holds released code. Never commit to it directly.
 - `release/X.Y.Z` is the sprint's integration branch; story branches are `NNN_ShortName`, taken from
-  it and **squashed** back into it, one commit per story.
+  it and **squashed** back into it, one commit per story. The sprint in progress is `release/0.2.0`.
+- **Versions:** a sprint moves the middle digit, an urgent mid-sprint fix moves the last one, and a
+  change to a CLI workflow or to a saved file's shape is labelled **Breaking** at the top of the
+  notes — pre-1.0 there is no separate major to carry it. Saved artefacts each hold a
+  `SchemaVersion`: read every older format, refuse a newer one by name.
 - The release branch merges into `main` with a merge commit, then a `vX.Y.Z` tag is pushed, which is
   what builds the release.
 - Ask before committing, merging, pushing or publishing. The workshop's own machine runs what this

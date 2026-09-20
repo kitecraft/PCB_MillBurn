@@ -80,6 +80,34 @@ Outside contributions are welcome, and the process is the same shape with one ex
 an emitted file that guesses where it should refuse; a feature with no test; and copied code from
 either of the GPL projects in the workspace, which would relicense the whole application.
 
+## Versions
+
+Three numbers, and a leading `0` until the project has earned otherwise.
+
+| Change | Version moves | And |
+|---|---|---|
+| A sprint | the middle digit: `0.2.0` → `0.3.0` | |
+| An urgent fix shipped mid-sprint | the last digit: `0.2.1` | |
+| A change to a CLI workflow | the middle digit | **Breaking** at the top of the release notes, with the old invocation and the new one |
+| A change to the project file's shape | the middle digit | the format number inside the file goes up too |
+
+**Pre-1.0 there is no room for a separate "major", so the label does that work.** A release that
+breaks a scripted pipeline says so in its first line, not in a paragraph somebody has to reach.
+
+**Compatibility is a property of the code, not a promise in a release note.** Every saved artefact
+carries its own `SchemaVersion` — projects, settings, the tool library, a saved test cut. The rule
+is that a build reads every format it has ever written, and refuses a newer one by name rather than
+guessing at it:
+
+> `'Board.millburn' was written by a newer version of PCB_MillBurn (format 2; this build reads 1).`
+
+Raising a format number is therefore a deliberate act with a reader to write, not a side effect of
+adding a field. A field with a sensible default does not need one.
+
+**1.0** is not a date. It is when the mixed workflow has been run end to end by somebody who is not
+the author, and nothing a board depends on is still Partial in
+[the matrix](Documentation/08-Requirements-Matrix.md).
+
 ## Style
 
 Written down in [Documentation/10](Documentation/10-Style-and-Voice.md), because a codebase with a

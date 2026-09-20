@@ -1,6 +1,8 @@
 # Sprint 1 — Speed and accuracy
 
-**Agreed** 2026-09-20, after v0.1.6. **Release branch:** `release/0.1.7`.
+**Agreed** 2026-09-20, after v0.1.6. **Release branch:** `release/0.2.0` — the middle digit moves
+because a sprint moves it, and 0.2.0 also marks the turn from adding features to making what is
+there faster and provably right.
 
 **The product owner's direction:** *"MillBurn had a highly featured MVP release. We've tweaked and
 added some great usability and some additional functional changes. Now I'd like to prioritise on
