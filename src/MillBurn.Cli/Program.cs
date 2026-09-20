@@ -55,6 +55,10 @@ internal static class Program
             Console.WriteLine("                                 --hole2 <n> --at2 <x,y mm> a second hole measured: prints the turn to export with");
             Console.WriteLine("                                 --waste-holes the stock's two holes rather than the board's");
             Console.WriteLine("                                 --flipped the board is turned over: the same holes, mirrored");
+            Console.WriteLine("  machine-check [backlash|squareness]  Holes on scrap that measure the machine itself:");
+            Console.WriteLine("                                 --axis x|y which axis a backlash check measures");
+            Console.WriteLine("                                 --span <mm> between the holes of a pair; squareness wants this long");
+            Console.WriteLine("                                 --tool <name> --overshoot <mm> --depth <mm> --pecks <n> -o <file>");
             Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
@@ -103,6 +107,7 @@ internal static class Program
             "mill" when args.Length >= 2 => Mill(args),
             "export" when args.Length >= 2 => Export(args),
             "testcut" => TestCutCommand(args),
+            "machine-check" => MachineCheckCommand(args),
             "probe" when args.Length >= 2 => Probe(args),
             "align" when args.Length >= 2 => Align(args),
             "level" when args.Length >= 3 => Level(args),
@@ -2020,6 +2025,115 @@ internal static class Program
     /// Needs no board. What it is testing is the tool library's claim about a physical object, and
     /// that claim is the same whichever design happens to be open.
     /// </summary>
+
+    /// <summary>
+    /// A program that measures the machine rather than the board, and the page that says how to
+    /// read it. The mill's half of what the test cuts do for a bit.
+    /// </summary>
+    private static int MachineCheckCommand(string[] args)
+    {
+        var kind = args.Length >= 2 && args[1].StartsWith("square", StringComparison.OrdinalIgnoreCase)
+            ? MachineCheckKind.Squareness
+            : MachineCheckKind.Backlash;
+
+        if (args.Length >= 2 && !args[1].StartsWith('-')
+            && !args[1].StartsWith("square", StringComparison.OrdinalIgnoreCase)
+            && !args[1].StartsWith("back", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine($"Unknown check '{args[1]}'. There are two: backlash and squareness.");
+            return 1;
+        }
+
+        var library = ToolLibrary.LoadOrDefault();
+        var app = AppSettings.LoadOrDefault();
+
+        // An end mill by default, not a drill: a twist drill wanders as it enters, by an amount
+        // of the same order as the thing being measured.
+        var wanted = Argument(args, "--tool");
+        var tool = wanted is null
+            ? library.Tools.FirstOrDefault(t => t.Kind == ToolKind.EndMill)
+                ?? LayerOperations.DefaultToolFor(OperationKind.Outline, library.Tools)
+            : library.Find(wanted);
+
+        if (tool is null)
+        {
+            Console.Error.WriteLine($"No tool matching '{wanted}'. Try: millburn-cli tools list");
+            return 1;
+        }
+
+        var axis = Argument(args, "--axis") is { } named
+            && named.StartsWith("y", StringComparison.OrdinalIgnoreCase)
+                ? CheckAxis.Y
+                : CheckAxis.X;
+
+        double Number(string name, double fallback) =>
+            Argument(args, name) is { } raw
+            && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : fallback;
+
+        var options = new MachineCheckOptions
+        {
+            Tool = tool,
+            Kind = kind,
+            Axis = axis,
+            SpanMm = Number("--span", kind == MachineCheckKind.Squareness ? 80 : 60),
+            RowGapMm = Number("--row-gap", 12),
+            MarginMm = Number("--margin", 8),
+            OvershootMm = Number("--overshoot", 4),
+            DepthMm = Number("--depth", 1.7),
+            Pecks = (int)Number("--pecks", 4),
+            SafeZMm = app.Machine.SafeZMm,
+            ApproachZMm = app.Machine.ApproachZMm,
+            Decimals = app.Machine.Decimals,
+        };
+
+        var (text, report) = MachineCheck.Generate(options);
+
+        var output = Argument(args, "-o") ?? Argument(args, "--out")
+            ?? Path.Combine(
+                Environment.CurrentDirectory,
+                kind == MachineCheckKind.Squareness
+                    ? "squareness-check.nc"
+                    : "backlash-check-" + axis.ToString().ToLowerInvariant() + ".nc");
+
+        File.WriteAllText(output, text);
+
+        var guide = Path.ChangeExtension(output, null) + ".html";
+        File.WriteAllText(guide, MachineCheckGuide.Build(options, report, Path.GetFileName(output)));
+
+        Console.WriteLine(output);
+        Line($"  check       {(kind == MachineCheckKind.Squareness ? "squareness" : $"backlash, {axis} axis")}");
+        Line($"  tool        {tool.Name}");
+        Line($"  holes       {report.Holes.Count}, {options.DepthMm:F2} mm deep");
+        Line($"  scrap       {report.StockWidthMm:F0} x {report.StockHeightMm:F0} mm");
+        Line($"  pins        {report.PinMm:F2} mm, two of them");
+
+        foreach (var pair in report.Pairs)
+        {
+            Line($"  {pair.Name,-11} should read {pair.NominalMm:F3} mm{(kind == MachineCheckKind.Backlash ? " + one pin" : string.Empty)} — {pair.Meaning}");
+        }
+
+        if (kind == MachineCheckKind.Backlash)
+        {
+            Line($"  then        backlash = ( row 2 - row 3 ) / 2");
+        }
+        else
+        {
+            Line($"  then        skew = arcsin( ( one diagonal - the other ) / the diagonal )");
+        }
+
+        Line($"  time        about {Math.Max(1, Math.Round(report.EstimatedSeconds)):F0} seconds");
+        Line($"  guide       {Path.GetFileName(guide)}");
+
+        foreach (var warning in report.Warnings)
+        {
+            Line($"  CHECK       {warning}");
+        }
+
+        return 0;
+    }
+
     private static int TestCutCommand(string[] args)
     {
         var kind = args.Length >= 2 && args[1].StartsWith("feed", StringComparison.OrdinalIgnoreCase)

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Third-party notices — PCB_MillBurn</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+
+<header class="masthead">
+  <div class="title">Third-party notices</div>
+  <div class="sub"><a href="index.html">PCB_MillBurn help</a></div>
+</header>
+
+<p class="lead">
+  PCB_MillBurn is MIT licensed. It depends on the packages below, <strong>all of which are
+  permissively licensed</strong> &mdash; there is no copyleft anywhere in the dependency graph, so a
+  build of PCB_MillBurn can be shipped by anyone, in any product, open or closed.
+</p>
+
+<p>
+  The licences here were read from the restored packages in the local NuGet cache, not copied from
+  memory. This page is the shipped copy of <code>THIRD-PARTY-NOTICES.md</code> in the repository, and
+  a test keeps the two agreeing on every package named.
+</p>
+
+<div class="contents">
+  <strong>On this page</strong>
+  <ul>
+    <li><a href="#runtime">Runtime dependencies</a></li>
+    <li><a href="#tests">Test-only dependencies</a></li>
+    <li><a href="#reference">Reference checkouts &mdash; not dependencies</a></li>
+    <li><a href="#boards">Committed test data</a></li>
+  </ul>
+</div>
+
+<h2 id="runtime">Runtime dependencies</h2>
+
+<table>
+  <tr><th>Package</th><th>Licence</th><th>Used for</th></tr>
+  <tr><td>Clipper2</td><td>BSL-1.0</td><td>Polygon booleans and offsetting on Int64 coordinates</td></tr>
+  <tr><td>NetTopologySuite</td><td>BSD-3-Clause</td><td>Voronoi, STRtree spatial index, geometry validity</td></tr>
+  <tr><td>MathNet.Numerics</td><td>MIT</td><td>SVD for the Kabsch/affine fit, TPS interpolation</td></tr>
+  <tr><td>SkiaSharp</td><td>MIT</td><td>Rasterisation for the viewport and PNG export</td></tr>
+  <tr><td>System.IO.Hashing</td><td>MIT</td><td>XxHash128 for pipeline cache keys</td></tr>
+  <tr><td>Scriban</td><td>BSD-2-Clause</td><td>Post-processor templating</td></tr>
+  <tr><td>Avalonia (+ Desktop, Themes.Fluent, Fonts.Inter, DiagnosticsSupport)</td><td>MIT</td><td>UI shell</td></tr>
+  <tr><td>AvaloniaEdit</td><td>MIT</td><td>The synced G-code pane</td></tr>
+  <tr><td>Dock.Avalonia (+ Themes.Fluent, Model.Mvvm, Settings)</td><td>MIT</td><td>Dockable tool panes with persisted layouts</td></tr>
+  <tr><td>CommunityToolkit.Mvvm</td><td>MIT</td><td>MVVM source generators</td></tr>
+  <tr><td>Microsoft.Extensions.{DependencyInjection, Logging, Logging.Console}</td><td>MIT</td><td>Hosting, DI, logging</td></tr>
+</table>
+
+<div class="warn">
+  <p>
+    <strong>Clipper2 (BSL-1.0) and SkiaSharp (MIT) require their copyright notices to be preserved in
+    binary distributions.</strong> Keeping this page, and the <code>THIRD-PARTY-NOTICES.md</code>
+    beside the program, satisfies that. NetTopologySuite (BSD-3) and Scriban (BSD-2) carry the same
+    requirement.
+  </p>
+</div>
+
+<h2 id="tests">Test-only dependencies</h2>
+
+<p>Not shipped with the app; they build and run its tests.</p>
+
+<table>
+  <tr><th>Package</th><th>Licence</th></tr>
+  <tr><td>xUnit (+ runner.visualstudio)</td><td>Apache-2.0</td></tr>
+  <tr><td>Verify</td><td>MIT</td></tr>
+  <tr><td>Microsoft.NET.Test.Sdk</td><td>MIT</td></tr>
+  <tr><td>coverlet.collector</td><td>MIT</td></tr>
+</table>
+
+<h2 id="reference">Reference checkouts &mdash; not dependencies, not redistributed</h2>
+
+<p>
+  Two GPL-3.0 projects sit in the developer's workspace as <em>reading material</em>. Neither is
+  linked, bundled, or shipped with this program, and no code from either has been ported, translated
+  or transliterated into it.
+</p>
+
+<table>
+  <tr><th>What it is</th><th>Licence</th></tr>
+  <tr><td>pcb2gcode, the original C++ tool</td><td>GPL-3.0</td></tr>
+  <tr><td>Universal G-Code Sender, whose visualizer informed the backplot viewer</td><td>GPL-3.0</td></tr>
+</table>
+
+<p>
+  This distinction is the reason PCB_MillBurn can be MIT at all, and it is not a formality: copying
+  so much as a translated function from either would make the whole application GPL-3.0. Ideas are
+  not copyrightable and their expression is, so where a design from those projects is genuinely the
+  right one &mdash; UGS's chain-of-processors model, its backplot segment record &mdash; it was
+  re-derived and written fresh.
+</p>
+
+<h2 id="boards">Committed test data</h2>
+
+<p>
+  Two of the boards in the repository's test corpus are somebody else's work, committed there as test
+  fixtures rather than as product code.
+</p>
+
+<table>
+  <tr><th>What it is</th><th>Licence</th></tr>
+  <tr><td>Arduino Uno R3 and Mega 2560 designs recreated in KiCad by Camilo Sabogal &mdash; KiCad-Arduino-Boards</td><td>WTFPL</td></tr>
+</table>
+
+<p>
+  The WTFPL places no condition on use or redistribution, so these carry nothing into the repository
+  and change its licensing answer not at all. They are listed because attribution is the right thing
+  to do, not because it is required. Every other board in that directory is the repository owner's
+  own work under this project's MIT licence.
+</p>
+
+<footer>
+  PCB_MillBurn — MIT licensed. Gerber to G-code for the mill, SVG for the laser.
+</footer>
+
+</div>
+</body>
+</html>

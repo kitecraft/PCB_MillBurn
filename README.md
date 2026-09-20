@@ -326,7 +326,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.5.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.1.6.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 <table>
@@ -378,13 +378,23 @@ openings and legend burned on the laser, both sides. Every step but the etch cam
   perfect"*, with the 0.3 mm vias landing inside their pads on a machine whose own errors are
   measured in [09 §1](Documentation/09-Machine-Accuracy-Investigations.md).
 
-**Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
-isolation, and the routed channel between the boards of a panel.
+- **Since v0.1.5 — the machine itself, measured.** The two machine checks were run on the author's
+  mill: backlash under 0.05 mm on both axes, and the two axes square to 0.068°, which is also the
+  limit of what pins and calipers can see. Those three readings are what closed a misalignment
+  investigation that had looked like a fault in the mill and turned out to be a laser 0.25° out of
+  square — written up in
+  [Documentation/09](Documentation/09-Machine-Accuracy-Investigations.md).
 
-955 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
-every push. Up next: rulers down the viewport, a numbered picture on the
-drilling and routing pages, better tab placement, and Print and Cut on the stock's two holes — then
-an MCP server over the same libraries, and solder paste. The full picture, including every bug worth
+**Not yet on metal:** milling the soldermask off the pads, milled (rather than lasered) double-sided
+isolation, the routed channel between the boards of a panel, and the machine checks *as the app now
+writes them* — the readings above came from hand-written prototypes of the same two programs.
+
+985 unit tests and 13 golden-file tests pass with zero warnings under `TreatWarningsAsErrors`, on
+every push. Up next is a sprint on **speed and accuracy** rather than features: the pipeline moved
+off the UI thread and made cancellable, memoised stages so changing one layer does not redo the
+rest, the optimizer's two open items, electrical DRC against the X2 netlist, and reading the
+`.gbrjob` every KiCad export already ships. After that, an MCP server over the same libraries, and
+solder paste. The full picture, including every bug worth
 remembering and what it taught, is in [Documentation/06](Documentation/06-Roadmap-and-Risks.md).
 
 ---

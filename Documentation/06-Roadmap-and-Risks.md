@@ -2032,6 +2032,7 @@ than discovered after.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
+- **About, and a check for updates**: built — see 6.23.
 - **Machine checks**: backlash, axis scale, squareness, what a bit really cuts, lost steps, tram — measured with calipers and a loupe, the way the test cuts measure a bit. See 6.22.
 - **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.24 mm closer than the program asked. See 6.21, and 09 §1 for how that number was arrived at.
 - **Which way up is this stock?**: a datum corner that can be seen from across the bench on a nearly square piece. See 6.20.
@@ -3266,6 +3267,14 @@ square. Pins in both holes, read over the outsides and between the insides and a
 **103.10 mm** apart against the 103.338 the program asks: **0.24 mm close**. The first reading, 102.8
 mm taken across the holes themselves, and the offsets read off photographs, both overstated it.
 
+**Measured since: there is almost none.** Three rows of two holes, the rows differing only in
+approach direction, put the backlash at 0.05 mm or less on both axes — see
+[09 §1](09-Machine-Accuracy-Investigations.md), which closes with the 0.24 mm being three small
+effects rather than one. So this section is no longer a fix for anything measured; it is worth
+building because it costs a couple of seconds a hole and takes a variable off the table for good, on
+machines that have not been measured at all. What follows is the reasoning that was written before
+those measurements.
+
 **Backlash of about 0.17 mm on X, if that is what it is.** The two holes are approached from opposite
 directions — the bottom-right one moving +X, the top-left one moving -X — so the slack is taken up on
 opposite sides and the pair ends up **twice** the backlash closer together. The stock's outer size
@@ -3297,7 +3306,7 @@ error is neither, and no rigid fit can push two points apart.
 **Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 103.10,
 and a burn registered on them lands on both.
 
-#### 6.22 Machine checks: measure the machine, not only the bit — **requested, not started**
+#### 6.22 Machine checks: measure the machine, not only the bit — **backlash and squareness built; four more sketched**
 
 From the workshop, after 6.21 turned a laser mystery into a quarter of a millimetre in the holes and
 a quarter of a degree of skew in the laser ([09 §1](09-Machine-Accuracy-Investigations.md)): *"Since MillBurn is
@@ -3355,10 +3364,15 @@ came right when pins went in them: 103.9 outside, 102.3 inside, 103.10 mm betwee
 and row 1 minus the programmed span is a scale check thrown in free: more than a few hundredths over
 60 mm and the axis's steps-per-millimetre is worth looking at before anything else.
 
-**Then the same again for Y**, rows running the other way, because the two axes are independent. On
-the workshop's machine the whole positioning error is 0.24 mm on a 103 mm diagonal, which is about
-0.17 mm of backlash if it sits in X alone — and might instead be 0.13° of skew, which is what the
-squareness check below is for.
+**Then the same again for Y**, rows running the other way, because the two axes are independent. Run
+by hand on the workshop's machine, both axes came back with no backlash worth the name — under 0.05 mm
+— which is exactly the kind of answer this check exists to give: *none* is a fact an operator cannot
+otherwise learn, and it sent the search somewhere else.
+
+**And it has to say what it cannot see.** Every reading in that investigation carried about ±0.1 mm,
+so a difference smaller than that is not a measurement, and the page must say so rather than print a
+number to three decimals. Backlash does not grow with distance, so 60 mm of span is as good as 200 —
+but scale and squareness do, and there the answer to a noisy caliper is a longer baseline.
 
 **What the number is for.** It sets the approach overshoot in 6.21, which has to exceed the
 backlash to take it up; it tells the operator whether the anti-backlash nut wants
@@ -3389,6 +3403,25 @@ the stock's edges, which were cut by the machine being tested.
 - **Tool-change repeatability.** Touch off, cut a witness, change tools, touch off, cut beside it: how
   much Z moves between bits, which is exactly what a mixed-bit job in one setup depends on.
 
+**Built on branch `008_AboutWindow`: the first two checks, and the page that reads them.**
+`MachineCheck` emits both from plunged holes — a plunge's position is decided by the move that
+arrived at it and nothing else — and defaults to an end mill, warning when it is handed a twist
+drill, which wanders as it enters by about as much as either check measures. *Job › Machine
+checks…* and `machine-check backlash|squareness` on the command line.
+
+`MachineCheckGuide` writes the companion page: the method, the arithmetic, a table with the nominal
+filled in and blanks for three readings, and a diagram drawn from the same hole positions the
+program was emitted from — arrows and all, so the picture cannot describe a different experiment
+from the one about to run. Both say what they cannot see, because 09 §1 kept running into it:
+**under 0.1 mm is not a measurement** with pins and calipers.
+
+`Help/guides/machine-checks.html` is the guide, with the workshop's own photographs of where the
+caliper jaws go, and its three readings as the worked example.
+
+**Not built yet, from the list above:** axis scale, effective cutter diameter, return to zero, and
+tram read from the probe grid. The first two are the ones that would feed a number back into the
+app rather than only onto the page.
+
 ##### Where it lives
 
 *Job › Machine checks…*, beside *Test cuts…*, and `machine-check <name>` on the command line. Each
@@ -3400,6 +3433,154 @@ they belong in the machine's own firmware or in its frame.
 
 **Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
 cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 103.10.
+
+#### 6.23 About, and a check for updates — **built**
+
+Asked for from the workshop, and the reasoning is short: *"how about a button on the about page to
+check for a new version? And, at the same time, that about page could use some spiffying up."* The
+window was one line of text in a note dialog, and the app ships as a zip that nothing tells you has
+been superseded.
+
+**The check is a button and never anything else.** The app has to work with no network — it is a
+workshop tool — so nothing here reaches out on its own, on a timer, or at startup. Pressing it asks
+GitHub for the latest release's tag, with a user agent naming the app and nothing else: no
+identifier, no board, no telemetry, and no download. The window says so in a line, because people
+are right to wonder.
+
+**Four answers, and one of them is "no idea".** Up to date; a newer one, with a button to its page;
+ahead of the latest release, which is what a local build of main is; or unreadable. That last one
+matters: `ReleaseCheck.Compare` refuses rather than guesses, because "you are up to date" is the one
+wrong answer that stops somebody looking. Offline is reported as the fact it is, with the address to
+try later.
+
+**Split so the decisions can be tested.** `MillBurn.Core.ReleaseCheck` parses the answer and compares
+the versions — a string in, an answer out, no network — and `AboutWindow` supplies the request in four
+lines. `ReleaseCheckTests` covers a captive portal's HTML, a rate-limit message, an empty body, a tag
+with no link, three-part against four-part versions, and the informational version's `+commit` suffix.
+
+**And the window itself.** The mark, the version, the build date read from the executable's own
+timestamp (a single-file build has no assembly on disk to ask), links to the release notes, the
+questions-and-answers page and the third-party notices that ship beside it — and, in the middle, the
+travel optimizer running live on a scatter of pads: the dashed route is nearest-unvisited-hole, the
+drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres underneath are the
+plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
+and it is the only thing in this release a person who never reads a roadmap will notice.
+
+#### 6.24 The outline lifts to the sky between laps, and over every tab — **found in the workshop, not started**
+
+From the bench: *"The edge cuts have unnecessary z actions at the end of each lap. Also, the z-lift
+over the tabs should be much lower than the safe height. Just hop over the tab."*
+
+**Both are true, and they are the same mistake twice.** Measured on the test board's own
+`Edge_Cuts.nc` — four laps, four tabs, 1.6 mm board:
+
+| | Distance | Time at the workshop's rates |
+|---|---|---|
+| Rapid up | 39.40 mm | 23.6 s at `$112` = 100 mm/min |
+| Rapid down | 16.50 mm | 9.9 s |
+| Plunging | 20.90 mm | 25.1 s at 50 mm/min |
+| **Vertical, total** | | **about 59 s** |
+
+on a program whose whole run is a couple of minutes. The pattern repeats eleven times:
+
+```
+G1 Z-0.500      ( cut the lap )
+...
+G0 Z2.000       ( all the way up )
+G0 X.. Y..      ( to the same XY it is already at )
+G0 Z0.500
+G1 Z-1.000      ( and back down past where it started )
+```
+
+**Between laps there is nothing to clear.** The tool is at the same X and Y it is about to cut from;
+it can go straight down to the next depth at the plunge feed. The lift is a habit inherited from
+travel, where it is right, applied where nothing is being travelled over. Routing already knows
+this — `SlotOperation` carries one continuous descent per feature — and the outline never learned
+it.
+
+**Over a tab there is something to clear, and it is 0.5 mm tall, not 2 mm.** The tab leaves material
+under the cutter, so the hop only has to clear the tab's own top plus a little: on this board the
+tabs start at 1.10 mm, so a hop to about 1.0 mm below the surface does it, against the 2.0 mm above
+the surface being used now. That is 3 mm of climb and 3 mm of descent saved on every crossing, at
+the slowest rate the machine has.
+
+**What it must not become.** A tool dragged sideways at depth through material it has not cut, which
+is the failure this lift exists to prevent. So: the drop between laps happens only when X and Y do
+not move, and the hop over a tab clears the tab's own height rather than a number somebody typed —
+computed, and named in the program's comments like every other derived number here.
+
+**Done when** the test board's outline spends under fifteen seconds moving vertically rather than
+fifty-nine, cuts the same shape, and still lifts to the safe height for anything that is a genuine
+travel move.
+
+### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
+
+The first release cadence was a release a day, which suited a feature-shaped backlog. The product
+owner's direction for the next one is different: *"prioritise on performance, optimization, speed,
+and accuracy of both the app itself, and the functional nature of the implementors."* So this is a
+slower, five-item sprint rather than a fortnight of small releases.
+
+**Every sprint opens by reading the open bugs and known issues** — the product owner's standing
+rule, and this sprint is the first to follow it. 6.24 came in that way: found at the bench while the
+five were being agreed, measured the same afternoon, and added as a sixth because it belonged to the
+theme. The places to read are this document's own "not started" and "found in the workshop"
+sections, the matrix's Partial rows, and
+[09](09-Machine-Accuracy-Investigations.md)'s open questions. A sprint that starts from a feature
+list and never looks at the defect list is how a known fault survives three releases.
+
+**Measured first, ranked after.** Three numbers set the order:
+
+| | |
+|---|---|
+| `Task.Run` in `MillBurn.App` | 0 |
+| `CancellationToken` anywhere in `src/` | 0 |
+| Panel preview, pipeline share of a 4.4 s run | 2.6 s, on the UI thread |
+| Export: 66-up panel / Arduino Mega / test board | 2.3 s / 3.8 s / 1.5 s |
+
+The pipeline is not slow. What it is, is **synchronous, uncancellable and forgetful** — so every
+preview freezes the window for seconds, a superseded edit still runs to completion, and changing one
+layer redoes all of them. Perceived speed is the cheapest large win here, actual speed the next, and
+after those two the sprint turns to whether what we emit and what we read are right.
+
+**1. A10 + A5 — the pipeline off the UI thread, and cancellable.** Prerequisite for the rest.
+*Done when* the window stays live with progress while a board is realised, a fresh edit cancels the
+run it supersedes, and no pipeline work remains on the UI thread.
+
+**2. A4 — memoised stages, keyed by a structural hash.** `XxHash128` is already in the tree for
+exactly this key. *Done when* changing one layer re-runs only what depends on it, a second preview
+of the panel returns in well under half a second, and identical input still produces byte-identical
+output — the key is structural, so determinism is preserved rather than traded away.
+
+**3. O10 + O6 — the optimizer's two open items.** O10 is a known defect: the local search can cycle
+on open runs, 299,044 "improvements" on 50 nodes, bounded by the budget rather than fixed. O6,
+Eulerian merging across the containment tree, is the last open Phase 3 item and cuts travel
+directly. *Done when* every applied move strictly improves, proven by a test, and measured travel on
+the panel falls against today's figure.
+
+**4. A11 — electrical DRC against the X2 netlist.** The accuracy item with the most teeth, and the
+one the app is closest to being able to do: X2 attributes are parsed and then unused. After
+isolation, compare the connected components of the remaining copper against the netlist the Gerbers
+declare. *Done when* the test board and the panel report zero violations, and a deliberately
+under-isolated board names the two nets it has joined — before a file is written, not after a board
+is etched.
+
+**5. G5 + G3 — read the job file, and stop refusing block apertures.** Accuracy of the input.
+`.gbrjob` ships in every KiCad export and is ignored, after which the operator is asked for a
+thickness and layer roles it already states; `%AB%` and the transform commands are reported as
+errors, which is honest and still blocks panelised boards from other tools. *Done when* thickness
+and roles come from the job file with their source named, and a board using block apertures realises
+correctly under test.
+
+**6. 6.24 — the outline's wasted vertical moves.** Added to the sprint after it was found at the
+bench: the one item here that speeds up the *machine* rather than the app, and by about 45 seconds a
+board on the one it was measured on. Small, self-contained, and the same theme.
+
+**Stretch, and only after 1:** A6 debounce on slider drags, A7 progressive reveal. **First reserve:**
+M17 and M19 — the three-point fit and refusing an export above a residual threshold — if alignment
+accuracy turns out to matter more than parser accuracy.
+
+**Deliberately not in it:** V30 (paste stencil), V31 (the raised dry run), V28 (stock dialog), V33
+(one-sided approach). All are features, and this sprint is not about features.
 
 ### Phase 7 — User documentation — **started**
 

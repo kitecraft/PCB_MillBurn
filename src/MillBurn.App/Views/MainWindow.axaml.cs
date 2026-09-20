@@ -490,6 +490,33 @@ public partial class MainWindow : Window
             _captureInstead = editor;
         }
 
+        // About, for a screenshot: it draws a live optimizer run, so "does it render" is a real
+        // question here rather than a formality.
+        if (args.Contains("--about", StringComparer.OrdinalIgnoreCase))
+        {
+            var about = AboutWindow.For(this, "20 September 2026");
+
+            about.Show(this);
+            _captureInstead = about;
+        }
+
+        if (args.Contains("--machine-check", StringComparer.OrdinalIgnoreCase))
+        {
+            var checks = new MachineCheckWindow(vm.Library, vm.Settings.Machine)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            if (Argument(args, "--machine-check") is { } which
+                && which.StartsWith("square", StringComparison.OrdinalIgnoreCase))
+            {
+                checks.Show(MachineCheckKind.Squareness);
+            }
+
+            checks.Show(this);
+            _captureInstead = checks;
+        }
+
         if (args.Contains("--framing", StringComparer.OrdinalIgnoreCase))
         {
             var editor = new FramingWindow(vm.Framing) { RequestedThemeVariant = ActualThemeVariant };
@@ -1185,6 +1212,61 @@ public partial class MainWindow : Window
         await window.ShowDialog(this);
     }
 
+
+    /// <summary>
+    /// Writes a check that measures the machine, and the page that says how to read it.
+    ///
+    /// No board required, and none consulted: a backlash or squareness reading belongs to the mill
+    /// rather than to a design, which is why this sits beside the test cuts rather than under the
+    /// export.
+    /// </summary>
+    private async void OnMachineChecksClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (await MachineCheckWindow.AskAsync(this, vm.Library, vm.Settings.Machine) is not { } options)
+        {
+            return;
+        }
+
+        var (text, report) = MachineCheck.Generate(options);
+
+        var suggested = options.Kind == MachineCheckKind.Squareness
+            ? "squareness-check"
+            : "backlash-check-" + options.Axis.ToString().ToLowerInvariant();
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Write machine check",
+            SuggestedFileName = suggested,
+            DefaultExtension = "nc",
+            FileTypeChoices = [GcodeFileType],
+        });
+
+        if (file?.TryGetLocalPath() is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(path, text);
+
+            var guide = Path.ChangeExtension(path, null) + ".html";
+            File.WriteAllText(guide, MachineCheckGuide.Build(options, report, Path.GetFileName(path)));
+
+            vm.StatusMessage = FormattableString.Invariant(
+                $"Wrote {Path.GetFileName(path)} and its page. It needs {report.StockWidthMm:F0} x {report.StockHeightMm:F0} mm of scrap and two {report.PinMm:F2} mm pins to measure with — read the page before you run it.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            vm.StatusMessage = $"Could not write the machine check: {ex.Message}";
+        }
+    }
+
     private async void OnTestCutsClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm)
@@ -1589,6 +1671,9 @@ public partial class MainWindow : Window
     private void OnKiCadExportGuideClicked(object? sender, RoutedEventArgs e) =>
         OpenHelp(Path.Combine("guides", "kicad-export.html"));
 
+    private void OnMachineChecksGuideClicked(object? sender, RoutedEventArgs e) =>
+        OpenHelp(Path.Combine("guides", "machine-checks.html"));
+
     /// <summary>
     /// Opens a shipped help page in the user's own browser.
     ///
@@ -1627,13 +1712,9 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The version comes first: it is the one thing a bug report needs from here, and the issue form
-    /// sends people to this window for it.
+    /// sends people to this window for it. <see cref="AboutWindow"/> has the rest.
     /// </summary>
-    private async void OnAboutClicked(object? sender, RoutedEventArgs e) =>
-        await ConfirmWindow.NoteAsync(
-            this,
-            "PCB_MillBurn",
-            $"Version {AppVersion()}. Gerber to G-code for the mill and SVG for the laser. MIT licensed.");
+    private async void OnAboutClicked(object? sender, RoutedEventArgs e) => await AboutWindow.ShowAsync(this);
 
     /// <summary>"0.1.0", without the "+commit" a build may append to the informational version.</summary>
     private static string AppVersion()

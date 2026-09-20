@@ -216,6 +216,8 @@
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
                         <MenuItem Header="_Test cuts…" Click="OnTestCutsClicked" />
+                        <!-- Needs no board: what it measures belongs to the machine. -->
+                        <MenuItem Header="_Machine checks…" Click="OnMachineChecksClicked" />
                         <MenuItem Header="Drill _alignment…" Click="OnAlignClicked"
                                   IsEnabled="{Binding HasBoard}" />
                         <Separator />
@@ -232,6 +234,7 @@
                         <MenuItem Header="_Guides">
                             <MenuItem Header="_Exporting from KiCad" Click="OnKiCadExportGuideClicked" />
                             <MenuItem Header="_Drill alignment" Click="OnDrillAlignmentGuideClicked" />
+                            <MenuItem Header="_Machine checks" Click="OnMachineChecksGuideClicked" />
                         </MenuItem>
                         <Separator />
                         <MenuItem Header="_About PCB_MillBurn" Click="OnAboutClicked" />
