@@ -2033,7 +2033,7 @@ than discovered after.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
 - **Machine checks**: backlash, axis scale, squareness, what a bit really cuts, lost steps, tram — measured with calipers and a loupe, the way the test cuts measure a bit. See 6.22.
-- **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.55 mm closer than the program asked. See 6.21.
+- **Every hole approached from the same side**, so backlash is taken up the same way every time: the workshop's two waste holes came out 0.24 mm closer than the program asked. See 6.21, and 09 §1 for how that number was arrived at.
 - **Which way up is this stock?**: a datum corner that can be seen from across the bench on a nearly square piece. See 6.20.
 - **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
 - Machine-profile sharing.
@@ -2890,6 +2890,13 @@ shifted.
 as good as I can expect."* The same run is what turned up the tabs left at full thickness, which is
 its own fix above and belongs to the outline rather than to the alignment.
 
+**And from the stock's waste holes, 2026-09-20** — the half that had never been run. A whole
+double-sided board: the board went back on the mill with no jig at all, zeroed by eye against its two
+edges, and the two-hole test measured from the waste holes took out both that rough zero and the
+board's rotation. Three drilling files, two routing files and the outline all ran from it, and the
+0.3 mm vias landed inside their pads. *"The test will not only compensate for any rotation of the
+placement, but will also fix the not-perfect X/Y origin setting."*
+
 #### 6.15 The companion page names the commands that would rebuild it — **requested, not started**
 
 Requested from the workshop: *"in the project html companion file that is written on export, can we
@@ -2986,7 +2993,7 @@ but it asked the operator to follow a remembered record behind the Pre-cut tick 
 size and the as-cut holes, that no longer agree — and that could not be made clear in the window. If it
 comes back, it starts from what an operator would understand rather than from the mechanism.
 
-#### 6.17 The stock's alignment holes, marked in the SVGs — **built as placing layers; Print and Cut not tried**
+#### 6.17 The stock's alignment holes, marked in the SVGs — **built and used on metal; Print and Cut not tried**
 
 Requested from the workshop, as part of the goal the whole app serves: **confidence in alignment, for
 everything.** The mill already has it — the stock's two waste holes are cut in the stock's own frame,
@@ -3069,6 +3076,12 @@ It found a bug on the way. An inverted, mirrored layer — the bottom copper's e
 the board region; the drawing was mirrored about the stock's centreline and the region about the
 board's, so on stock the board is not centred in (the default margins are 10 and 5) the resist came out
 5 mm across. `BoardRegion` now takes the caller's axis.
+
+**Used on metal, 2026-09-20**, through a whole double-sided board, and the list settled itself: *stock
+and outline* while the board was still in its stock, for the two copper burns, then *outline only* once
+it was cut out, for the mask openings and the legend. The workshop switched between them without being
+told to, because each matches what goes against the laser's jig at that step — which is the argument the
+setting was given a list for. The result: *"The mask and silkscreen alignment is perfect."*
 
 **Still to do:** Print and Cut on the two holes in LightBurn, and the three items above — the flip two
 points cannot see, and pointer offset — want a burn registered on the holes rather than placed by a
@@ -3239,7 +3252,8 @@ full because every party was innocent until the last measurement.
 
 **What was seen.** A burn of the *Stock and holes* placing layer landed with its cross 0.14 mm right
 of the top-left waste hole and 0.7 mm right of the bottom-right one — the error growing with X, which
-looks exactly like a scale error. It was not one:
+looks exactly like a scale error. It was not one. The whole investigation, wrong turns included, is
+[09 §1](09-Machine-Accuracy-Investigations.md); in short:
 
 - A 100 mm line burned on the laser measured 100 mm to within 0.05 mm, so the laser's motion is right.
 - Falcon reported the imported design as 78.63 x 76.09 mm, the stock's own size, and its ruler
@@ -3247,16 +3261,19 @@ looks exactly like a scale error. It was not one:
   up. So the file and the software are right.
 - The cut stock measured 78.6 x 76.16 mm against 78.63 x 76.09, so the mill's scale is right.
 
-**What was wrong.** The holes. Measured on the piece they are about 102.8 mm apart, some 0.55 mm
-closer in X than the program asks — the workshop's own caliper reading and the two photographs agree.
-In Y the same comparison gives about 0.1 mm, so it is one axis.
+**What was wrong.** The holes — and, separately, the laser, which turned out to be 0.25° out of
+square. Pins in both holes, read over the outsides and between the insides and averaged, put them
+**103.10 mm** apart against the 103.338 the program asks: **0.24 mm close**. The first reading, 102.8
+mm taken across the holes themselves, and the offsets read off photographs, both overstated it.
 
-**Backlash, about 0.27 mm on X.** The two holes are approached from opposite directions — the
-bottom-right one moving +X, the top-left one moving -X — so the slack is taken up on opposite sides
-and the pair ends up **twice** the backlash closer together. The stock's outer size stays right
-because its outline is one continuous loop, where backlash shows as a small step at a direction
-change rather than as a size error. That is exactly the pattern here: a piece that measures true,
-with two holes in it that do not.
+**Backlash of about 0.17 mm on X, if that is what it is.** The two holes are approached from opposite
+directions — the bottom-right one moving +X, the top-left one moving -X — so the slack is taken up on
+opposite sides and the pair ends up **twice** the backlash closer together. The stock's outer size
+stays right because its outline is one continuous loop, where backlash shows as a small step at a
+direction change rather than as a size error: a piece that measures true, with two holes in it that do
+not. The alternative is that the mill is out of square by about 0.13°, which would produce the same
+0.24 mm on this diagonal, and 6.22's four-hole check is what tells the two apart. Either way the fix
+below is worth having, because it costs seconds and removes one of the two candidates entirely.
 
 **Nothing already built can correct it.** The two-hole alignment fits a rotation and a shift; this
 error is neither, and no rigid fit can push two points apart.
@@ -3277,12 +3294,13 @@ error is neither, and no rigid fit can push two points apart.
   number nobody knows into one the operator can write on the machine — and it is the same shape as
   `testcut`, which already exists to measure a bit rather than guess it.
 
-**Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 102.8, and
-a burn registered on them lands on both.
+**Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 103.10,
+and a burn registered on them lands on both.
 
 #### 6.22 Machine checks: measure the machine, not only the bit — **requested, not started**
 
-From the workshop, after 6.21 turned a laser mystery into 0.27 mm of backlash: *"Since MillBurn is
+From the workshop, after 6.21 turned a laser mystery into a quarter of a millimetre in the holes and
+a quarter of a degree of skew in the laser ([09 §1](09-Machine-Accuracy-Investigations.md)): *"Since MillBurn is
 aimed at people with inexpensive desktop mills (typical is the 3018 mill), overall machine accuracy
 may be as important as the drill tests are for the bits themselves."*
 
@@ -3325,8 +3343,10 @@ program did what it says.
 **What is measured.** For each row, the **outer** distance across the pair and the **inner** distance
 between them, both with calipers on the hole walls. Their average is the centre-to-centre distance,
 and the hole diameter drops out of it — which matters, because the hole is never exactly the bit's
-size, and because measuring two hole centres directly is the thing calipers cannot do. That is the
-same reading that went wrong in the workshop's own first attempt, 102.8 mm against 103.34.
+size, and because measuring two hole centres directly is the thing calipers cannot do. It is the
+reading that went wrong in the workshop's first attempt — 102.8 mm across the holes themselves — and
+came right when pins went in them: 103.9 outside, 102.3 inside, 103.10 mm between the centres, with
+`outside − inside = 1.60 mm` confirming the pair as it went ([09 §1](09-Machine-Accuracy-Investigations.md)).
 
 **The arithmetic**, which the companion page states rather than leaves to the bench:
 
@@ -3335,8 +3355,10 @@ same reading that went wrong in the workshop's own first attempt, 102.8 mm again
 and row 1 minus the programmed span is a scale check thrown in free: more than a few hundredths over
 60 mm and the axis's steps-per-millimetre is worth looking at before anything else.
 
-**Then the same again for Y**, rows running the other way. The two axes are independent and usually
-differ — the workshop's X measured about 0.27 mm while Y came out near 0.1 mm.
+**Then the same again for Y**, rows running the other way, because the two axes are independent. On
+the workshop's machine the whole positioning error is 0.24 mm on a 103 mm diagonal, which is about
+0.17 mm of backlash if it sits in X alone — and might instead be 0.13° of skew, which is what the
+squareness check below is for.
 
 **What the number is for.** It sets the approach overshoot in 6.21, which has to exceed the
 backlash to take it up; it tells the operator whether the anti-backlash nut wants
@@ -3377,7 +3399,7 @@ tool library, and scale, squareness and tram are **reported and never silently a
 they belong in the machine's own firmware or in its frame.
 
 **Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
-cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 102.8.
+cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 103.10.
 
 ### Phase 7 — User documentation — **started**
 

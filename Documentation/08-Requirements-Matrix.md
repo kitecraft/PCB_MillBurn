@@ -138,7 +138,7 @@ board being cut rather than from a document.
 | M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Done** | `Blanks`, `BlankOperation`; work zero, page and mirror axis all follow it |
 | M29 | Laser verification: burn into the blank's border and measure | 06 §5.6.5 | **Not started** | the mill defines its datum; the laser only trusts one |
 | M30 | A re-measured (pre-cut) stock keeps the alignment holes it was cut with | 06 §6.16 | **Not started** | parked 2026-09-19: built on branch `005_StockKeepsItsHoles`, too hard to follow in the window |
-| M31 | The stock's alignment holes on a layer of their own in every SVG, for registering a burn | 06 §6.17 | **Done** | `ExportPlanner.ReferenceLayers`, `SvgReference`; board outline red, stock and holes blue; Settings › Laser › Placing layers: outline and stock, outline only, none; `ProjectPageTests` |
+| M31 | The stock's alignment holes on a layer of their own in every SVG, for registering a burn | 06 §6.17 | **Done — used on metal** | `ExportPlanner.ReferenceLayers`, `SvgReference`; board outline red, stock and holes blue; Settings › Laser › Placing layers: outline and stock, outline only, none; `ProjectPageTests` |
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |
@@ -191,8 +191,8 @@ board being cut rather than from a document.
 | V30 | A paste stencil to 3D-print: STL from a paste layer, apertures shrunk to the right volume, thinner steps only where release needs them, optional locating lip | 06 §6.18 | **Not started** | *Job › Paste stencil…*; target volume from Phase 9's rule |
 | V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Not started** | refuses when the lowest point would not clear the stock, and on `G92`/`G10`/`G38`; the flat dry run stays as a choice |
 | V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180° |
-| V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.55 mm closer than programmed: 0.27 mm of X backlash, taken up from opposite sides |
-| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Not started** | caliper-readable by design; backlash feeds 6.21, diameter feeds the tool library, the rest reported not applied |
+| V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
+| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Not started** | caliper-readable by design; backlash feeds 6.21, diameter feeds the tool library, the rest reported not applied; the case for it is 09 §1, where every single-axis check passed and the machine was still wrong |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
