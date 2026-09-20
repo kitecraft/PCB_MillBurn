@@ -17,7 +17,12 @@ test, a measurement — so that "done" means something a reader can check.
 | **Not started** | No code |
 | **Superseded** | Replaced by something better, or deliberately dropped. The reason is the useful half |
 
-**Last audited:** 2026-09-18, after 6.15 was requested. The previous audit fixed counts that had drifted rather than
+**Last audited:** 2026-09-20, before the performance sprint: V34 moved to Partial as the first two
+checks landed, V35 added for the About window, and the not-started rows were read through to pick
+the five that sprint is made of (06, *The next sprint*). The rest of this note is the 2026-09-18
+audit it replaces.
+
+**Last audited before that:** 2026-09-18, after 6.15 was requested. The previous audit fixed counts that had drifted rather than
 rows — twelve rows added or changed after v0.1.0 while the summary still described a document of 92.
 This one moves what 6.14 built: V26, V27 and V29 done, and with them M20 and the first halves of M16
 and M17, the fiducial block of document 04 that had not been touched at all. V29 arrived from the
@@ -38,8 +43,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 31 | 11 | 4 | 16 | 0 |
-| 05 Viewer & export | 35 | 16 | 3 | 14 | 2 |
-| **Requirements** | **114** | **57** | **8** | **45** | **4** |
+| 05 Viewer & export | 35 | 16 | 4 | 13 | 2 |
+| **Requirements** | **114** | **57** | **9** | **44** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (13 proven, 1 partly, 3 never cut).
@@ -192,7 +197,7 @@ board being cut rather than from a document.
 | V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Not started** | refuses when the lowest point would not clear the stock, and on `G92`/`G10`/`G38`; the flat dry run stays as a choice |
 | V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180° |
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
-| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Not started** | caliper-readable by design; backlash feeds 6.21, diameter feeds the tool library, the rest reported not applied; the case for it is 09 §1, where every single-axis check passed and the machine was still wrong |
+| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** — backlash and squareness built | `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`; axis scale, cutter diameter, return to zero and tram not started |
 | V35 | About window: version, build date, and a manual check for a newer release | 06 §6.23 | **Done** | `ReleaseCheck` (parse + compare, no network), `AboutWindow`, `TravelDemo`; `ReleaseCheckTests` |
 
 ## 06 §2 — Cross-cutting acceptance criteria
@@ -273,7 +278,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.19 A dry run that is the real run, raised | workshop | **Not started** |
 | 6.20 Which way up is this stock? | workshop | **Not started** |
 | 6.21 Every hole approached from the same side | workshop | **Not started** |
-| 6.22 Machine checks: measure the machine, not only the bit | workshop | **Not started** |
+| 6.22 Machine checks: measure the machine, not only the bit | workshop | **Partial** — backlash and squareness built |
 | 6.23 About, and a check for updates | workshop | **Done** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |

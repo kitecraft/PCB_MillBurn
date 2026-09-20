@@ -3306,7 +3306,7 @@ error is neither, and no rigid fit can push two points apart.
 **Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 103.10,
 and a burn registered on them lands on both.
 
-#### 6.22 Machine checks: measure the machine, not only the bit — **requested, not started**
+#### 6.22 Machine checks: measure the machine, not only the bit — **backlash and squareness built; four more sketched**
 
 From the workshop, after 6.21 turned a laser mystery into a quarter of a millimetre in the holes and
 a quarter of a degree of skew in the laser ([09 §1](09-Machine-Accuracy-Investigations.md)): *"Since MillBurn is
@@ -3403,6 +3403,25 @@ the stock's edges, which were cut by the machine being tested.
 - **Tool-change repeatability.** Touch off, cut a witness, change tools, touch off, cut beside it: how
   much Z moves between bits, which is exactly what a mixed-bit job in one setup depends on.
 
+**Built on branch `008_AboutWindow`: the first two checks, and the page that reads them.**
+`MachineCheck` emits both from plunged holes — a plunge's position is decided by the move that
+arrived at it and nothing else — and defaults to an end mill, warning when it is handed a twist
+drill, which wanders as it enters by about as much as either check measures. *Job › Machine
+checks…* and `machine-check backlash|squareness` on the command line.
+
+`MachineCheckGuide` writes the companion page: the method, the arithmetic, a table with the nominal
+filled in and blanks for three readings, and a diagram drawn from the same hole positions the
+program was emitted from — arrows and all, so the picture cannot describe a different experiment
+from the one about to run. Both say what they cannot see, because 09 §1 kept running into it:
+**under 0.1 mm is not a measurement** with pins and calipers.
+
+`Help/guides/machine-checks.html` is the guide, with the workshop's own photographs of where the
+caliper jaws go, and its three readings as the worked example.
+
+**Not built yet, from the list above:** axis scale, effective cutter diameter, return to zero, and
+tram read from the probe grid. The first two are the ones that would feed a number back into the
+app rather than only onto the page.
+
 ##### Where it lives
 
 *Job › Machine checks…*, beside *Test cuts…*, and `machine-check <name>` on the command line. Each
@@ -3446,6 +3465,63 @@ travel optimizer running live on a scatter of pads: the dashed route is nearest-
 drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres underneath are the
 plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
 and it is the only thing in this release a person who never reads a roadmap will notice.
+
+### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
+
+The first release cadence was a release a day, which suited a feature-shaped backlog. The product
+owner's direction for the next one is different: *"prioritise on performance, optimization, speed,
+and accuracy of both the app itself, and the functional nature of the implementors."* So this is a
+slower, five-item sprint rather than a fortnight of small releases.
+
+**Measured first, ranked after.** Three numbers set the order:
+
+| | |
+|---|---|
+| `Task.Run` in `MillBurn.App` | 0 |
+| `CancellationToken` anywhere in `src/` | 0 |
+| Panel preview, pipeline share of a 4.4 s run | 2.6 s, on the UI thread |
+| Export: 66-up panel / Arduino Mega / test board | 2.3 s / 3.8 s / 1.5 s |
+
+The pipeline is not slow. What it is, is **synchronous, uncancellable and forgetful** — so every
+preview freezes the window for seconds, a superseded edit still runs to completion, and changing one
+layer redoes all of them. Perceived speed is the cheapest large win here, actual speed the next, and
+after those two the sprint turns to whether what we emit and what we read are right.
+
+**1. A10 + A5 — the pipeline off the UI thread, and cancellable.** Prerequisite for the rest.
+*Done when* the window stays live with progress while a board is realised, a fresh edit cancels the
+run it supersedes, and no pipeline work remains on the UI thread.
+
+**2. A4 — memoised stages, keyed by a structural hash.** `XxHash128` is already in the tree for
+exactly this key. *Done when* changing one layer re-runs only what depends on it, a second preview
+of the panel returns in well under half a second, and identical input still produces byte-identical
+output — the key is structural, so determinism is preserved rather than traded away.
+
+**3. O10 + O6 — the optimizer's two open items.** O10 is a known defect: the local search can cycle
+on open runs, 299,044 "improvements" on 50 nodes, bounded by the budget rather than fixed. O6,
+Eulerian merging across the containment tree, is the last open Phase 3 item and cuts travel
+directly. *Done when* every applied move strictly improves, proven by a test, and measured travel on
+the panel falls against today's figure.
+
+**4. A11 — electrical DRC against the X2 netlist.** The accuracy item with the most teeth, and the
+one the app is closest to being able to do: X2 attributes are parsed and then unused. After
+isolation, compare the connected components of the remaining copper against the netlist the Gerbers
+declare. *Done when* the test board and the panel report zero violations, and a deliberately
+under-isolated board names the two nets it has joined — before a file is written, not after a board
+is etched.
+
+**5. G5 + G3 — read the job file, and stop refusing block apertures.** Accuracy of the input.
+`.gbrjob` ships in every KiCad export and is ignored, after which the operator is asked for a
+thickness and layer roles it already states; `%AB%` and the transform commands are reported as
+errors, which is honest and still blocks panelised boards from other tools. *Done when* thickness
+and roles come from the job file with their source named, and a board using block apertures realises
+correctly under test.
+
+**Stretch, and only after 1:** A6 debounce on slider drags, A7 progressive reveal. **First reserve:**
+M17 and M19 — the three-point fit and refusing an export above a residual threshold — if alignment
+accuracy turns out to matter more than parser accuracy.
+
+**Deliberately not in it:** V30 (paste stencil), V31 (the raised dry run), V28 (stock dialog), V33
+(one-sided approach). All are features, and this sprint is not about features.
 
 ### Phase 7 — User documentation — **started**
 
