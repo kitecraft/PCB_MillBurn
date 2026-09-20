@@ -45,6 +45,7 @@
     <li><a href="#alignment">Lining the holes up with the pads</a></li>
     <li><a href="#drills">Holes of different sizes, and drill files that are Gerbers</a></li>
     <li><a href="#svg">The SVGs: masks, openings, and alignment</a></li>
+    <li><a href="#machinechecks">How much slack has my machine got?</a></li>
     <li><a href="#version">Which version am I running, and is there a newer one?</a></li>
     <li><a href="#viewer">Looking at a G-code file</a></li>
     <li><a href="#settings">Settings: safe height, and the rest of the machine</a></li>
@@ -1606,6 +1607,34 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
   cut layers per imported object, which turns a board into several hundred of them. The placing
   layers are the exception, on purpose: two more, in colours of their own, so they can be switched
   off.
+</p>
+
+<h2 id="machinechecks">How much slack has my machine got?</h2>
+
+<p>
+  <strong>Job &rsaquo; Machine checks&hellip;</strong> writes a short program that answers it, and a
+  page beside the program saying how to read what it cut. Two checks, neither needing a board open,
+  because what they measure belongs to the mill:
+</p>
+
+<ul>
+  <li><strong>Backlash</strong> &mdash; the slack in one axis. Three rows of two holes, differing only
+    in which side each hole was approached from, so that <em>row 2 minus row 3</em> is twice the
+    slack. Under 0.05&nbsp;mm is a machine in good order; above 0.2&nbsp;mm the nut wants attention.</li>
+  <li><strong>Squareness</strong> &mdash; whether X and Y meet at ninety degrees. Four holes at a
+    square's corners, all approached the same way so backlash cancels, and the two diagonals should
+    measure the same.</li>
+</ul>
+
+<p>
+  Both are measured with two pins and a caliper, and the arithmetic is on the page and in the
+  program's own header. The <a href="guides/machine-checks.html">machine checks guide</a> walks
+  through it with pictures of where the caliper jaws go.
+</p>
+
+<p>
+  Use an <strong>end mill, plunged</strong>, not a twist drill: a drill wanders as it enters by about
+  as much as these checks are trying to measure, and the app says so if you pick one.
 </p>
 
 <h2 id="version">Which version am I running, and is there a newer one?</h2>

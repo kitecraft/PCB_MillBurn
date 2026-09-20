@@ -1671,6 +1671,9 @@ public partial class MainWindow : Window
     private void OnKiCadExportGuideClicked(object? sender, RoutedEventArgs e) =>
         OpenHelp(Path.Combine("guides", "kicad-export.html"));
 
+    private void OnMachineChecksGuideClicked(object? sender, RoutedEventArgs e) =>
+        OpenHelp(Path.Combine("guides", "machine-checks.html"));
+
     /// <summary>
     /// Opens a shipped help page in the user's own browser.
     ///

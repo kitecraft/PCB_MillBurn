@@ -234,6 +234,7 @@
                         <MenuItem Header="_Guides">
                             <MenuItem Header="_Exporting from KiCad" Click="OnKiCadExportGuideClicked" />
                             <MenuItem Header="_Drill alignment" Click="OnDrillAlignmentGuideClicked" />
+                            <MenuItem Header="_Machine checks" Click="OnMachineChecksGuideClicked" />
                         </MenuItem>
                         <Separator />
                         <MenuItem Header="_About PCB_MillBurn" Click="OnAboutClicked" />
