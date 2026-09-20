@@ -43,8 +43,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
 | 03 Optimization | 10 | 7 | 1 | 1 | 1 |
 | 04 Machines & laser | 31 | 11 | 4 | 16 | 0 |
-| 05 Viewer & export | 35 | 16 | 4 | 13 | 2 |
-| **Requirements** | **114** | **57** | **9** | **44** | **4** |
+| 05 Viewer & export | 36 | 16 | 4 | 14 | 2 |
+| **Requirements** | **115** | **57** | **9** | **45** | **4** |
 
 Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
 capabilities (13 proven, 1 partly, 3 never cut).
@@ -199,6 +199,7 @@ board being cut rather than from a document.
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
 | V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** — backlash and squareness built | `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`; axis scale, cutter diameter, return to zero and tram not started |
 | V35 | About window: version, build date, and a manual check for a newer release | 06 §6.23 | **Done** | `ReleaseCheck` (parse + compare, no network), `AboutWindow`, `TravelDemo`; `ReleaseCheckTests` |
+| V36 | The outline drops straight to the next lap, and hops tabs at the tab's own height | 06 §6.24 | **Not started** | 59 s of vertical motion measured on the test board's outline, most of it avoidable |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -280,6 +281,7 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 6.21 Every hole approached from the same side | workshop | **Not started** |
 | 6.22 Machine checks: measure the machine, not only the bit | workshop | **Partial** — backlash and squareness built |
 | 6.23 About, and a check for updates | workshop | **Done** |
+| 6.24 The outline lifts to the sky between laps, and over every tab | workshop | **Not started** |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |

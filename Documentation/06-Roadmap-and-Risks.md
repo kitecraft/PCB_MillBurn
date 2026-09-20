@@ -3466,12 +3466,67 @@ drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres 
 plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
 and it is the only thing in this release a person who never reads a roadmap will notice.
 
+#### 6.24 The outline lifts to the sky between laps, and over every tab — **found in the workshop, not started**
+
+From the bench: *"The edge cuts have unnecessary z actions at the end of each lap. Also, the z-lift
+over the tabs should be much lower than the safe height. Just hop over the tab."*
+
+**Both are true, and they are the same mistake twice.** Measured on the test board's own
+`Edge_Cuts.nc` — four laps, four tabs, 1.6 mm board:
+
+| | Distance | Time at the workshop's rates |
+|---|---|---|
+| Rapid up | 39.40 mm | 23.6 s at `$112` = 100 mm/min |
+| Rapid down | 16.50 mm | 9.9 s |
+| Plunging | 20.90 mm | 25.1 s at 50 mm/min |
+| **Vertical, total** | | **about 59 s** |
+
+on a program whose whole run is a couple of minutes. The pattern repeats eleven times:
+
+```
+G1 Z-0.500      ( cut the lap )
+...
+G0 Z2.000       ( all the way up )
+G0 X.. Y..      ( to the same XY it is already at )
+G0 Z0.500
+G1 Z-1.000      ( and back down past where it started )
+```
+
+**Between laps there is nothing to clear.** The tool is at the same X and Y it is about to cut from;
+it can go straight down to the next depth at the plunge feed. The lift is a habit inherited from
+travel, where it is right, applied where nothing is being travelled over. Routing already knows
+this — `SlotOperation` carries one continuous descent per feature — and the outline never learned
+it.
+
+**Over a tab there is something to clear, and it is 0.5 mm tall, not 2 mm.** The tab leaves material
+under the cutter, so the hop only has to clear the tab's own top plus a little: on this board the
+tabs start at 1.10 mm, so a hop to about 1.0 mm below the surface does it, against the 2.0 mm above
+the surface being used now. That is 3 mm of climb and 3 mm of descent saved on every crossing, at
+the slowest rate the machine has.
+
+**What it must not become.** A tool dragged sideways at depth through material it has not cut, which
+is the failure this lift exists to prevent. So: the drop between laps happens only when X and Y do
+not move, and the hop over a tab clears the tab's own height rather than a number somebody typed —
+computed, and named in the program's comments like every other derived number here.
+
+**Done when** the test board's outline spends under fifteen seconds moving vertically rather than
+fifty-nine, cuts the same shape, and still lifts to the safe height for anything that is a genuine
+travel move.
+
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
 The first release cadence was a release a day, which suited a feature-shaped backlog. The product
 owner's direction for the next one is different: *"prioritise on performance, optimization, speed,
 and accuracy of both the app itself, and the functional nature of the implementors."* So this is a
 slower, five-item sprint rather than a fortnight of small releases.
+
+**Every sprint opens by reading the open bugs and known issues** — the product owner's standing
+rule, and this sprint is the first to follow it. 6.24 came in that way: found at the bench while the
+five were being agreed, measured the same afternoon, and added as a sixth because it belonged to the
+theme. The places to read are this document's own "not started" and "found in the workshop"
+sections, the matrix's Partial rows, and
+[09](09-Machine-Accuracy-Investigations.md)'s open questions. A sprint that starts from a feature
+list and never looks at the defect list is how a known fault survives three releases.
 
 **Measured first, ranked after.** Three numbers set the order:
 
@@ -3515,6 +3570,10 @@ thickness and layer roles it already states; `%AB%` and the transform commands a
 errors, which is honest and still blocks panelised boards from other tools. *Done when* thickness
 and roles come from the job file with their source named, and a board using block apertures realises
 correctly under test.
+
+**6. 6.24 — the outline's wasted vertical moves.** Added to the sprint after it was found at the
+bench: the one item here that speeds up the *machine* rather than the app, and by about 45 seconds a
+board on the one it was measured on. Small, self-contained, and the same theme.
 
 **Stretch, and only after 1:** A6 debounce on slider drags, A7 progressive reveal. **First reserve:**
 M17 and M19 — the three-point fit and refusing an export above a residual threshold — if alignment
