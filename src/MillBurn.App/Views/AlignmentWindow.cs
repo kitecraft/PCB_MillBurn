@@ -56,6 +56,24 @@ public sealed class AlignmentWindow : Window
     /// <summary>The correction the typed position comes to, so the number is still visible.</summary>
     private readonly TextBlock _correction = Caption();
 
+    /// <summary>
+    /// Throws away the correction carried from the last time and fills the boxes with the program's
+    /// own numbers.
+    ///
+    /// The boxes open pre-filled with the hole's position *plus* whatever correction the project
+    /// already holds, which is right while a job is being dialled in and wrong on a fresh setup: the
+    /// board is on the table in a new place, and the first test should go where the program says, not
+    /// where the last board was. Without this the operator types the two numbers back in by hand,
+    /// which is the one thing this dialog exists to stop.
+    /// </summary>
+    private readonly Button _fresh = new()
+    {
+        Content = "Start from the program",
+        FontSize = 11,
+        Padding = new Thickness(8, 2),
+        HorizontalAlignment = HorizontalAlignment.Left,
+    };
+
     // Named "First hole" only once there is a second one to tell it from.
     private readonly TextBlock _holeLabel = new()
     {
@@ -173,6 +191,17 @@ public sealed class AlignmentWindow : Window
         _hover.ValueChanged += (_, _) =>
         {
             _vm.SaveAlignHover((double)(_hover.Value ?? 0.1m));
+            Refresh();
+        };
+
+        _fresh.Click += (_, _) =>
+        {
+            _vm.AlignmentXMm = 0;
+            _vm.AlignmentYMm = 0;
+            _vm.AlignmentSecondXMm = 0;
+            _vm.AlignmentSecondYMm = 0;
+
+            Fill();
             Refresh();
         };
 
@@ -361,6 +390,7 @@ public sealed class AlignmentWindow : Window
         body.Children.Add(Row(_holeLabel, With(_hole, _test)));
         body.Children.Add(Row("It is really at (mm)", Pair(_x, _y)));
         body.Children.Add(Row(string.Empty, _correction));
+        body.Children.Add(Row(string.Empty, _fresh));
 
         body.Children.Add(Row("Also measure", _useSecond));
 
