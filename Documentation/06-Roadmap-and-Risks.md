@@ -3513,6 +3513,89 @@ computed, and named in the program's comments like every other derived number he
 fifty-nine, cuts the same shape, and still lifts to the safe height for anything that is a genuine
 travel move.
 
+#### 6.25 An isolation path bows into an arc where the copper is straight — **found in the workshop, not started**
+
+From the bench, on the Arduino Mega 2560: *"One cut line near the middle-bottom of the board is not
+straight. It's an arc."* Screenshot: `WorkingFolder/V0.1.6/Error_Screenshots/Bad_cut_line.png`.
+
+A single isolation pass runs roughly horizontally across the board and bows upward into a shallow
+curve, while the passes parallel to it stay straight. The copper it is isolating is straight, so the
+path is wrong rather than merely ugly: it cuts into the region it is supposed to leave alone at the
+centre of the bow, and away from it at the ends.
+
+**Not a regression.** Confirmed present in v0.1.5 as well, so it predates both the preview work and
+the placing layers.
+
+**Where to look first.** The bow has the shape of a single arc fitted across a run of nearly
+collinear points, which is what arc fitting does when its tolerance is larger than the deviation it
+is asked to keep. The emitted file carries real arcs — 4,241 `G2`/`G3` in
+`Arduino Mega 2560-F_Cu.nc` against 11,861 `G1` — so the question is whether an arc was fitted to a
+straight run, not whether arcs are emitted at all. Simplification is the other candidate: a
+tolerance that collapses a long straight edge to two points and then rounds the corner between them.
+
+**Done when** that pass is straight on this board, a test holds a straight copper edge to a straight
+isolation path within the fitting tolerance, and the emitted arc count for a board of known shape
+does not change for the worse.
+
+#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **found in the workshop, not started**
+
+From the bench, on the same board: *"There also seems to be a misplaced hole. IF top copper
+isolation >= 0.45 then the misplaced hole appears. But, if the isolation is <0.45 then the misplaced
+hole is NOT present. The hole, while being blue, seems to be connected to the top copper layer. When
+I hide the top copper layer, the hole also hides."* Screenshots: `mis-placed_hole.png` and
+`2_Errors_On_This_Board.png` in the same folder.
+
+**The layer it belongs to is the whole clue.** It is drawn in the plunged-hole style but disappears
+with the top copper, so it is not a drill at all — it is something in the copper isolation program
+that the backplot classifies as a plunge. A width-dependent appearance points the same way: at
+0.45 mm and above the offset closes a small feature into a closed loop, or drives two offsets into
+each other, and what is left is a short circular path around nothing.
+
+**Why it matters more than it looks.** If the backplot is classifying it as a plunge then the file
+contains a real move, and the mill will cut it. A cut in the middle of a copper pour is not
+cosmetic.
+
+**Done when** the board plans identically at 0.40 mm and 0.45 mm except for the width of the cut,
+the stray feature is gone, and a test pins whatever produced it — with the Arduino Mega added to the
+corpus if that is what it takes to reproduce.
+
+#### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **found in the workshop, not started**
+
+From the bench: *"Open the 'Arduino Mega 2560' project from the recent list. Then, file -> open
+recent -> Millburn_Test_Board Workflow one. When this project opens, notice that all of the layers
+are checked visible. Click preview. Now, most of the checked layers have unchecked themselves."*
+
+It needs a project to already be open: the second project opens with everything visible, and the
+first Preview rewrites that. Also confirmed in v0.1.5.
+
+**Where to look first.** Preview rebuilds the scene, and the visibility state it rebuilds from is
+either the previous project's or a default that the newly opened project never had a chance to
+write. The suspects are the remembered per-kind visibility carried across an open, and the layer
+rows being rebuilt from a scene rather than from the project that was just loaded.
+
+**Why it is worth fixing rather than explaining.** Visibility is how the operator checks alignment
+before cutting, and a control that changes itself when you press an unrelated button is one the
+operator stops trusting — against the stated goal of the whole application, which is confidence
+that things line up.
+
+**Done when** opening a project over another one and pressing Preview leaves every layer's tick
+exactly as the project was loaded with, and a test opens two projects in sequence and asserts it.
+
+#### Not a defect: the circles in Universal Gcode Sender
+
+From the bench, with `Concerning_Circles.png`: *"I'm worried that the circles are not as good as
+they should be. The image on the left is the UI from Universal GCode Sender."*
+
+**They are as good as they should be.** `Arduino Mega 2560-F_Cu.nc` holds 4,241 `G2`/`G3` arcs, and
+MillBurn's own backplot is built by parsing that same emitted text rather than from the toolpaths
+that produced it — so both pictures are readings of one file, and only the rendering differs. UGS
+linearises an arc for display at a fixed segment length, which is why a pad's isolation looks like a
+polygon there and a curve here. grbl interpolates the arc itself on the machine, to its own
+`$12` arc tolerance, not to whatever a visualiser drew.
+
+Recorded so that it is not investigated twice. If a future change ever emits those circles as
+polylines instead, this entry is the evidence that they did not used to be.
+
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
 The first release cadence was a release a day, which suited a feature-shaped backlog. The product
