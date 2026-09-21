@@ -22,7 +22,10 @@ public static class BoardLoader
     private static readonly string[] GerberExtensions =
         [".gbr", ".ger", ".gtl", ".gbl", ".gts", ".gbs", ".gto", ".gbo", ".gtp", ".gbp", ".gko", ".gm1"];
 
-    private static readonly string[] DrillExtensions = [".drl", ".xln"];
+    // .xnc is the Excellon NC extension Altium, Eagle and Olimex write where KiCad writes .drl.
+    // Recognising the name without opening the file is no use: the layer was read as a drill and
+    // then never loaded, so the board came up with no holes and nothing said why.
+    private static readonly string[] DrillExtensions = [".drl", ".xln", ".xnc"];
 
     public static Board LoadFolder(string folder, RealisationOptions? options = null)
     {

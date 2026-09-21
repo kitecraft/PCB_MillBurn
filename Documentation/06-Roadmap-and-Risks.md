@@ -3625,6 +3625,151 @@ that things line up.
 **Done when** opening a project over another one and pressing Preview leaves every layer's tick
 exactly as the project was loaded with, and a test opens two projects in sequence and asserts it.
 
+#### 6.28 A whole export imports as Unknown because the names are not KiCad's — **found in the workshop, not started**
+
+From the bench: a set of Olimex OLinuXino Gerbers (A13-OLinuXino-WIFI rev H) imports with every one
+of its twelve files marked Unknown, so nothing can be exported. The files are plain RS-274X in
+inches, `%FSLAX24Y24*%`, with no X2 attributes at all — there is nothing in them to read, so the
+role has to come from the name. The parser itself is fine: the board measures 134.45 × 121.46 mm,
+which means the inch format and the 2.4 coordinates were read correctly.
+
+| Their name | Ours | Why it misses |
+|---|---|---|
+| `Top.gbr`, `Bot.gbr` | `F_Cu`, `B_Cu` | no bare `Top`/`Bot` pattern at all |
+| `Top_Mask`, `Bot_Mask` | `F_Mask`, `B_Mask` | side is spelled `Top`/`Bot`, not `F`/`B` |
+| `Top_Silk`, `Bot_Silk` | `F_SilkS` | same, and `Silk` is not `SilkS` |
+| `Top_Paste`, `Bot_Paste` | `F_Paste` | same |
+| `Dimension.gbr` | `outline`, `profile` | a third word for the same thing |
+| `Ln1_Cu`, `Ln2_Cu` | `In1_Cu` | `Ln` for *layer*, not `In` for *inner* |
+| `Drill.xnc` | `.drl`, `.xln`, `.txt` | `.xnc` is not on the extension list |
+
+**The matching is the thing to change, not the list.** `FromFileName` scans a table with
+`string.Contains`, which is why the table has to be ordered most-specific-first and why adding a
+bare `Top` to it would be dangerous: `Top_Mask` contains `Top`, so one careless row turns every
+mask, silk and paste layer into copper. Copper is the layer that gets cut, so that mistake is the
+expensive direction.
+
+Matching whole fields instead removes the hazard. The name splits on `_`, `-` and `.` into words,
+and a rule names the words it wants: `{Top}` alone is top copper, `{Top, Mask}` is top mask,
+`{Dimension}` is the outline. Unmatched stays Unknown, which is the existing and correct answer for
+a name nobody can read — this widens what can be read without widening what gets guessed. The X2
+path already works this way: `SideField` splits into fields and compares whole words.
+
+**It is a four-layer board**, so even read correctly the inner copper is never exported, which is
+right — and it is not a board anybody is going to mill. The value is the naming, which is Altium's
+and Eagle's convention as much as Olimex's, and the next unfamiliar export is likelier to look like
+this than like KiCad.
+
+**Done when** that folder imports with every file named — the two coppers, both masks, both silks,
+both pastes, the outline and the drills — the inner layers read as inner copper rather than Unknown,
+and a test covers the naming with a case for the trap: a file called `Top_Mask` must not come back
+as copper. If the board joins the corpus, its licence needs checking first: it is Olimex open
+hardware, and `tests/boards` currently holds only sets whose terms were established when they went
+in.
+
+#### 6.29 An Excellon file in inches has its drill sizes read as something else — **found in the workshop, not started**
+
+Found while fixing 6.28, by exporting the Olimex board once the layers could be read at all. The
+summary said *931 holes in 8 sizes* and listed them as 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.13 and
+0.16 mm. No such drills exist.
+
+The file declares `M72`, which is Excellon for inches, and its tool table is ordinary:
+
+```
+M72
+T01C0.0100      0.0100 in = 0.254 mm
+T02C0.0118      0.300 mm
+T03C0.0157      0.399 mm
+T05C0.0315      0.800 mm
+T13C0.0709      1.801 mm
+```
+
+So the smallest real drill on the board is 0.254 mm and the largest of the thirteen is 1.8 mm, and
+every one of them is reported as a fraction of its true size. The hole *positions* look right —
+the drilling programs travel a few hundred millimetres across a 120 mm board, which they could not
+do if the coordinates were out by the same factor — so this looks like the tool table specifically,
+not the file's units as a whole. That was not verified, and it should be first.
+
+**Why it is worse than a wrong label.** Everything downstream believes the number: which bit the
+operator is told to fit, whether a hole is too big to drill and should be routed instead, whether
+the tool library has anything that fits. A board whose holes are all reported as a fiftieth of a
+millimetre is one the application will reason about confidently and wrongly, and the CHECK lines
+that exist to catch exactly this kind of thing will be reassuring about the wrong sizes.
+
+**Nothing in the corpus would have caught it.** Every committed board is a metric KiCad export, so
+inch-mode Excellon has no coverage at all. That is the actual gap; this board is just where it
+surfaced.
+
+**Done when** the Olimex board reports thirteen tools between 0.254 mm and 1.80 mm, an inch-mode
+Excellon fixture is in the corpus, and a test reads the same holes from a metric and an inch
+version of one file and gets the same millimetres from both. It is worth checking at the same time
+whether the coordinates are right or merely close enough to look it.
+
+#### 6.30 Copper sealed inside the board can be set to G-code — **found in the workshop, not started**
+
+Found at the bench on a six-layer i.MX8M dev board, opened to see what would strain the
+application. Its four inner copper layers were ticked and set to G-code, and the export wrote
+**eight files and 58,369 lines** of machine program for them: `In1_Cu.nc` through `In4_Cu.nc` and a
+dry run each. Run one and the mill cuts a copy of an inner layer into whichever face is upwards.
+
+`LayerOperations.DefaultFor` returns `None` for inner copper, so nothing arrives set this way. But
+`Available` sends it to the catch-all that offers `None`, `Svg` and `Gcode`, so the picker on the
+layer row offers all three and the operator took one. Two lines above that catch-all the same file
+already says what should have happened:
+
+> *Drawings are for reading. Offering to burn or mill one is offering to make a mistake.*
+
+An inner layer is the stronger case, not the weaker one. A drawing is merely the wrong thing to
+cut; an inner layer is a thing no cutter or laser can ever reach, on any machine, in any setup —
+and the file it produces looks entirely plausible, which is what makes it dangerous.
+
+**A test has been asserting this all along without covering it.** `ExportPlannerTests` has
+`InnerCopperIsNeverExported`, and every line of its body checks a *default* — `DefaultFor`, and the
+three import presets. The name claims the export never happens; the body only shows it is not the
+starting point. This is the failure `/describe-test` exists to find, and it went unfound because the
+test was read by the person who had just written it.
+
+**Done when** `Available(LayerRole.InnerCopper)` is `[None]`, the layer row offers nothing else, a
+project saved with an inner layer set to G-code opens with it set back to None and says so rather
+than silently changing it, and `InnerCopperIsNeverExported` earns its name by planning a board with
+an inner layer and asserting no file comes out. The CHECK line that already names the inner layers
+should say they cannot be reached, not merely that they exist.
+
+**Not the same board as a corpus candidate.** That board is 13 MB with no established licence, and
+it cannot be milled at all — 2,460 gaps narrower than the cut. It is a performance reference, not a
+fixture. A two-layer fixture with a file renamed to `In1_Cu` reproduces this in a few kilobytes,
+and `TopBotNames` already carries one.
+
+#### 6.31 Let the operator say what a layer is — **asked for by the product owner, not started**
+
+From the product owner, after a day of chasing naming conventions: *"Perhaps, instead of trying to
+match all the different naming schemes, we use the most common. But, as a future enhancement, we can
+provide a user with a way to define a file in someway. So, if we do miss one, or mis-interpret one,
+the user has a way to fix it on their own."*
+
+**This is the right answer to 6.28 and to every bug like it**, and most of it is already built. The
+saved project carries `RoleOverridden` beside each source's `Role`; `ProjectFile` writes it and
+reads it back; `ProjectRefresh` deliberately keeps a hand-set role when the folder changes under the
+project rather than re-detecting over it; `ProjectTests` covers that; and the CLI prints
+*"(role set by hand)"* when it sees one. Every part of the mechanism exists except a way to use it:
+`LayerRow.Role` is display-only, and no control anywhere in the application sets it.
+
+So the work is a picker on the layer row, the plumbing behind it, and saying which way a role was
+arrived at. `RoleGuessed` already distinguishes a role the file declared from one read off its name
+— the comment on `LayerRoles` says *"when it is used the caller is told, because a guess should look
+like a guess"* — and the row does not currently show that either.
+
+**What it changes about the matching.** With this in place the matcher only has to get the common
+schemes right: KiCad's `F_Cu`, the `Top`/`Bot` family that Altium, Eagle and Olimex share, and the
+classic extensions. Anything rarer becomes a two-click correction that survives a refresh, instead
+of a defect report and a new rule. Some of the naming work already done was compensating for the
+absence of this, and the entries above should be read in that light.
+
+**Done when** a layer whose role was guessed says so on its row, any layer's role can be set by hand
+from that row, the choice is saved with the project and survives a refresh of the source folder, and
+a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
+the test: it should be usable by hand even with every one of its files unrecognised.
+
 #### Not a defect: the circles in Universal Gcode Sender
 
 From the bench, with `Concerning_Circles.png`: *"I'm worried that the circles are not as good as
