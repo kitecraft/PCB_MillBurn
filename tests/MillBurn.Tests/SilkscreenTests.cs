@@ -1,7 +1,6 @@
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gerber;
-using Xunit;
 
 namespace MillBurn.Tests;
 

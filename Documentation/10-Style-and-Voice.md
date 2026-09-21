@@ -124,3 +124,20 @@ was measured if anything was, and what was deliberately left alone.
 
 Commits that land on a release branch are squashed to one per story; the release branch merges into
 `main` with a merge commit, because a release is a real event.
+
+## 11. What the build enforces
+
+`.editorconfig` is the mechanical half of this document: the part a tool can check. Everything in it
+set to `warning` fails the build, because `Directory.Build.props` treats warnings as errors — so
+each one was checked by turning it on and building the whole solution before it was written down. A
+rule that would have failed a build is not in there at `warning`; it is at `suggestion`, where an
+editor shows it and CI stays quiet.
+
+Three analysers carry it. `IDE0005` is unused usings, `IDE0055` is layout and import order, and
+`IDE1006` is the naming shapes in §2. **A `dotnet_naming_rule` or a `csharp_*` option has no effect
+on the build unless the analyser that reports it is given a severity of its own** — without those
+three lines the file is decoration an editor honours and CI does not, which is exactly what it was
+on its first draft.
+
+`dotnet format` fixes most of what they catch. It defaults to a Debug build, so confirm with
+`dotnet build -c Release` — that is what CI runs.

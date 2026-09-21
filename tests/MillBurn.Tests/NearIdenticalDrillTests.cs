@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using MillBurn.Core;
 using MillBurn.Pipeline;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

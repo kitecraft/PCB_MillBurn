@@ -5,9 +5,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MillBurn.Cam;
 using MillBurn.Core;
+using MillBurn.Geometry;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
-using MillBurn.Geometry;
 
 namespace MillBurn.Pipeline;
 

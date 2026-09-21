@@ -1,6 +1,5 @@
 using MillBurn.Viewer;
 using SkiaSharp;
-using Xunit;
 
 namespace MillBurn.Tests;
 

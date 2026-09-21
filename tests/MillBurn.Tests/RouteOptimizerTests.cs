@@ -1,6 +1,5 @@
 using MillBurn.Core;
 using MillBurn.Optimize;
-using Xunit;
 
 namespace MillBurn.Tests;
 

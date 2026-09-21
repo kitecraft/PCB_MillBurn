@@ -1,7 +1,6 @@
 using Clipper2Lib;
 using MillBurn.Core;
 using MillBurn.Geometry;
-using Xunit;
 
 namespace MillBurn.Tests;
 

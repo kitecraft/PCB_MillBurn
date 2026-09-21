@@ -4,7 +4,6 @@ using MillBurn.Core;
 using MillBurn.Geometry;
 using MillBurn.Optimize;
 using MillBurn.Pipeline;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

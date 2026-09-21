@@ -7,7 +7,6 @@ using MillBurn.Gerber;
 using MillBurn.Gerber.Apertures;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
-using Xunit;
 
 namespace MillBurn.Tests;
 

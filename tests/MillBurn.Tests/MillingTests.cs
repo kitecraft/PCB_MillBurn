@@ -2,10 +2,8 @@ using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gcode;
-using MillBurn.Geometry;
 using MillBurn.Optimize;
 using MillBurn.Pipeline;
-using Xunit;
 
 namespace MillBurn.Tests;
 

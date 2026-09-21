@@ -1,6 +1,5 @@
 using MillBurn.Core;
 using MillBurn.Gerber.Excellon;
-using Xunit;
 
 namespace MillBurn.Tests;
 

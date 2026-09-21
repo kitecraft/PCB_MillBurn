@@ -2,7 +2,6 @@ using MillBurn.Core;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
 using SkiaSharp;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

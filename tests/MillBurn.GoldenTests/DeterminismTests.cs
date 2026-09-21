@@ -1,5 +1,4 @@
 using System.IO.Hashing;
-using System.Text;
 using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
@@ -7,10 +6,8 @@ using MillBurn.Export;
 using MillBurn.Geometry;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Model;
-using MillBurn.Viewer;
-using Xunit;
-
 using MillBurn.Tests;
+using MillBurn.Viewer;
 
 namespace MillBurn.GoldenTests;
 

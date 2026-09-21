@@ -19,6 +19,7 @@
 *.gbr       -text
 *.ger       -text
 *.drl       -text
+*.gbrjob    -text
 *.txt       -text
 *.nc        -text
 *.ngc       -text

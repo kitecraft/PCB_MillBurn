@@ -1,8 +1,8 @@
 using System.Globalization;
 using Clipper2Lib;
 using MillBurn.Core;
-using MillBurn.Gerber.Excellon;
 using MillBurn.Geometry;
+using MillBurn.Gerber.Excellon;
 
 namespace MillBurn.Cam;
 

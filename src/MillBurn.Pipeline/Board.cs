@@ -1,8 +1,8 @@
 using Clipper2Lib;
 using MillBurn.Core;
+using MillBurn.Geometry;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
-using MillBurn.Geometry;
 
 namespace MillBurn.Pipeline;
 

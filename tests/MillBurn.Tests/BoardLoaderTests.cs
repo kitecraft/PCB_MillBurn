@@ -1,7 +1,6 @@
 using MillBurn.Core;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
-using Xunit;
 
 namespace MillBurn.Tests;
 

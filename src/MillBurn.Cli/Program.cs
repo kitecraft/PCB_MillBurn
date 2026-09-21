@@ -1,15 +1,15 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using MillBurn.Align;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Export;
+using MillBurn.Gcode;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
-using MillBurn.Pipeline;
-using MillBurn.Align;
-using MillBurn.Gcode;
 using MillBurn.Optimize;
+using MillBurn.Pipeline;
 using MillBurn.Viewer;
 using SkiaSharp;
 
@@ -3006,11 +3006,17 @@ internal static class Program
             // One number is the same border all round, which is what somebody types first.
             1 when !double.IsNaN(borders[0]) => options with
             {
-                LeftMm = borders[0], RightMm = borders[0], BottomMm = borders[0], TopMm = borders[0],
+                LeftMm = borders[0],
+                RightMm = borders[0],
+                BottomMm = borders[0],
+                TopMm = borders[0],
             },
             4 when borders.TrueForAll(b => !double.IsNaN(b)) => options with
             {
-                LeftMm = borders[0], BottomMm = borders[1], RightMm = borders[2], TopMm = borders[3],
+                LeftMm = borders[0],
+                BottomMm = borders[1],
+                RightMm = borders[2],
+                TopMm = borders[3],
             },
             _ => options,
         };

@@ -3,7 +3,6 @@ using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
 using MillBurn.Pipeline;
-using Xunit;
 
 namespace MillBurn.Tests;
 

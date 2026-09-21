@@ -1,12 +1,12 @@
 using System.Globalization;
+using System.Text;
 using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
-using System.Text;
-using MillBurn.Gerber;
-using MillBurn.Gerber.Model;
-using MillBurn.Gerber.Excellon;
 using MillBurn.Geometry;
+using MillBurn.Gerber;
+using MillBurn.Gerber.Excellon;
+using MillBurn.Gerber.Model;
 
 namespace MillBurn.Pipeline;
 

@@ -1,8 +1,7 @@
 using MillBurn.Core;
-using MillBurn.Gerber.Excellon;
 using MillBurn.Gcode;
+using MillBurn.Gerber.Excellon;
 using MillBurn.Pipeline;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

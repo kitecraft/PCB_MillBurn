@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;

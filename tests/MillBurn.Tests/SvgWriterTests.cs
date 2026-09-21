@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Xml.Linq;
 using MillBurn.Core;
 using MillBurn.Export;
-using Xunit;
 
 namespace MillBurn.Tests;
 

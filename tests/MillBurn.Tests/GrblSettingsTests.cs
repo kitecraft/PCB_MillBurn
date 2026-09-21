@@ -1,5 +1,4 @@
 using MillBurn.Core;
-using Xunit;
 
 namespace MillBurn.Tests;
 
