@@ -22,11 +22,25 @@ finding something is the ordinary case, not a signal.
 
 ## After writing or changing a test
 
-**Run `/describe-test`.** A subagent with none of this conversation's context reads the test back in
-plain language — its steps, its inputs with their literal values, its assertions, and what would
-have to break for it to fail. Check that account against the test *and* against the production code.
-It exists to catch a test and a bug that agree with each other, which is the failure mode a test
-written beside its code is most prone to.
+**Run `/describe-test` on every test file created or edited, without exception, before the work
+merges.** A subagent with none of this conversation's context reads the test back in plain language
+— its steps, its inputs with their literal values, its assertions, and what would have to break for
+it to fail. Check that account against the test *and* against the production code. It exists to
+catch a test and a bug that agree with each other, which is the failure mode a test written beside
+its code is most prone to.
+
+**One file per run**, and run it again if the file gains tests afterwards: a description is of the
+file as it stood, and tests added later have not been read by anyone but their author.
+
+**The rule is not "when it seems worth it".** It has already paid twice. On `LatestRun` it found
+that the cancellation test cancelled before the call, so a single check at the top of the method
+satisfied it and nothing proved a running job stopped. And `ExportPlannerTests` has a test called
+`InnerCopperIsNeverExported` whose body only checks defaults — it has been passing over roadmap
+6.30, an export that really happens, since the day it was written. Both were missed the same way:
+the test was read by whoever had just written it, who knew what it was supposed to mean.
+
+Nothing stops you describing a test you did not write when you are working near it. The two cases
+above are the argument for doing so.
 
 Skills live in `.claude/skills/`.
 

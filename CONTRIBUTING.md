@@ -64,6 +64,17 @@ finding something is the ordinary case and is not by itself a reason to go deepe
 
 A review that finds nothing is still worth its minute. A merge that skipped one is not.
 
+**And every test that is written or changed gets read back by somebody who did not write it**,
+before the work merges. Here that is the `/describe-test` skill, which hands one test file to an
+assistant with no knowledge of why it exists and asks it to say plainly what the test does, what it
+feeds in, what it checks, and what would have to break for it to fail. Then that account is checked
+against the test *and* against the code under it.
+
+It is not ceremony. It has caught a cancellation test that only proved the very first line of a
+method ran, and a test named for a guarantee whose body checked a default instead — which had been
+passing over a real defect since the day it was written. Both were missed the same way: read by the
+person who already knew what they were supposed to mean.
+
 ### If you are not the author
 
 Outside contributions are welcome, and the process is the same shape with one extra step:

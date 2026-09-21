@@ -12,6 +12,10 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ## Unreleased — `release/0.2.0`
 
+**Seamless usability.** The product owner's title for it, and a fair one: nothing here is a feature.
+It is the release where the window stops freezing, where the application stops being surprised by
+an export it did not write, and where what it cannot do it says so about.
+
 [Sprint 1 — Speed and accuracy](Sprints/Sprint-01-Speed-and-Accuracy.md). No features: the pipeline
 off the UI thread and cancellable, memoised stages, the optimizer's two open items, electrical DRC
 against the X2 netlist, the job file and block apertures, and the outline's wasted vertical moves.
