@@ -2,9 +2,19 @@ name: build
 
 on:
   push:
-    branches: [main]
+    # Release branches as well as main: a sprint's work lands there for days before it reaches
+    # main, and a story that breaks the build should say so then rather than at the release merge.
+    # Story branches are not listed because they never leave the machine they were made on — they
+    # are squashed in locally, so the release branch is the first place CI can see them.
+    branches: [main, 'release/**']
   pull_request:
   workflow_dispatch:
+
+# Once the release-to-main PR is open, a push to the release branch triggers this workflow twice
+# — once for the push, once for the PR. One run per ref, and a new push cancels the last.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_NOLOGO: true
@@ -21,7 +31,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          # global.json, not a version literal: otherwise CI installs the newest 10.0.x and never
+          # exercises the SDK the pin names.
+          global-json-file: global.json
 
       - name: Restore
         run: dotnet restore PCB_MillBurn.slnx

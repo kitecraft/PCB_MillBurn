@@ -56,7 +56,7 @@ sprint ships. Nothing is committed straight to `main`.
 **Every merge into a release branch or into `main` is reviewed first.** In this repository that
 means `/code-review` at medium effort, with an eye on anything that could affect performance — the
 UI's responsiveness, the geometry pipeline, the optimizer, or the size and shape of the emitted
-G-code and SVG. **If it finds anything, run it again at maximum effort** before fixing: the second
+G-code and SVG. **If it finds anything, run it again at `xhigh` effort** before fixing: the second
 pass is where the expensive problems surface, and it is cheap compared with reading a bug report
 from somebody's workshop.
 
@@ -83,6 +83,10 @@ either of the GPL projects in the workspace, which would relicense the whole app
 ## Versions
 
 Three numbers, and a leading `0` until the project has earned otherwise.
+
+**Every change that a user would notice earns a line in [CHANGELOG.md](CHANGELOG.md)** under
+`Unreleased`, written when the change lands rather than remembered at release time. The releases
+page is the original; that file is the copy that travels with a clone.
 
 | Change | Version moves | And |
 |---|---|---|

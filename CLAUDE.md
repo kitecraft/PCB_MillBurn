@@ -13,7 +13,7 @@ rather than two that drift.
 **Run `/code-review` at medium effort before every merge into a release branch or into `main`**,
 with an eye on anything that could affect performance: the UI's responsiveness, the geometry
 pipeline, the optimizer, or the size and shape of the emitted G-code and SVG. **If it finds
-anything, run it again at maximum effort** before fixing — the second pass is where the expensive
+anything, run it again at `xhigh` effort** before fixing — the second pass is where the expensive
 problems surface, and it is cheaper than a bug report from somebody's workshop.
 
 ## After writing or changing a test

@@ -11,8 +11,10 @@ why several rules below are firmer than they would be in a web app.
 
 ## Environment
 
-- **.NET 10 SDK**, and nothing else — no vcpkg, no CMake, no MSYS2. There is no `global.json`, so an
-  older SDK on `PATH` will fail.
+- **.NET 10 SDK, the `10.0.4xx` band** — no vcpkg, no CMake, no MSYS2. `global.json` pins it with
+  `rollForward: latestPatch`, so a `10.0.1xx`–`3xx` SDK is refused by name before any project loads,
+  and a future band cannot quietly bring new analysers to a build that treats warnings as errors.
+  Moving to a new band is a one-line change to `global.json`, made deliberately.
 - **A bash shell** for `build/publish.sh`. On Windows use Git Bash: plain `bash` in PowerShell may
   resolve to the WSL launcher, which is a different operating system with no SDK in it.
 - Windows or Linux desktop. macOS is untested.
@@ -30,8 +32,10 @@ bash build/publish.sh win-x64 out/windows                        # what a releas
 ```
 
 **Lint is the build.** `TreatWarningsAsErrors`, `EnforceCodeStyleInBuild` and
-`AnalysisLevel=latest-recommended` are set in `Directory.Build.props`; there is no separate format
-step. An analyser complaint is a compile error, and the fix is the code rather than a suppression
+`AnalysisLevel=latest-recommended` are set in `Directory.Build.props`, and `.editorconfig` raises
+`IDE0005`, `IDE0055` and `IDE1006` to warnings, so unused usings, formatting and naming fail the
+build like anything else. `dotnet format` will fix most of what they catch; there is no separate
+format step in CI because there is no need for one. An analyser complaint is a compile error, and the fix is the code rather than a suppression
 unless the suppression says why.
 
 **Central package management.** Versions live in `Directory.Packages.props` only — never a
@@ -118,8 +122,8 @@ Full version with reasons: [Documentation/10](Documentation/10-Style-and-Voice.m
 - `main` holds released code. **Never commit to it.** Story branches are `NNN_ShortName`, taken from
   the sprint's `release/X.Y.Z` branch and **squashed** back into it, one commit per story; the
   release branch merges into `main` with a merge commit, and a `vX.Y.Z` tag is what builds a release.
-- **CI runs on `main` and on pull requests** — not on a release or story branch. Run the tests
-  yourself.
+- **CI runs on `main`, on `release/**` and on pull requests** — but not on story branches, which
+  never leave the machine they were made on. Run the tests yourself before squashing one in.
 - **Versions:** a sprint moves the middle digit, an urgent mid-sprint fix the last one. A change to a
   CLI workflow or to a saved file's shape is labelled **Breaking** in the first line of the notes.
   Saved artefacts carry a `SchemaVersion`: read every older format, refuse a newer one by name.
