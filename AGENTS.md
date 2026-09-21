@@ -120,8 +120,10 @@ Full version with reasons: [Documentation/10](Documentation/10-Style-and-Voice.m
 ## Process
 
 - `main` holds released code. **Never commit to it.** Story branches are `NNN_ShortName`, taken from
-  the sprint's `release/X.Y.Z` branch and **squashed** back into it, one commit per story; the
-  release branch merges into `main` with a merge commit, and a `vX.Y.Z` tag is what builds a release.
+  the sprint's `release/X.Y.Z` branch and **squashed** back into it, one commit per story, and
+  **deleted as part of that merge** — a squashed branch is not an ancestor of what it became, so git
+  will never call it merged and reusing one fights conflicts forever. The release branch merges into
+  `main` with a merge commit, and a `vX.Y.Z` tag is what builds a release.
 - **CI runs on `main`, on `release/**` and on pull requests** — but not on story branches, which
   never leave the machine they were made on. Run the tests yourself before squashing one in.
 - **Versions:** a sprint moves the middle digit, an urgent mid-sprint fix the last one. A change to a

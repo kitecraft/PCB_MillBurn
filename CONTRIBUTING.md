@@ -45,9 +45,13 @@ sprint ships. Nothing is committed straight to `main`.
 3. **Run everything:** `dotnet test PCB_MillBurn.slnx`. Zero warnings — the build treats them as
    errors, deliberately.
 4. **Review before you merge** (below).
-5. **Squash into the release branch.** One story, one commit, with a message that says what changed
-   and why. The story branch's own history stays as it was; the release branch keeps one readable
-   entry per story.
+5. **Squash into the release branch, then delete the story branch.** One story, one commit, with a
+   message that says what changed and why; the release branch keeps one readable entry per story.
+   Deleting is part of merging, not tidying done later. A squashed commit is not a descendant of
+   the branch it came from, so git cannot tell the branch was merged: `git branch -d` refuses it
+   and `--merged` never lists it. A story branch left behind therefore looks unmerged forever, and
+   worse, is easy to pick up again — and a branch that gets more commits after being squashed in
+   fights a conflict on every later merge, because the shared history it needs is not there.
 6. **The release branch merges into `main` with a merge commit**, not a squash: a release is a real
    event and its shape is worth keeping.
 
