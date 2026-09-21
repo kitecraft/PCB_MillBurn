@@ -3523,6 +3523,46 @@ curve, while the passes parallel to it stay straight. The copper it is isolating
 path is wrong rather than merely ugly: it cuts into the region it is supposed to leave alone at the
 centre of the bow, and away from it at the ends.
 
+**A second instance, the same way round.** From the bench, on the same board: another straight run
+bowed into an arc, this one in the header pads along the top edge right of centre —
+`2nd_line_as_arc_closeup.png` and `2nd_line_as_arc_wideshot.png`.
+
+**Four by eye, and then measured in the file.** A third and fourth turned up in the same view
+(`2_more_examples.png`, the original boxed red and the new ones blue and green), which was enough to
+stop guessing and read the emitted G-code. Scanning every `G2`/`G3` in the two copper programs for
+an arc whose two endpoints share an X or a Y — that is, an arc drawn across a run that is provably
+straight — finds this:
+
+| Program | Bow | Over a chord of | Radius | Arc |
+|---|---|---|---|---|
+| F_Cu | **464 µm** | 12.067 mm | 39.48 mm | 17.6° |
+| F_Cu | **451 µm** | 11.730 mm | 38.37 mm | 17.6° |
+| B_Cu | **337 µm** | 8.743 mm | 28.56 mm | 17.6° |
+| B_Cu | 150 µm | 3.884 mm | 12.63 mm | 17.7° |
+| B_Cu | 74 µm | 1.897 mm | 6.11 mm | 17.9° |
+| F_Cu | 37 µm | 0.936 mm | 2.96 mm | 18.2° |
+| B_Cu | 37 µm | 0.920 mm | 2.90 mm | 18.2° |
+| B_Cu | 11 µm | 0.297 mm | 0.98 mm | 17.4° |
+
+The first two are top copper, which is what the screenshots show; the rest are below what is visible
+at that zoom and are the same fault.
+
+**Every one of them subtends about 17.6°.** The chords run from 0.3 mm to 12 mm — a factor of forty
+— and the radius scales with the chord to keep the angle fixed. That is the whole finding. A fitter
+working to an error tolerance cannot produce this: its arcs would subtend whatever angle kept them
+inside the allowance, and the angles would vary. A constant angular extent means something is
+*choosing* an angle, so the thing to look for is a fixed angular step — a segments-per-circle
+constant, an offsetter's round-join step, an arc-recognition window of a fixed number of points —
+and not a tolerance that needs tightening. Tightening a tolerance will not move a number that is
+not a tolerance.
+
+**It is past the point of being cosmetic.** The worst bow is 464 µm on a 0.45 mm isolation: the path
+leaves its intended line by more than a whole cut width, so it is cutting copper that the isolation
+was asked to keep and leaving copper it was asked to remove.
+
+Detection is cheap and belongs in a test: any emitted arc whose endpoints share a coordinate is a
+straight run, and its bow should be a micron or two, not four hundred.
+
 **Not a regression.** Confirmed present in v0.1.5 as well, so it predates both the preview work and
 the placing layers.
 
@@ -3533,9 +3573,13 @@ is asked to keep. The emitted file carries real arcs — 4,241 `G2`/`G3` in
 straight run, not whether arcs are emitted at all. Simplification is the other candidate: a
 tolerance that collapses a long straight edge to two points and then rounds the corner between them.
 
-**Done when** that pass is straight on this board, a test holds a straight copper edge to a straight
-isolation path within the fitting tolerance, and the emitted arc count for a board of known shape
-does not change for the worse.
+**Done when** no emitted arc on this board joins two endpoints that share a coordinate with a bow
+over a couple of microns — all eight of the rows above, not only the three that can be seen — and a
+test asserts that over the corpus, since it needs no eye and no screenshot. Real curves must stay
+curved: the emitted arc count for a board of known shape should not fall, or the fix has traded
+this fault for its opposite. The Arduino Mega 2560 is not
+in `tests/boards`, and both instances are on it, so reproducing this in a test most likely means
+committing it to the corpus — as 6.26 also needs.
 
 #### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **found in the workshop, not started**
 
