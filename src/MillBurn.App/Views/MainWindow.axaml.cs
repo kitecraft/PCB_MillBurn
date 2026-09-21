@@ -68,10 +68,10 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         _fpsTest = args.Contains("--fpstest", StringComparer.OrdinalIgnoreCase);
 
-        Opened += (_, _) =>
+        Opened += async (_, _) =>
         {
             FillRecentPanel();
-            OnOpened(args);
+            await OnOpened(args);
         };
     }
 
@@ -259,7 +259,7 @@ public partial class MainWindow : Window
     /// <summary>A dialog to capture instead of the main window, for checking one headlessly.</summary>
     private Window? _captureInstead;
 
-    private void OnOpened(string[] args)
+    private async Task OnOpened(string[] args)
     {
         if (DataContext is not MainViewModel vm)
         {
@@ -387,7 +387,9 @@ public partial class MainWindow : Window
         if (args.Contains("--mill", StringComparer.OrdinalIgnoreCase)
             || args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
         {
-            vm.Preview();
+            // Awaited, not started: everything below and the screenshot itself would otherwise
+            // capture the window before the preview it was asked for had arrived in it.
+            await vm.PreviewAsync();
         }
 
         // "Show only this layer's toolpath" on the first layer whose name contains the text, so what
@@ -1124,8 +1126,13 @@ public partial class MainWindow : Window
         vm.ReloadLibrary();
     }
 
-    private void OnPreviewClicked(object? sender, RoutedEventArgs e) =>
-        (DataContext as MainViewModel)?.Preview();
+    private async void OnPreviewClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            await vm.PreviewAsync();
+        }
+    }
 
     /// <summary>
     /// Plans the export, shows exactly what would be written, and writes only if that is confirmed.

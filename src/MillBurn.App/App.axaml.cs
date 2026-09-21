@@ -17,10 +17,17 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var viewModel = new MainViewModel();
+
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainViewModel(),
+                DataContext = viewModel,
             };
+
+            // The view model holds the preview's cancellation source. Without this a preview still
+            // in flight at shutdown runs on to completion on a pool thread, against a window that
+            // has gone.
+            desktop.ShutdownRequested += (_, _) => viewModel.Dispose();
         }
 
         base.OnFrameworkInitializationCompleted();

@@ -60,7 +60,30 @@ pipeline boundary rather than sprinkled through it; the UI thread left to render
 results back.
 
 **Done when** the window stays live with progress while a board is realised, a superseded edit is
-cancelled rather than completed, and no pipeline work remains on the UI thread.
+cancelled rather than completed, and no pipeline work remains on the UI thread **on the preview
+path**.
+
+**Scope narrowed, 2026-09-21, deliberately.** The original clause said "no pipeline work remains on
+the UI thread" without qualification, and that is not met: eight planning callers still run
+synchronously. Reading them turned up why, and it is not what the clause assumed.
+
+All of them are one dialog. `AlignmentWindow`'s constructor calls `DrillFiles`, `StockProgram`,
+`WasteHoles` and `FrameWidthNm`, and `BuildMoves` calls `MovablePrograms` — and every one of those
+runs a full `ExportPlanner.Plan`. Opening drill alignment plans the whole board **five times**.
+
+So the defect there is not that the work is synchronous; it is that it is done five times over.
+Moving five redundant plans onto the thread pool would hide that rather than fix it, and would
+rewrite the same call sites story 2 is about to rewrite. It goes to story 2 with this count as its
+evidence, and story 1 claims only the path it actually measured and fixed.
+
+**And one more, found by the review rather than by reading.** `Apply` ends with `Rebuild`, which
+calls `ProjectFile.ToBoard` — re-parsing every Gerber source and rebuilding every scene, on the UI
+thread, at the end of every preview. So even the preview path is only half off the thread: the
+planning and the backplot moved, the re-realisation did not, and on a large board it is the
+dominant cost. It is left here for the same reason as the five plans: re-realising a board that has
+not changed is precisely what story 2 removes, and hoisting it now would be building story 2's
+answer in story 1's shape. **Story 1's clause should be read as the planning and the backplot, not
+the realisation.**
 
 **Requirements:** A5, A10 ([08](../Documentation/08-Requirements-Matrix.md)) ·
 [01 §4, §7](../Documentation/01-Architecture.md)
