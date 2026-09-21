@@ -106,9 +106,17 @@ public static class BoardLoader
                 // which read no holes out of it and warned about a units declaration the file
                 // plainly had, so the drill layers vanished from a project that opened fine from a
                 // folder.
-                layers.Add(LayerRoleInfo.IsDrill(role) && !IsGerberText(text)
-                    ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
-                    : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options));
+                // Built once per distinct file, role and set of options. A preview that follows a
+                // ticked checkbox changes none of those for any layer, so the whole board is served
+                // from memory and the work that used to be repeated is simply not done.
+                layers.Add(RealisedLayers.Get(
+                    fileName,
+                    content,
+                    role,
+                    options,
+                    () => LayerRoleInfo.IsDrill(role) && !IsGerberText(text)
+                        ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
+                        : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options)));
             }
             catch (Exception ex) when (ex is GerberParseException or DecoderFallbackException)
             {

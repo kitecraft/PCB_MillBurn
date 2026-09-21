@@ -1271,6 +1271,20 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         IsBusy = true;
         var clock = Stopwatch.StartNew();
 
+        // What gets built while this runs. Counted rather than asked of the plan, because "was this
+        // remembered" is a question about this call and not about the object handed back — the same
+        // plan instance goes to the run that built it and to every run that reuses it.
+        //
+        // Two previews overlapping can only push this the safe way: another run's work lands in the
+        // count and this one says it built something. It cannot claim to have remembered work it
+        // actually did.
+        //
+        // Unidentifiable counts with the misses. A board whose layers carry no fingerprint is
+        // planned in full every time and increments nothing else — so leaving it out made the
+        // message read "remembered in 2.98 s" in exactly the case where nothing was remembered,
+        // which is the one thing it exists to not say.
+        var builtBefore = RealisedLayers.Misses + PlannedExports.Misses + PlannedExports.Unidentifiable;
+
         try
         {
             result = await Task.Run(
@@ -1314,7 +1328,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        Apply(result, clock);
+        Apply(
+            result,
+            clock,
+            remembered: RealisedLayers.Misses + PlannedExports.Misses + PlannedExports.Unidentifiable
+                == builtBefore);
 
         // False when the picture came with a warning on it. A gouge is the most urgent thing this
         // application ever says — rapid moves at cutting depth, do not run this — and a caller that
@@ -1334,6 +1352,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public void Preview() => _ = PreviewAsync();
 
     /// <param name="result">What the run worked out.</param>
+    /// <param name="remembered">
+    /// True when nothing had to be built — board and settings both matched a run already done.
+    /// Said on the status line because the application is now fast enough to be disbelieved: a
+    /// preview that returns in seven hundredths of a second looks exactly like a button that did
+    /// nothing, and an operator who thinks nothing happened presses it again.
+    /// </param>
     /// <param name="clock">
     /// Running since the preview began, and read at the end rather than passed in already stopped.
     /// "Working…" tells the operator the window has not died; the number afterwards tells them
@@ -1341,7 +1365,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// which is still on this thread and is most of the wait on a large board. A number that left
     /// out the slow half would be quotable and wrong.
     /// </param>
-    private void Apply(PreviewResult result, Stopwatch clock)
+    private void Apply(PreviewResult result, Stopwatch clock, bool remembered)
     {
         Gcode = result.Gcode;
         _backplot = result.Backplot;
@@ -1360,7 +1384,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             ? $"{result.GougeCount} rapid move(s) at cutting depth — do not run this."
             : string.Create(
                 CultureInfo.InvariantCulture,
-                $"Previewing {result.ProgramCount} program(s), built in {clock.Elapsed.TotalSeconds:F2} s.");
+                $"Previewing {result.ProgramCount} program(s), {(remembered ? "remembered" : "built")} in {clock.Elapsed.TotalSeconds:F2} s.");
     }
 
     // ------------------------------------------------------------------ refresh

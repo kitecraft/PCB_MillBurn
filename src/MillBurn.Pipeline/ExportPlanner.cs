@@ -301,6 +301,45 @@ public static class ExportPlanner
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(library);
 
+        // Planning is a pure function of everything below, so a board that has not changed and
+        // settings that have not changed give a plan already built. The layer settings are ordered
+        // into the key because a dictionary's order is not part of what it means.
+        return PlannedExports.Get(
+            board,
+            new
+            {
+                Settings = settings.OrderBy(s => s.Key, StringComparer.Ordinal)
+                    .Select(s => new { s.Key, s.Value })
+                    .ToList(),
+                Library = library,
+                Thickness = boardThicknessNm,
+                Only = only,
+                Machine = machine,
+                Effort = effort,
+                Framing = framing,
+                MachineSettings = machineSettings,
+                Job = job,
+                Alignment = alignment,
+            },
+            () => Build(
+                board, settings, library, boardThicknessNm, only, machine, effort, framing,
+                machineSettings, job, alignment));
+    }
+
+    private static ExportPlan Build(
+        Board board,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        ToolLibrary library,
+        long boardThicknessNm,
+        OutputKind? only,
+        MachineProfile? machine,
+        RouteEffort effort,
+        ProgramFraming? framing,
+        MachineSettings? machineSettings,
+        JobOptions? job,
+        DrillAlignment? alignment)
+    {
+
         var items = new List<ExportItem>();
         var skipped = new List<string>();
 

@@ -28,7 +28,12 @@ public static class RealBoards
     public const string MillburnTestBoard = "Millburn_Test_Board";
 
     /// <summary>
-    /// Fifty boards and a frame, exported from KiCad as one panel.
+    /// Sixty-six boards and a frame — six by eleven — stepped out by KiKit as one 165 x 107 mm panel.
+    ///
+    /// Not fifty, which this said for a long time. Fifty-one is the number of ring regions its
+    /// shared Edge_Cuts lattice realises to, and tests/boards/README.md warns in as many words that
+    /// a count of profiles is not a count of boards. Whoever wrote the number here had counted the
+    /// wrong thing, and it has since been read back as fact.
     ///
     /// The case the optimizer is most worth measuring on, and the one that found the outline bug:
     /// taking only the largest ring cut the frame and left every board attached to it. Nothing

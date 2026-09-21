@@ -106,6 +106,36 @@ same input gives the same key on any machine and determinism is preserved rather
 **Done when** changing one layer re-runs only what depends on it, a second preview of the 66-up
 panel returns in well under half a second, and identical input still produces byte-identical output.
 
+**Measured, 2026-09-21. The criterion is met, on the board it names.**
+
+`tests/boards/GridStripConnector_Panelized` *is* the 66-up panel: one board stepped out by KiKit
+into eleven rows of six, 164.70 × 106.90 mm. It was briefly written off here as "nothing like a
+66-up panel" on the grounds that it holds three layers and plans to two programs — which confuses
+how many *layers* a board has with how many *boards* are on a panel. Sixty-six copies of a
+three-layer board is a three-layer board.
+
+| Board | First | Again |
+|---|---|---|
+| Arduino Mega 2560, in the application, end to end | 2.98 s | **0.06 s** |
+| Arduino Mega, after changing one setting | 2.97 s → | **2.14 s** |
+| `GridStripConnector_Panelized` — the 66-up panel — planning alone | 916 ms | **0.2 ms** |
+| PogoTest1, planning alone | 207 ms | **0.2 ms** |
+
+The second row is the part that is easy to miss: a *changed* setting costs 2.14 s where the first
+preview cost 2.97 s, and the 0.83 s difference is the layer memo declining to re-realise Gerbers
+that did not change. The 2.1 s that remains is planning, which this story cannot remove — only stop
+repeating. Stories 3 and 5 are what reduce it.
+
+From the bench, on the whole thing: *"Overall, it does feel speedy to use."*
+
+So *"a second preview of the 66-up panel returns in well under half a second"* is satisfied with
+three orders of magnitude to spare: 0.2 ms of planning, and the layers not realised again either.
+
+One defect came out of that session and is fixed: the plan cache kept four plans, sized for the
+six-layer board in 6.30 whose programs come to 7.2 MB, while the Mega's come to 0.6 MB. Returning
+to a setting used six changes ago planned it again from scratch. It is bounded by the text it holds
+now, not by a count.
+
 **Requirements:** A4 · [01 §4](../Documentation/01-Architecture.md)
 
 ---

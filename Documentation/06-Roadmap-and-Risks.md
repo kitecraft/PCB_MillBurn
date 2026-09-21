@@ -3770,6 +3770,65 @@ from that row, the choice is saved with the project and survives a refresh of th
 a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
 the test: it should be usable by hand even with every one of its files unrecognised.
 
+#### 6.32 Say where the project came from — **asked for by the product owner, not started**
+
+From the product owner: *"We should display the gerber folder somewhere so the user knows where the
+project is from."*
+
+**Nothing in the window says it.** `MillBurnProject.OriginFolder` is there and is used — for the
+folder a file dialog opens at, and for *"The source folder '…' is not there any more."* — but it is
+never shown while a project is open. The title shows `DisplayName`, which is the folder's last
+segment alone.
+
+That is the whole problem in one line: the author's own recent-projects list holds three entries
+reading `Millburn_Test_Board`, from `WorkingFolder/Millburn_Test_Board`, from
+`WorkingFolder/V0.1.4_Test`, and from a workflow folder inside `V0.1.5_Test`. The list distinguishes
+them because it shows the path underneath. Once one is open, nothing does — and the operator is a
+click from exporting programs built from a board they did not mean to open, which is the
+alignment-confidence problem this application exists to solve, arriving from the least interesting
+possible direction.
+
+**Where it belongs.** The Project info panel already carries what the board *is* — its size, its
+layer count, its holes — and has the Import folder button beside it, so where it came from belongs
+in the same place. The status bar is the wrong home: that row is contested, and the work in story 1
+showed what happens when something is added to it without regard for what it pushes out.
+
+Worth saying with it whether the project is a saved `.millburn` file or a folder opened directly,
+since those behave differently on a refresh, and worth eliding the middle of a long path rather than
+letting it push the panel wide.
+
+**Done when** an open project shows the folder it was imported from, a long path is readable without
+resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
+projects whose folders share a name can be told apart at a glance.
+
+#### 6.33 A superseded preview stops being watched, not stopped — **found in the workshop, not started**
+
+Found at the bench while testing story 2 on the six-layer i.MX8M board, where a preview takes seven
+to eight seconds and sixteen at 1 mm isolation: *"click preview on a new change that I know it has
+to generate, then as fast I can return the change and click preview again. The new click does
+interrupt the in-progress and cause a 'remembered in 0.11 s' message."*
+
+The window behaved correctly and the message was right. What it was not is an interruption.
+`ExportPlanner.Plan` takes no cancellation token; the token is read inside `PreviewBuild`, between
+programs, which is reached only after planning has finished. So a superseded run keeps planning to
+the end on its pool thread, and the new preview feels instant because it found an entry in the
+memo, not because the old work stopped.
+
+**Half of that is a feature.** The abandoned plan is stored on its way out, so going back to a
+setting that was mid-flight when it was dropped is a hit rather than a rebuild. That is some of why
+the bench session felt as quick as it did, and it should not be thrown away in fixing the rest.
+
+**The other half is not.** Nothing bounds how many abandoned runs are in flight. Nudging a setting
+five times on a board that plans in sixteen seconds can leave five full plans running at once, each
+holding its own intermediate geometry, on a machine whose operator is watching a sixth. The symptom
+would not look like this defect: it would look like the application becoming slow and memory-hungry
+for no visible reason, some minutes after the operator stopped doing anything unusual.
+
+**Done when** a superseded run stops within a program or two of being superseded rather than at the
+end of the plan, the plan it had already completed is still kept if it completed, and the number of
+plans in flight at once has a stated ceiling. Threading a token through `ExportPlanner.Plan` is the
+obvious half; deciding what to do with a half-built plan is the part worth thinking about.
+
 #### Not a defect: the circles in Universal Gcode Sender
 
 From the bench, with `Concerning_Circles.png`: *"I'm worried that the circles are not as good as
