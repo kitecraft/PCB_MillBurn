@@ -56,9 +56,11 @@ sprint ships. Nothing is committed straight to `main`.
 **Every merge into a release branch or into `main` is reviewed first.** In this repository that
 means `/code-review` at medium effort, with an eye on anything that could affect performance — the
 UI's responsiveness, the geometry pipeline, the optimizer, or the size and shape of the emitted
-G-code and SVG. **If it finds anything, run it again at `xhigh` effort** before fixing: the second
-pass is where the expensive problems surface, and it is cheap compared with reading a bug report
-from somebody's workshop.
+G-code and SVG. Fix what it finds, or record why it was left.
+
+**Escalating to `xhigh` is the product owner's call.** It buys a much deeper read, and it is worth
+it when there is a lot to read — at the end of a sprint rather than after every story. A medium pass
+finding something is the ordinary case and is not by itself a reason to go deeper.
 
 A review that finds nothing is still worth its minute. A merge that skipped one is not.
 

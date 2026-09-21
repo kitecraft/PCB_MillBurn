@@ -25,7 +25,7 @@
       that is what CI builds, and `#if DEBUG` code is excluded from it
 - [ ] New behaviour has tests; a fix has a test that fails without it
 - [ ] Ran it, not just the tests — `--shot` for the window, the CLI for emitted files
-- [ ] Reviewed (`/code-review` at medium effort; again at `xhigh` if it found anything)
+- [ ] Reviewed (`/code-review` at medium effort), and what it found is fixed or answered
 - [ ] Emitted files still name where their numbers came from, and refuse rather than guess
 - [ ] `CHANGELOG.md` has an entry under Unreleased, or this change does not warrant one
 

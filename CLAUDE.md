@@ -12,9 +12,13 @@ rather than two that drift.
 
 **Run `/code-review` at medium effort before every merge into a release branch or into `main`**,
 with an eye on anything that could affect performance: the UI's responsiveness, the geometry
-pipeline, the optimizer, or the size and shape of the emitted G-code and SVG. **If it finds
-anything, run it again at `xhigh` effort** before fixing — the second pass is where the expensive
-problems surface, and it is cheaper than a bug report from somebody's workshop.
+pipeline, the optimizer, or the size and shape of the emitted G-code and SVG. Fix what it finds,
+or say why it was left.
+
+**A deeper pass is the product owner's call, not an automatic one.** `/code-review` at `xhigh` is
+worth running when the work is large enough to deserve it — the end of a sprint, most likely — and
+they will ask for it. Do not escalate on your own because a medium pass found something; medium
+finding something is the ordinary case, not a signal.
 
 ## After writing or changing a test
 
