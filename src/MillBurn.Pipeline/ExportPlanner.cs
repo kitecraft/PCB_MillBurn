@@ -391,7 +391,7 @@ public static class ExportPlanner
             if (operation == OperationKind.None)
             {
                 skipped.Add(Invariant(
-                    $"{layer.FileName}: {LayerRoleInfo.Label(layer.Role)} cannot be exported as {setting.Output}."));
+                    $"{layer.FileName}: {LayerOperations.WhyNot(layer.Role, setting.Output)}"));
                 continue;
             }
 

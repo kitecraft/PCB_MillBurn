@@ -28,6 +28,13 @@ And the scaffolding a public repository needs: CI on release branches, a pinned 
 template, this file, and an `.editorconfig` whose every enforced rule was checked by turning it on
 and building — the first draft's naming and layout sections turned out to be decoration.
 
+Four found at the bench and cleared before the sprint's second half: copper sealed inside the board
+can no longer be set to G-code, and a project saved when it could opens corrected and says so; an
+Excellon file that states its units as `M72` is read as inches, instead of reporting every drill on
+the board at a twenty-fifth of its size; Preview stops unticking layers a freshly opened project had
+visible; and an export whose file names are not KiCad's is read by its words rather than by
+substring.
+
 ## [0.1.6](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.1.6) — 2026-09-20
 
 **Measure the machine, not just the bit — and an About window worth opening.**

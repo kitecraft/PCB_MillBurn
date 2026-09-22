@@ -28,6 +28,15 @@ Two provenances, and the difference matters:
   does not matter, only what it is called. `Top_Mask.gbr` and `Bot_Mask.gbr` are byte-identical, and
   that is not a mistake: PogoTest1's two mask files differ only in the attribute that was removed,
   because its mask openings are the same on both sides.
+- `PogoTest1-Inch` is **PogoTest1's two drill files and nothing else**, converted arithmetically:
+  every coordinate and diameter divided by 25.4, `METRIC` replaced by `M72`, and nothing else
+  touched. It is the corpus's only inch-mode Excellon, which is how 6.29 survived — an inch file
+  states its units with `M72` and no other line, that line was not read, and every drill in the
+  board was reported at a fiftieth of its size. Not a board: there is nothing to realise and no
+  Gerbers beside it, and the test that uses it parses the two files directly and compares the
+  millimetres against PogoTest1's own. Being a conversion, it cannot catch the parser being wrong
+  about inches in a way the conversion was also wrong about — only a unit not being read at all,
+  which is the failure that happened.
 - The `Arduino_*` boards come from [KiCad-Arduino-Boards](https://github.com/sabogalc/KiCad-Arduino-Boards)
   by Camilo Sabogal, released under the **WTFPL**, which places no condition on redistribution at
   all. They are third-party work, they are attributed here and in

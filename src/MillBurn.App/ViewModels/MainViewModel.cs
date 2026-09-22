@@ -450,6 +450,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         Warnings.Clear();
 
+        // The project's own corrections go back first. This list is about to become the program's
+        // diagnostics, and a setting changed on the operator's behalf must not be the thing that
+        // disappears because they opened a file to look at it.
+        foreach (var note in _project.OpenNotes)
+        {
+            Warnings.Add(note);
+        }
+
         // Anything the parser could not make sense of. On somebody else's file this is the useful
         // part: it says which lines are not being drawn, so an empty-looking picture has a reason.
         foreach (var diagnostic in parsed.Diagnostics.Take(20))
@@ -1642,11 +1650,18 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         AttachProject(project);
         CancelRefresh();
 
-        Rebuild(elapsed);
+        // Fresh: the rows on screen still belong to the project being replaced, and none of what
+        // the operator hid in that one is a statement about this one. See 6.27.
+        Rebuild(elapsed, fresh: true);
     }
 
-    /// <summary>Realises the project's sources and rebuilds everything the window shows.</summary>
-    private void Rebuild(TimeSpan elapsed)
+    /// <summary>
+    /// Realises the project's sources and rebuilds everything the window shows.
+    ///
+    /// <paramref name="fresh"/> marks the rebuild that follows a different project being opened, so
+    /// that the rows on screen — still the old project's — are not read as this one's.
+    /// </summary>
+    private void Rebuild(TimeSpan elapsed, bool fresh = false)
     {
         var previous = Scene;
 
@@ -1703,7 +1718,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var hidden = Layers.Where(r => !r.IsVisible).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        // Null means "nobody on screen has an opinion yet", which is not the same as "nothing is
+        // hidden" — and reading the second as the first is 6.27. A project whose saved view state
+        // hid four layers opened with all of them ticked, because the rows still on screen belonged
+        // to the project before it; then the first Preview found no row hidden, fell back to the
+        // saved state, and unticked four layers the operator had just been shown. The same
+        // confusion ran the other way within one project: reveal every layer, change a setting, and
+        // the saved state hid them again.
+        var hidden = fresh || Layers.Count == 0
+            ? null
+            : Layers.Where(r => !r.IsVisible).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
 
         var board = ProjectFile.ToBoard(_project);
         _board = board;
@@ -2523,24 +2547,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         HiddenLayers = [.. Layers.Where(l => !l.IsVisible).Select(l => l.Id)],
     };
 
-    private void ApplyViewState(BoardScene scene, HashSet<string> alreadyHidden)
-    {
-        var hidden = alreadyHidden.Count > 0
-            ? alreadyHidden
-            : _project.ViewState.HiddenLayers.IsDefaultOrEmpty
-                ? null
-                : _project.ViewState.HiddenLayers.ToHashSet(StringComparer.Ordinal);
-
-        if (hidden is null)
-        {
-            return;
-        }
-
-        foreach (var layer in scene.Layers)
-        {
-            layer.Visible = !hidden.Contains(layer.Id);
-        }
-    }
+    /// <summary>
+    /// Hides what should be hidden: what is hidden on screen now, or — when there is nothing on
+    /// screen to ask — what the project was saved with. <see cref="LayerVisibility"/> holds the
+    /// rule and the reason it is not a count.
+    /// </summary>
+    /// <param name="scene">The scene whose layers are being shown or hidden.</param>
+    /// <param name="onScreen">
+    /// The rows currently hidden, or null when the window holds no rows for this project yet. An
+    /// empty set is an answer: it means every row is showing, and it must win over the saved state.
+    /// </param>
+    private void ApplyViewState(BoardScene scene, HashSet<string>? onScreen) =>
+        LayerVisibility.Apply(
+            scene,
+            LayerVisibility.Hidden(
+                onScreen,
+                _project.ViewState.HiddenLayers.IsDefaultOrEmpty ? [] : _project.ViewState.HiddenLayers));
 
     private void AttachProject(MillBurnProject project)
     {
@@ -2567,6 +2589,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         Warnings.Clear();
 
+        // First, and kept for as long as the project is open rather than only at the moment it
+        // opens: a setting this build will not honour was changed on the operator's behalf, and
+        // that is the kind of thing somebody needs to see when they come back to the window, not
+        // only in a status line they may have been looking away from.
+        foreach (var note in _project.OpenNotes)
+        {
+            Warnings.Add(note);
+        }
+
         foreach (var failure in board.Failures)
         {
             Warnings.Add($"Could not read {failure}");
@@ -2591,8 +2622,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // Two files claiming to be the top copper is a real problem; two drill maps is a normal
         // export, because KiCad writes one per drill file. Warning about the second teaches people
         // to skim past the first.
+        //
+        // Inner copper is on that list for the same reason, and it was found the same way: the
+        // Olimex board in 6.28 has Ln1_Cu and Ln2_Cu, and every four-layer board ever made has at
+        // least two inner layers. The warning only became visible when 6.28 taught the matcher to
+        // read those names, which is the usual shape of this — reading a board correctly for the
+        // first time is what shows you the thing that was always going to be wrong about it.
         foreach (var group in board.Layers
-            .Where(l => l.Role is not (LayerRole.Unknown or LayerRole.DrillMap or LayerRole.Documentation))
+            .Where(l => l.Role is not (LayerRole.Unknown or LayerRole.DrillMap
+                or LayerRole.Documentation or LayerRole.InnerCopper))
             .GroupBy(l => l.Role)
             .Where(g => g.Count() > 1))
         {

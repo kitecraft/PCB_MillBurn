@@ -267,6 +267,105 @@ public sealed class ProjectTests : IDisposable
         Assert.Contains("newer version", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A project saved when inner copper could still be set to G-code opens with that setting put
+    /// back, and says so.
+    ///
+    /// 6.30: the pairing was offered, an operator took it, and the export wrote eight files of
+    /// machine program for four layers sealed inside a board. Withdrawing it from the picker does
+    /// nothing for the projects that already hold it — those open again, plan again, and would cut
+    /// again. Correcting it in silence is the other half of the trap: the application would then be
+    /// planning something different from what the operator last told it, without either of them
+    /// knowing.
+    /// </summary>
+    [Fact]
+    public void AnInnerLayerSavedAsGcodeOpensSetBackToNothing()
+    {
+        var project = Load(RealBoards.Directory("TopBotNames"));
+        project.Settings = project.Settings with
+        {
+            LayerOutputs =
+            [
+                new LayerOutputSettings { FileName = "Ln1_Cu.gbr", Output = OutputKind.Gcode },
+                new LayerOutputSettings { FileName = "Top.gbr", Output = OutputKind.Gcode },
+            ],
+        };
+
+        var path = Scratch("inner" + ProjectFile.Extension);
+        ProjectFile.Save(project, path);
+
+        var reopened = ProjectFile.Open(path);
+
+        Assert.Equal(
+            OutputKind.None,
+            reopened.Settings.LayerOutputs.Single(o => o.FileName == "Ln1_Cu.gbr").Output);
+
+        // The top copper is ordinary work and must come back exactly as it was saved. A reconcile
+        // that tidied this away too would be a worse bug than the one it fixes.
+        Assert.Equal(
+            OutputKind.Gcode,
+            reopened.Settings.LayerOutputs.Single(o => o.FileName == "Top.gbr").Output);
+
+        var note = Assert.Single(reopened.OpenNotes);
+        Assert.Contains("Ln1_Cu.gbr", note, StringComparison.Ordinal);
+        Assert.Contains("cannot reach a layer inside the board", note, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A drill layer saved as SVG opens as SVG, because that export really works.
+    ///
+    /// The first version of the reconcile asked <c>LayerOperations.Available</c>, which withholds
+    /// SVG from a drill layer, rather than <c>For</c>, which is what the export planner asks and
+    /// which answers <c>Vector</c> — a vector export that runs, and that the drills import default
+    /// in Settings offers. So an operator who had set it lost the setting on the next open and was
+    /// told the layer could not be exported as SVG, which was false. A method whose whole purpose
+    /// is to never change a job in silence must not be the thing that changes a job in silence.
+    /// </summary>
+    [Fact]
+    public void ADrillLayerSavedAsSvgIsLeftAlone()
+    {
+        var project = Load(CopyBoard());
+        project.Settings = project.Settings with
+        {
+            LayerOutputs =
+            [
+                new LayerOutputSettings { FileName = "PogoTest1-PTH.drl", Output = OutputKind.Svg },
+            ],
+        };
+
+        var path = Scratch("drills-as-svg" + ProjectFile.Extension);
+        ProjectFile.Save(project, path);
+
+        var reopened = ProjectFile.Open(path);
+
+        Assert.Equal(
+            OutputKind.Svg,
+            reopened.Settings.LayerOutputs.Single(o => o.FileName == "PogoTest1-PTH.drl").Output);
+
+        Assert.Empty(reopened.OpenNotes);
+    }
+
+    /// <summary>A project holding nothing impossible opens with nothing to say about it.</summary>
+    [Fact]
+    public void AnOrdinaryProjectOpensWithoutNotes()
+    {
+        var project = Load(CopyBoard());
+        project.Settings = project.Settings with
+        {
+            LayerOutputs = [.. project.Sources.Select(
+                source => new LayerOutputSettings
+                {
+                    FileName = source.FileName,
+                    Output = LayerOperations.DefaultFor(source.Role),
+                })],
+        };
+
+        var path = Scratch("ordinary" + ProjectFile.Extension);
+        ProjectFile.Save(project, path);
+
+        Assert.Empty(ProjectFile.Open(path).OpenNotes);
+    }
+
     // ------------------------------------------------------------------ refresh
 
     [Fact]

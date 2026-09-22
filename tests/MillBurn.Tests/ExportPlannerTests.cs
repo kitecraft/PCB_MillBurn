@@ -95,9 +95,16 @@ public sealed class ExportPlannerTests
             LayerOperations.DefaultFor(LayerRole.BottomCopper));
     }
 
-    /// <summary>A cutter cannot reach a layer inside the board, whatever the settings say.</summary>
+    /// <summary>
+    /// No import preset starts an inner layer off as something that cuts.
+    ///
+    /// This is the body <see cref="InnerCopperIsNeverExported"/> used to have, under a name it did
+    /// not earn: where a layer *starts* is not what it can be *set to*, and 6.30 is what the
+    /// difference cost — four inner layers of a six-layer board set to G-code by hand, and eight
+    /// files of machine program written for them. Both facts are worth holding; they are two facts.
+    /// </summary>
     [Fact]
-    public void InnerCopperIsNeverExported()
+    public void InnerCopperIsNotTheStartingPoint()
     {
         Assert.Equal(OutputKind.None, LayerOperations.DefaultFor(LayerRole.InnerCopper));
 
@@ -105,6 +112,46 @@ public sealed class ExportPlannerTests
             [ImportDefaults.Milling, ImportDefaults.LaserEtching, ImportDefaults.Nothing])
         {
             Assert.Equal(OutputKind.None, preset.For(LayerRole.InnerCopper));
+        }
+    }
+
+    /// <summary>
+    /// A cutter cannot reach a layer inside the board, whatever the settings say — so setting one
+    /// to G-code by hand produces no file, and a line saying why.
+    ///
+    /// `TopBotNames` is a two-layer board carrying one file called `Ln1_Cu.gbr`, which reads as
+    /// inner copper: enough to reproduce 6.30 in a few kilobytes, where the board it was found on
+    /// is 13 MB and cannot be milled at all.
+    /// </summary>
+    [Fact]
+    public void InnerCopperIsNeverExported()
+    {
+        Assert.Equal([OutputKind.None], LayerOperations.Available(LayerRole.InnerCopper));
+        Assert.Equal(OperationKind.None, LayerOperations.For(LayerRole.InnerCopper, OutputKind.Gcode));
+        Assert.Equal(OperationKind.None, LayerOperations.For(LayerRole.InnerCopper, OutputKind.Svg));
+
+        var board = BoardLoader.LoadFolder(RealBoards.Directory("TopBotNames"));
+        var inner = board.Layers.Single(l => l.Role == LayerRole.InnerCopper);
+        Assert.Equal("Ln1_Cu.gbr", inner.FileName);
+
+        // It has copper on it, so nothing here is satisfied by an empty layer having nothing to cut.
+        Assert.True(inner.Rings().Count > 0);
+
+        foreach (var asked in (OutputKind[])[OutputKind.Gcode, OutputKind.Svg])
+        {
+            var settings = Defaults(board);
+            settings[inner.FileName] = settings[inner.FileName] with { Output = asked };
+
+            var plan = Plan(board, settings);
+
+            Assert.DoesNotContain(
+                plan.Items,
+                i => string.Equals(i.LayerFileName, inner.FileName, StringComparison.Ordinal));
+
+            Assert.Contains(
+                plan.Skipped,
+                skip => skip.Contains(inner.FileName, StringComparison.Ordinal)
+                    && skip.Contains("cannot reach a layer inside the board", StringComparison.Ordinal));
         }
     }
 

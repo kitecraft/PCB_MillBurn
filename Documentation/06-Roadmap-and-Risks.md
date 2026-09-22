@@ -3513,7 +3513,7 @@ computed, and named in the program's comments like every other derived number he
 fifty-nine, cuts the same shape, and still lifts to the safe height for anything that is a genuine
 travel move.
 
-#### 6.25 An isolation path bows into an arc where the copper is straight — **found in the workshop, not started**
+#### 6.25 An isolation path bows into an arc where the copper is straight — **measured, not fixed**
 
 From the bench, on the Arduino Mega 2560: *"One cut line near the middle-bottom of the board is not
 straight. It's an arc."* Screenshot: `WorkingFolder/V0.1.6/Error_Screenshots/Bad_cut_line.png`.
@@ -3603,7 +3603,7 @@ cosmetic.
 the stray feature is gone, and a test pins whatever produced it — with the Arduino Mega added to the
 corpus if that is what it takes to reproduce.
 
-#### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **found in the workshop, not started**
+#### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **fixed**
 
 From the bench: *"Open the 'Arduino Mega 2560' project from the recent list. Then, file -> open
 recent -> Millburn_Test_Board Workflow one. When this project opens, notice that all of the layers
@@ -3625,7 +3625,29 @@ that things line up.
 **Done when** opening a project over another one and pressing Preview leaves every layer's tick
 exactly as the project was loaded with, and a test opens two projects in sequence and asserts it.
 
-#### 6.28 A whole export imports as Unknown because the names are not KiCad's — **found in the workshop, not started**
+**Fixed.** Both suspects were right, and they were the same mistake counted twice. `Rebuild` reads
+which rows are hidden *before* it rebuilds them, and on the rebuild that follows an open those rows
+still belong to the project being replaced. `ApplyViewState` then chose between that set and the
+project's saved view state **by counting**: a non-empty set won, an empty one fell through to the
+file. So the second project opened with every layer ticked — the old project's hidden ids matched
+none of its layers — and the first Preview, finding nothing hidden, fell through to the saved state
+and unticked four layers in front of the operator.
+
+The same confusion ran the other way within one project, and nobody had reported it: reveal every
+layer, change any setting, and the rebuild found no row hidden and hid the saved ones again.
+
+The distinction is now carried by null rather than by a count — null means there is nobody to ask,
+an empty set means everything is showing — and `Adopt` passes `fresh: true` so the rebuild after an
+open never reads the outgoing project's rows as this one's. The rule and the reason for it moved to
+`LayerVisibility` in `MillBurn.Viewer`, where `LayerVisibilityTests` pins both directions on a real
+scene. What those tests do not cover is the call site: `Adopt` passing `fresh: true` is one line in
+a view model the test project cannot reach, and it was checked by running.
+
+**Confirmed at the bench, 2026-09-22**, on a published build: *"Layers are correctly selected when
+switching projects."* That is the part no test here reaches — two projects opened in sequence in a
+real window — so it is the only evidence that the call site is right.
+
+#### 6.28 A whole export imports as Unknown because the names are not KiCad's — **fixed**
 
 From the bench: a set of Olimex OLinuXino Gerbers (A13-OLinuXino-WIFI rev H) imports with every one
 of its twelve files marked Unknown, so nothing can be exported. The files are plain RS-274X in
@@ -3667,7 +3689,31 @@ as copper. If the board joins the corpus, its licence needs checking first: it i
 hardware, and `tests/boards` currently holds only sets whose terms were established when they went
 in.
 
-#### 6.29 An Excellon file in inches has its drill sizes read as something else — **found in the workshop, not started**
+**Fixed**, and the matching is what changed rather than the table: `FromFileName` splits a name into
+whole words and a rule names the words it wants, so `Top` alone is copper and `Top_Mask` cannot be.
+The side is taken from the word nearest the kind, `.xnc` joined the drill extensions, and mask, silk
+and paste with no side stated stay Unknown rather than defaulting to the top. The fixtures are
+`TopBotNames` and `Millburn_Test_Board_Protel`; the Olimex board itself is not in the corpus, so its
+licence was never the question in the end. Reading its export summary is what found 6.29.
+
+**Confirmed on the board itself, 2026-09-22**, the product owner having supplied
+`A13-OLinuXino-WIFI hardware revision G2` — a sibling of the rev H this was found on. All twelve
+files are named: both coppers, both masks, both silks, both pastes, the outline, the two inner
+layers and the drills. Nothing reads as Unknown. The board is 119.63 x 119.63 mm, 40,475 objects,
+850 copper islands at 70 % coverage.
+
+**And reading it correctly showed up something that was always going to be wrong.** The panel
+warned *"2 files claim to be Inner copper: Ln1_Cu.gbr, Ln2_Cu.gbr"* — from the duplicate-role check,
+which exists to catch two files both claiming to be the top copper. Every four-layer board ever made
+has at least two inner layers, so that warning is noise by construction; it had simply never fired
+before, because until this fix no board in the corpus had a readable inner layer. `InnerCopper`
+joins `Unknown`, `DrillMap` and `Documentation` on the list of roles the check skips, for the same
+reason drill maps are on it. The board now imports with nothing worth checking at all.
+
+**It is still not a corpus candidate**, and its licence still has not been examined. It was read
+from a folder outside the repository and nothing was written.
+
+#### 6.29 An Excellon file in inches has its drill sizes read as something else — **fixed**
 
 Found while fixing 6.28, by exporting the Olimex board once the layers could be read at all. The
 summary said *931 holes in 8 sizes* and listed them as 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.13 and
@@ -3705,7 +3751,35 @@ Excellon fixture is in the corpus, and a test reads the same holes from a metric
 version of one file and gets the same millimetres from both. It is worth checking at the same time
 whether the coordinates are right or merely close enough to look it.
 
-#### 6.30 Copper sealed inside the board can be set to G-code — **found in the workshop, not started**
+**Fixed, and the guess above was wrong in a way worth keeping.** It was not the tool table
+specifically. `M72` was not read *at all*, so the whole file was taken for metric, coordinates
+included: the parser knew `METRIC` and `INCH` as header keywords and nothing about `M71` or `M72`,
+which is the only way this file states its units, so the unit never left its default. The
+coordinates looked plausible because a board read at 1/25.4 scale still produces numbers that travel
+a few hundred millimetres. Nothing about that was evidence, and taking it for evidence would have
+sent the fix to the tool table and left every coordinate wrong.
+
+Both commands are read now, in the body as well as the header, and each tool's diameter is kept as
+the file wrote it — so a unit declared *after* the tool table, which is legal and what some older
+outputs do, still reaches the tools it was stated after.
+
+`tests/boards/PogoTest1-Inch` is the corpus's first inch-mode Excellon: PogoTest1's two drill files
+with every number divided by 25.4 and `METRIC` replaced by `M72`. `ExcellonParserTests` reads both
+versions and compares the millimetres, within the nanometre or two that a decimal inch cannot
+express exactly.
+
+**Confirmed on an Olimex board, 2026-09-22.** The revision to hand was G2 rather than the H this was
+found on, and it carries sixteen tools rather than thirteen: `Drill.xnc` opens `M48`, `M72`, then
+`T01C0.0100` through `T16C0.1575`. The application now reports **931 holes in 16 sizes, 0.25 to
+4.00 mm** — 0.0100 in is 0.254 mm and 0.1575 in is 4.0005 mm, so both ends land where the file says.
+
+The old reading is worth keeping beside that, because it was wrong in two ways rather than one: it
+said *931 holes in 8 sizes*, from 0.02 to 0.16 mm. Not only was every size a twenty-fifth of its
+true value — **eight of the sixteen sizes had collapsed into each other**, because drills that
+differ by a tenth of a millimetre differ by four microns once divided by 25.4, and rounding merged
+them. The hole count was right the whole time, which is exactly what made the summary look credible.
+
+#### 6.30 Copper sealed inside the board can be set to G-code — **fixed**
 
 Found at the bench on a six-layer i.MX8M dev board, opened to see what would strain the
 application. Its four inner copper layers were ticked and set to G-code, and the export wrote
@@ -3739,6 +3813,27 @@ should say they cannot be reached, not merely that they exist.
 it cannot be milled at all — 2,460 gaps narrower than the cut. It is a performance reference, not a
 fixture. A two-layer fixture with a file renamed to `In1_Cu` reproduces this in a few kilobytes,
 and `TopBotNames` already carries one.
+
+**Fixed.** `Available(LayerRole.InnerCopper)` is `[None]`, so the picker on the layer row offers
+nothing else, and inner copper is gone from both copper rows in `LayerOperations.For` — so a setting
+that arrives by any other route plans to nothing and says why. The reason is given in the operator's
+terms rather than the application's: *a cutter cannot reach a layer inside the board*, not *cannot
+be exported as Gcode*, because the second invites the reader to go looking for the setting that
+would allow it.
+
+A project saved while the pairing was still offered is put right when it opens, and says so.
+`ProjectFile.Open` reconciles each saved output against what its layer can produce; the note reaches
+the CLI as a CHECK line and the window as a warning that stays for as long as the project is open.
+Only the impossible is touched — a merely unusual setting is the operator's business.
+
+`InnerCopperIsNeverExported` earns its name now: it plans `TopBotNames` with `Ln1_Cu.gbr` set by
+hand to G-code and then to SVG and asserts that no file comes out of either, having first checked
+the layer has copper on it, so that nothing is satisfied by an empty layer with nothing to cut. The
+body it used to have — the three import presets — is still there, under
+`InnerCopperIsNotTheStartingPoint`, which is the name it was always describing.
+
+**Confirmed at the bench, 2026-09-22**, on a published build: *"Inner layers are no longer
+exportable."*
 
 #### 6.31 Let the operator say what a layer is — **asked for by the product owner, not started**
 
