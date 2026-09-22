@@ -53,7 +53,9 @@ sprint ships. Nothing is committed straight to `main`.
    worse, is easy to pick up again — and a branch that gets more commits after being squashed in
    fights a conflict on every later merge, because the shared history it needs is not there.
 6. **The release branch merges into `main` with a merge commit**, not a squash: a release is a real
-   event and its shape is worth keeping.
+   event and its shape is worth keeping. Delete the **In progress** note at the top of `README.md`
+   in the same merge — it exists so that a visitor browsing the release branch on GitHub knows what
+   they are looking at, and on `main` it would be a lie.
 
 ### Review
 

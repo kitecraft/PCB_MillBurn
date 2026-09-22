@@ -20,6 +20,29 @@
   </p>
 </div>
 
+> [!NOTE]
+> **In progress — `release/0.2.0`.** You are looking at a sprint branch, not a release. Released
+> code is on [`main`](https://github.com/kitecraft/PCB_MillBurn/tree/main), and the newest build you
+> can download is [v0.1.6](https://github.com/kitecraft/PCB_MillBurn/releases/latest). Nothing in
+> this section has shipped yet.
+>
+> **Sprint 1 — speed and accuracy.** No new features: what is already here made faster, and made
+> provably right. Landed so far —
+>
+> - **The window stops freezing.** Preview and export run off the UI thread, with progress, and a
+>   new edit cancels the run it supersedes.
+> - **Changing one layer stops redoing all of them.** The pipeline remembers its stages, so an edit
+>   re-plans what it touched and nothing else.
+> - **Layer names read as words** — and the bugs that reading them out loud found.
+> - **The scaffolding a public repository needs**: CI on release branches, a pinned SDK, a written
+>   style the build enforces, and a briefing any assistant can read.
+>
+> **[Read the sprint document →](Sprints/Sprint-01-Speed-and-Accuracy.md)** — the four numbers that
+> set the order, what each of the six stories is for, and what was deliberately left out. The
+> [changelog](CHANGELOG.md) carries the same list in release form.
+
+---
+
 <img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with its isolation and cut-out toolpaths drawn over the copper">
 
 <sub>A 66-up panel — 11,414 objects, 198 copper islands — with the emitted isolation and cut-out programs drawn back over the copper they were made from.</sub>
