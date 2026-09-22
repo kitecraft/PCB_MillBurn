@@ -243,7 +243,116 @@ containment tree the geometry already builds.
 **Done when** no applied move can make the route worse, shown by a test, and measured travel on the
 panel falls against today's figure.
 
-**Requirements:** O10, O6 · [03 §7.2, §8](../Documentation/03-Toolpath-Optimization.md)
+**Measured before starting, 2026-09-22, and it changes what this story is about.**
+
+The figure to beat, on `GridStripConnector_Panelized`:
+
+| Program | Nodes | Groups | Node kinds | Cutting | Travel | What the optimizer gained |
+|---|---|---|---|---|---|---|
+| `F_Cu` isolation | 594 | 1 | all `Closed` | 34,425 mm | 959 mm | 1033 → 1011 mm rapid, **2 %** |
+| `Edge_Cuts` outline | 51 | 2, of [50, 1] | all `Fixed` | 5,863 mm | 785 mm | 775 → 775 mm, **exactly none** |
+
+The outline's ordering line is not printed in the summary because the gain is under the half a
+percent that makes it worth showing. It is not under it. It is zero.
+
+**The grouping is right and is not the problem.** Fifty boards in one group and the frame alone in
+the second is precedence doing its job: the frame has to come last or the pieces are loose while it
+is cut.
+
+**The problem is that every one of the fifty-one profiles is a `Fixed` node**, and a `Fixed` node
+has `OptionCount == 1`. So `TryFlip` — which its own comment calls "the move that matters most and
+it is nearly free" — returns false fifty-one times out of fifty-one. On the isolation, where every
+node is `Closed` and carries its entry vertices, that same move is doing most of the work. The
+optimizer is not failing on the outline; it is being handed a problem with no freedom in it and
+correctly reporting that the order it was given is the best one available.
+
+**Why they are `Fixed`, which is the part worth knowing.** The summary says it: *"50 of them enclose
+nothing and are cut from the inside — slots, windows, or the channels between the boards of a
+panel"*. A channel is cut as a centreline, so `closed` is false, so each depth alternates direction
+— forward, then backward — which is deliberate and right, because an open run taken the same way
+round twice costs its whole length in travel before the second pass can start. But alternating makes
+the stack's passes neither all closed nor all the same contour, so `ToolpathRouter.NodeFor` falls
+through to `ForFixed`.
+
+**And that stack is reversible, for free.** Nothing stops it beginning with the backward pass: it
+would enter from the other end and alternate identically, ending where the forward-first version
+began. It has two entries and is being modelled as having one. Restoring that is not a new
+optimisation — it is giving fifty of fifty-one profiles back a choice they always had.
+
+**So the second half of this story is not mainly the merging.** Merging paths that share endpoints
+is still worth doing and O6 still stands, but the outline's 785 mm is first of all an entry-choice
+problem, and that is cheaper to fix and measurable on the same board.
+
+**And the first half got more urgent.** `Flip` is the identity for a `Fixed` node while `EntryFor`
+and `ExitFor` always answer `Start` and `End`, so `TryTwoOpt` reversing a span that contains one
+produces an order the tool cannot physically take, costed as though it could — its own comment
+claims "the interior edges survive reversal at exactly the same cost", which holds for `Open` and
+`Closed` nodes and not for these. It applied no moves on this board, so nothing here is mis-cut
+today; that is luck rather than safety, and it is a correctness fault rather than a missed saving.
+
+**Done when, restated by the measurement.** The clause above stands, and gains two: an alternating
+open stack offers both of its ends, and the outline's travel on the panel falls against the 775 mm
+recorded here.
+
+### Result, 2026-09-22
+
+**Both halves landed, and the second one is where the number is.**
+
+*The cycling was two-opt mis-costing a reversal.* Reversing a span leaves the interior unevaluated
+on the grounds that reversal is cost-neutral, which holds for a closed contour (entry and exit
+coincide) and for an open run (its flip swaps its ends) and is false for a fixed stack, whose flip
+is the identity while its entry and exit are different points: `d(End(k), Start(k+1))` silently
+becomes `d(End(k+1), Start(k))`. Reproduced on 25 fixed stacks in `RouteMonotonicityTests` —
+**16,057 applied "improvements" at Balanced and 321,413 at Thorough, ending on two different
+routes.** With the move refused where it cannot be evaluated: **15, and both efforts agree.**
+`TryOrOpt` reverses runs of two and three on the same assumption and now carries the same guard;
+reversing a run of one is only a flip and every kind evaluates that correctly.
+
+*Then the stacks got their second entry back.* `RouteKind.Stack` keeps a stack's pass order — shallow
+still before deep — while allowing every pass in it to be flipped, which enters from the far end.
+Its reversed ends are stored rather than derived, because they are not its own ends swapped: with an
+even number of alternating passes both configurations are a there-and-back, a shape neither `Open`
+nor `Closed` can express.
+
+**Measured on `GridStripConnector_Panelized`, on the outline program:**
+
+| | Travel | Cutting |
+|---|---|---|
+| Before this story | 1850.41 mm | 13785.51 mm |
+| Cycling refused, stacks still rigid | 1650.56 mm | 13785.51 mm |
+| **Stacks enterable from either end** | **337.14 mm** | **13785.51 mm** |
+
+**An 82 % reduction in rapid travel, with the cutting distance identical to the centimetre and the
+line count unchanged at 5,916** — the same cuts, in a better order, entered from the better end.
+Those figures are at the golden test's 0.40 mm step-down, six depths per channel. At the CLI's
+default 1.00 mm step the same program goes 785 → 718 mm, and an ordering line appears in the summary
+where there was none: 731 → 708 mm rapid.
+
+**The gain is concentrated where the choice exists**, and that is worth saying plainly.
+`Millburn_Test_Board`, `GridStripConnector` and `Arduino_Mega_2560` are byte-identical before and
+after — 136 mm, 60 mm and 335 mm of outline travel respectively, unchanged. One outer profile and a
+handful of cutouts give the optimizer almost nothing to choose between. Fifty channels do.
+
+**O6, the Eulerian merging, was measured and closed rather than built.** It is half of what this
+story named, so not doing it needs more than a shrug. Reading the emitted programs and asking which
+cut runs actually meet: the outline has 106 runs over 109 distinct endpoints and **no point at all
+where two different paths meet** — every shared endpoint is one channel sharing with itself at
+another depth. The isolation has 198 runs and 396 endpoints, none repeated. There is nothing to
+merge, and a structural reason why: separate voids' centrelines do not touch, and a closed contour's
+two ends are the same point.
+
+**What is wasting the lifts is vertical, and it already has a story.** 51 of the outline's 105 lifts
+go straight back down where they left, which is the retract and plunge between a channel's two depth
+passes, and the program's vertical motion is now 735.4 mm against 718 mm of horizontal travel. That
+is story 6, and this measurement makes it the more valuable of the two.
+
+**Reopening it needs a board, not an argument.** If somebody asks for merging and brings the
+Gerbers, measure them first: the giveaway is a distinct endpoint count well below twice the run
+count, with the sharing between different paths rather than within a stack. [03
+§7.2](../Documentation/03-Toolpath-Optimization.md) carries the numbers and the method.
+
+**Requirements:** O10 met · O6 closed as not needed, reopenable on evidence ·
+[03 §7.2, §8](../Documentation/03-Toolpath-Optimization.md)
 
 ---
 
