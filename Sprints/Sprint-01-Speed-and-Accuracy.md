@@ -43,6 +43,29 @@ and what happened to it:
 
 ---
 
+## How a story closes
+
+A story is not finished because its branch merged. It is finished when somebody has written down
+that it is, with the evidence attached — so **every story here ends with a `Closed` block**, and a
+story without one is still open whatever its branch says.
+
+A `Closed` block carries four things:
+
+1. **The date, and a plain verdict** against the *Done when* clause — met, met in part, or met under
+   a scope that was narrowed, saying which.
+2. **The manual test.** What was actually done at the bench: which board, what was changed, what to
+   watch for. A summary, not a transcript — but enough that somebody else could run a similar test
+   without asking how.
+3. **What was observed**, including the sentence from the bench. The numbers say whether it is
+   faster; the sentence is usually what says whether it is better.
+4. **What is left open**, named and pointed at, so that nothing is quietly closed along with it.
+
+The boards are the ones in `tests/boards`, which any reader has, except where a test needed
+something bigger than anything committed here — and then the closure says so, and names the nearest
+committed stand-in.
+
+---
+
 ## Story 1 — The window stops freezing
 
 **Problem.** Every preview and export runs on the UI thread. The window locks for 1.5–4 s, and a
@@ -85,6 +108,37 @@ not changed is precisely what story 2 removes, and hoisting it now would be buil
 answer in story 1's shape. **Story 1's clause should be read as the planning and the backplot, not
 the realisation.**
 
+### Closed — 2026-09-21
+
+**Met, under the scope narrowed above:** the planning and the backplot, not the realisation. The
+window stays live with progress while a board is realised, and a superseded edit no longer has its
+result published over a newer one.
+
+**The manual test.** Open a board big enough that a preview takes seconds — this was done on a
+six-layer i.MX8M dev board, which is larger than anything committed here; `Arduino_Mega_2560` is the
+nearest stand-in in `tests/boards`. Then, *while the preview is running*: drag the splitter between
+the tree and the viewport, open and close layer rows, scroll the board. Then start a preview and
+immediately make another edit, and watch which picture ends up on screen. What to watch for is the
+window refusing input, the busy state sticking after a run ends, and a slow run's picture landing on
+top of a quicker later one.
+
+**Observed:** *"No freezing. The pane can be moved, layers open and closed, nothing seems blocked."*
+The status bar reads "Working…" throughout and then how long it took — 1.46 s on the test board,
+which deliberately counts the rebuild that is still on the UI thread rather than reporting the
+0.93 s an earlier version did. A superseded run's result is discarded rather than published.
+
+**Left open, recorded rather than fixed:** the eight synchronous planning callers, all of them
+`AlignmentWindow`, which plans the whole board five times to open one dialog — handed to story 2
+with that count as its evidence. And `Apply` → `Rebuild` → `ProjectFile.ToBoard`, which re-realises
+every layer on the UI thread at the end of every preview.
+
+**And one the closure should not claim**, found during story 2 and written up as
+**[6.33](../Documentation/06-Roadmap-and-Risks.md)**: "cancelled" here means the token is read
+between programs in `PreviewBuild` and the stale result is thrown away. `ExportPlanner.Plan` takes
+no token at all, so a superseded run's *planning* still goes to the end. The window behaves as this
+story promised; the work underneath it does not stop. Story 1 is closed on the behaviour it tested
+for, and the rest is 6.33's.
+
 **Requirements:** A5, A10 ([08](../Documentation/08-Requirements-Matrix.md)) ·
 [01 §4, §7](../Documentation/01-Architecture.md)
 
@@ -106,7 +160,12 @@ same input gives the same key on any machine and determinism is preserved rather
 **Done when** changing one layer re-runs only what depends on it, a second preview of the 66-up
 panel returns in well under half a second, and identical input still produces byte-identical output.
 
-**Measured, 2026-09-21. The criterion is met, on the board it names.**
+### Closed — 2026-09-21
+
+**Met, on the board the clause names.** Changing one layer re-runs only what depends on it, a second
+preview of the 66-up panel costs 0.2 ms of planning against 916 ms, and identical input still gives
+byte-identical output — the story changed no golden snapshot, which is the check that would have
+caught it if it had not.
 
 `tests/boards/GridStripConnector_Panelized` *is* the 66-up panel: one board stepped out by KiKit
 into eleven rows of six, 164.70 × 106.90 mm. It was briefly written off here as "nothing like a
@@ -126,15 +185,40 @@ preview cost 2.97 s, and the 0.83 s difference is the layer memo declining to re
 that did not change. The 2.1 s that remains is planning, which this story cannot remove — only stop
 repeating. Stories 3 and 5 are what reduce it.
 
-From the bench, on the whole thing: *"Overall, it does feel speedy to use."*
-
 So *"a second preview of the 66-up panel returns in well under half a second"* is satisfied with
 three orders of magnitude to spare: 0.2 ms of planning, and the layers not realised again either.
 
-One defect came out of that session and is fixed: the plan cache kept four plans, sized for the
-six-layer board in 6.30 whose programs come to 7.2 MB, while the Mega's come to 0.6 MB. Returning
-to a setting used six changes ago planned it again from scratch. It is bounded by the text it holds
-now, not by a count.
+**The manual test**, across three bench sessions on the author's own boards. Open a board that takes
+seconds to preview — this was the six-layer i.MX8M dev board, which is bigger than anything
+committed here; `Arduino_Mega_2560` in `tests/boards` is the nearest stand-in — and then read the
+status bar, which now says which of the two things happened:
+
+1. Preview once and note *"built in …"*. Preview again without touching anything: *"remembered in …"*.
+2. Change one layer's output and preview. The cost should fall without vanishing: the layers that
+   did not change are not realised again, but the planning still runs.
+3. Go back to a setting used several changes ago, and check it is still remembered rather than
+   rebuilt.
+4. Race it. Start a preview of a change you know has to be built, then put the setting back and
+   press preview again immediately.
+
+**Observed:** the table above, and on the whole thing, from the bench: *"Overall, it does feel
+speedy to use."*
+
+**Steps 3 and 4 are where the session earned its keep.** Step 3 rebuilt: the plan cache kept four
+plans whatever their size, sized for the six-layer board in 6.30 whose programs come to 7.2 MB while
+the Mega's come to 0.6 MB, so returning to a setting used six changes ago planned it again from
+scratch. It is bounded by the text it holds now rather than by a count, and that is fixed here.
+
+Step 4 answered *"remembered in 0.11 s"* — correct, and for the wrong reason. The superseded run was
+not interrupted: it kept planning to the end on its own thread, and the new preview was quick
+because it found the memo. That is
+**[6.33](../Documentation/06-Roadmap-and-Risks.md)**, recorded and not fixed, and it is the honest
+limit of this story.
+
+**What story 1 handed over** is bounded rather than removed. Drill alignment still makes five
+planning calls to open one dialog, but `ExportPlanner.Plan` now goes through the plan memo, so four
+of them come from memory instead of planning the board again. The dialog itself has not been timed
+at the bench, so read that from the code rather than as a measurement.
 
 **Requirements:** A4 · [01 §4](../Documentation/01-Architecture.md)
 

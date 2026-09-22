@@ -22,6 +22,12 @@ workshop* sections, the matrix's Partial rows, and the open questions in
 [Documentation/09](Documentation/09-Machine-Accuracy-Investigations.md). The sprint document records
 what was read and what happened to it, including the issues deliberately left out and why.
 
+**A story closes in writing.** Merging its branch does not finish it; a `Closed` block in the sprint
+document does — the date, a plain verdict against the story's *Done when* clause, a summary of the
+manual test that showed it, what was observed at the bench, and what was left open. The summary is
+short, and long enough that somebody else could run a similar test without asking how. A story with
+no `Closed` block is still open, and the sprint does not ship with one missing.
+
 **New requests** are written into [Documentation/06](Documentation/06-Roadmap-and-Risks.md) as they
 arrive, with the asker's own words where possible, and prioritised at the next sprint boundary
 rather than mid-sprint.
