@@ -314,19 +314,57 @@ Its reversed ends are stored rather than derived, because they are not its own e
 even number of alternating passes both configurations are a there-and-back, a shape neither `Open`
 nor `Closed` can express.
 
-**Measured on `GridStripConnector_Panelized`, on the outline program:**
+**Measured at the bench by the product owner**, on `GridStripConnector_Panelized`, cutting the
+outline with the 0.8 mm end mill at his own 0.500 mm step-down:
 
-| | Travel | Cutting |
+| | V0.1.5 | Now |
 |---|---|---|
-| Before this story | 1850.41 mm | 13785.51 mm |
-| Cycling refused, stacks still rigid | 1650.56 mm | 13785.51 mm |
-| **Stacks enterable from either end** | **337.14 mm** | **13785.51 mm** |
+| `F_Cu` isolation | 959 mm | 959 mm |
+| `Edge_Cuts` outline | 785 mm | **718 mm** |
+| **Whole export** | **1744 mm** | **1677 mm** |
 
-**An 82 % reduction in rapid travel, with the cutting distance identical to the centimetre and the
-line count unchanged at 5,916** — the same cuts, in a better order, entered from the better end.
-Those figures are at the golden test's 0.40 mm step-down, six depths per channel. At the CLI's
-default 1.00 mm step the same program goes 785 → 718 mm, and an ordering line appears in the summary
-where there was none: 731 → 708 mm rapid.
+*"Cut length and plunges remain identical."* **67 mm, or 4 % of the export**, all of it in the
+outline.
+
+**The two tables below are not the same experiment, and their millimetres do not line up to the
+unit.** The bench figures above come from the product owner's own machine settings and his own tool
+library; the ones below are a controlled sweep with the shipped `ToolLibrary.Default`, its end mills
+forced to each step-down in turn, so that only the step-down varies. At 0.50 mm the sweep reads
+721 mm where the bench reads 718 mm, and that three-millimetre gap is the two libraries differing,
+not a discrepancy to resolve. The sweep is what the parity claim rests on; the bench is what the
+story is worth.
+
+Within the sweep, the second entry accounts for **755 → 721 mm** — that is the one comparison
+actually run, with the stack's second configuration withdrawn and everything else left alone. How
+much of the remainder belongs to refusing the mis-costed moves was not measured at this step-down,
+and is not claimed here.
+
+**That is the number this story is worth, and it is the one to quote.** An earlier draft of this
+block led with 82 %, which is a real measurement of a configuration nobody here cuts — and putting
+it first made the story sound like something it is not.
+
+**Where 82 % comes from is worth knowing, because it is not the step-down.** It is the *parity* of
+the pass count:
+
+| Step-down | Passes to 1.90 mm | Outline travel |
+|---|---|---|
+| 0.40 mm | 5 — odd | **337 mm** |
+| 0.65 mm | 3 — odd | **326 mm** |
+| 0.70 mm | 3 — odd | **326 mm** |
+| 0.50 mm | 4 — even | 721 mm |
+| 1.00 mm | 2 — even | 710 mm |
+
+An even number of alternating passes brings the tool back to where the stack started, so both of its
+configurations are a there-and-back and the choice only decides which end it waits at. An odd number
+traverses end to end, so the optimizer can run one channel into the next. **The outline travels more
+than twice as far for an even pass count as for an odd one**, on the same board with the same
+cutter, and that is a property of how the stack is built rather than anything the operator did.
+
+**Left open by this, and not chased here.** An even stack could in principle be given the same
+freedom — what it needs is a way to finish at the far end without paying a full-length return, which
+is a question about how the passes are laid out rather than about how they are ordered. Worth a
+story of its own, with the table above as its starting figure. Nothing about the current behaviour
+is wrong; it is a saving not taken.
 
 **The gain is concentrated where the choice exists**, and that is worth saying plainly.
 `Millburn_Test_Board`, `GridStripConnector` and `Arduino_Mega_2560` are byte-identical before and

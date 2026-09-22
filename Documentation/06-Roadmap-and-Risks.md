@@ -3939,6 +3939,39 @@ polygon there and a curve here. grbl interpolates the arc itself on the machine,
 Recorded so that it is not investigated twice. If a future change ever emits those circles as
 polylines instead, this entry is the evidence that they did not used to be.
 
+#### 6.34 An even number of outline passes costs twice the travel of an odd one — **measured, not started**
+
+Found while measuring sprint 1 story 3, on `GridStripConnector_Panelized`, and it is a property of
+the geometry rather than of the ordering: the optimizer is already doing the best that can be done
+with what it is given.
+
+A channel centreline cut at several depths alternates direction as it goes deeper — forward, then
+backward — because taking an open run the same way round twice means travelling its whole length
+back before the next pass can start. An **even** number of those passes therefore returns the tool
+to where the stack began; an **odd** number leaves it at the far end. Since story 3 a stack can be
+entered from either end, and that choice is worth much more when the stack traverses than when it
+comes back:
+
+| Step-down | Passes to 1.90 mm | Outline travel |
+|---|---|---|
+| 0.40 mm | 5 — odd | **337 mm** |
+| 0.65 mm | 3 — odd | **326 mm** |
+| 0.70 mm | 3 — odd | **326 mm** |
+| 0.50 mm | 4 — even | 721 mm |
+| 1.00 mm | 2 — even | 710 mm |
+
+Same board, same cutter, same fifty channels. **More than twice the travel for an even pass count**,
+and nothing the operator chose caused it — the step-down that suits the bit decides the parity, and
+the 0.8 mm end mill's note says to keep the step-down small.
+
+**Nothing here is wrong.** It is a saving not taken, and the shape of the fix is a question about
+how the passes are laid out rather than how they are ordered: an even stack needs a way to finish at
+the far end without paying a full-length return for it. Whether that is worth the complication is
+the first thing to decide, and the product owner cuts at 0.500 mm, which is the even case.
+
+**Done when** the outline's travel on the panel is within sight of the odd-parity figure at an even
+pass count, the cut itself is unchanged, and a test pins the relationship rather than the number.
+
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
 The first release cadence was a release a day, which suited a feature-shaped backlog. The product

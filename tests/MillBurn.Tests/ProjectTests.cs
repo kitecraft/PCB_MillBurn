@@ -258,10 +258,29 @@ public sealed class ProjectTests : IDisposable
         ProjectFile.Save(Load(CopyBoard()), path);
 
         // Rewrite the manifest's schema version to something this build cannot know about.
-        Rewrite(path, json => json.Replace(
-            $"\"SchemaVersion\": {MillBurnProject.CurrentSchemaVersion}",
-            $"\"SchemaVersion\": {MillBurnProject.CurrentSchemaVersion + 99}",
-            StringComparison.Ordinal));
+        //
+        // The edit is checked, because a string replacement that matches nothing is silent. The
+        // search text assumes the manifest is written with a space after the colon, and if that
+        // ever stops being true this test would go on passing while exercising nothing at all —
+        // opening an unmodified project, which is refused by nothing.
+        var edited = false;
+
+        Rewrite(path, json =>
+        {
+            var wanted = $"\"SchemaVersion\": {MillBurnProject.CurrentSchemaVersion}";
+            edited = json.Contains(wanted, StringComparison.Ordinal);
+
+            // One more than this build knows, not ninety-nine more: the boundary is the thing
+            // being tested, and a gap of 99 would be satisfied by a check with a threshold
+            // anywhere inside it.
+            return json.Replace(
+                wanted,
+                $"\"SchemaVersion\": {MillBurnProject.CurrentSchemaVersion + 1}",
+                StringComparison.Ordinal);
+        });
+
+        Assert.True(edited, "the manifest's schema version was not found, so nothing was changed "
+            + "and what follows would be testing an ordinary project.");
 
         var ex = Assert.Throws<InvalidDataException>(() => ProjectFile.Open(path));
         Assert.Contains("newer version", ex.Message, StringComparison.OrdinalIgnoreCase);

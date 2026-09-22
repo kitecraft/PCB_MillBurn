@@ -340,7 +340,7 @@ public sealed class ExportPlannerTests
     {
         var board = Board();
 
-        string Depth(double throughMm)
+        IReadOnlyList<string> Depth(double throughMm)
         {
             var settings = Defaults(board);
             settings["PogoTest1-PTH.drl"] = settings["PogoTest1-PTH.drl"] with
@@ -348,14 +348,28 @@ public sealed class ExportPlannerTests
                 BreakThroughNm = Nm.FromMillimetres(throughMm),
             };
 
-            // Every file the layer is written as — one per bit — goes to the same depth.
-            return string.Join("\n", Plan(board, settings, OutputKind.Gcode).Items
+            // Every file the layer is written as — one per bit — goes to the same depth, so they
+            // are returned separately and checked separately. Joined into one string and searched
+            // with Contains, as this did, the assertion passed when *either* file carried the
+            // depth, which is not what the sentence above says and not what gets run on a machine.
+            return [.. Plan(board, settings, OutputKind.Gcode).Items
                 .Where(i => i.LayerFileName == "PogoTest1-PTH.drl")
-                .Select(i => i.Content));
+                .Select(i => i.Content)];
         }
 
-        Assert.Contains("Z-1.900", Depth(0.3), StringComparison.Ordinal);
-        Assert.Contains("Z-2.600", Depth(1.0), StringComparison.Ordinal);
+        foreach (var (throughMm, depth) in ((double, string)[])[(0.3, "Z-1.900"), (1.0, "Z-2.600")])
+        {
+            var files = Depth(throughMm);
+
+            // Two bits on this board, so two files — and a count of one would make the loop below
+            // a check of half the export.
+            Assert.Equal(2, files.Count);
+            Assert.All(files, f => Assert.Contains(depth, f, StringComparison.Ordinal));
+        }
+
+        // The depths really move with the setting, rather than both appearing in both.
+        Assert.All(Depth(0.3), f => Assert.DoesNotContain("Z-2.600", f, StringComparison.Ordinal));
+        Assert.All(Depth(1.0), f => Assert.DoesNotContain("Z-1.900", f, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -602,6 +616,58 @@ public sealed class ExportPlannerTests
     /// The drawing only: the placing layers after it span the board or the stock by design, so
     /// they would say nothing about whether the drawing moved.
     /// </summary>
+    /// <summary>The `d` of every path inside the artwork group.</summary>
+    private static List<string> ArtworkPathData(string svg) =>
+    [
+        .. XDocument.Parse(svg)
+            .Descendants()
+            .Where(e => e.Ancestors().Any(a => (string?)a.Attribute("id") == "artwork"))
+            .Select(e => e.Attribute("d")?.Value)
+            .Where(d => d is not null)
+            .Select(d => d!),
+    ];
+
+    /// <summary>
+    /// The signed area the artwork encloses, in square millimetres, by the shoelace formula over
+    /// each subpath.
+    ///
+    /// Signed on purpose: what makes an inverted drawing a *complement* rather than an overlay is
+    /// that its copper subpaths are wound the opposite way, so they subtract from the board
+    /// rectangle instead of adding to it. An unsigned area cannot tell those apart, and neither can
+    /// any measure of extent, ink or path count.
+    ///
+    /// Exact only while the artwork is straight lines. The writer can emit elliptical arcs, and a
+    /// shoelace over an arc's endpoints silently cuts the corner — so the caller asserts their
+    /// absence rather than this quietly returning a number that is nearly right.
+    /// </summary>
+    private static double SignedArtworkAreaMm2(string svg)
+    {
+        var total = 0.0;
+
+        foreach (var d in ArtworkPathData(svg))
+        {
+            foreach (var subpath in d.Split('M', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var n = System.Text.RegularExpressions.Regex
+                    .Matches(subpath, @"-?\d+(?:\.\d+)?")
+                    .Select(m => double.Parse(
+                        m.Value, System.Globalization.CultureInfo.InvariantCulture))
+                    .ToList();
+
+                var corners = n.Count / 2;
+
+                for (var i = 0; i < corners; i++)
+                {
+                    var j = (i + 1) % corners;
+
+                    total += ((n[(i * 2)] * n[(j * 2) + 1]) - (n[(j * 2)] * n[(i * 2) + 1])) / 2;
+                }
+            }
+        }
+
+        return total;
+    }
+
     private static List<double> PathXValues(string svg) =>
     [
         .. XDocument.Parse(svg)
@@ -635,9 +701,6 @@ public sealed class ExportPlannerTests
     {
         var board = Board();
 
-        static double Area(string svg) => System.Xml.Linq.XDocument.Parse(svg)
-            .Descendants().Count(e => e.Attribute("d") is not null);
-
         var settings = Defaults(board);
         settings["PogoTest1-F_Cu.gbr"] = settings["PogoTest1-F_Cu.gbr"] with { Output = OutputKind.Svg };
 
@@ -656,7 +719,74 @@ public sealed class ExportPlannerTests
             System.Xml.Linq.XDocument.Parse(inverted.Content).Root!.Attribute("viewBox")!.Value,
             StringComparer.Ordinal);
 
-        Assert.True(Area(inverted.Content) > 0);
+        // The name says "the complement inside the board edge", so that is what is checked.
+        //
+        // This used to end at a local function called Area that counted elements carrying a `d`
+        // attribute — it computed no area, the plain drawing's count was never compared against the
+        // inverted one's, and the whole assertion came to "there are some paths". A test may not
+        // promise the complement and check for ink.
+        //
+        // Extents rather than areas, because an area over path data means integrating arcs and this
+        // does not need to: the complement of the copper reaches the board's edge and the copper
+        // does not, so the two drawings' extents differ in a way only inversion produces.
+        var plainX = PathXValues(plain.Content);
+        var invertedX = PathXValues(inverted.Content);
+
+        Assert.NotEmpty(plainX);
+        Assert.NotEmpty(invertedX);
+
+        var plainSpan = plainX.Max() - plainX.Min();
+        var invertedSpan = invertedX.Max() - invertedX.Min();
+
+        // The inverted drawing runs out to the board edge; the copper stops short of it.
+        Assert.True(
+            invertedSpan > plainSpan,
+            $"the inverted drawing spans {invertedSpan:F3} mm and the plain one {plainSpan:F3} mm; "
+            + "the complement should reach the edge the copper does not.");
+
+        // And it reaches the edge rather than merely further: the page is the board plus its
+        // margin, and the drawn complement should fill the board's own width within a hair.
+        var boardWidthMm = Nm.ToMillimetres(board.Bounds.Width);
+        Assert.InRange(invertedSpan, boardWidthMm - 0.5, boardWidthMm + 0.5);
+
+        // And the copper stops well short of it, so the extent assertions are telling the two
+        // drawings apart rather than agreeing about one.
+        Assert.True(
+            plainSpan < boardWidthMm - 1.0,
+            $"the copper spans {plainSpan:F3} mm of a {boardWidthMm:F3} mm board, which is not "
+            + "short of its edge by enough for this test to be telling the two drawings apart.");
+
+        // Now the complement itself, which none of the above touches.
+        //
+        // Extent cannot see it: an inversion that left every copper path where it was and merely
+        // added a board-sized rectangle would satisfy every assertion so far — the same content
+        // check, the same summary line, the same page, the same widened span. An earlier version of
+        // this test claimed the line above ruled that out. It does not: it constrains the *plain*
+        // drawing, which such an implementation never touches.
+        //
+        // Signed area does see it. A complement's copper subpaths are wound the opposite way, so
+        // they subtract from the board rectangle and |copper| + |complement| comes to the board's
+        // own area. The added-rectangle version subtracts nothing, so for it those two *differ* by
+        // the board's area instead of summing to it. That is the one relation that tells a
+        // complement from an overlay.
+        Assert.DoesNotContain(
+            "A",
+            string.Concat(ArtworkPathData(plain.Content).Concat(ArtworkPathData(inverted.Content))),
+            StringComparison.Ordinal);
+
+        var copperArea = Math.Abs(SignedArtworkAreaMm2(plain.Content));
+        var complementArea = Math.Abs(SignedArtworkAreaMm2(inverted.Content));
+        var boardArea = boardWidthMm * Nm.ToMillimetres(board.Bounds.Height);
+
+        Assert.True(
+            Math.Abs(copperArea + complementArea - boardArea) < 1.0,
+            $"the copper covers {copperArea:F3} mm2 and the inverted drawing {complementArea:F3} "
+            + $"mm2; a complement of a {boardArea:F3} mm2 board would have those sum to it, and "
+            + $"these are {copperArea + complementArea - boardArea:F3} mm2 apart.");
+
+        // And on the direction of it, so a board whose copper happened to cover half its area could
+        // not satisfy the line above by coincidence.
+        Assert.True(complementArea > copperArea);
     }
 
     /// <summary>
