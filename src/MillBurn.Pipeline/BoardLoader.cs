@@ -175,6 +175,7 @@ public static class BoardLoader
             Role = role,
             RoleGuessed = roleGuessed,
             Area = layer.Area,
+            Nets = layer.Nets,
             Bounds = layer.Bounds,
             ObjectCount = layer.ObjectCount,
             DeclaredNegative = layer.DeclaredNegative,

@@ -37,6 +37,18 @@ public sealed class GerberParser
     private bool _multiQuadrant;
 
     private bool _inRegion;
+
+    /// <summary>
+    /// The object attributes in force when <c>G36</c> opened the region.
+    ///
+    /// A region is created at <c>G37</c> and used to read its attributes there, which is the same
+    /// shape of bug the strokes had: a <c>%TD*%</c> between the two strips the region's net, and
+    /// the copper is already drawn by then. Held from the start instead, and anything set *during*
+    /// the region still applies on top — so a writer that names the net inside the G36/G37 pair is
+    /// honoured, and one that clears attributes inside it does not silently lose the net.
+    /// </summary>
+    private Dictionary<string, string>? _regionAttributes;
+
     private List<List<GerberSegment>>? _regionContours;
     private List<GerberSegment>? _regionContour;
 
@@ -166,11 +178,19 @@ public sealed class GerberParser
                 StoreAttribute(_apertureAttributes, body[2..]);
                 return;
 
+            // Flushed first, for the same reason LP above is: an attribute statement applies to the
+            // objects that come after it, and a stroke already drawn is not one of them. Without
+            // this the open stroke is emitted later and snapshots whatever the net has become by
+            // then, so the last trace before a net change is filed under the next net. KiCad writes
+            // exactly that shape — several D01 runs, then the next %TO.N — and on the test board it
+            // put a J3-Pin_1 trace under J3-Pin_2, which is a short report naming the wrong net.
             case "TO":
+                FlushStroke(command.Line);
                 StoreAttribute(_objectAttributes, body[2..]);
                 return;
 
             case "TD":
+                FlushStroke(command.Line);
                 DeleteAttribute(body[2..]);
                 return;
 
@@ -576,10 +596,13 @@ public sealed class GerberParser
             case "TA":
                 StoreAttribute(_apertureAttributes, payload);
                 break;
+            // As above: the stroke in hand was drawn under the old net and keeps it.
             case "TO":
+                FlushStroke(line);
                 StoreAttribute(_objectAttributes, payload);
                 break;
             case "TD":
+                FlushStroke(line);
                 DeleteAttribute(payload);
                 break;
             default:
@@ -610,6 +633,7 @@ public sealed class GerberParser
             case 36:
                 FlushStroke(line);
                 _inRegion = true;
+                _regionAttributes = SnapshotObjectAttributes();
                 _regionContours = [];
                 _regionContour = null;
                 break;
@@ -826,8 +850,10 @@ public sealed class GerberParser
         _inRegion = false;
 
         var contours = _regionContours;
+        var opened = _regionAttributes;
         _regionContours = null;
         _regionContour = null;
+        _regionAttributes = null;
 
         if (contours is null || contours.Count == 0)
         {
@@ -839,7 +865,7 @@ public sealed class GerberParser
             Contours = contours.ConvertAll(c => (IReadOnlyList<GerberSegment>)c),
             Polarity = _polarity,
             SourceLine = line,
-            Attributes = SnapshotObjectAttributes(),
+            Attributes = AttributesForRegion(opened),
         });
     }
 
@@ -879,6 +905,34 @@ public sealed class GerberParser
         }
 
         _openStroke = null;
+    }
+
+    /// <summary>
+    /// What was in force when the region opened, with anything set since laid over it. Neither
+    /// alone is right: the opening set alone would ignore a writer that names the net inside the
+    /// pair, and the closing set alone loses it to a <c>%TD*%</c> that arrives after the copper is
+    /// drawn.
+    /// </summary>
+    private Dictionary<string, string> AttributesForRegion(Dictionary<string, string>? opened)
+    {
+        if (opened is null || opened.Count == 0)
+        {
+            return SnapshotObjectAttributes();
+        }
+
+        if (_objectAttributes.Count == 0)
+        {
+            return opened;
+        }
+
+        var merged = new Dictionary<string, string>(opened, StringComparer.Ordinal);
+
+        foreach (var (key, value) in _objectAttributes)
+        {
+            merged[key] = value;
+        }
+
+        return merged;
     }
 
     private Dictionary<string, string> SnapshotObjectAttributes() =>

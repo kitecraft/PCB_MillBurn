@@ -30,6 +30,7 @@ GridStripConnector-F_Cu.nc
   lines     368
   sha256    8e189c46ef869044
   summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
+  summary   3 nets · all separated
   summary   696 mm cutting, 13 mm travel
   summary   3m 34s – 3m 40s · 367 lines
   summary   Simplified: 4,696 → 331 moves, 159 arcs (93 % fewer)

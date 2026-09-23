@@ -1,4 +1,5 @@
 using Clipper2Lib;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Geometry;
 using MillBurn.Gerber.Excellon;
@@ -27,6 +28,12 @@ public sealed record BoardLayer
     public string Fingerprint { get; init; } = string.Empty;
 
     public required Paths64 Area { get; init; }
+
+    /// <summary>
+    /// Where each net-bearing object left copper. Empty unless the exporter wrote X2 net attributes,
+    /// which most do and some do not — a Protel export carries none.
+    /// </summary>
+    public IReadOnlyList<NetPoint> Nets { get; init; } = [];
 
     public required Bounds Bounds { get; init; }
 

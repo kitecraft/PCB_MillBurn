@@ -7,6 +7,7 @@ PogoTest1-B_Cu.nc
   lines     1551
   sha256    da8434113ecdcfa7
   summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
+  summary   8 nets · all separated
   summary   Mirrored · flip the stock left-to-right
   summary   1473 mm cutting, 147 mm travel
   summary   8m 37s – 9m 6s · 1,550 lines
@@ -57,6 +58,7 @@ PogoTest1-F_Cu.nc
   lines     421
   sha256    0f319f3d1b53770e
   summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
+  summary   8 nets · all separated
   summary   1241 mm cutting, 85 mm travel
   summary   6m 35s – 6m 44s · 420 lines
   summary   Simplified: 10,495 → 335 moves, 143 arcs (97 % fewer)

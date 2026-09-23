@@ -35,6 +35,7 @@ GridStripConnector_Panelized-F_Cu.nc
   lines     6417
   sha256    88c70931dc84d03c
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
+  summary   198 nets · all separated
   summary   11329 mm cutting, 924 mm travel
   summary   1h 2m – 1h 4m · 6,416 lines
   summary   Simplified: 75,768 → 5,610 moves, 2,640 arcs (93 % fewer)

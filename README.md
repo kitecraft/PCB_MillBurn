@@ -40,6 +40,19 @@
 > - **The travel optimizer stops chasing its tail.** A search that could apply 321,413 "improvements"
 >   and finish somewhere worse now settles in fifteen — and a channel cut at several depths can be
 >   entered from either end, which it never could before.
+> - **The app checks its own isolation electrically.** After planning, it compares the copper the
+>   tool can actually divide against the netlist the Gerbers already declare, and names what it
+>   cannot separate — "AREF and AVCC are left connected: the gap between them is narrower than the
+>   0.154 mm this cut is wide" — instead of counting gaps nobody can find. Finding a short on an
+>   Arduino Mega that a 30° V-bit genuinely cannot isolate is how it was confirmed, against the
+>   board's own KiCad project.
+> - **A trace is no longer filed under the next net.** Found by disbelieving the check above: strokes
+>   read their net attributes when the object was emitted rather than when it was drawn, so the last
+>   trace before a net change carried the wrong name, and a `%TD*%` mid-stroke dropped it from the
+>   netlist entirely. No emitted file changes; every netlist does.
+> - **What a board costs to compute is written down.** Clipper booleans, point-in-polygon questions
+>   and the vertices handed to them are counted per board and snapshotted, so a change in what the
+>   work costs is a diff somebody has to account for rather than something noticed on a slow day.
 > - **Three found at the bench**: copper sealed inside the board can no longer be set to G-code, an
 >   Excellon file in inches has its drill sizes read as inches, and Preview stops unticking layers a
 >   freshly opened project had visible.

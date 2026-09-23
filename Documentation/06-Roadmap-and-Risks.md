@@ -4224,6 +4224,133 @@ file. Not urgent, and deliberately not bundled into 6.39 — that one is about a
 bypassed, this one is about a tally that is honest as far as it reaches and does not reach far
 enough.
 
+#### 6.41 A trace is filed under the next net, not its own — **fixed**
+
+The parser batches consecutive `D01` strokes into one `DrawObject`, which keeps the object count
+near the number of traces rather than the number of segments and is worth keeping. The object was
+not emitted until something forced it out, and it read its attributes at *that* moment rather than
+at the moment the stroke was drawn. An object attribute applies to the objects that follow it, so
+this is backwards: a trace drawn under one net was filed under the next one.
+
+**KiCad writes exactly the shape that triggers it** — a net, some strokes, the next net, more
+strokes, with nothing in between to flush. From the author's own test board:
+
+```
+%TO.N,Net-(J3-Pin_1)*%
+X161092000Y-82608000D02*
+X159900000Y-83800000D01*      <- Pin_1
+X167900000Y-82608000D02*
+X161092000Y-82608000D01*      <- Pin_1, read back as Pin_2
+%TO.N,Net-(J3-Pin_2)*%
+```
+
+**`%TD*%` was the same bug with a worse ending.** It clears the attributes, so a stroke still open
+at that point was emitted with no net at all and disappeared from the netlist entirely — worse than
+a wrong name, because nothing looks out of place. The test board's net-point count rises from 77 to
+78 on the fix, and PogoTest1's top copper from 33 to 34; those are traces that had no net.
+
+**What it cost.** Nothing in the emitted G-code — the geometry was always right, only the names were
+wrong — and everything in the electrical check built on top of it. Before the fix, story 4's check
+reported 110 shorted groups on the Arduino Mega's top copper, 19 on the test board and 4 on
+PogoTest1. After it: 6, 0 and 0. The test board and the panel report zero, which is what the story
+asked for, and the Mega's remaining six are real gaps a 30° V-bit cannot cut.
+
+**How it was found.** By disbelieving a new check's output. The check was written, run against real
+boards, and reported a hundred and ten shorts on a manufactured Arduino — a board that demonstrably
+works. Proving the check's geometry correct on synthetic pads, and then that the artwork's own
+regions already held two net names each, left the parser as the only candidate. No test failed at
+any point in that sequence; the suite was green before and after.
+
+**The fix** flushes the open stroke before `%TO` and `%TD` change anything, which is what `%LP`
+already did before changing polarity, for the identical reason: neither a polarity nor a net can
+apply retroactively to copper already laid. `NetAttributionTests` covers it, including that
+batching still happens — a fix that flushed on every `D01` would pass the attribution tests and
+quietly multiply the object count on a real board.
+
+**A region had the same bug one object later**, found by review rather than by a board. A region is
+created at `G37` and read its attributes there, so a `%TD*%` between `G36` and `G37` took its net
+with it. No exporter in `tests/boards` writes that shape, so this is a guard and not a repair — but
+a pour is exactly where a short hides, and a pour that has lost its net is invisible to every check
+that reasons about nets. The attributes in force at `G36` are held instead, with anything set while
+the region is open laid over the top: neither end alone is right, since the opening set alone would
+ignore a writer that names the net inside the pair.
+
+#### 6.42 The electrical check reaches one planning path, and cannot say which kind of unnamed — **known gaps, follow-up**
+
+Two things left undone by story 4, both found by review rather than by a board, and both recorded
+rather than bundled into a story that was about something else.
+
+**Only `ExportPlanner` runs it.** `JobBuilder` — the other planning path, and the one behind the
+CLI's own job command — still emits the old `UnreachableGaps` count and never calls
+`ElectricalCheck`, so an operator verifying from there gets "2 gap(s) are narrower than the cut"
+where the export path names the nets. The same board, checked two ways, answers differently. Done
+when both paths run the same check or there is one path.
+
+**And the residual cannot say which kind it is.** `NetCheck.Unnamed` counts merges no pair of names
+could be put to, and two quite different things land in it: copper carrying no net attribute, which
+is a short nobody can name; and two pieces of the *same* net being joined, which is a gap the tool
+equally cannot cut and electrically nothing at all, because they were one conductor already. The
+warning is worded to allow for both, which is honest and is not the same as useful — an operator
+reading "25 gaps" on the test board cannot tell how many matter. Telling them apart means asking,
+per merged region, whether the pieces that fell into it carry one name between them or none; the
+per-region attribution that 6.41's fix introduced is most of the machinery already.
+
+**Why the count is 25 there and not zero.** Worth writing down because a review asserted the board
+had no unnamed merges at all and it does: the test board carries copper with no net on it — the
+lettering, and the 0.5/0.8/1.0 test patterns — which fuses at a wide cut and has no name to be
+reported under. The 62 that the first arithmetic reported were wrong; the 25 that replaced them are
+real, and how many of them are *interesting* is exactly what this entry is about.
+
+#### 6.43 Check the board as its own job, not only as a line in a list — **proposed by the product owner, not started**
+
+Asked after story 4 shipped, having watched the electrical check work: would it have been better as
+something the operator starts from a button or the Job menu, rather than as warnings produced while
+planning?
+
+**The answer is both, and the automatic half should stay.** The short on the Arduino Mega was found
+because the app said so without being asked. A button only protects an operator who thinks to press
+it, and the one most at risk is the one who does not know there is a question. It also runs before
+anything is written, which is what story 4 asked for: a gate, not a report.
+
+**But the warning channel is straining, in three ways already visible.**
+
+*The format caps what can be said.* Groups are capped at eight before falling back to a count, and
+each group's names at six, because one piece of copper holding twenty-three nets became a
+six-hundred-character sentence. That is a one-line-per-program channel carrying something that wants
+a table.
+
+*The findings are scattered.* Each isolation program reports its own, so a two-sided board answers
+in two places in the export listing, and nothing collects them.
+
+*And it dilutes the list.* The workshop screenshot for story 4's closure shows seventeen CHECK items
+before this story added anything; a dense board now adds eleven more lines to it. 6.36 and 6.37
+exist because that list is already hard to read, and this makes the case for them sharper rather
+than weaker. **This is the strongest argument for the product owner's instinct**, and it is a real
+cost of the shape story 4 chose.
+
+**What a check view would earn** is everything deliberately declined as too much for a warning line:
+
+- **Where the gap actually is.** `NetJoin.Near` is one of the group's own net points, which can be
+  far from the narrow place — documented as "this copper", not "here". Finding the gap means
+  intersecting the two grown outlines per join, which is unjustifiable for a one-liner and perfectly
+  justifiable for something the operator asked to run.
+- **The split in [6.42](#642).** Which unnamed gaps are nameless copper, and which are two pieces of
+  one net that nothing shorted.
+- **Reasoning across layers**, which per-program warnings cannot do.
+- **The rest of DRC.** Drill-to-copper clearance, an outline cut that severs a trace, a pocket that
+  removes part of a net. Story 4 refused an opens check because isolation cuts outside the copper
+  edge and *cannot* sever anything — it would have been a check that could never fire, which this
+  repository has been bitten by twice. Those three can fire, and they have nowhere to live today.
+
+**The shape suggested.** The automatic check stays and gets *shorter* — one line per layer, naming
+the count and pointing at the view — and the view becomes where it is read. That addresses the
+dilution and the format at once, rather than trading one for the other.
+
+**Done when** there is a way to check a board without exporting it, the result is collected in one
+place rather than per program, and the warnings that remain in the CHECK list are short enough not
+to crowd out everything else in it. Sits with 6.36 and 6.37: all three are the same observation,
+that the CHECK list is being asked to carry more than a flat list of strings can.
+
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
 The first release cadence was a release a day, which suited a feature-shaped backlog. The product

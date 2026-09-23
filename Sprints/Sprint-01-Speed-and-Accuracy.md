@@ -415,6 +415,60 @@ under-isolated board names the nets it has joined.
 **Requirements:** A11, and it puts M4's parsed attributes to work ·
 [01 §8](../Documentation/01-Architecture.md)
 
+### Closed — 2026-09-23
+
+**Met on both halves, and the story's real work turned out to be a parser bug underneath it.**
+
+**What was done at the bench.** `Arduino_Mega_2560` from `tests/boards` was opened in the app and
+the CHECK panel read. One of the named pairs — *"+5V and M8RXD are left connected: the gap between
+them is narrower than the 0.154 mm this cut is wide"* — was taken to the same board in KiCad 10's
+PCB editor, the two nets found by name in the Nets panel, and the place where they run together
+located. The same place was then found in MillBurn's own toolpath view. Anybody can repeat this with
+any board whose KiCad project they hold: read a named pair out of CHECK, find those two nets in the
+PCB editor, and look at where they approach each other.
+
+**What was observed.** The location agreed. The `M8RXD` track runs hard against `+5V` copper at that
+point, and the isolation toolpath has no lap between them because a 0.127 mm cut does not fit. The
+check named two nets that really are adjacent there, confirmed against the source design rather than
+against itself — which is the only form of confirmation worth having for a check like this. The
+product owner's verdict: *"This is very useful feature… Very nice feature indeed."* A screenshot
+showing the CHECK line, the KiCad location and the MillBurn location together is at
+`WorkingFolder/V0.2.0/Screenshots/Store_4_Identified_The_Problem.png`, which is outside the
+repository.
+
+**Against the clause.** The test board and the panel report zero violations at the settings they are
+cut at. A deliberately under-isolated board names what it joined: the test board is clean to a
+0.368 mm cut and fuses into one group of 23 named nets at 0.502 mm, and the Mega — a commercial
+six-mil layout no V-bit can isolate — names 2 groups on its bottom copper and 11 on its top.
+
+**The bug underneath.** The check's first run reported 110 shorted groups on the Mega, a board that
+demonstrably works. Rather than tune the check, its geometry was proved correct on synthetic pads
+and the artwork's own regions were then found to hold two net names each — which left the parser.
+It batches consecutive strokes into one object and read the net attributes when the object was
+*emitted* rather than when the stroke was *drawn*, so a trace drawn under one net was filed under
+the next; `%TD*%` was worse, stripping the net from a stroke still open and dropping it out of the
+netlist entirely. Recorded as [6.41](../Documentation/06-Roadmap-and-Risks.md). Fixing it took the
+Mega's top copper from 110 groups to 6, the test board from 19 to 0 and PogoTest1 from 4 to 0. **No
+test failed at any point in that sequence** — the suite was green before and after, and the only
+thing that caught it was disbelieving the output of a new feature on a board known to be good.
+
+**What is left open.**
+
+- **The check names nets, it does not point at the gap.** `NetJoin.Near` is one of the group's own
+  net points — a pad centre or a trace midpoint — so on a pour it can be far from the narrow place
+  the tool could not reach. A viewer built on it should say "this copper", not "here". Finding the
+  gap itself means intersecting the two grown outlines per join, which is a second offset each and
+  buys nothing the message needs today.
+- **Per-layer only.** Two nets joined on the top copper are reported against the top copper; nothing
+  reasons across layers or through vias, which is the direction 6.36's click-a-region idea would
+  eventually want.
+- **Shorts only, and deliberately.** Isolation cuts outside the copper edge and cannot sever a net,
+  so a severed-net check here would be one that can never fire — the failure mode this repository
+  has already been bitten by twice. Copper does come off inside a net when a pocket is cleared or an
+  outline is cut through a trace, and that is a different operation to check.
+- The benchmark gaps recorded as [6.39](../Documentation/06-Roadmap-and-Risks.md) and
+  [6.40](../Documentation/06-Roadmap-and-Risks.md) are untouched by this story.
+
 ---
 
 ## Story 5 — Stop ignoring what the export already tells us

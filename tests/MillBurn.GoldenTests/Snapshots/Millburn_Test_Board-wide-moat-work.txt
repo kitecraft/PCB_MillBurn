@@ -8,10 +8,10 @@ moat (nm)       400,000
 
 realising
   booleans      144
-  point tests   0
+  point tests   485
   vertices      212,239
 
 planning
   booleans      798
-  point tests   0
+  point tests   320
   vertices      476,305

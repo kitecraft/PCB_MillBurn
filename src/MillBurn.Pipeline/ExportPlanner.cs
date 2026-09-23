@@ -284,6 +284,61 @@ public sealed record ExportPlan
 /// </summary>
 public static class ExportPlanner
 {
+    /// <summary>
+    /// How many shorted pairs to name before falling back to a count.
+    ///
+    /// A board that cannot be isolated at this width usually cannot be isolated in many places at
+    /// once, and a hundred lines of them buries every other warning in the list. The Arduino Mega
+    /// at 0.05 mm deep is the case that set this: six pairs on the top copper, which is a list
+    /// worth reading, against a hundred and ten before the net attribution was fixed, which was
+    /// not.
+    /// </summary>
+    private const int MaxNamedJoins = 8;
+
+    /// <summary>
+    /// The one-line verdict beside an isolation program.
+    ///
+    /// "All separated" has to mean it. Saying it whenever no *named* join was found puts a clean
+    /// summary directly above a warning that copper stays connected — the operator reads the line
+    /// that agrees with them, and the contradiction is exactly what <see cref="NetCheck.Silent"/>
+    /// exists elsewhere to prevent.
+    /// </summary>
+    private static string Verdict(NetCheck check, int unnamed)
+    {
+        var parts = new List<string>();
+
+        if (check.Joins.Count > 0)
+        {
+            // Distinct nets, not the sum of each group's count: a ground pour shorted in three
+            // places appears in three groups and would be counted three times, inflating the
+            // headline number an operator reads first.
+            var caught = check.Joins
+                .SelectMany(j => j.Nets)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+
+            parts.Add(Invariant($"{caught} left connected in {check.Joins.Count} group(s)"));
+        }
+
+        // Carried whether or not something was named. Dropping it as soon as a join exists is the
+        // same suppression that was fixed in the warning list, re-done on the line that is read
+        // first — and a summary that stops short of the warnings beneath it is worse than no
+        // summary, because it is the one the operator takes away.
+        if (unnamed > 0)
+        {
+            parts.Add(Invariant($"{unnamed} gap(s) uncut"));
+        }
+
+        // Nets the check could not place are nets it did not look at, and "all separated" must
+        // never be said over them.
+        if (check.Unplaced > 0)
+        {
+            parts.Add(Invariant($"{check.Unplaced} net point(s) not placed"));
+        }
+
+        return parts.Count == 0 ? "all separated" : string.Join(" · ", parts);
+    }
+
     public static ExportPlan Plan(
         Board board,
         IReadOnlyDictionary<string, LayerOutputSettings> settings,
@@ -1637,12 +1692,83 @@ public static class ExportPlanner
                 $"Isolation is capped at {IsolationOptions.MaxPasses} passes and reaches only {Nm.ToMillimetreString(options.AchievedWidthNm, 3)} mm of the {Nm.ToMillimetreString(options.WidthNm, 3)} mm asked for. Use a wider tool, or cut deeper."));
         }
 
-        var unreachable = IsolationOperation.UnreachableGaps(layer.Area, options);
-        if (unreachable > 0)
+        var electrical = ElectricalCheck.Isolation(layer.Area, layer.Nets, options);
+
+        // Named first, because a net name is something the operator can find in the schematic and
+        // "two gaps are too narrow" is something they have to go hunting for on the board.
+        foreach (var join in electrical.Joins.Take(MaxNamedJoins))
         {
             warnings.Add(Invariant(
-                $"{unreachable} gap(s) are narrower than the cut: those copper regions stay connected."));
+                $"{join.Describe()} are left connected: the gap between them is narrower than the {width} mm this cut is wide."));
         }
+
+        if (electrical.Joins.Count > MaxNamedJoins)
+        {
+            // Groups, not pairs. One group is a single piece of copper holding two nets or twenty,
+            // so counting pairs here would understate a bad board by an order of magnitude and
+            // overstate nothing — the test board at 0.75 mm deep is one group holding 23 nets.
+            var rest = electrical.Joins.Skip(MaxNamedJoins).ToList();
+
+            // Nets not already printed above, counted once each. Summing the groups would count a
+            // net per group it appears in, and a net named in one of the printed groups is not a
+            // "further" net at all.
+            var shown = electrical.Joins
+                .Take(MaxNamedJoins)
+                .SelectMany(j => j.Nets)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var more = rest.SelectMany(j => j.Nets).Where(n => !shown.Contains(n))
+                .Distinct(StringComparer.Ordinal).Count();
+
+            warnings.Add(Invariant(
+                $"…and {rest.Count} more group(s) this cut cannot separate, naming {more} further net(s)."));
+        }
+
+        // What the named check could not speak for. Copper carrying no net attribute merges with
+        // its neighbours just as physically and has no name to report it under, so the count is
+        // what is left. Reported alongside the names rather than instead of them: before this the
+        // count was suppressed the moment anything was named, which told an operator about six
+        // shorts on a board where forty gaps could not be cut.
+        var unnamed = electrical.Ran
+            ? electrical.Unnamed
+            : IsolationOperation.UnreachableGaps(layer.Area, options);
+
+        if (unnamed > 0 && electrical.Ran)
+        {
+            // Carefully worded, because the number cannot tell two cases apart. Copper with no net
+            // attribute is a short nobody can name; two pieces of the *same* net is a gap the tool
+            // equally cannot cut and electrically nothing, since they were one conductor already.
+            // Saying "no net named either side" of both — which this did — is false for the second.
+            //
+            // "Further" is honest only because named groups were reported above it.
+            warnings.Add(Invariant(
+                $"{unnamed} further gap(s) are narrower than the cut and stay connected. No pair of nets could be named across them: the copper either side carries no net, or carries the same one, in which case nothing is shorted."));
+        }
+        else if (unnamed > 0)
+        {
+            // The check never ran, so nothing was named, nothing was compared, and there is no
+            // "further" to be further than. The reassuring half of the sentence above — that it may
+            // be the same net and so harmless — is a conclusion drawn from a comparison that did
+            // not happen, and offering it here invites the operator to dismiss gaps nobody checked.
+            warnings.Add(Invariant(
+                $"{unnamed} gap(s) are narrower than the cut: those copper regions stay connected. This layer names no nets, so which of them matters was not determined."));
+        }
+
+        if (electrical.Unplaced > 0)
+        {
+            warnings.Add(Invariant(
+                $"{electrical.Unplaced} net point(s) could not be placed on this layer's copper, so those nets were not checked. The rest of the layer was."));
+        }
+
+        if (electrical.UnplacedCopper > 0)
+        {
+            warnings.Add(Invariant(
+                $"{electrical.UnplacedCopper} piece(s) of copper could not be placed, so the count of gaps above may be low."));
+        }
+
+        summary.Add(electrical.Ran
+            ? Invariant($"{electrical.NetsSeen} nets · {Verdict(electrical, unnamed)}")
+            : Invariant($"not checked electrically · {electrical.Silent}"));
 
         if (tool.Kind == ToolKind.EndMill)
         {
