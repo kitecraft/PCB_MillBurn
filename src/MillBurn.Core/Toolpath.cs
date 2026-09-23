@@ -45,6 +45,28 @@ public sealed record ToolpathPass
     /// <summary>True when this pass descends along its length rather than plunging to depth.</summary>
     public bool Ramps => RampFromNm is { } from && from != DepthNm;
 
+    /// <summary>
+    /// How far this pass's start may be from the last one's end for the tool to skip the full
+    /// retract and hop instead. Null means it never may.
+    ///
+    /// A tab is the case this exists for: the runs either side of one are a tab's width apart, the
+    /// only thing between them is the tab, and the safe height is two millimetres *above the
+    /// surface* — so crossing a 3 mm tab that way climbs and drops some three millimetres further
+    /// than the job needs, at the slowest rate the machine has (6.24).
+    ///
+    /// **A distance rather than a flag, because the adjacency cannot be asserted when the pass is
+    /// built.** The operation lays the runs out in order around the profile, and everything after it
+    /// is free to reorder them: `ToolpathRouter` will reverse a stack of open runs outright when
+    /// that shortens the route, at which point "the run before this one" is somewhere else entirely
+    /// and the gap is a traverse across the middle of the board. The emitter is the first place that
+    /// knows what the move really is, so the pass carries the *condition* and the emitter applies
+    /// it.
+    ///
+    /// The hop itself always ends above the surface — see the emitter — so what this bounds is how
+    /// far the tool may travel at a height that clears the stock but not a clamp.
+    /// </summary>
+    public long? HopWithinNm { get; init; }
+
     public bool Closed { get; init; }
 
     /// <summary>

@@ -401,15 +401,45 @@ public static class OutlineOperation
 
             foreach (var depth in tabbedDepths)
             {
-                foreach (var run in runs)
+                for (var r = 0; r < runs.Count; r++)
                 {
                     passes.Add(new ToolpathPass
                     {
-                        Path = run,
+                        Path = runs[r],
                         DepthNm = depth,
                         Closed = false,
                         Group = group,
                         Stack = c,
+
+                        // A run that follows another is separated from it by one tab, so a gap of
+                        // a tab's width is a tab and anything longer is not. Stated as the distance
+                        // rather than as "this one is next to that one", because the ordering this
+                        // lays down is not the ordering that gets cut — see HopWithinNm.
+                        //
+                        // Exactly the tab's width, with nothing added. SplitForTabs walks the
+                        // already-offset contour and removes half a tab either side of each tab
+                        // centre, so the gap it leaves is the tab and no more: measured on a 3.0 mm
+                        // tab, 3.000 mm along a straight edge and 2.321 mm across a corner, where
+                        // the chord cuts inside the path. An earlier version added the cutter's
+                        // diameter on the theory that the run ends sit half a cutter either side,
+                        // which is not what that method does — and the slack was not free, because
+                        // every millimetre of it widens the window in which a reordered move that is
+                        // not a tab gets taken at hop height.
+                        //
+                        // Set on every run, including the first of each depth. That one used to be
+                        // left out, on the grounds that what precedes it — a full lap, or the last
+                        // run of the depth above — need not be along the profile, so the straight
+                        // line to it might cut a corner. True, and it stopped mattering once the
+                        // emitter began checking the distance itself: at the hop height the tool is
+                        // *above* the stock, so a short move there cuts nothing whatever it passes
+                        // over, and a long one is refused on its length rather than on which run it
+                        // happens to be.
+                        //
+                        // From the bench, which is how it was found: "Tabs still seem to go to the
+                        // safe height." Six crossings between 1.43 mm and 2.84 mm on the panel were
+                        // climbing the full two millimetres, and the only thing marking them out was
+                        // being first in their depth.
+                        HopWithinNm = options.TabWidthNm,
                     });
                 }
             }

@@ -4,14 +4,15 @@ GridStripConnector_Panelized
 GridStripConnector_Panelized-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
-  lines     5917
-  sha256    b8525aba6108ef5c
+  lines     5299
+  sha256    9443b1abc3a0894f
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   51 profiles · inner pieces cut before the frame around them
   summary   50 of them enclose nothing and are cut from the inside — slots, windows, or the channels between the boards of a panel
   summary   13786 mm cutting, 337 mm travel
-  summary   57m 44s – 1h 0m · 5,916 lines
+  summary   49m 33s – 51m 48s · 5,298 lines
   summary   Simplified: 58,084 → 4,838 moves, 378 arcs (92 % fewer)
+  summary   One continuous descent per feature: 202 depth lap(s) carried straight on without lifting
   comment   ( PCB_MillBurn - GridStripConnector_Panelized-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 66.150, -126.850 mm. )
   comment   ( Board outline )
@@ -23,9 +24,9 @@ GridStripConnector_Panelized-Edge_Cuts.nc
   comment   ( Tabs on the 1 outer profile[s] only; the 50 inside are held by whatever joins them in the design. )
   control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -1.100, -0.800, -0.400
-  moves     797 rapid, 4725 feed, 378 arc
+  moves     179 rapid, 4725 feed, 378 arc
   distance  13785.51 mm cutting, 337.14 mm travel
-  plunges   530
+  plunges   316
   extent    -0.500 .. 165.200 x -0.500 .. 107.400 mm
 
 GridStripConnector_Panelized-F_Cu.nc

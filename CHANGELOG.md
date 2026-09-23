@@ -28,6 +28,14 @@ And the scaffolding a public repository needs: CI on release branches, a pinned 
 template, this file, and an `.editorconfig` whose every enforced rule was checked by turning it on
 and building — the first draft's naming and layout sections turned out to be decoration.
 
+**The optimizer stops chasing its tail, and the outline stops climbing.** A local search that could
+apply 321,413 "improvements" on twenty-five nodes and settle somewhere worse now converges in
+fifteen, because a move it could not cost is no longer applied; and a channel cut at several depths
+can be entered from either end, which on a 66-up panel takes the cut-out's travel from 1850 mm to
+337. The outline no longer retracts to the safe height between laps that start where the last one
+ended, nor climbs the whole board to cross a 3 mm tab: 45.4 mm of vertical motion down to 27.4 on the
+test board, and about eight minutes off the panel's cut-out.
+
 Four found at the bench and cleared before the sprint's second half: copper sealed inside the board
 can no longer be set to G-code, and a project saved when it could opens corrected and says so; an
 Excellon file that states its units as `M72` is read as inches, instead of reporting every drill on

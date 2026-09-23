@@ -458,6 +458,71 @@ the tab's own height and named in the program's comments, never typed.
 **Done when** the test board's outline spends under fifteen seconds moving vertically rather than
 fifty-nine, cuts the same shape, and still lifts to the safe height for genuine travel.
 
+### Closed — 2026-09-22
+
+**Met on both halves, and the clause's own numbers had to be restated first.**
+
+6.24 recorded 39.40 mm of rapid up, 16.50 down and 20.90 of plunging — about 59 s — on four laps of
+the test board's outline. That does not reproduce: the depth structure has changed since it was
+written, and the same board today cuts in three laps. So the baseline was measured again before
+anything was touched.
+
+| Test board outline | Before | After |
+|---|---|---|
+| Rapid up | 23.70 mm | 14.70 mm |
+| Rapid down | 9.00 mm | 3.00 mm |
+| Plunging | 12.70 mm | 9.70 mm |
+| **Vertical, total** | **45.40 mm · 34.9 s** | **27.40 mm · 22.3 s** |
+
+at the workshop's rates — 100 mm/min in Z, 50 plunging. **A 36 % cut in vertical distance and
+12.6 s off a two-minute program.** The clause asked for under fifteen seconds against fifty-nine;
+against a baseline of 34.9 s that is not the same target, and 22.3 s is what the two changes are
+worth. Claiming the old number would be claiming a saving against a program this application no
+longer emits.
+
+**The panel is where the size of it shows**, because it has fifty-one profiles rather than one:
+
+| `GridStripConnector_Panelized` outline | Before | After |
+|---|---|---|
+| Rapid moves | 797 | **182** |
+| Plunges | 530 | **319** |
+| Feed moves | 4,725 | 4,725 |
+| Arc moves | 378 | 378 |
+| Estimated run | 57m 44s – 1h 0m | **49m 29s – 51m 44s** |
+
+**About eight minutes, and the cut is identical to the move** — the feed and arc counts do not
+change, because nothing about what is cut has changed. Only the getting there.
+
+**Between laps.** `PassLinker.Continues` now allows a pass that begins where the last one ended and
+goes deeper, with no ramp: the emitter drops straight down at the plunge feed. The condition that
+matters is unchanged and is the whole of the safety here — the two passes must **meet at a point**.
+Anything else is a journey, and a journey at depth through uncut material is the gouge the lift
+exists to prevent.
+
+**Over a tab, the hop goes to the surface rather than to the tab's own top**, which is the product
+owner's call and a better trade than the one this started with. Clearing the tab's top would save
+another six tenths of a millimetre of Z, and it puts a rapid in-plane move below zero — which
+`GcodeBackplot.RoleOf` calls a gouge without qualification, and the window answers with "do not run
+this". That check earns its keep on every other program here, and an exception to it that no reader
+of the file could tell from the real thing is not worth 0.6 mm. Coming up to zero keeps the crossing
+a rapid, costs nothing in cut length, and clears any tab there can be.
+
+**One test asserted the opposite of this story**, and its reasoning said why:
+*"a linked pass is written without a plunge"*. That was a true statement about the emitter, and it
+is the statement 6.24 changes. `ALapStartingDeeperThanTheLastEndedDropsStraightToIt` now asserts the
+drop, and reads the emitted program to confirm there is no retract between the two laps — the flag
+is a request, and the text is what the machine is given.
+
+**One limitation accepted, not fixed.** The hop clears the surface by half a millimetre, and
+levelling adds the probed correction to every move including rapids — so a board that falls more than
+that below the datum along a tab gap gets a hop written below zero, which the gouge check then
+condemns. It is a class of failure this story created: before it, the only move at approach height
+was vertical, and a vertical move is never a gouge. Accepted on the product owner's reading of the
+number — half a millimetre of fall is a whole millimetre of range once the rise is counted, which is
+a workholding problem before it is a levelling one — and on the fact that the file is refused rather
+than quietly run. Recorded with its three possible fixes as
+[6.38](../Documentation/06-Roadmap-and-Risks.md).
+
 **Requirements:** V36 · [06 §6.24](../Documentation/06-Roadmap-and-Risks.md)
 
 ---

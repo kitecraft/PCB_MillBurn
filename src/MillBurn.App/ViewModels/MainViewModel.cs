@@ -1221,9 +1221,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
             ReplaceExportWarnings(refusals);
 
-            StatusMessage = refusals.Count > 0
-                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refusals.Count} thing(s) refused — see the checks."
-                : $"Wrote {plan.Count + extra} file(s) to {folder}.";
+            // Named, not counted. "1 thing(s) refused — see the checks" sent the operator to a list
+            // where the word "refused" does not appear — the line reads "Not levelled: ..." — with
+            // nothing to tell a refusal from the ordinary advice beside it. From the bench: *"I
+            // don't know which check it is referring to."* Saying what was refused is the whole of
+            // the fix, and it costs nothing: the kinds are already in hand.
+            var kinds = refusals.Select(r => r.What).Distinct(StringComparer.Ordinal).ToList();
+
+            StatusMessage = refusals.Count switch
+            {
+                0 => $"Wrote {plan.Count + extra} file(s) to {folder}.",
+
+                // One refusal: name the file too, so there is nothing left to look up.
+                1 => $"Wrote {plan.Count + extra} file(s) to {folder}. "
+                    + $"{refusals[0].What}: {refusals[0].File} — see the checks.",
+
+                _ => $"Wrote {plan.Count + extra} file(s) to {folder}. "
+                    + $"{refusals.Count} refused — {string.Join(", ", kinds)} — see the checks.",
+            };
 
             return true;
         }

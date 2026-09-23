@@ -11,7 +11,20 @@ public sealed record GcodeOptions
     public long SafeZNm { get; init; } = Nm.FromMillimetres(2.0);
 
     /// <summary>Height to drop to at rapid before switching to the plunge feed.</summary>
-    public long ApproachZNm { get; init; } = Nm.FromMillimetres(0.5);
+    public long ApproachZNm { get; init; } = DefaultApproachZNm;
+
+    /// <summary>
+    /// The shipped approach height, kept as the floor under a tab hop's clearance.
+    ///
+    /// A job may set its own lower, and that is a statement about feeding down to cut. It is not a
+    /// statement about how close the tool may skim while it crosses a tab, where the number has to
+    /// survive a levelling map being added to it.
+    /// </summary>
+    internal static readonly long DefaultApproachZNm = Nm.FromMillimetres(0.5);
+
+    // Declared after the property it initialises, which C# allows and which reads oddly — but the
+    // alternative was two independent literals, where changing the shipped default would leave the
+    // hop floor quietly at the old number with nothing to fail.
 
     /// <summary>Decimals on coordinates. Three is one micron, which is past every hobby machine.</summary>
     public int Decimals { get; init; } = 3;
@@ -144,6 +157,11 @@ public static class GcodeEmitter
         // property of what has just been written.
         var up = true;
 
+        // Where the tool is in Z while it is down, as a positive depth below the surface. Needed
+        // because a lap that carries straight on from the one before has to descend from wherever
+        // the last one left it, and the emitter is the only place that knows.
+        var depth = 0L;
+
         foreach (var toolpath in job.Toolpaths)
         {
             if (toolpath.Passes.Count == 0 && toolpath.Drills.Count == 0)
@@ -195,11 +213,25 @@ public static class GcodeEmitter
 
                 var linked = pass.LinkedFromPrevious && p > 0 && toolpath.Passes[p - 1].Path.Count > 0;
                 var next = p + 1 < toolpath.Passes.Count ? toolpath.Passes[p + 1] : null;
-                var retract = next is null || !next.LinkedFromPrevious || next.Path.Count == 0;
+                // Nor when the next pass may hop to it: retracting to the safe height and then
+                // dropping back is the climb this was meant to save, performed twice. EmitPass
+                // raises the tool only as far as that pass turns out to need.
+                var retract = next is null
+                    || next.Path.Count == 0
+                    || (!next.LinkedFromPrevious && next.HopWithinNm is null);
 
                 if (linked)
                 {
                     cut += at.DistanceTo(pass.Start);
+
+                    // A lap that carries straight on still descends into material when it is deeper
+                    // than the one before — it just does it where it stands. Counting only the
+                    // unlinked ones understated the figure by every continued lap, which is most of
+                    // them on an outline.
+                    if (!pass.Ramps && pass.DepthNm > depth)
+                    {
+                        plunges++;
+                    }
                 }
                 else
                 {
@@ -207,7 +239,7 @@ public static class GcodeEmitter
                     plunges++;
                 }
 
-                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract, at, up);
+                at = EmitPass(sb, pass, toolpath.Tool, options, Mm, linked, retract, at, up, ref depth);
                 cut += pass.LengthNm;
                 up = retract;
             }
@@ -268,7 +300,8 @@ public static class GcodeEmitter
         bool linked,
         bool retract,
         Point2 from,
-        bool alreadyUp)
+        bool alreadyUp,
+        ref long depth)
     {
         var start = pass.Start;
         var feed = tool.FeedMmPerMin.ToString(CultureInfo.InvariantCulture);
@@ -291,18 +324,89 @@ public static class GcodeEmitter
                   .Append(" F").Append(feed).Append('\n');
                 first = false;
             }
+
+            // And down to this pass's own depth, if it is below where the last one finished. An
+            // outline's next lap begins at the point the last one ended, so there is nothing to
+            // clear and nothing to travel over: the tool descends where it stands (6.24). A ramped
+            // pass is not this case — it enters at the depth already reached and descends as it
+            // goes, which the loop below handles.
+            if (!pass.Ramps && entry > depth)
+            {
+                sb.Append("G1 Z").Append(mm(-entry))
+                  .Append(" F").Append(tool.PlungeMmPerMin.ToString(CultureInfo.InvariantCulture))
+                  .Append('\n');
+
+                // The feed word has just been set to the plunge rate, so the first cutting move has
+                // to state the cutting one again. Unreachable while `Continues` guarantees the two
+                // passes meet at a point — the XY move above is then skipped and `first` is still
+                // true — but the guarantee lives in another assembly, and the cost of it failing
+                // quietly is a whole pass cut at plunge feed.
+                first = true;
+            }
         }
         else
         {
             // Up, across, down. Never across at depth — but the tool may be up already, and a second
             // line telling it to go where it is is noise in the file.
-            if (!alreadyUp)
+            //
+            // "Up" is the safe height, unless this pass says a shorter hop will do and the move in
+            // front of us is short enough to be the one it meant.
+            //
+            // **Both halves are needed.** The pass can only say "a gap of about a tab's width is a
+            // tab"; whether *this* gap is that gap is a fact about the ordering, which is settled
+            // long after the pass was built and which `ToolpathRouter` will change if reversing a
+            // stack shortens the route. Checking the distance here is checking it against the
+            // program actually being written.
+            //
+            // **The hop clears the surface with room to spare, and the room is not negotiable.**
+            //
+            // Zero looks safe and is not: `Leveller.Write` adds the probed map's correction to every
+            // move including rapids, so on any board that dips below the datum a hop written at zero
+            // comes out negative — and a rapid that moves in plane below zero is a gouge without
+            // qualification (`GcodeBackplot.RoleOf`), which makes the window say "do not run this"
+            // about a file that is otherwise right.
+            //
+            // The approach height is the natural margin and is usually enough, but it is the
+            // operator's to set and the settings window will take 0.05 mm — which an ordinary
+            // board's warp goes straight through. So the hop never sits lower than the shipped
+            // approach height, whatever this job's is. Lowering the approach distance is a request
+            // about where the tool stops rapiding on its way *down to cut*; it is not a request to
+            // skim the laminate on the way across, and reading it as one would put a new class of
+            // gouge into files that never had one.
+            var margin = Math.Max(options.ApproachZNm, GcodeOptions.DefaultApproachZNm);
+
+            // **Only when the tool is still down.** If it is already at the safe height, hopping
+            // buys nothing — the same three lines are written either way, with the descent merely
+            // moved in front of the traverse instead of after it — and it costs something real: the
+            // traverse then happens a millimetre and a half lower, starting from a position this
+            // method only *believes*. `from` is the emitter's running idea of where the machine is,
+            // and "already up" is exactly the set of cases where that idea is weakest: it survives
+            // the manual tool change, where the operator is invited to jog the spindle away and put
+            // a new cutter in. A hop from a jogged position could cross the whole board at half a
+            // millimetre.
+            //
+            // Staying down is the only case this story is about anyway: the lap or run that has
+            // just finished, whose end is where we are standing.
+            var over = !alreadyUp && pass.HopWithinNm is { } within && from.DistanceTo(start) <= within
+                ? Math.Min(margin, options.SafeZNm)
+                : options.SafeZNm;
+
+            if (!alreadyUp || over < options.SafeZNm)
             {
-                sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+                sb.Append("G0 Z").Append(mm(over)).Append('\n');
             }
 
             sb.Append("G0 X").Append(mm(start.X)).Append(" Y").Append(mm(start.Y)).Append('\n');
-            sb.Append("G0 Z").Append(mm(options.ApproachZNm)).Append('\n');
+
+            // Rapid down to the approach height before feeding the rest of the way — unless the
+            // tool is already below it, which it is when it has just hopped a tab.
+            var approach = Math.Min(options.ApproachZNm, over);
+
+            if (approach < over)
+            {
+                sb.Append("G0 Z").Append(mm(approach)).Append('\n');
+            }
+
             sb.Append("G1 Z").Append(mm(-entry))
               .Append(" F").Append(tool.PlungeMmPerMin.ToString(CultureInfo.InvariantCulture)).Append('\n');
         }
@@ -359,9 +463,12 @@ public static class GcodeEmitter
             sb.Append('\n');
         }
 
+        depth = pass.DepthNm;
+
         if (retract)
         {
             sb.Append("G0 Z").Append(mm(options.SafeZNm)).Append('\n');
+            depth = 0;
         }
 
         return pass.End;

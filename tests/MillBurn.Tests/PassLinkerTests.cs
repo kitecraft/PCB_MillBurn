@@ -1,6 +1,7 @@
 using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
+using MillBurn.Gcode;
 using MillBurn.Geometry;
 using MillBurn.Optimize;
 using MillBurn.Pipeline;
@@ -60,14 +61,23 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ the refusals
 
     /// <summary>
-    /// Two pads a hair apart, each isolated once. The gap between the two rings can be smaller than
-    /// the stepover and it is still not linkable: there is a trace's worth of copper between them,
-    /// and the previous lap cleared nothing on the way across.
+    /// Two pads, each isolated once, far enough apart that the tool is never asked.
     ///
-    /// This is the case a distance rule gets wrong, which is why there is not one.
+    /// **This tests the reach, not the material** — and it used to claim otherwise. Its comment said
+    /// "the case a distance rule gets wrong, which is why there is not one", while the pair it built
+    /// is thrown out *by* the distance cutoff: the rings' start and end vertices are 2.2 mm apart,
+    /// against a reach of ten cut widths, so the question of what lies between them is never
+    /// reached. Asserting that nothing was linked was therefore true for a reason the name did not
+    /// mention, and would have stayed true if the material rule were deleted outright.
+    ///
+    /// The reach is worth a test of its own, so this is now that test and says so. What actually
+    /// holds the line on material is <see cref="ALinkIsNeverAllowedAcrossTheIslandARingSurrounds"/>,
+    /// where a crossing really is proposed and refused, and
+    /// <see cref="NoLinkOnARealBoardTouchesCopper"/>, which measures every link on a real board
+    /// against the copper from the Gerber.
     /// </summary>
     [Fact]
-    public void TwoSeparateIslandsAreNeverLinked()
+    public void TwoIslandsTooFarApartAreNeverEvenConsidered()
     {
         // Far enough apart that the offsets do not merge, close enough that the rings nearly touch.
         var apart = Nm.FromMillimetres(2.2);
@@ -81,12 +91,21 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
 
         Assert.Equal(2, isolation.Passes.Count);
 
-        var gap = isolation.Passes[0].End.DistanceTo(isolation.Passes[1].Start) / Nm.PerMillimetre;
-        var (_, result) = PassLinker.Apply(Ordered(isolation));
+        // Ordered first, and measured on that: the linker sees the ordered toolpath, and a gap
+        // measured on the unordered one is a fact about a pair it may never have been offered.
+        var ordered = Ordered(isolation);
+
+        var gap = ordered.Passes[0].End.DistanceTo(ordered.Passes[1].Start) / Nm.PerMillimetre;
+        var (_, result) = PassLinker.Apply(ordered);
 
         output.WriteLine($"islands {gap:F3} mm apart, {result.Linked} linked of {result.Considered} considered");
 
+        // Never even asked: beyond the reach, the geometry is not run at all. Pinned rather than
+        // assumed, because "nothing was linked" reads the same whichever rule did the refusing, and
+        // the two are worth telling apart.
+        Assert.Equal(0, result.Considered);
         Assert.Equal(0, result.Linked);
+        Assert.True(gap > 2.0, $"the pads are {gap:F3} mm apart, which is no longer out of reach");
     }
 
     /// <summary>
@@ -103,8 +122,14 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
         var radius = Nm.FromMillimetres(0.5);
         var ring = Tessellate.Circle(new Point2(0, 0), radius + (Width / 2));
 
-        // Two halves of the same ring, entered at opposite ends: the straight line between them
-        // runs through the middle of the pad.
+        // Two halves of the same ring, the second taken backwards so it *starts* at the far side:
+        // the straight line from where the first ends to where the second begins runs through the
+        // middle of the pad.
+        //
+        // The second half used to be handed over the right way round, which shares its first vertex
+        // with the first half's last one — so the link under test was zero length, sitting on the
+        // contour the tool had just cut, and no crossing of the island was ever proposed. The test
+        // refused something, and it was not this.
         var half = ring.Count / 2;
 
         var toolpath = new Toolpath
@@ -115,28 +140,45 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
             Passes =
             [
                 Pass(ring.Take(half + 1), closed: false),
-                Pass(ring.Skip(half), closed: false),
+                Pass(Enumerable.Reverse(ring.Skip(half).ToList()), closed: false),
             ],
         };
 
         var (_, result) = PassLinker.Apply(toolpath);
 
-        output.WriteLine(
-            $"across {toolpath.Passes[0].End.DistanceTo(toolpath.Passes[1].Start) / Nm.PerMillimetre:F3} mm of pad: {result.Linked} linked");
+        var across = toolpath.Passes[0].End.DistanceTo(toolpath.Passes[1].Start) / Nm.PerMillimetre;
 
+        output.WriteLine($"across {across:F3} mm of pad: {result.Linked} linked of {result.Considered}");
+
+        // The link really does span the pad, so the refusal below is about the copper in the way
+        // rather than about there being nothing to cross.
+        // Against the diameter, which is what the message names. It compared against the radius,
+        // so a link half way across would have satisfied a guard whose text claims it crossed.
+        Assert.True(
+            across > Nm.ToMillimetres(radius) * 2,
+            $"the proposed link is {across:F3} mm, which does not cross a {Nm.ToMillimetres(radius) * 2:F3} mm pad");
+
+        Assert.True(result.Considered > 0, "the pair was never offered to the rule being tested");
         Assert.Equal(0, result.Linked);
     }
 
-    /// <summary>An outline cuts through the stock; there is nothing beside it that is already gone.</summary>
+    /// <summary>
+    /// An outline cuts through the stock; there is nothing beside it that is already gone.
+    ///
+    /// With a control arm, and ordered — without either, this asserted that some passes did not
+    /// link without ever showing they otherwise would, so deleting the rule it guards need not have
+    /// failed it. The two arms differ in one field.
+    /// </summary>
     [Fact]
     public void AnOutlineNeverLinks()
     {
-        var isolation = IsolationOperation.Build(
+        var isolation = Ordered(IsolationOperation.Build(
             [Tessellate.Circle(new Point2(0, 0), Nm.FromMillimetres(0.85))],
-            new IsolationOptions { DepthNm = Depth, WidthNm = Nm.FromMillimetres(0.4) });
+            new IsolationOptions { DepthNm = Depth, WidthNm = Nm.FromMillimetres(0.4) }));
 
         var asOutline = isolation with { Kind = ToolpathKind.Outline };
 
+        Assert.Equal(isolation.Passes.Count - 1, PassLinker.Apply(isolation).Result.Linked);
         Assert.Equal(0, PassLinker.Apply(asOutline).Result.Linked);
     }
 
@@ -208,16 +250,51 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// A lap that would start deeper than the last one ended needs a plunge to reach, and a linked
-    /// pass is written without one — so it never carries on, however exactly it lines up.
+    /// A lap that starts deeper than the last one ended carries on, and is reached by dropping
+    /// where the tool stands.
+    ///
+    /// This used to assert the opposite, and gave its reason: "a linked pass is written without a
+    /// plunge". That was true of the emitter and is no longer — 6.24 is precisely the change, and
+    /// the reason had become the whole of the justification. Lifting to the safe height, rapiding to
+    /// the point the tool is already standing on and dropping back past where it started is three
+    /// moves that achieve nothing, on the axis that runs at a twentieth of the others.
+    ///
+    /// What has not changed is the condition: the two passes must meet at a point. Anything else is
+    /// a journey, and <see cref="AnotherFeatureStartingWhereOneEndsDoesNotCarryOn"/> and the
+    /// distance cases below still hold the line there.
     /// </summary>
     [Fact]
-    public void ALapStartingDeeperThanTheLastEndedDoesNotCarryOn()
+    public void ALapStartingDeeperThanTheLastEndedDropsStraightToIt()
     {
         var toolpath = HoleOnAThinBoard();
         var plunged = toolpath with { Passes = [.. toolpath.Passes.Select(p => p with { RampFromNm = null })] };
 
-        Assert.Equal(0, PassLinker.Apply(plunged).Result.Continued);
+        var (linked, result) = PassLinker.Apply(plunged);
+
+        Assert.Equal(plunged.Passes.Count - 1, result.Continued);
+        Assert.All(linked.Passes.Skip(1), p => Assert.True(p.LinkedFromPrevious));
+
+        // And the program says so: the deeper lap is reached by a feed straight down, with no
+        // retract to the safe height in between. Read from the emitted text rather than from the
+        // flag, because the flag is a request and the emitter is what the machine is given.
+        var job = new Job { Name = "drop", Toolpaths = [linked] };
+        var (text, _) = GcodeEmitter.Emit(job, new GcodeOptions());
+
+        var lines = text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        var firstCut = lines.FindIndex(l => l.StartsWith("G1 Z-", StringComparison.Ordinal));
+
+        Assert.True(firstCut >= 0, "the program never reaches depth");
+
+        var after = lines.Skip(firstCut + 1).ToList();
+
+        Assert.Contains(after, l => l.StartsWith("G1 Z-", StringComparison.Ordinal));
+
+        // Nothing at all between the two descents: no lift, and no reposition either. "Straight to
+        // it" is a claim about X and Y as much as about Z — a rapid across at the safe height and a
+        // rapid across on the spot are different programs, and only one of them is this story.
+        var between = after.TakeWhile(l => !l.StartsWith("G1 Z-", StringComparison.Ordinal)).ToList();
+
+        Assert.DoesNotContain(between, l => l.StartsWith("G0 ", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -227,6 +304,12 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
     [Fact]
     public void AnotherFeatureStartingWhereOneEndsDoesNotCarryOn()
     {
+        // With a control arm, because without one this proved nothing about *why* it refuses.
+        //
+        // The fixture below differs from a hole's laps — which do carry on — in four ways at once:
+        // the stack, whether the passes are closed, the geometry, and the tool. Any of them could
+        // have been the reason, and a linker with the continuation rule deleted outright would have
+        // produced the same answer. So the two arms here differ in one field: the stack.
         var middle = new Point2(Nm.FromMillimetres(5), 0);
 
         var toolpath = new Toolpath
@@ -254,6 +337,15 @@ public sealed class PassLinkerTests(ITestOutputHelper output)
         };
 
         Assert.Equal(0, PassLinker.Apply(toolpath).Result.Continued);
+
+        // The same two passes, told they are one feature: now it carries on. This is what makes the
+        // line above a statement about the stack rather than about anything else in the fixture.
+        var sameStack = toolpath with
+        {
+            Passes = [.. toolpath.Passes.Select(p => p with { Stack = 0 })],
+        };
+
+        Assert.Equal(1, PassLinker.Apply(sameStack).Result.Continued);
     }
 
     // ------------------------------------------------------------------ on a real board

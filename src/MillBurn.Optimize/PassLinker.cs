@@ -11,9 +11,13 @@ namespace MillBurn.Optimize;
 /// <param name="Considered">Passes close enough to the one before for that to be asked.</param>
 /// <param name="LinkedLengthMm">How far those links travel at depth.</param>
 /// <param name="Continued">
-/// Laps that carry straight on from the one before — the next depth of the same hole or slot — and so
-/// need no move at all. Counted apart from <paramref name="Linked"/>: nothing was crossed, and a
-/// summary adding them together would describe routing as isolation.
+/// Laps that carry straight on from the one before — the next depth of the same hole, slot or
+/// profile — with no lift and no move in X or Y. Counted apart from <paramref name="Linked"/>:
+/// nothing was crossed, and a summary adding them together would describe routing as isolation.
+///
+/// Not quite "no move at all", which is what this said before 6.24 widened it. A lap that ramps
+/// needs none; a lap that simply starts deeper is reached by feeding straight down where the tool
+/// stands, which is a plunge and is counted as one.
 /// </param>
 public readonly record struct LinkResult(int Linked, int Considered, double LinkedLengthMm, int Continued = 0)
 {
@@ -161,7 +165,7 @@ public static class PassLinker
 
     /// <summary>
     /// Whether the next pass is the same feature's next lap, carrying straight on: the same stack,
-    /// starting exactly where the last one stopped, at the depth it stopped at.
+    /// starting exactly where the last one stopped.
     ///
     /// Found at the machine. A 2.2 mm hole on a 0.8 mm board came out as four laps of one helix with
     /// a lift between each — retract to safe height, rapid back to the point the tool was already
@@ -169,10 +173,24 @@ public static class PassLinker
     /// — because every lap is deeper than the last and starts where it ended, and the area rule
     /// above only ever asks about passes at one depth with a gap between them.
     ///
-    /// Nothing is crossed, so no material is in question: the tool is already there, and the next lap
-    /// descends along its own path from the depth it is at. That is also why a lap that would start
-    /// <em>deeper</em> than the last one ended never counts: reaching it means a plunge, and a linked
-    /// pass is emitted without one.
+    /// Nothing is crossed, so no material is in question: the tool is already there.
+    ///
+    /// Two ways it gets to the new depth, and they are the only difference between them.
+    ///
+    /// A slot or a milled hole **ramps**: its next pass starts at the depth the last one reached
+    /// and descends along its length, so there is no plunge at all.
+    ///
+    /// An outline's next lap **drops**: it begins at the same point, and the tool goes straight down
+    /// to the new depth at the plunge feed before cutting. That is 6.24. The lap that just finished
+    /// ended exactly where this one starts, so lifting to the safe height, rapiding to the place the
+    /// tool is already standing, and dropping back past where it started is three moves to achieve
+    /// nothing — on the axis that runs at a twentieth of the others. It is not the same as linking
+    /// *across* cleared ground, which is what <see cref="Clears"/> decides and which an outline can
+    /// never do, because a profile cut has nothing cleared beside it.
+    ///
+    /// Both require the passes to meet at a point. A pass that starts anywhere else is a journey,
+    /// however short, and a journey at depth through uncut material is the gouge this whole file
+    /// exists to prevent.
     /// </summary>
     private static bool Continues(ToolpathPass previous, ToolpathPass next) =>
         previous.Stack >= 0
@@ -180,7 +198,11 @@ public static class PassLinker
         && previous.Path.Count > 0
         && next.Path.Count > 0
         && previous.End == next.Start
-        && (next.RampFromNm ?? next.DepthNm) == previous.DepthNm;
+        && ((next.RampFromNm ?? next.DepthNm) == previous.DepthNm
+
+            // Dropping: no ramp, and the new depth is below the old one. Deeper only — a pass that
+            // wanted to come back *up* would be describing something this does not model.
+            || (next.RampFromNm is null && next.DepthNm > previous.DepthNm));
 
     /// <summary>
     /// Whether dragging the tool from one pass's end to the next pass's start cuts only material

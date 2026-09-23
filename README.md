@@ -32,14 +32,24 @@
 > - **The window stops freezing.** Preview and export run off the UI thread, with progress, and a
 >   new edit cancels the run it supersedes.
 > - **Changing one layer stops redoing all of them.** The pipeline remembers its stages, so an edit
->   re-plans what it touched and nothing else.
+>   re-plans what it touched and nothing else — a board that took 2.98 s comes back in 0.06.
+> - **The outline stops climbing to the sky.** Between laps the cutter descends where it stands
+>   instead of retracting to the safe height and returning to the same spot; over a tab it hops the
+>   tab rather than the whole board. On the test board that is 45.4 mm of vertical motion down to
+>   27.4, and on a 66-up panel the cut-out loses about eight minutes.
+> - **The travel optimizer stops chasing its tail.** A search that could apply 321,413 "improvements"
+>   and finish somewhere worse now settles in fifteen — and a channel cut at several depths can be
+>   entered from either end, which it never could before.
+> - **Three found at the bench**: copper sealed inside the board can no longer be set to G-code, an
+>   Excellon file in inches has its drill sizes read as inches, and Preview stops unticking layers a
+>   freshly opened project had visible.
 > - **Layer names read as words** — and the bugs that reading them out loud found.
 > - **The scaffolding a public repository needs**: CI on release branches, a pinned SDK, a written
 >   style the build enforces, and a briefing any assistant can read.
 >
 > **[Read the sprint document →](Sprints/Sprint-01-Speed-and-Accuracy.md)** — the four numbers that
-> set the order, what each of the six stories is for, and what was deliberately left out. The
-> [changelog](CHANGELOG.md) carries the same list in release form.
+> set the order, what each of the six stories is for, what each one measured when it closed, and what
+> was deliberately left out. The [changelog](CHANGELOG.md) carries the same list in release form.
 
 ---
 

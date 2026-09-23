@@ -3466,7 +3466,7 @@ drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres 
 plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
 and it is the only thing in this release a person who never reads a roadmap will notice.
 
-#### 6.24 The outline lifts to the sky between laps, and over every tab — **found in the workshop, not started**
+#### 6.24 The outline lifts to the sky between laps, and over every tab — **fixed**
 
 From the bench: *"The edge cuts have unnecessary z actions at the end of each lap. Also, the z-lift
 over the tabs should be much lower than the safe height. Just hop over the tab."*
@@ -3512,6 +3512,25 @@ computed, and named in the program's comments like every other derived number he
 **Done when** the test board's outline spends under fifteen seconds moving vertically rather than
 fifty-nine, cuts the same shape, and still lifts to the safe height for anything that is a genuine
 travel move.
+
+**Fixed, and the numbers above no longer reproduce.** Four laps became three at some point between
+this being written and being done, so the 59 s is a measurement of a program the application does
+not emit any more. Measured again on the same board first: 45.40 mm of vertical motion, 34.9 s. After
+both halves: **27.40 mm, 22.3 s** — 36 % less vertical distance, 12.6 s off a two-minute program.
+The panel, which has fifty-one profiles rather than one, goes from 797 rapid moves to 182 and from
+530 plunges to 319, an estimated 57m 44s – 1h 0m becoming 49m 29s – 51m 44s. Its feed and arc counts
+are identical before and after: nothing about what is cut has changed.
+
+Between laps, `PassLinker.Continues` accepts a pass that starts where the last one ended and goes
+deeper, and the emitter drops straight to it at the plunge feed. The two passes must still **meet at
+a point** — that condition is the whole of the safety, and a journey at depth through uncut material
+is exactly what this lift exists to prevent.
+
+Over a tab the hop goes to **the surface**, not to the tab's own top. Clearing the top would save
+another 0.6 mm of Z and would put a rapid in-plane move below zero, which `GcodeBackplot.RoleOf`
+calls a gouge without qualification and the window answers with "do not run this". That check is
+worth more than the 0.6 mm, so the tool comes up to zero — which clears any tab there can be, keeps
+the crossing a rapid, and adds nothing to the cut length.
 
 #### 6.25 An isolation path bows into an arc where the copper is straight — **measured, not fixed**
 
@@ -3971,6 +3990,160 @@ the first thing to decide, and the product owner cuts at 0.500 mm, which is the 
 
 **Done when** the outline's travel on the panel is within sight of the odd-parity figure at an even
 pass count, the cut itself is unchanged, and a test pins the relationship rather than the number.
+
+#### 6.35 A knife blade as a tool, for vinyl masking — **asked for by the product owner, not started**
+
+From the product owner, 2026-09-22: *"Add knife blades as a tool. For those who want to use a cutter
+to create a solder mask using vinyl masking."*
+
+Cut the mask openings out of adhesive vinyl with a drag knife, weed it, and lay it on the board:
+another way to get a soldermask onto a home-made board, alongside the laser and the mill that are
+there now. The machine is the same one, the file is the same shape, and the layer it comes from —
+the soldermask — is already read, already offered as SVG for the laser and as a pocket for the mill.
+This would be its third answer.
+
+**A knife is not an end mill with the depth turned down, and that is the whole of the work.** The
+blade trails the spindle centre by its own offset, so it does not point where the machine is going
+until it has been dragged far enough to swing round. Every corner therefore needs the path lengthened
+past it and re-entered — the overcut — or the blade tears the turn instead of cutting it. That
+compensation is what separates a drag knife from every tool this application currently models, and
+it is geometry rather than a setting: `ToolKind` has three members today and every one of them
+cuts where the spindle is.
+
+**What it would touch**, from a quick look rather than a design: `ToolKind` and the tool library,
+which is small; the toolpath the mask layer produces, which today is an area to clear and would
+instead be an outline to follow; and the emitter, which has no notion of a tool whose depth is a
+pressure and whose passes are single. The optimizer needs nothing new — a knife cuts closed contours
+and open runs like anything else.
+
+**Answered by the product owner, same day, and the answers make it smaller than it looked.**
+
+*The blade.* *"The traditional drag-knife option (we can figure out defaults at implementation
+time), or the 'Cricut' (non-driven) type. The cricut is still used as a kind of offset drag knife,
+it's just that the point of the blade is only a tiny bit offset compared to a traditional
+drag-knife."* So there is **one model, not two**: both are offset drag knives and the difference
+between them is the size of the offset. A number in the tool, not a branch in the code, and the
+Cricut is the small-offset case of the same arithmetic. Defaults are an implementation-time question.
+
+*Where it is cut.* *"We generate the g-code, let the user figure out how to use it."* — which is
+this application's standing boundary, and it removes mats, bed fixturing and the whole question of
+how the vinyl is held. It writes the file.
+
+*Growing the openings.* *"Great option to include in the tool config. Default 0."* A vinyl mask cut
+exactly to the pad has nothing holding it down, so the grow amount belongs beside the blade offset,
+and zero means the apertures as drawn.
+
+*Which layers.* **Open — more consideration needed.** The first answer was *"I see no reason to
+limit it by layer type. Any Gcode export can use any tool."*, and it was then reopened deliberately
+rather than settled, which is the right call: it is the one part of this that reaches past the knife.
+
+`LayerOperations.ToolKindFor` narrows the tool dropdown per operation today — a V-bit for isolation
+and engraving, an end mill for the outline, a drill for drilling, and no filter at all for a pocket,
+because both kinds are genuinely used there. It exists so that a meaningless pairing cannot be
+chosen. Read literally, "any G-code export can use any tool" removes it, which also permits a drill
+for isolation and an end mill for drilling.
+
+Two readings, and they are different pieces of work:
+
+- **Admit knives to every operation** and leave the rest of the filtering as it is. Small, and it
+  gets the vinyl mask cut.
+- **Drop the filtering altogether** and let the operator answer for the pairing. Larger, and the same
+  move [6.31](#631-let-the-operator-say-what-a-layer-is) makes for layer roles — when the rule cannot
+  know, offer the choice and name the consequence rather than guessing.
+
+What makes the second worth thinking about rather than simply doing: the filter is not only a
+convenience, it is the thing that stops a program being written for a pairing nobody can run, and
+this application's habit is to refuse rather than guess. What makes it worth thinking about rather
+than simply refusing: the pocket case already has no filter, which is an admission that the rule
+does not always know. Neither is obviously right. To be decided at the sprint boundary, not here.
+
+**Still open from this end:** the offset defaults, and whether a corner's overcut is derived from the
+offset alone or needs a separate swivel allowance on tight turns.
+
+**Not started, and deliberately not begun mid-sprint**: it is a feature, sprint 1 is about speed and
+accuracy, and new requests are prioritised at the sprint boundary (CONTRIBUTING).
+
+#### 6.36 A check should say what it is about — **asked for by the product owner, not started**
+
+From the product owner, 2026-09-22: *"The CHECK section: Each item should list its source first, then
+the message. ie: Stock - <message> or Top copper - <message>. Also, might be nice to put that label in
+the layer's colour."*
+
+The list already mixes several kinds of thing — a layer's own warnings, the stock's refusals, advice
+about the tool library, and the export's refusals — and the only clue to which is which is whatever
+the sentence happens to begin with. Some already lead with a source (`Stock: ...`, `Not levelled:
+...`); most do not.
+
+The colour is the better half of the request. The layer rows are already coloured, and a check whose
+label carries its layer's colour is findable without reading anything — which is what a list you
+consult while the mill is running needs to be.
+
+**And the case that raised it.** The export's status line said *"1 thing(s) refused — see the
+checks"* while the check itself read *"Not levelled: Millburn_Test_Board-B_Cu.nc — ..."*. The word
+"refused" appeared nowhere in the list, so there was nothing to look for. From the bench: *"I don't
+know which check it is referring to."* Screenshot: `WorkingFolder/V0.2.0/Story 6 - Stop Climbing
+Outline/Screenshots/refused.png`.
+
+The status line now names what was refused and the file when there is only one, which was a small
+change made on the spot — and it is **not enough**, which is the second thing the bench said: *"it's
+there, but the link from status message to check is not really clear to the user."* Naming the thing
+still leaves the reader matching one sentence against a list of sentences. Making that link plain is
+part of this request rather than a separate one: the status names a refusal, and the reader should be
+able to *see* which line it means — the same word in both, or the line marked as a refusal rather
+than as advice, or the check itself highlighted when the message is about it.
+
+**Done when** every check line begins with the thing it is about, a layer's own checks carry that
+layer's colour, a reader can tell a refusal from advice without reading to the end of the sentence,
+and a status message that points at the checks points at one a reader can find without hunting.
+
+#### 6.37 The check list should fold away — **asked for by the product owner, not started**
+
+From the product owner, 2026-09-22: *"The CHECK section should be minimizable (downwards) leaving
+just the title and the count visible."*
+
+Downwards, so the board keeps the room. The count stays visible because that is the part worth
+seeing at a glance: a job with three checks and a job with none should not look the same when the
+panel is folded.
+
+Worth deciding with it: whether the fold is remembered, and whether a new check unfolds it. Neither
+is obvious — a panel that reopens itself is the kind of thing that gets in the way once an operator
+has read the checks and decided they are fine, and a fold that hides a check that arrived afterwards
+is the opposite failure. The count in the title is what makes leaving it folded defensible.
+
+**Done when** the check section folds to its title and count, the board gets the space, and the
+count is legible folded.
+
+#### 6.38 A tab hop assumes the board does not fall half a millimetre — **known limitation, accepted**
+
+Since [6.24](#624-the-outline-lifts-to-the-sky-between-laps-and-over-every-tab), the tool crosses a
+tab at 0.5 mm above the surface rather than climbing to the safe height. `Leveller.Write` adds the
+probed map's correction to **every** move, rapids included, with no clamp and no lower bound. So on a
+board whose probed surface dips more than 0.5 mm below the datum along a tab gap, the hop is written
+below zero — the cutter rubs, and `GcodeBackplot.RoleOf` calls a rapid that moves in plane below zero
+a gouge, so the window says "do not run this" about a file that is otherwise right.
+
+**New with that story, and worth saying so.** Before it, the only move at approach height was
+vertical, and `RoleOf` never calls a vertical move a gouge. This is a class of failure that did not
+previously exist, created by a change that is right in every other respect.
+
+**Accepted rather than fixed, and the product owner's reasoning is the measurement.** Half a
+millimetre of fall below datum is *"a lot. I mean, that's a whole 1 mm range"* across the board once
+the rise is counted with it. A laminate that bad is a workholding problem before it is a levelling
+one, and the operator is told about it: the file is condemned rather than silently run.
+
+**What would change if it ever bites.** Three ways, in the order they were judged:
+
+1. **Clamp rapids at levelling time** so a correction cannot push one below zero. Principled, and it
+   can only ever remove gouges — but it changes how every levelled program is written and belongs to
+   its own story with its own review rather than riding in on the end of another.
+2. **Refuse the hop when the map's fall exceeds the margin.** The emitter would have to know the map,
+   which today it does not.
+3. **Raise the hop floor.** Cheapest and the worst of the three: it gives back the saving on every
+   board to protect against one nobody has seen.
+
+**It is not silent.** A file this happens to is condemned by the gouge check before it can be run,
+which is why accepting it is defensible: the failure mode is a refused file and a confused operator,
+not a cut board.
 
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
