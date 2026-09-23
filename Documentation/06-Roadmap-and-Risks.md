@@ -4145,6 +4145,85 @@ one, and the operator is told about it: the file is condemned rather than silent
 which is why accepting it is defensible: the failure mode is a refused file and a confused operator,
 not a cut board.
 
+#### 6.39 Offsets are not counted — **known gap, follow-up**
+
+`Work` counts Clipper booleans, point-in-polygon questions and the vertices handed to them, and each
+board's tally is recorded in `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` so a change in what a
+board costs is a diff somebody has to justify.
+
+**Offsets are missing, and every toolpath is built by one.** The fourteen call sites go straight to
+`Clipper.InflatePaths` rather than through `Polygons`, so there is nowhere central to count them. A
+field that could only ever read zero was left out rather than shipped, because somebody would
+eventually trust it.
+
+**What it costs to leave.** Isolation and outline are mostly offsetting, so the counts describe
+compositing and queries well and toolpath building badly. Work that doubled the offsetting would
+still move the vertex total — offsets are handed geometry either way — but it would not read as
+offsets, which makes the number harder to interpret than it should be.
+
+**And nothing stops a fifth bypass.** Booleans are counted because `Polygons` is the door they go
+through, but the door can be walked around: four call sites already did, and were only found by a
+review reading for them — two in `PassLinker`, one in `VoidCentreline`, one in
+`DrillAndOutlineOperations`. They are counted now, in place. A new `Clipper.Union` written tomorrow
+compiles and counts nothing, and the snapshot that is supposed to notice says the work got cheaper.
+
+**Done when** offsets go through a counting wrapper, `WorkCount` carries the field, and calling
+`Clipper.Union`, `Difference`, `Intersect`, `BooleanOp`, `InflatePaths` or `PointInPolygon` outside
+that wrapper is a build error rather than a habit — a banned-API list or an analyser rule. Then the
+tally is a fact about the program instead of a fact about who remembered. Fourteen offset sites in
+five files plus the rule: mechanical, and worth doing on its own rather than inside a story about
+something else.
+
+**The measured cost of not having had it**, so the value is on the record. The first baselines
+committed here were wrong, and a review found it by reading for uncounted calls rather than by any
+test failing. `ResolveEvenOdd` — the realiser's most-used boolean, and the one an aperture or region
+change would move — went through Clipper directly, as did `Separate` and the four sites above. On
+the Arduino Mega the corrected numbers are:
+
+| | as first recorded | actual | reported |
+|---|---:|---:|---:|
+| realising, booleans | 606 | 1,493 | 41 % |
+| realising, vertices | 392,557 | 452,560 | 87 % |
+| planning, booleans | 4 | 666 | 0.6 % |
+| planning, vertices | 201,860 | 804,781 | 25 % |
+
+A regression in resolving a 10,007-object board's geometry, or in anything the planner composites,
+would have left every baseline byte-identical. The counters were believed for a day, which is the
+whole argument for the rule: a tally nobody can bypass is worth more than a tally somebody has to
+remember to use.
+
+#### 6.40 What the work counters do not watch — **known gap, follow-up**
+
+`WorkSnapshotTests` records what a board costs to realise and to plan, and a change in either is now
+a diff somebody has to account for. Four things it does not cover, written down while they are known
+rather than found later by something regressing quietly.
+
+**The optimizer is not in it.** The counts bracket `BoardLoader.LoadFolder` and `ExportPlanner.Plan`,
+and the route search is neither: it counts its own moves against a budget, which is a good measure of
+the search and no measure of what the search costs to run. Two-opt and or-opt on a board the size of
+the Mega are not free, and nothing here would notice them getting dearer. The move budget would hold
+the *quality* steady while the *price* climbed, which is exactly the shape that hides.
+
+**One output kind, one thickness.** Every case asks for `OutputKind.Gcode` at 1.6 mm. SVG export
+goes through different work — no depth, no passes, no linking — and is unmeasured. So is stock
+cutting, levelling, and milled holes, each of which is a chunk of geometry behind a setting nobody
+here turns on.
+
+**Four boards of the ten in `RealBoards`.** The four were picked for size and shape, which is the
+right instinct, but the boards that break things have historically been the awkward ones rather than
+the big ones — 6.30 came off a real export, and three bench bugs came off one board nobody had run.
+
+**`LoadSources` is not the path tested.** `LoadFolder` reparses and rebuilds, which is what makes the
+warm-up honest and the floor assertion meaningful. The app does not always take that route. Whatever
+the UI actually calls when a project is reopened is the path a user pays for, and it is not the path
+measured here.
+
+**Done when** the optimizer is bracketed and counted separately, at least one SVG case and one
+levelled case exist, and the board list is either extended or the choice of four is argued in the
+file. Not urgent, and deliberately not bundled into 6.39 — that one is about a tally that can be
+bypassed, this one is about a tally that is honest as far as it reaches and does not reach far
+enough.
+
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
 The first release cadence was a release a day, which suited a feature-shaped backlog. The product

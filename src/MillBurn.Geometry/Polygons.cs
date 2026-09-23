@@ -34,7 +34,20 @@ public static class Polygons
     public static Paths64 ResolveEvenOdd(Paths64 contours)
     {
         ArgumentNullException.ThrowIfNull(contours);
-        return contours.Count == 0 ? [] : Clipper.Union(contours, FillRule.EvenOdd);
+        if (contours.Count == 0)
+        {
+            return [];
+        }
+
+        Work.Boolean(VertexCount(contours));
+        return Clipper.Union(contours, FillRule.EvenOdd);
+    }
+
+    /// <summary>Clipper's point-in-polygon, counted. One place, so a new caller cannot skip the tally.</summary>
+    public static PointInPolygonResult PointIn(Point64 p, Path64 ring)
+    {
+        Work.PointTest();
+        return Clipper.PointInPolygon(p, ring);
     }
 
     public static Paths64 Union(Paths64 a, Paths64 b)
@@ -47,14 +60,26 @@ public static class Polygons
             return b;
         }
 
-        return b.Count == 0 ? a : Clipper.Union(a, b, FillRule.NonZero);
+        if (b.Count == 0)
+        {
+            return a;
+        }
+
+        Work.Boolean(VertexCount(a) + VertexCount(b));
+        return Clipper.Union(a, b, FillRule.NonZero);
     }
 
     /// <summary>Self-union: merges overlaps within one already-oriented set.</summary>
     public static Paths64 UnionSelf(Paths64 paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        return paths.Count == 0 ? [] : Clipper.Union(paths, FillRule.NonZero);
+        if (paths.Count == 0)
+        {
+            return [];
+        }
+
+        Work.Boolean(VertexCount(paths));
+        return Clipper.Union(paths, FillRule.NonZero);
     }
 
     /// <summary>
@@ -74,6 +99,8 @@ public static class Polygons
         }
 
         var tree = new PolyTree64();
+
+        Work.Boolean(VertexCount(paths));
         Clipper.BooleanOp(ClipType.Union, paths, null, tree, FillRule.NonZero);
 
         foreach (var region in Walk(tree))
@@ -116,6 +143,7 @@ public static class Polygons
             return subject;
         }
 
+        Work.Boolean(VertexCount(subject) + VertexCount(clip));
         return Clipper.Difference(subject, clip, FillRule.NonZero);
     }
 
@@ -129,6 +157,7 @@ public static class Polygons
             return [];
         }
 
+        Work.Boolean(VertexCount(subject) + VertexCount(clip));
         return Clipper.Intersect(subject, clip, FillRule.NonZero);
     }
 

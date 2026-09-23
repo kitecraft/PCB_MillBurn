@@ -212,10 +212,11 @@ public static class PassLinker
     {
         var half = width / 2;
 
-        var allowed = Clipper.Union(
-            Ribbon(previous, half, sagittaNm),
-            Ribbon(next, half, sagittaNm),
-            FillRule.NonZero);
+        var before = Ribbon(previous, half, sagittaNm);
+        var after = Ribbon(next, half, sagittaNm);
+
+        Work.Boolean(Polygons.VertexCount(before) + Polygons.VertexCount(after));
+        var allowed = Clipper.Union(before, after, FillRule.NonZero);
 
         // The slack goes on the region rather than off the link: shrinking the link would let a
         // genuinely short overhang through, and growing the region by a micron cannot.
@@ -234,6 +235,7 @@ public static class PassLinker
         var swept = Clipper.InflatePaths(
             link, half, JoinType.Round, EndType.Round, arcTolerance: sagittaNm);
 
+        Work.Boolean(Polygons.VertexCount(swept) + Polygons.VertexCount(allowed));
         var outside = Clipper.Difference(swept, allowed, FillRule.NonZero);
 
         // Clipper leaves degenerate slivers where two boundaries touch. A square a micron on a side

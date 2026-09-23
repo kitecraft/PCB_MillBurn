@@ -621,6 +621,7 @@ public static class OutlineOperation
             return false;
         }
 
+        Work.Boolean(Polygons.VertexCount(near) + Polygons.VertexCount(inner));
         var shared = Math.Abs(Clipper.Area(Clipper.Intersect(near, inner, FillRule.NonZero)));
 
         // A hundredth of a square millimetre, to ignore the slivers an offset leaves behind. Both
@@ -676,7 +677,7 @@ public static class OutlineOperation
                     continue;
                 }
 
-                if (Clipper.PointInPolygon(contours[i][0], contours[j]) == PointInPolygonResult.IsInside)
+                if (Polygons.PointIn(contours[i][0], contours[j]) == PointInPolygonResult.IsInside)
                 {
                     depth++;
                 }
@@ -803,4 +804,5 @@ public static class OutlineOperation
         segment.From.Y + (long)Math.Round((segment.To.Y - segment.From.Y) * t));
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
+
 }

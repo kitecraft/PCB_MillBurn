@@ -1,0 +1,17 @@
+Arduino_Mega_2560
+=================
+
+layers          13
+objects         10,007
+programs        11
+moat (nm)       0
+
+realising
+  booleans      1,493
+  point tests   0
+  vertices      452,560
+
+planning
+  booleans      666
+  point tests   18
+  vertices      885,508
