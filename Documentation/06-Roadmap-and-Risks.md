@@ -2039,7 +2039,43 @@ than discovered after.
 - **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
 - Machine-profile sharing.
 
-#### 6.1 Rulers — **scheduled, not started**
+##### How to read a status
+
+Every numbered entry below is tagged **kind · state**, and the tag is the whole vocabulary — no
+entry invents its own. A note after it in italics carries whatever else is worth knowing.
+
+| kind | |
+|---|---|
+| `defect` | something is wrong. It may be unfixed, fixed, or accepted as a limitation |
+| `enhancement` | something new or better, which is not the same as something broken |
+
+| state | |
+|---|---|
+| `open` | not started |
+| `partial` | begun, and the entry says which half |
+| `fixed` | the defect is gone, and the entry says how it was proved |
+| `built` | the enhancement is in |
+| `parked` | deliberately not being done, and the entry says why |
+| `accepted` | a limitation that is understood and lived with |
+| `superseded` | overtaken by something else |
+| `folded into 6.NN` | absorbed into a larger piece of work; do not pick it up alone |
+
+**This is the defect list.** There is no separate bug document, deliberately: an entry here carries
+its measurement and its reasoning, and a tracker row that only carries a title would drift from it
+within a sprint. What was missing was not a second document but a vocabulary — twenty-four different
+status strings across forty-six entries, with `built`, `done` and `fixed` all meaning the same thing
+and no way to ask which things were broken. So:
+
+```
+grep -n 'defect · open' Documentation/06-Roadmap-and-Risks.md
+```
+
+**GitHub issues are for other people.** `.github/ISSUE_TEMPLATE/bug-report.yml` exists so that
+somebody outside can report a fault. The product owner's own defects live here until the pace of
+development slows enough for a tracker to be worth the second place to look; when that changes, this
+note should change with it.
+
+#### 6.1 Rulers — **enhancement · open**
 
 Requested from the workshop: a scale down the left edge and along the top of the viewport, so the
 size of what is on screen can be read rather than guessed at.
@@ -2078,7 +2114,7 @@ Left for later: a ruler in inches (the app is millimetres throughout and mixing 
 how a wrong number gets read confidently), and printable dimensioned output, which is a drawing
 feature rather than a viewer one.
 
-#### 6.2 Climb or conventional — **scheduled, not started, low priority**
+#### 6.2 Climb or conventional — **enhancement · open** — *low priority*
 
 Asked from the workshop: *"is the default cut direction making a climb cut or a conventional cut?"*
 The honest answer is that **nothing chooses**. There is no setting, and no part of the pipeline
@@ -2130,7 +2166,7 @@ it does.
 both faces of a double-sided board, and an operation for which the question is meaningless says so
 rather than offering a switch that changes nothing.
 
-#### 6.3 Staying down between passes that touch — **done**
+#### 6.3 Staying down between passes that touch — **enhancement · built**
 
 **Verified on metal after v0.1.0:** the Millburn test board's top copper, four isolation passes, with
 lifts only where they belonged; 28:45 on the machine against an estimate of 16m 17s – 45m 45s.
@@ -2206,7 +2242,7 @@ depth rather than the two neighbouring passes. It would pick up links across gro
 in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
 a strict subset of it, so nothing has to be undone to get there.
 
-#### 6.4 Tabs: where, how many, how big — **scheduled, not started**
+#### 6.4 Tabs: where, how many, how big — **enhancement · open**
 
 Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
 put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
@@ -2257,7 +2293,7 @@ which vertices happen to exist.
 moved and resized individually, the emitted gaps land where the picture says they will, and the
 material left under a tab is the height the program says it is.
 
-#### 6.5 A picture on the companion pages — **scheduled, not started**
+#### 6.5 A picture on the companion pages — **enhancement · open**
 
 Requested from the workshop: *"in the companion html for drills and routing, include images of the
 layer with the holes/slots numbered in the order of drilling/routing."*
@@ -2314,7 +2350,7 @@ order, a routing page shows its slots with direction and its refusals hatched, t
 step degrades to dots without becoming unreadable, and every page is still one file that opens with
 no network.
 
-#### 6.6 The tool library, once it has more than a handful in it — **scheduled, not started**
+#### 6.6 The tool library, once it has more than a handful in it — **enhancement · open**
 
 Requested from the workshop: **filter by tool type, sorting, and copy a tool.** All three are the
 same symptom — the list was designed for the six tools it shipped with, and a library grows.
@@ -2361,7 +2397,7 @@ on, and a filter you cannot see is how somebody concludes their tools have vanis
 can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
 byte-identical after a session that only looked at it.
 
-#### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **scheduled, needs research**
+#### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **enhancement · open** — *needs research*
 
 Requested from the workshop, and the reasoning behind the request is the useful part:
 
@@ -2444,7 +2480,7 @@ after that does *not* re-explain the status bar, every coachmark can be forced o
 command line for a screenshot, no automated run ever draws one, and Esc closes anything this puts
 on screen.
 
-#### 6.8 The viewer leaves a gap in every outline ring — **done**
+#### 6.8 The viewer leaves a gap in every outline ring — **defect · fixed**
 
 Reported from the workshop against the panelised connector board: the board outline is drawn with
 short pieces missing, most visibly at the closed end of each routed channel. The programs are
@@ -2475,7 +2511,7 @@ close verb on a backplot run, and a third test asserting the two palettes agree 
 are — so adding a style and forgetting which it is fails a test rather than producing a picture
 somebody has to notice.
 
-#### 6.9 Open recent — **built**
+#### 6.9 Open recent — **enhancement · built**
 
 Requested from the workshop: a **Open recent** item in the File menu that opens a submenu on hover,
 listing the last few projects.
@@ -2529,7 +2565,7 @@ the list — a `--recent` flag that opened the menu was written, tried and taken
 it is a `--recent` flag that **prints** the entries the menu would show, which catches an empty list, a
 duplicate, or a name mangled by an accelerator, from a terminal.
 
-#### 6.10 Drill hits drawn as an X — **superseded**
+#### 6.10 Drill hits drawn as an X — **enhancement · superseded** — *the drill maps already provide it*
 
 Requested from the workshop: show each drilled hole in the viewer as an X, with its own toggle
 under *Toolpath moves*.
@@ -2571,7 +2607,7 @@ What the implementation has to decide:
 canned cycles alike; the X hides with its own chip and with its layer's row; and a milling program's
 plunges do not grow Xs.
 
-#### 6.11 Bit changes: one file per bit, or one file with custom tool-change G-code — **per-bit built; the choice is not**
+#### 6.11 Bit changes: one file per bit, or one file with custom tool-change G-code — **enhancement · partial** — *per-bit files built; the choice between them is not*
 
 **Built (2026-09-14): one file per bit.** A drilling or routing layer that needs more than one bit
 is written as one file per bit — `Board-PTH-drl.bit1-1.00mm.nc`, `Board-PTH-drl.bit2-0.50mm.nc`, …,
@@ -2605,7 +2641,7 @@ still says "resume in your sender" — right for those machines, and wrong for p
 G-code*, the second emits the operator's block at every change, and each form's page describes the
 run it actually produces.
 
-#### 6.12 Drill alignment — **built**
+#### 6.12 Drill alignment — **enhancement · built**
 
 Requested from the workshop, for holes that have to land in pads already on the board: a small hole
 in a small pad leaves a few tenths either side, and a drilling origin slightly out puts holes on the
@@ -2632,7 +2668,7 @@ has copper on it and the outline has to go round that copper — and closes. The
 Both of this section's open items — remembering the correction in the project, and measuring two holes
 to tell a shift from a board that is not square — were built in 6.14, which is where they are described.
 
-#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **done**
+#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **enhancement · built**
 
 Found on the test board at the machine: 0.8 mm board, "Spiral with" a 0.8 mm end mill (0.5 mm
 stepdown), the layer's 0.3 mm break-through, so 1.10 mm deep. Every milled hole and every slot was
@@ -2754,7 +2790,7 @@ slider, and records it whenever the outputs are recorded — on every change and
 `export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
 `project info` print which; `project save --thickness` records one.
 
-#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **built**
+#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **enhancement · built**
 
 Requested from the workshop, after the first boards cut on stock. The stock (5.6) gives every setup a
 datum and helps alignment a great deal, but small amounts of play in jigs and clamps can still throw the
@@ -2898,7 +2934,7 @@ board's rotation. Three drilling files, two routing files and the outline all ra
 0.3 mm vias landed inside their pads. *"The test will not only compensate for any rotation of the
 placement, but will also fix the not-perfect X/Y origin setting."*
 
-#### 6.15 The companion page names the commands that would rebuild it — **requested, not started**
+#### 6.15 The companion page names the commands that would rebuild it — **enhancement · open**
 
 Requested from the workshop: *"in the project html companion file that is written on export, can we
 add a new section at the bottom for the cli command used to create the export... or maybe, a list of
@@ -2937,7 +2973,7 @@ those are worth fixing rather than papering over.
 with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
 double-sided one with stock and alignment, and for a board whose name has a space in it.
 
-#### 6.16 A re-measured stock keeps the holes it was cut with — **parked**
+#### 6.16 A re-measured stock keeps the holes it was cut with — **enhancement · parked**
 
 Requested from the workshop, describing a workflow already in use: cut the stock to size with
 alignment holes in its waste; measure what came out; and if it is not quite the size asked for, set
@@ -2994,7 +3030,7 @@ but it asked the operator to follow a remembered record behind the Pre-cut tick 
 size and the as-cut holes, that no longer agree — and that could not be made clear in the window. If it
 comes back, it starts from what an operator would understand rather than from the mechanism.
 
-#### 6.17 The stock's alignment holes, marked in the SVGs — **built and used on metal; Print and Cut not tried**
+#### 6.17 The stock's alignment holes, marked in the SVGs — **enhancement · partial** — *used on metal; Print and Cut not tried*
 
 Requested from the workshop, as part of the goal the whole app serves: **confidence in alignment, for
 everything.** The mill already has it — the stock's two waste holes are cut in the stock's own frame,
@@ -3091,7 +3127,7 @@ jig.
 **Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
 layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.
 
-#### 6.18 A paste stencil to 3D-print — **requested, not started**
+#### 6.18 A paste stencil to 3D-print — **enhancement · open**
 
 Requested from the workshop, and ranked ahead of the paste extruder (Phase 9), which stays long
 term: *"A Job option to create a solder paste stencil that can be made by 3D printing … MillBurn
@@ -3169,7 +3205,7 @@ takes the same options, as every export does.
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
 
-#### 6.19 A dry run that is the real run, raised — **requested, not started**
+#### 6.19 A dry run that is the real run, raised — **enhancement · open**
 
 Requested from the workshop: *"The dry-run could be much better representative of a real run. The
 lack of z-moves lowers the usefulness of the current dry-run too much. What if the dry-run was just a
@@ -3208,7 +3244,7 @@ height. The export's dry-run tick is unchanged.
 **Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
 with every plunge in the air, and its run time lands where the real program's does.
 
-#### 6.20 Which way up is this stock? — **requested, not started**
+#### 6.20 Which way up is this stock? — **enhancement · open**
 
 From the workshop, cutting the 78.63 x 76.09 mm test stock: *"Might need a better way to orient the
 board. On this mostly square board, the chamfer corner isn't quite enough for a visual check for
@@ -3246,7 +3282,7 @@ needs to be as loudly marked as a turn.
 **Done when** somebody who has not seen the piece before can say which corner is the datum from
 across the bench, and the stock program and project page say what to look for.
 
-#### 6.21 Every hole approached from the same side — **found in the workshop, not started**
+#### 6.21 Every hole approached from the same side — **enhancement · open** — *possibly a global setting rather than always on*
 
 Found while checking the laser against the stock's waste holes, 2026-09-19, and worth recording in
 full because every party was innocent until the last measurement.
@@ -3306,7 +3342,7 @@ error is neither, and no rigid fit can push two points apart.
 **Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 103.10,
 and a burn registered on them lands on both.
 
-#### 6.22 Machine checks: measure the machine, not only the bit — **backlash and squareness built; four more sketched**
+#### 6.22 Machine checks: measure the machine, not only the bit — **enhancement · partial** — *backlash and squareness built; four more sketched*
 
 From the workshop, after 6.21 turned a laser mystery into a quarter of a millimetre in the holes and
 a quarter of a degree of skew in the laser ([09 §1](09-Machine-Accuracy-Investigations.md)): *"Since MillBurn is
@@ -3434,7 +3470,7 @@ they belong in the machine's own firmware or in its frame.
 **Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
 cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 103.10.
 
-#### 6.23 About, and a check for updates — **built**
+#### 6.23 About, and a check for updates — **enhancement · built**
 
 Asked for from the workshop, and the reasoning is short: *"how about a button on the about page to
 check for a new version? And, at the same time, that about page could use some spiffying up."* The
@@ -3466,7 +3502,7 @@ drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres 
 plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
 and it is the only thing in this release a person who never reads a roadmap will notice.
 
-#### 6.24 The outline lifts to the sky between laps, and over every tab — **fixed**
+#### 6.24 The outline lifts to the sky between laps, and over every tab — **defect · fixed**
 
 From the bench: *"The edge cuts have unnecessary z actions at the end of each lap. Also, the z-lift
 over the tabs should be much lower than the safe height. Just hop over the tab."*
@@ -3532,7 +3568,7 @@ calls a gouge without qualification and the window answers with "do not run this
 worth more than the 0.6 mm, so the tool comes up to zero — which clears any tab there can be, keeps
 the crossing a rapid, and adds nothing to the cut length.
 
-#### 6.25 An isolation path bows into an arc where the copper is straight — **measured, not fixed**
+#### 6.25 An isolation path bows into an arc where the copper is straight — **defect · open** — *measured, not fixed*
 
 From the bench, on the Arduino Mega 2560: *"One cut line near the middle-bottom of the board is not
 straight. It's an arc."* Screenshot: `WorkingFolder/V0.1.6/Error_Screenshots/Bad_cut_line.png`.
@@ -3600,7 +3636,7 @@ this fault for its opposite. The Arduino Mega 2560 is not
 in `tests/boards`, and both instances are on it, so reproducing this in a test most likely means
 committing it to the corpus — as 6.26 also needs.
 
-#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **found in the workshop, not started**
+#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **defect · open** — *found in the workshop*
 
 From the bench, on the same board: *"There also seems to be a misplaced hole. IF top copper
 isolation >= 0.45 then the misplaced hole appears. But, if the isolation is <0.45 then the misplaced
@@ -3622,7 +3658,7 @@ cosmetic.
 the stray feature is gone, and a test pins whatever produced it — with the Arduino Mega added to the
 corpus if that is what it takes to reproduce.
 
-#### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **fixed**
+#### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **defect · fixed**
 
 From the bench: *"Open the 'Arduino Mega 2560' project from the recent list. Then, file -> open
 recent -> Millburn_Test_Board Workflow one. When this project opens, notice that all of the layers
@@ -3666,7 +3702,7 @@ a view model the test project cannot reach, and it was checked by running.
 switching projects."* That is the part no test here reaches — two projects opened in sequence in a
 real window — so it is the only evidence that the call site is right.
 
-#### 6.28 A whole export imports as Unknown because the names are not KiCad's — **fixed**
+#### 6.28 A whole export imports as Unknown because the names are not KiCad's — **defect · fixed**
 
 From the bench: a set of Olimex OLinuXino Gerbers (A13-OLinuXino-WIFI rev H) imports with every one
 of its twelve files marked Unknown, so nothing can be exported. The files are plain RS-274X in
@@ -3732,7 +3768,7 @@ reason drill maps are on it. The board now imports with nothing worth checking a
 **It is still not a corpus candidate**, and its licence still has not been examined. It was read
 from a folder outside the repository and nothing was written.
 
-#### 6.29 An Excellon file in inches has its drill sizes read as something else — **fixed**
+#### 6.29 An Excellon file in inches has its drill sizes read as something else — **defect · fixed**
 
 Found while fixing 6.28, by exporting the Olimex board once the layers could be read at all. The
 summary said *931 holes in 8 sizes* and listed them as 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.13 and
@@ -3798,7 +3834,7 @@ true value — **eight of the sixteen sizes had collapsed into each other**, bec
 differ by a tenth of a millimetre differ by four microns once divided by 25.4, and rounding merged
 them. The hole count was right the whole time, which is exactly what made the summary look credible.
 
-#### 6.30 Copper sealed inside the board can be set to G-code — **fixed**
+#### 6.30 Copper sealed inside the board can be set to G-code — **defect · fixed**
 
 Found at the bench on a six-layer i.MX8M dev board, opened to see what would strain the
 application. Its four inner copper layers were ticked and set to G-code, and the export wrote
@@ -3854,7 +3890,7 @@ body it used to have — the three import presets — is still there, under
 **Confirmed at the bench, 2026-09-22**, on a published build: *"Inner layers are no longer
 exportable."*
 
-#### 6.31 Let the operator say what a layer is — **asked for by the product owner, not started**
+#### 6.31 Let the operator say what a layer is — **enhancement · open** — *asked for by the product owner*
 
 From the product owner, after a day of chasing naming conventions: *"Perhaps, instead of trying to
 match all the different naming schemes, we use the most common. But, as a future enhancement, we can
@@ -3884,7 +3920,7 @@ from that row, the choice is saved with the project and survives a refresh of th
 a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
 the test: it should be usable by hand even with every one of its files unrecognised.
 
-#### 6.32 Say where the project came from — **asked for by the product owner, not started**
+#### 6.32 Say where the project came from — **enhancement · open** — *asked for by the product owner*
 
 From the product owner: *"We should display the gerber folder somewhere so the user knows where the
 project is from."*
@@ -3915,7 +3951,7 @@ letting it push the panel wide.
 resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
 projects whose folders share a name can be told apart at a glance.
 
-#### 6.33 A superseded preview stops being watched, not stopped — **found in the workshop, not started**
+#### 6.33 A superseded preview stops being watched, not stopped — **defect · open** — *found in the workshop*
 
 Found at the bench while testing story 2 on the six-layer i.MX8M board, where a preview takes seven
 to eight seconds and sixteen at 1 mm isolation: *"click preview on a new change that I know it has
@@ -3958,7 +3994,7 @@ polygon there and a curve here. grbl interpolates the arc itself on the machine,
 Recorded so that it is not investigated twice. If a future change ever emits those circles as
 polylines instead, this entry is the evidence that they did not used to be.
 
-#### 6.34 An even number of outline passes costs twice the travel of an odd one — **measured, not started**
+#### 6.34 An even number of outline passes costs twice the travel of an odd one — **defect · open** — *measured*
 
 Found while measuring sprint 1 story 3, on `GridStripConnector_Panelized`, and it is a property of
 the geometry rather than of the ordering: the optimizer is already doing the best that can be done
@@ -3991,7 +4027,7 @@ the first thing to decide, and the product owner cuts at 0.500 mm, which is the 
 **Done when** the outline's travel on the panel is within sight of the odd-parity figure at an even
 pass count, the cut itself is unchanged, and a test pins the relationship rather than the number.
 
-#### 6.35 A knife blade as a tool, for vinyl masking — **asked for by the product owner, not started**
+#### 6.35 A knife blade as a tool, for vinyl masking — **enhancement · open** — *asked for by the product owner*
 
 From the product owner, 2026-09-22: *"Add knife blades as a tool. For those who want to use a cutter
 to create a solder mask using vinyl masking."*
@@ -4063,7 +4099,7 @@ offset alone or needs a separate swivel allowance on tight turns.
 **Not started, and deliberately not begun mid-sprint**: it is a feature, sprint 1 is about speed and
 accuracy, and new requests are prioritised at the sprint boundary (CONTRIBUTING).
 
-#### 6.36 A check should say what it is about — **asked for by the product owner · folded into 6.44**
+#### 6.36 A check should say what it is about — **enhancement · folded into 6.44**
 
 From the product owner, 2026-09-22: *"The CHECK section: Each item should list its source first, then
 the message. ie: Stock - <message> or Top copper - <message>. Also, might be nice to put that label in
@@ -4096,7 +4132,7 @@ than as advice, or the check itself highlighted when the message is about it.
 layer's colour, a reader can tell a refusal from advice without reading to the end of the sentence,
 and a status message that points at the checks points at one a reader can find without hunting.
 
-#### 6.37 The check list should fold away — **asked for by the product owner · folded into 6.44**
+#### 6.37 The check list should fold away — **enhancement · folded into 6.44**
 
 From the product owner, 2026-09-22: *"The CHECK section should be minimizable (downwards) leaving
 just the title and the count visible."*
@@ -4113,7 +4149,7 @@ is the opposite failure. The count in the title is what makes leaving it folded 
 **Done when** the check section folds to its title and count, the board gets the space, and the
 count is legible folded.
 
-#### 6.38 A tab hop assumes the board does not fall half a millimetre — **known limitation, accepted**
+#### 6.38 A tab hop assumes the board does not fall half a millimetre — **defect · accepted** — *known limitation*
 
 Since [6.24](#624-the-outline-lifts-to-the-sky-between-laps-and-over-every-tab), the tool crosses a
 tab at 0.5 mm above the surface rather than climbing to the safe height. `Leveller.Write` adds the
@@ -4145,7 +4181,7 @@ one, and the operator is told about it: the file is condemned rather than silent
 which is why accepting it is defensible: the failure mode is a refused file and a confused operator,
 not a cut board.
 
-#### 6.39 Offsets are not counted — **known gap, follow-up**
+#### 6.39 Offsets are not counted — **defect · open** — *for the next sprint*
 
 `Work` counts Clipper booleans, point-in-polygon questions and the vertices handed to them, and each
 board's tally is recorded in `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` so a change in what a
@@ -4192,7 +4228,7 @@ would have left every baseline byte-identical. The counters were believed for a 
 whole argument for the rule: a tally nobody can bypass is worth more than a tally somebody has to
 remember to use.
 
-#### 6.40 What the work counters do not watch — **known gap, follow-up**
+#### 6.40 What the work counters do not watch — **defect · open** — *for the next sprint*
 
 `WorkSnapshotTests` records what a board costs to realise and to plan, and a change in either is now
 a diff somebody has to account for. Four things it does not cover, written down while they are known
@@ -4224,7 +4260,7 @@ file. Not urgent, and deliberately not bundled into 6.39 — that one is about a
 bypassed, this one is about a tally that is honest as far as it reaches and does not reach far
 enough.
 
-#### 6.41 A trace is filed under the next net, not its own — **fixed**
+#### 6.41 A trace is filed under the next net, not its own — **defect · fixed**
 
 The parser batches consecutive `D01` strokes into one `DrawObject`, which keeps the object count
 near the number of traces rather than the number of segments and is worth keeping. The object was
@@ -4275,7 +4311,7 @@ that reasons about nets. The attributes in force at `G36` are held instead, with
 the region is open laid over the top: neither end alone is right, since the opening set alone would
 ignore a writer that names the net inside the pair.
 
-#### 6.42 The electrical check reaches one planning path, and cannot say which kind of unnamed — **known gaps · folded into 6.44**
+#### 6.42 The electrical check reaches one planning path, and cannot say which kind of unnamed — **defect · folded into 6.44**
 
 Two things left undone by story 4, both found by review rather than by a board, and both recorded
 rather than bundled into a story that was about something else.
@@ -4301,7 +4337,7 @@ lettering, and the 0.5/0.8/1.0 test patterns — which fuses at a wide cut and h
 reported under. The 62 that the first arithmetic reported were wrong; the 25 that replaced them are
 real, and how many of them are *interesting* is exactly what this entry is about.
 
-#### 6.43 Check the board as its own job, not only as a line in a list — **proposed by the product owner · folded into 6.44**
+#### 6.43 Check the board as its own job, not only as a line in a list — **enhancement · folded into 6.44**
 
 Asked after story 4 shipped, having watched the electrical check work: would it have been better as
 something the operator starts from a button or the Job menu, rather than as warnings produced while
@@ -4351,7 +4387,7 @@ place rather than per program, and the warnings that remain in the CHECK list ar
 to crowd out everything else in it. Sits with 6.36 and 6.37: all three are the same observation,
 that the CHECK list is being asked to carry more than a flat list of strings can.
 
-#### 6.44 The checks become something you can read — **agreed by the product owner 2026-09-23, not started**
+#### 6.44 The checks become something you can read — **enhancement · open** — *agreed by the product owner 2026-09-23*
 
 Five entries were saying the same thing from different directions, and story 4 pushed the list past
 what it can carry. Agreed to work as one piece rather than five: **6.36** (a check should say what it
@@ -4401,7 +4437,7 @@ findings are collected in one place rather than scattered one per program.
 checked — isolation cuts outside the copper edge and cannot, and a check that can never fire is the
 failure this repository has been bitten by twice.
 
-#### 6.45 Block apertures and the aperture transforms — **split out of story 5, 2026-09-23, not started**
+#### 6.45 Block apertures and the aperture transforms — **defect · open** — *no fixture exists yet*
 
 Two Gerber features the parser refuses outright, as errors:
 
@@ -4436,7 +4472,7 @@ writer intended, under a test whose fixture somebody can point at the origin of.
 
 **Requirements:** G3 · [02 §2](02-Gerber-and-Geometry-Pipeline.md)
 
-#### 6.46 The job file tells us less than it appears to — **measured 2026-09-23, parked**
+#### 6.46 The job file tells us less than it appears to — **enhancement · parked** — *measured 2026-09-23*
 
 `.gbrjob` ships in every KiCad export and nothing reads it, which looked like an obvious gap and was
 sprint 1's story 5. It was surveyed before any code was written. The survey is the reason the story
@@ -4484,10 +4520,19 @@ slower, five-item sprint rather than a fortnight of small releases.
 **Every sprint opens by reading the open bugs and known issues** — the product owner's standing
 rule, and this sprint is the first to follow it. 6.24 came in that way: found at the bench while the
 five were being agreed, measured the same afternoon, and added as a sixth because it belonged to the
-theme. The places to read are this document's own "not started" and "found in the workshop"
-sections, the matrix's Partial rows, and
-[09](09-Machine-Accuracy-Investigations.md)'s open questions. A sprint that starts from a feature
-list and never looks at the defect list is how a known fault survives three releases.
+theme. A sprint that starts from a feature list and never looks at the defect list is how a known
+fault survives three releases.
+
+Three places to read, and the first of them is now one command:
+
+```
+grep -n 'defect · open' Documentation/06-Roadmap-and-Risks.md
+```
+
+then the matrix's Partial rows in [08](08-Requirements-Matrix.md), and
+[09](09-Machine-Accuracy-Investigations.md)'s open questions. Before the statuses were normalised
+this was a prose instruction to read two sections by eye, which is the kind of ritual that gets
+skipped on a busy afternoon.
 
 **Measured first, ranked after.** Three numbers set the order:
 
