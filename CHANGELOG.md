@@ -10,17 +10,20 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
-## Unreleased — `release/0.2.0`
+## [0.2.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.2.0) — 2026-09-24
 
 **Seamless usability.** The product owner's title for it, and a fair one: nothing here is a feature.
 It is the release where the window stops freezing, where the application stops being surprised by
 an export it did not write, and where what it cannot do it says so about.
 
-[Sprint 1 — Speed and accuracy](Sprints/Sprint-01-Speed-and-Accuracy.md). No features: the pipeline
-off the UI thread and cancellable, memoised stages, the optimizer's two open items, electrical DRC
-against the X2 netlist, the job file and block apertures, and the outline's wasted vertical moves.
+[Sprint 1 — Speed and accuracy](Sprints/Sprint-01-Speed-and-Accuracy.md). Five stories delivered —
+the pipeline off the UI thread and cancellable, memoised stages, the optimizer's two open items,
+an electrical check against the X2 netlist, and the outline's wasted vertical moves. A sixth was
+closed by measuring it rather than building it: reading the `.gbrjob` file turned out to duplicate
+what every Gerber already declares, and to offer the designer's nominal thickness where the mill
+needs the stock on the bed.
 
-So far: the working agreement itself — sprints, a release branch, squashed story branches, review
+The working agreement itself — sprints, a release branch, squashed story branches, review
 before every merge, a written style, `AGENTS.md` for any assistant, and five statements in the
 architecture document that had stopped being true.
 
@@ -42,6 +45,30 @@ Excellon file that states its units as `M72` is read as inches, instead of repor
 the board at a twenty-fifth of its size; Preview stops unticking layers a freshly opened project had
 visible; and an export whose file names are not KiCad's is read by its words rather than by
 substring.
+
+**The isolation check names what it cannot separate.** Where the tool does not fit, the picture
+draws nothing — which looks exactly like a gap that needed no cutting, and the board is the first
+place anybody finds out. After planning, the application compares the copper a cut can actually
+divide against the netlist the Gerbers already declare, and says *"AREF and AVCC are left connected:
+the gap between them is narrower than the 0.154 mm this cut is wide"* instead of counting gaps
+nobody can find. A layer that names no nets is reported as unchecked rather than as clean.
+
+**Every net on every board was one trace out of step.** Found by disbelieving that check: it
+reported 110 shorts on an Arduino Mega that demonstrably works. The parser batches a trace's strokes
+into one object and read its net attributes when the object was *emitted* rather than when it was
+*drawn*, so a trace drawn under one net was filed under the next — and `%TD*%` stripped the net from
+a trace still open, dropping it from the netlist entirely. Nothing in the emitted G-code changes;
+every netlist does. No test failed at any point: the suite was green before and after.
+
+**What a board costs to compute is now written down.** Clipper booleans, point-in-polygon questions
+and the vertices handed to them are counted per board and recorded, so a change in the price of a
+board is a diff somebody has to account for. It caught two regressions in its own first week,
+including one of 209,752 point tests on the Mega.
+
+**And the documents can be read.** A generated [backlog](Documentation/11-Backlog.md) lists what is
+open and what kind of thing it is, because the roadmap had grown to sixty thousand words with no way
+in; the requirements matrix and that backlog now both count themselves, after the summary was found
+claiming seven not-started rows where the table below it listed three.
 
 ## [0.1.6](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.1.6) — 2026-09-20
 
