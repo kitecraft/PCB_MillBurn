@@ -87,9 +87,9 @@ board being cut rather than from a document.
 |---|---|---|---|---|
 | G1 | Keep the semantics: X2 attributes carried through, not rasterised away | §1 | **Done** | both `%TF%` and KiCad 9 `G04 #@!` encodings |
 | G2 | RS-274X + X2: apertures, full macro evaluator, polarity, arcs, step & repeat | §2 | **Done** | all 21 macro primitives; 24 corpus files, zero errors |
-| G3 | Block apertures `%AB%`, aperture transforms `%LM/LR/LS%` | §2 | **Not started** | reported as errors, never silently ignored |
+| G3 | Block apertures `%AB%`, aperture transforms `%LM/LR/LS%` | §2 | **Not started** | reported as errors, never silently ignored; split out of sprint 1 story 5 into 06 §6.45 — no fixture exists yet |
 | G4 | Excellon: zero-suppressed dialects, G85 slots, routed slots, plating | §2 | **Done** | `ExcellonParserTests`, `GerberDrillTests` |
-| G5 | Job file (`.gbrjob`) read for board-level metadata | title "X2/X3" | **Not started** | present in every KiCad export, unread |
+| G5 | Job file (`.gbrjob`) read for board-level metadata | title "X2/X3" | **Parked** | surveyed 2026-09-23: its roles duplicate `%TF.FileFunction`, its thickness is the design nominal not the stock — 06 §6.46 |
 | G6 | Layer auto-detection from `.FileFunction`, filename only as a labelled fallback | §3 | **Done** | `LayerRoles`; `AllLayerRolesTests` |
 | G7 | Geometry ops: offset, boolean, area, inversion, canonical form | §4 | **Done** | `Polygons.cs`; canonical-form golden test |
 | G8 | Voronoi-based isolation as an alternative to offsets | 01 §2 | **Not started** | was named in the layout table only; now removed from it |

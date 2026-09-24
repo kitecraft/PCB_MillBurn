@@ -473,22 +473,68 @@ thing that caught it was disbelieving the output of a new feature on a board kno
 
 ## Story 5 — Stop ignoring what the export already tells us
 
-**Problem.** `.gbrjob` ships in every KiCad export and is never read, after which the operator is
-asked for a thickness and layer roles it already states. Block apertures (`%AB%`) and the transform
-commands are reported as errors, which is honest and still refuses boards other tools produce.
+**Narrowed on 2026-09-23** to the job file alone. It began as two pieces sharing a theme and nothing
+else: reading `.gbrjob`, and realising block apertures and the aperture transforms. The second is
+harder, riskier, and has no board to test it against — no export in `tests/boards` uses either
+feature, because KiCad does not emit them. It is now
+[6.45](../Documentation/06-Roadmap-and-Risks.md), to be taken when there is a real board that needs
+it.
 
-**What.** Read the job file for board-level metadata, and realise block apertures and transforms.
+**Problem.** `.gbrjob` ships in every KiCad export and is never read — it is committed beside five of
+the boards in `tests/boards` and nothing in `src/` opens it. So the operator is asked to type a
+thickness the file states, and layer roles are guessed from filenames while the file names them.
 
-**Why.** Accuracy of the input, and less typing: a number read from the file cannot be typed wrongly.
-Both also remove a class of "it refused my board" with no workaround.
+**What.** Read the job file for board-level metadata: thickness, layer roles, and the board size that
+can be checked against the geometry.
+
+**Why.** Accuracy of the input, and less typing: a number read from the file cannot be typed wrongly,
+and a role read from the file is not a guess. The app already admits when it is guessing
+(`RoleGuessed`), which is the honest half of a problem whose other half is simply reading the answer.
 
 **How.** Job file first, the operator's own entry still winning, with the source named wherever the
-number is shown — the rule this project already follows for inherited settings.
+number is shown — the rule this project already follows for inherited settings, and the one 6.31 and
+"clarity over controls" both rest on. A job file that disagrees with the geometry is worth saying so
+about rather than silently believing.
 
 **Done when** thickness and layer roles come from the job file when it is there, their source is
-named, and a board using block apertures realises correctly under test.
+named on screen, an operator's own entry still overrides it, and a board with no job file behaves
+exactly as it does today.
 
-**Requirements:** G5, G3 · [02 §2](../Documentation/02-Gerber-and-Geometry-Pipeline.md)
+**Requirements:** G5 · [02 §2](../Documentation/02-Gerber-and-Geometry-Pipeline.md)
+
+### Closed — 2026-09-23, parked without being built
+
+**Not met, and deliberately not attempted.** The story was surveyed before any code was written and
+the survey removed its reason to exist. Full measurement in
+[6.46](../Documentation/06-Roadmap-and-Risks.md); the short of it:
+
+**The manual test.** Read all six `.gbrjob` files committed under `tests/boards`, and for every board
+count how many of its Gerbers declare their own `%TF.FileFunction`. Anybody can repeat it: the job
+files are committed, and `grep -l FileFunction tests/boards/<board>/*.gbr` is the whole method.
+
+**What was observed.**
+
+| | |
+|---|---|
+| Job files | 6, across 10 boards — all KiCad Pcbnew 10.0.0 |
+| Roles already in the Gerbers | 15/15 test board, 13/13 Mega, 4/4 GridStripConnector |
+| The one board needing inference | `TopBotNames` — and it has no job file |
+| Thickness stated | 1.6 mm on all six; the test board is cut at 0.8 |
+| Size stated vs realised | identical to the digit |
+
+So the roles half could not change an outcome on any committed board, and the thickness half offers
+the designer's nominal where the operator needs the stock on the bed. What was left — a size
+cross-check that always agrees — does not carry a story.
+
+**What is left open.** The gap itself is still real and [6.46](../Documentation/06-Roadmap-and-Risks.md)
+says what would make it worth doing: a writer that emits a job file while omitting `%TF.FileFunction`
+from its layers, or a job file describing the stock rather than the design. Neither exists in
+anything here. The other half of the original story left earlier as
+[6.45](../Documentation/06-Roadmap-and-Risks.md), block apertures and the aperture transforms, and is
+untouched by this.
+
+**Sprint 1 therefore closes with five stories delivered rather than six** — 1, 2, 3, 4 and 6 — and
+one closed by measuring it instead of building it.
 
 ---
 

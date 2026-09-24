@@ -4063,7 +4063,7 @@ offset alone or needs a separate swivel allowance on tight turns.
 **Not started, and deliberately not begun mid-sprint**: it is a feature, sprint 1 is about speed and
 accuracy, and new requests are prioritised at the sprint boundary (CONTRIBUTING).
 
-#### 6.36 A check should say what it is about — **asked for by the product owner, not started**
+#### 6.36 A check should say what it is about — **asked for by the product owner · folded into 6.44**
 
 From the product owner, 2026-09-22: *"The CHECK section: Each item should list its source first, then
 the message. ie: Stock - <message> or Top copper - <message>. Also, might be nice to put that label in
@@ -4096,7 +4096,7 @@ than as advice, or the check itself highlighted when the message is about it.
 layer's colour, a reader can tell a refusal from advice without reading to the end of the sentence,
 and a status message that points at the checks points at one a reader can find without hunting.
 
-#### 6.37 The check list should fold away — **asked for by the product owner, not started**
+#### 6.37 The check list should fold away — **asked for by the product owner · folded into 6.44**
 
 From the product owner, 2026-09-22: *"The CHECK section should be minimizable (downwards) leaving
 just the title and the count visible."*
@@ -4275,7 +4275,7 @@ that reasons about nets. The attributes in force at `G36` are held instead, with
 the region is open laid over the top: neither end alone is right, since the opening set alone would
 ignore a writer that names the net inside the pair.
 
-#### 6.42 The electrical check reaches one planning path, and cannot say which kind of unnamed — **known gaps, follow-up**
+#### 6.42 The electrical check reaches one planning path, and cannot say which kind of unnamed — **known gaps · folded into 6.44**
 
 Two things left undone by story 4, both found by review rather than by a board, and both recorded
 rather than bundled into a story that was about something else.
@@ -4301,7 +4301,7 @@ lettering, and the 0.5/0.8/1.0 test patterns — which fuses at a wide cut and h
 reported under. The 62 that the first arithmetic reported were wrong; the 25 that replaced them are
 real, and how many of them are *interesting* is exactly what this entry is about.
 
-#### 6.43 Check the board as its own job, not only as a line in a list — **proposed by the product owner, not started**
+#### 6.43 Check the board as its own job, not only as a line in a list — **proposed by the product owner · folded into 6.44**
 
 Asked after story 4 shipped, having watched the electrical check work: would it have been better as
 something the operator starts from a button or the Job menu, rather than as warnings produced while
@@ -4350,6 +4350,129 @@ dilution and the format at once, rather than trading one for the other.
 place rather than per program, and the warnings that remain in the CHECK list are short enough not
 to crowd out everything else in it. Sits with 6.36 and 6.37: all three are the same observation,
 that the CHECK list is being asked to carry more than a flat list of strings can.
+
+#### 6.44 The checks become something you can read — **agreed by the product owner 2026-09-23, not started**
+
+Five entries were saying the same thing from different directions, and story 4 pushed the list past
+what it can carry. Agreed to work as one piece rather than five: **6.36** (a check should say what it
+is about), **6.37** (the list should fold away), **6.42** (the electrical check reaches one planning
+path and cannot say which kind of unnamed gap it found), **6.43** (check the board as its own job),
+and the two faults below that had no entry of their own. Those four are folded in here; none should
+be picked up separately.
+
+**The observation underneath all of them.** The CHECK list is an `ObservableCollection<string>`, and
+a check item is a bare string. There is no source, no severity beyond a single `bool IsError` buried
+in the parser diagnostics, and no identity — provenance is whatever the sentence happens to begin
+with. Every one of the five requests is a consequence: you cannot colour a label that does not
+exist, cannot fold a list into a count of things it cannot categorise, cannot link a status message
+to a line it cannot name, and cannot give a check a view of its own when the check is a sentence.
+
+**What story 4 did to it.** Seventeen items before the story; a dense board now adds eleven more. The
+warnings had to be capped at eight groups and six names each, because one piece of copper holding
+twenty-three nets became a six-hundred-character sentence. The format is straining, and the answer is
+not a longer sentence.
+
+**Two faults with no entry of their own**, both found while story 4 was being built:
+
+- **The electrical check does not run until you preview or export.** `RefreshWarnings` runs on load
+  and covers board-level things only; the isolation warnings arrive through `PreviewResult.Warnings`.
+  Open a board with a short on it, look at the CHECK panel, and it is not there. That is the
+  strongest argument for 6.43's button, and it is closer to a bug than to an enhancement.
+- **Two planning paths disagree.** `ExportPlanner` runs the check; `JobBuilder` — behind the CLI's
+  job command — still emits the old anonymous count. The same board, the same settings, two commands,
+  two different answers. Confirmed by running both.
+
+**The shape agreed.** A check stops being a string and becomes a thing with a source, a kind and a
+severity. The automatic check stays — the Mega's short was found because the app spoke without being
+asked, and a button only protects an operator who thinks to press it — but what it leaves in the list
+gets shorter, one line per layer pointing at somewhere fuller. That somewhere is 6.43's view, and it
+is where the expensive answers live: where the gap actually is rather than which copper it is in,
+which unnamed gaps are nameless copper and which are two pieces of one net that nothing shorted, and
+in time the checks that have nowhere to live today — drill-to-copper clearance, an outline cut that
+severs a trace, a pocket that removes part of a net.
+
+**Done when** a check carries its source and its kind rather than beginning with them by convention;
+the list can be read at a glance, folded to a count, and told apart from advice without reading to
+the end of a sentence; a status message that points at the checks points at one the reader can find;
+a board can be checked without exporting it; both planning paths answer the same; and the electrical
+findings are collected in one place rather than scattered one per program.
+
+**Not in it.** The severed-net family stays out until the operation that can sever is the one being
+checked — isolation cuts outside the copper edge and cannot, and a check that can never fire is the
+failure this repository has been bitten by twice.
+
+#### 6.45 Block apertures and the aperture transforms — **split out of story 5, 2026-09-23, not started**
+
+Two Gerber features the parser refuses outright, as errors:
+
+```
+Block apertures (%AB%) are not implemented yet.
+Aperture transform 'LM' is not implemented yet.
+```
+
+`%AB%` defines a reusable block of geometry that a later flash stamps out; `%LM`, `%LR` and `%LS`
+mirror, rotate and scale an aperture. Both are in the specification, both are legitimate, and some
+writers emit them as a matter of course.
+
+**Refusing is the right default and it is still a dead end.** The parser never silently drops
+geometry — a board it cannot realise is a board it will not cut — but for a file using these there is
+no workaround at all, not even a slow one. That is the class of fault worth removing.
+
+**Why it left story 5.** It shared a theme with reading the job file and nothing else. The job file
+is JSON into settings; this is stateful, nested geometry in the parser, where `%AB%` blocks can
+contain flashes of other blocks and the transforms compose. It is the harder half by a distance, and
+bundling them would have let the easy half carry the risk of the hard one.
+
+**And there is no board to test it on.** Every export in `tests/boards` comes from KiCad, which emits
+neither. A fixture has to come from somewhere before "realises correctly under test" means anything:
+either hand-written from the Ucamco specification, which is how `GerberParserTests` builds its
+fixtures today and keeps the repository clear of other tools' GPL test data, or a real export from a
+tool that emits them. **Settle that first** — the story is untestable until it exists, and a feature
+of this shape proved by a fixture its author also wrote is exactly the trap this project has been
+caught by twice.
+
+**Done when** a file using block apertures and aperture transforms realises to the same geometry the
+writer intended, under a test whose fixture somebody can point at the origin of.
+
+**Requirements:** G3 · [02 §2](02-Gerber-and-Geometry-Pipeline.md)
+
+#### 6.46 The job file tells us less than it appears to — **measured 2026-09-23, parked**
+
+`.gbrjob` ships in every KiCad export and nothing reads it, which looked like an obvious gap and was
+sprint 1's story 5. It was surveyed before any code was written. The survey is the reason the story
+is parked, and it is written down here so the gap is not re-opened on the same assumptions.
+
+**Six job files across ten committed boards. Every one is KiCad Pcbnew 10.0.0**, so this sample says
+what KiCad 10 emits and nothing about what other writers omit.
+
+**Layer roles: nothing to gain.** Every board that *has* a job file already declares each layer's
+role inside the Gerber itself — 15 of 15 files on the test board, 13 of 13 on the Arduino Mega, 4 of
+4 on GridStripConnector. G6, reading `%TF.FileFunction`, has been done since M4. The one board in the
+repository whose files declare no role, `TopBotNames`, has **no job file at all**, which is exactly
+the shape you would expect: a writer modern enough to emit a job file is modern enough to put the
+attribute in the file. Reading roles from the job file would be a fallback that no committed board
+can reach — a path that cannot change an outcome, which is the failure this repository has been
+bitten by twice.
+
+**Thickness: it is not the number the operator wants.** All six say `BoardThickness: 1.6`. The
+product owner cuts the test board at **0.8**. The job file states what the *designer specified*;
+what matters at the mill is the copper-clad on the bed, and for someone milling their own boards
+those differ as a rule rather than as an exception. "Job file first, the operator's own entry still
+winning" would be safe, and would amount to pre-filling a number that then gets changed — while
+looking authoritative.
+
+**Board size: agrees exactly**, so it guards nothing in practice. `68.63 x 66.09` stated and
+realised on the test board; `101.854 x 53.594` against a realised `101.85 x 53.59` on the Mega.
+Worth having as a cross-check against a mismatched file set one day, and not worth a story.
+
+**What would change this.** A Gerber set from a writer that emits a job file *and* omits
+`%TF.FileFunction` from its layers would make the roles half real. A job file carrying a stackup the
+operator actually cuts to — rather than a design nominal — would make the thickness half real. Until
+one of those turns up, this is work whose effect cannot be demonstrated on any board here.
+
+**Not a criticism of the idea.** The gap is real and the reasoning that raised it was sound; what was
+missing was the measurement. Half a day of survey against ten boards is what turned an obvious
+improvement into a parked one, and that is the cheaper order to find out in.
 
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
