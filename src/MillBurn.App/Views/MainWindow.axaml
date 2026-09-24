@@ -937,6 +937,18 @@
                            TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center" />
+                <!--
+                    After the message, never before it. StatusBarPanel protects only its first
+                    child and gives the rest up whole once they fall under 60 px, so putting this
+                    first took the message's protected slot and made the message the first thing to
+                    vanish on a narrow window — which is the failure that panel was written to
+                    prevent.
+                -->
+                <TextBlock Text="Working…"
+                           IsVisible="{Binding IsBusy}"
+                           Foreground="{DynamicResource InteractivePrimary}"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
                 <TextBlock Text="{Binding GcodeSummary}"
                            ClipToBounds="True"
                            ToolTip.Tip="{Binding GcodeSummary}"

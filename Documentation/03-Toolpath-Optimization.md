@@ -187,11 +187,44 @@ Ordering is necessary but not sufficient. Three more sources of wasted time:
    either side, and there is no distance threshold at all. On a real board it removed 13 of 26
    plunges, worth about 13 % of the run.
 
-2. **Path merging via Eulerian traversal.** Adjacent isolation contours often share endpoints. Build
-   the connectivity graph and find Eulerian paths so a chain of segments becomes one continuous
-   move with no lift. pcb2gcode does this (`eulerian_paths.cpp`) and it is one of the things it
-   gets right — keep the idea, implement it cleanly, and extend it to work *across* the
-   containment tree.
+2. **Path merging via Eulerian traversal — measured, not needed, not built.** The idea was that
+   adjacent isolation contours often share endpoints, so building the connectivity graph and
+   finding Eulerian paths would turn a chain of segments into one continuous move with no lift.
+   pcb2gcode does this (`eulerian_paths.cpp`) and it is one of the things it gets right.
+
+   **The premise does not hold on anything in this corpus.** Measured 2026-09-22 on
+   `GridStripConnector_Panelized`, which is the hardest board here, by reading the emitted programs
+   and asking which cut runs actually meet:
+
+   | Program | Cutting runs | Distinct endpoints | Points where two *different* paths meet |
+   |---|---|---|---|
+   | `Edge_Cuts` outline | 106 | 109 | **0** |
+   | `F_Cu` isolation | 198 | 396 | **0** |
+
+   The outline looks at first as though it shares heavily — 212 run-ends over 109 points — and all
+   of it is one channel cut at two depths, sharing both of its own ends with itself. Not one point
+   joins two different paths. The isolation shares nothing at all: 198 runs, 396 endpoints, none
+   repeated.
+
+   **There is a structural reason rather than an accident.** Every profile is a ring region from
+   Clipper, and the centrelines of separate voids do not touch; a panel's channels are separate
+   rectangular voids rather than a connected lattice. Isolation contours are closed loops offset
+   from copper, and a closed loop's two ends are the same point, which is its own and nobody
+   else's.
+
+   **What was wasting the lifts instead.** On the same program, 51 of 105 lifts go straight back
+   down where they left — zero movement in X and Y — and they are the retract and plunge between a
+   channel's two depth passes. That is not merging; it is 6.24, the outline dropping straight to
+   the next lap when X and Y have not moved. After the entry-choice work of sprint 1 story 3, that
+   program's vertical motion is 735.4 mm against 718 mm of horizontal travel — the tool moves
+   further up and down than it does across, on an axis that runs at about a twentieth of the rate.
+
+   **What would reopen it.** A board whose cut runs genuinely meet: the giveaway is a distinct
+   endpoint count well below twice the run count, where the sharing is not a stack sharing with
+   itself. A design whose slots run into the profile, or a hand-drawn lattice with real
+   T-junctions, would look like that. If somebody asks for this and brings the Gerbers, measure
+   them the same way first — the two tables above took ten minutes — and reopen it on the answer
+   rather than on the idea.
 
 3. **Arc fitting and simplification.** Fewer, longer segments means the controller's look-ahead
    planner can actually reach full feed. A pcb2gcode isolation file can be 300k lines of `G01`
@@ -224,5 +257,12 @@ These go in CI as a regression gate. The assertions are direction and magnitude,
 millimetres: a gate that pins the number fails on every legitimate improvement, which teaches
 whoever sees it to update the number without looking — and then it is guarding nothing.
 
-Still open: the local search can cycle on open runs — 299,044 "improvements" on 50 nodes — which
-the step budget bounds rather than fixes.
+**Closed, 2026-09-22.** The local search could cycle on open runs — 299,044 "improvements" on 50
+nodes — which the step budget bounded rather than fixed. The cause was two-opt reversing a span it
+could not evaluate: reversal leaves interior edges uncounted on the grounds that it is cost-neutral,
+which holds for a closed contour and for an open run and is false for a stack whose flip is the
+identity while its ends differ. Reproduced at 321,413 applied "improvements" on 25 nodes, against 15
+once the move is refused where it cannot be costed. `RouteMonotonicityTests` holds the invariant:
+the search never ends worse than it started, and it converges — a bigger budget must give the same
+answer, not merely a no-worse one, because a cycling search satisfies "no worse" whenever the cycle
+happens to stop on a good rung.

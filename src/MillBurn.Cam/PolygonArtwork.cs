@@ -1,6 +1,5 @@
 using Clipper2Lib;
 using MillBurn.Core;
-using MillBurn.Geometry;
 
 namespace MillBurn.Cam;
 

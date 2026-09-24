@@ -2039,7 +2039,43 @@ than discovered after.
 - **A dry run that is the real run, raised**: every move as written, spindle off, every Z a few millimetres higher, so plunges and lifts show and the time is the real time. See 6.19.
 - Machine-profile sharing.
 
-#### 6.1 Rulers — **scheduled, not started**
+##### How to read a status
+
+Every numbered entry below is tagged **kind · state**, and the tag is the whole vocabulary — no
+entry invents its own. A note after it in italics carries whatever else is worth knowing.
+
+| kind | |
+|---|---|
+| `defect` | something is wrong. It may be unfixed, fixed, or accepted as a limitation |
+| `enhancement` | something new or better, which is not the same as something broken |
+
+| state | |
+|---|---|
+| `open` | not started |
+| `partial` | begun, and the entry says which half |
+| `fixed` | the defect is gone, and the entry says how it was proved |
+| `built` | the enhancement is in |
+| `parked` | deliberately not being done, and the entry says why |
+| `accepted` | a limitation that is understood and lived with |
+| `superseded` | overtaken by something else |
+| `folded into 6.NN` | absorbed into a larger piece of work; do not pick it up alone |
+
+**This is the defect list.** There is no separate bug document, deliberately: an entry here carries
+its measurement and its reasoning, and a tracker row that only carries a title would drift from it
+within a sprint. What was missing was not a second document but a vocabulary — twenty-four different
+status strings across forty-six entries, with `built`, `done` and `fixed` all meaning the same thing
+and no way to ask which things were broken. So:
+
+```
+grep -n 'defect · open' Documentation/06-Roadmap-and-Risks.md
+```
+
+**GitHub issues are for other people.** `.github/ISSUE_TEMPLATE/bug-report.yml` exists so that
+somebody outside can report a fault. The product owner's own defects live here until the pace of
+development slows enough for a tracker to be worth the second place to look; when that changes, this
+note should change with it.
+
+#### 6.1 Rulers — **enhancement · open**
 
 Requested from the workshop: a scale down the left edge and along the top of the viewport, so the
 size of what is on screen can be read rather than guessed at.
@@ -2078,7 +2114,7 @@ Left for later: a ruler in inches (the app is millimetres throughout and mixing 
 how a wrong number gets read confidently), and printable dimensioned output, which is a drawing
 feature rather than a viewer one.
 
-#### 6.2 Climb or conventional — **scheduled, not started, low priority**
+#### 6.2 Climb or conventional — **enhancement · open** — *low priority*
 
 Asked from the workshop: *"is the default cut direction making a climb cut or a conventional cut?"*
 The honest answer is that **nothing chooses**. There is no setting, and no part of the pipeline
@@ -2130,7 +2166,7 @@ it does.
 both faces of a double-sided board, and an operation for which the question is meaningless says so
 rather than offering a switch that changes nothing.
 
-#### 6.3 Staying down between passes that touch — **done**
+#### 6.3 Staying down between passes that touch — **enhancement · built**
 
 **Verified on metal after v0.1.0:** the Millburn test board's top copper, four isolation passes, with
 lifts only where they belonged; 28:45 on the machine against an estimate of 16m 17s – 45m 45s.
@@ -2206,7 +2242,7 @@ depth rather than the two neighbouring passes. It would pick up links across gro
 in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
 a strict subset of it, so nothing has to be undone to get there.
 
-#### 6.4 Tabs: where, how many, how big — **scheduled, not started**
+#### 6.4 Tabs: where, how many, how big — **enhancement · open**
 
 Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
 put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
@@ -2257,7 +2293,7 @@ which vertices happen to exist.
 moved and resized individually, the emitted gaps land where the picture says they will, and the
 material left under a tab is the height the program says it is.
 
-#### 6.5 A picture on the companion pages — **scheduled, not started**
+#### 6.5 A picture on the companion pages — **enhancement · open**
 
 Requested from the workshop: *"in the companion html for drills and routing, include images of the
 layer with the holes/slots numbered in the order of drilling/routing."*
@@ -2314,7 +2350,7 @@ order, a routing page shows its slots with direction and its refusals hatched, t
 step degrades to dots without becoming unreadable, and every page is still one file that opens with
 no network.
 
-#### 6.6 The tool library, once it has more than a handful in it — **scheduled, not started**
+#### 6.6 The tool library, once it has more than a handful in it — **enhancement · open**
 
 Requested from the workshop: **filter by tool type, sorting, and copy a tool.** All three are the
 same symptom — the list was designed for the six tools it shipped with, and a library grows.
@@ -2361,7 +2397,7 @@ on, and a filter you cannot see is how somebody concludes their tools have vanis
 can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
 byte-identical after a session that only looked at it.
 
-#### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **scheduled, needs research**
+#### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **enhancement · open** — *needs research*
 
 Requested from the workshop, and the reasoning behind the request is the useful part:
 
@@ -2444,7 +2480,7 @@ after that does *not* re-explain the status bar, every coachmark can be forced o
 command line for a screenshot, no automated run ever draws one, and Esc closes anything this puts
 on screen.
 
-#### 6.8 The viewer leaves a gap in every outline ring — **done**
+#### 6.8 The viewer leaves a gap in every outline ring — **defect · fixed**
 
 Reported from the workshop against the panelised connector board: the board outline is drawn with
 short pieces missing, most visibly at the closed end of each routed channel. The programs are
@@ -2475,7 +2511,7 @@ close verb on a backplot run, and a third test asserting the two palettes agree 
 are — so adding a style and forgetting which it is fails a test rather than producing a picture
 somebody has to notice.
 
-#### 6.9 Open recent — **built**
+#### 6.9 Open recent — **enhancement · built**
 
 Requested from the workshop: a **Open recent** item in the File menu that opens a submenu on hover,
 listing the last few projects.
@@ -2529,7 +2565,7 @@ the list — a `--recent` flag that opened the menu was written, tried and taken
 it is a `--recent` flag that **prints** the entries the menu would show, which catches an empty list, a
 duplicate, or a name mangled by an accelerator, from a terminal.
 
-#### 6.10 Drill hits drawn as an X — **superseded**
+#### 6.10 Drill hits drawn as an X — **enhancement · superseded** — *the drill maps already provide it*
 
 Requested from the workshop: show each drilled hole in the viewer as an X, with its own toggle
 under *Toolpath moves*.
@@ -2571,7 +2607,7 @@ What the implementation has to decide:
 canned cycles alike; the X hides with its own chip and with its layer's row; and a milling program's
 plunges do not grow Xs.
 
-#### 6.11 Bit changes: one file per bit, or one file with custom tool-change G-code — **per-bit built; the choice is not**
+#### 6.11 Bit changes: one file per bit, or one file with custom tool-change G-code — **enhancement · partial** — *per-bit files built; the choice between them is not*
 
 **Built (2026-09-14): one file per bit.** A drilling or routing layer that needs more than one bit
 is written as one file per bit — `Board-PTH-drl.bit1-1.00mm.nc`, `Board-PTH-drl.bit2-0.50mm.nc`, …,
@@ -2605,7 +2641,7 @@ still says "resume in your sender" — right for those machines, and wrong for p
 G-code*, the second emits the operator's block at every change, and each form's page describes the
 run it actually produces.
 
-#### 6.12 Drill alignment — **built**
+#### 6.12 Drill alignment — **enhancement · built**
 
 Requested from the workshop, for holes that have to land in pads already on the board: a small hole
 in a small pad leaves a few tenths either side, and a drilling origin slightly out puts holes on the
@@ -2632,7 +2668,7 @@ has copper on it and the outline has to go round that copper — and closes. The
 Both of this section's open items — remembering the correction in the project, and measuring two holes
 to tell a shift from a board that is not square — were built in 6.14, which is where they are described.
 
-#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **done**
+#### 6.13 Routing holes and slots: one ramp, no lifts, settings of its own — **enhancement · built**
 
 Found on the test board at the machine: 0.8 mm board, "Spiral with" a 0.8 mm end mill (0.5 mm
 stepdown), the layer's 0.3 mm break-through, so 1.10 mm deep. Every milled hole and every slot was
@@ -2754,7 +2790,7 @@ slider, and records it whenever the outputs are recorded — on every change and
 `export`, `mill` and `align` take `--thickness`, then the project's, then the app's, and `export` and
 `project info` print which; `project save --thickness` records one.
 
-#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **built**
+#### 6.14 Alignment holes in the stock, and a two-hole alignment that finds rotation — **enhancement · built**
 
 Requested from the workshop, after the first boards cut on stock. The stock (5.6) gives every setup a
 datum and helps alignment a great deal, but small amounts of play in jigs and clamps can still throw the
@@ -2898,7 +2934,7 @@ board's rotation. Three drilling files, two routing files and the outline all ra
 0.3 mm vias landed inside their pads. *"The test will not only compensate for any rotation of the
 placement, but will also fix the not-perfect X/Y origin setting."*
 
-#### 6.15 The companion page names the commands that would rebuild it — **requested, not started**
+#### 6.15 The companion page names the commands that would rebuild it — **enhancement · open**
 
 Requested from the workshop: *"in the project html companion file that is written on export, can we
 add a new section at the bottom for the cli command used to create the export... or maybe, a list of
@@ -2937,7 +2973,7 @@ those are worth fixing rather than papering over.
 with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
 double-sided one with stock and alignment, and for a board whose name has a space in it.
 
-#### 6.16 A re-measured stock keeps the holes it was cut with — **parked**
+#### 6.16 A re-measured stock keeps the holes it was cut with — **enhancement · parked**
 
 Requested from the workshop, describing a workflow already in use: cut the stock to size with
 alignment holes in its waste; measure what came out; and if it is not quite the size asked for, set
@@ -2994,7 +3030,7 @@ but it asked the operator to follow a remembered record behind the Pre-cut tick 
 size and the as-cut holes, that no longer agree — and that could not be made clear in the window. If it
 comes back, it starts from what an operator would understand rather than from the mechanism.
 
-#### 6.17 The stock's alignment holes, marked in the SVGs — **built and used on metal; Print and Cut not tried**
+#### 6.17 The stock's alignment holes, marked in the SVGs — **enhancement · partial** — *used on metal; Print and Cut not tried*
 
 Requested from the workshop, as part of the goal the whole app serves: **confidence in alignment, for
 everything.** The mill already has it — the stock's two waste holes are cut in the stock's own frame,
@@ -3091,7 +3127,7 @@ jig.
 **Done when** an export from stock with holes writes the layer into every SVG, it imports as its own
 layer in both Falcon and LightBurn, and a burn registered on the two holes lands on the milled work.
 
-#### 6.18 A paste stencil to 3D-print — **requested, not started**
+#### 6.18 A paste stencil to 3D-print — **enhancement · open**
 
 Requested from the workshop, and ranked ahead of the paste extruder (Phase 9), which stays long
 term: *"A Job option to create a solder paste stencil that can be made by 3D printing … MillBurn
@@ -3169,7 +3205,7 @@ takes the same options, as every export does.
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
 
-#### 6.19 A dry run that is the real run, raised — **requested, not started**
+#### 6.19 A dry run that is the real run, raised — **enhancement · open**
 
 Requested from the workshop: *"The dry-run could be much better representative of a real run. The
 lack of z-moves lowers the usefulness of the current dry-run too much. What if the dry-run was just a
@@ -3208,7 +3244,7 @@ height. The export's dry-run tick is unchanged.
 **Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
 with every plunge in the air, and its run time lands where the real program's does.
 
-#### 6.20 Which way up is this stock? — **requested, not started**
+#### 6.20 Which way up is this stock? — **enhancement · open**
 
 From the workshop, cutting the 78.63 x 76.09 mm test stock: *"Might need a better way to orient the
 board. On this mostly square board, the chamfer corner isn't quite enough for a visual check for
@@ -3246,7 +3282,7 @@ needs to be as loudly marked as a turn.
 **Done when** somebody who has not seen the piece before can say which corner is the datum from
 across the bench, and the stock program and project page say what to look for.
 
-#### 6.21 Every hole approached from the same side — **found in the workshop, not started**
+#### 6.21 Every hole approached from the same side — **enhancement · open** — *possibly a global setting rather than always on*
 
 Found while checking the laser against the stock's waste holes, 2026-09-19, and worth recording in
 full because every party was innocent until the last measurement.
@@ -3306,7 +3342,7 @@ error is neither, and no rigid fit can push two points apart.
 **Done when** the stock's two waste holes measure 103.34 mm apart on the piece rather than 103.10,
 and a burn registered on them lands on both.
 
-#### 6.22 Machine checks: measure the machine, not only the bit — **backlash and squareness built; four more sketched**
+#### 6.22 Machine checks: measure the machine, not only the bit — **enhancement · partial** — *backlash and squareness built; four more sketched*
 
 From the workshop, after 6.21 turned a laser mystery into a quarter of a millimetre in the holes and
 a quarter of a degree of skew in the laser ([09 §1](09-Machine-Accuracy-Investigations.md)): *"Since MillBurn is
@@ -3434,7 +3470,7 @@ they belong in the machine's own firmware or in its frame.
 **Done when** two runs of the backlash check on the same machine agree within 0.02 mm, and a stock
 cut with 6.21's one-sided approach puts the waste holes 103.34 mm apart rather than 103.10.
 
-#### 6.23 About, and a check for updates — **built**
+#### 6.23 About, and a check for updates — **enhancement · built**
 
 Asked for from the workshop, and the reasoning is short: *"how about a button on the about page to
 check for a new version? And, at the same time, that about page could use some spiffying up."* The
@@ -3466,7 +3502,7 @@ drawn one is what `RouteOptimizer` makes of the same holes, and the millimetres 
 plan's own. It is the app's best argument for itself, it is real code rather than a picture of one,
 and it is the only thing in this release a person who never reads a roadmap will notice.
 
-#### 6.24 The outline lifts to the sky between laps, and over every tab — **found in the workshop, not started**
+#### 6.24 The outline lifts to the sky between laps, and over every tab — **defect · fixed**
 
 From the bench: *"The edge cuts have unnecessary z actions at the end of each lap. Also, the z-lift
 over the tabs should be much lower than the safe height. Just hop over the tab."*
@@ -3513,6 +3549,967 @@ computed, and named in the program's comments like every other derived number he
 fifty-nine, cuts the same shape, and still lifts to the safe height for anything that is a genuine
 travel move.
 
+**Fixed, and the numbers above no longer reproduce.** Four laps became three at some point between
+this being written and being done, so the 59 s is a measurement of a program the application does
+not emit any more. Measured again on the same board first: 45.40 mm of vertical motion, 34.9 s. After
+both halves: **27.40 mm, 22.3 s** — 36 % less vertical distance, 12.6 s off a two-minute program.
+The panel, which has fifty-one profiles rather than one, goes from 797 rapid moves to 182 and from
+530 plunges to 319, an estimated 57m 44s – 1h 0m becoming 49m 29s – 51m 44s. Its feed and arc counts
+are identical before and after: nothing about what is cut has changed.
+
+Between laps, `PassLinker.Continues` accepts a pass that starts where the last one ended and goes
+deeper, and the emitter drops straight to it at the plunge feed. The two passes must still **meet at
+a point** — that condition is the whole of the safety, and a journey at depth through uncut material
+is exactly what this lift exists to prevent.
+
+Over a tab the hop goes to **the surface**, not to the tab's own top. Clearing the top would save
+another 0.6 mm of Z and would put a rapid in-plane move below zero, which `GcodeBackplot.RoleOf`
+calls a gouge without qualification and the window answers with "do not run this". That check is
+worth more than the 0.6 mm, so the tool comes up to zero — which clears any tab there can be, keeps
+the crossing a rapid, and adds nothing to the cut length.
+
+#### 6.25 An isolation path bows into an arc where the copper is straight — **defect · open** — *measured, not fixed*
+
+From the bench, on the Arduino Mega 2560: *"One cut line near the middle-bottom of the board is not
+straight. It's an arc."* Screenshot: `WorkingFolder/V0.1.6/Error_Screenshots/Bad_cut_line.png`.
+
+A single isolation pass runs roughly horizontally across the board and bows upward into a shallow
+curve, while the passes parallel to it stay straight. The copper it is isolating is straight, so the
+path is wrong rather than merely ugly: it cuts into the region it is supposed to leave alone at the
+centre of the bow, and away from it at the ends.
+
+**A second instance, the same way round.** From the bench, on the same board: another straight run
+bowed into an arc, this one in the header pads along the top edge right of centre —
+`2nd_line_as_arc_closeup.png` and `2nd_line_as_arc_wideshot.png`.
+
+**Four by eye, and then measured in the file.** A third and fourth turned up in the same view
+(`2_more_examples.png`, the original boxed red and the new ones blue and green), which was enough to
+stop guessing and read the emitted G-code. Scanning every `G2`/`G3` in the two copper programs for
+an arc whose two endpoints share an X or a Y — that is, an arc drawn across a run that is provably
+straight — finds this:
+
+| Program | Bow | Over a chord of | Radius | Arc |
+|---|---|---|---|---|
+| F_Cu | **464 µm** | 12.067 mm | 39.48 mm | 17.6° |
+| F_Cu | **451 µm** | 11.730 mm | 38.37 mm | 17.6° |
+| B_Cu | **337 µm** | 8.743 mm | 28.56 mm | 17.6° |
+| B_Cu | 150 µm | 3.884 mm | 12.63 mm | 17.7° |
+| B_Cu | 74 µm | 1.897 mm | 6.11 mm | 17.9° |
+| F_Cu | 37 µm | 0.936 mm | 2.96 mm | 18.2° |
+| B_Cu | 37 µm | 0.920 mm | 2.90 mm | 18.2° |
+| B_Cu | 11 µm | 0.297 mm | 0.98 mm | 17.4° |
+
+The first two are top copper, which is what the screenshots show; the rest are below what is visible
+at that zoom and are the same fault.
+
+**Every one of them subtends about 17.6°.** The chords run from 0.3 mm to 12 mm — a factor of forty
+— and the radius scales with the chord to keep the angle fixed. That is the whole finding. A fitter
+working to an error tolerance cannot produce this: its arcs would subtend whatever angle kept them
+inside the allowance, and the angles would vary. A constant angular extent means something is
+*choosing* an angle, so the thing to look for is a fixed angular step — a segments-per-circle
+constant, an offsetter's round-join step, an arc-recognition window of a fixed number of points —
+and not a tolerance that needs tightening. Tightening a tolerance will not move a number that is
+not a tolerance.
+
+**It is past the point of being cosmetic.** The worst bow is 464 µm on a 0.45 mm isolation: the path
+leaves its intended line by more than a whole cut width, so it is cutting copper that the isolation
+was asked to keep and leaving copper it was asked to remove.
+
+Detection is cheap and belongs in a test: any emitted arc whose endpoints share a coordinate is a
+straight run, and its bow should be a micron or two, not four hundred.
+
+**Not a regression.** Confirmed present in v0.1.5 as well, so it predates both the preview work and
+the placing layers.
+
+**Where to look first.** The bow has the shape of a single arc fitted across a run of nearly
+collinear points, which is what arc fitting does when its tolerance is larger than the deviation it
+is asked to keep. The emitted file carries real arcs — 4,241 `G2`/`G3` in
+`Arduino Mega 2560-F_Cu.nc` against 11,861 `G1` — so the question is whether an arc was fitted to a
+straight run, not whether arcs are emitted at all. Simplification is the other candidate: a
+tolerance that collapses a long straight edge to two points and then rounds the corner between them.
+
+**Done when** no emitted arc on this board joins two endpoints that share a coordinate with a bow
+over a couple of microns — all eight of the rows above, not only the three that can be seen — and a
+test asserts that over the corpus, since it needs no eye and no screenshot. Real curves must stay
+curved: the emitted arc count for a board of known shape should not fall, or the fix has traded
+this fault for its opposite. The Arduino Mega 2560 is not
+in `tests/boards`, and both instances are on it, so reproducing this in a test most likely means
+committing it to the corpus — as 6.26 also needs.
+
+#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **defect · open** — *found in the workshop*
+
+From the bench, on the same board: *"There also seems to be a misplaced hole. IF top copper
+isolation >= 0.45 then the misplaced hole appears. But, if the isolation is <0.45 then the misplaced
+hole is NOT present. The hole, while being blue, seems to be connected to the top copper layer. When
+I hide the top copper layer, the hole also hides."* Screenshots: `mis-placed_hole.png` and
+`2_Errors_On_This_Board.png` in the same folder.
+
+**The layer it belongs to is the whole clue.** It is drawn in the plunged-hole style but disappears
+with the top copper, so it is not a drill at all — it is something in the copper isolation program
+that the backplot classifies as a plunge. A width-dependent appearance points the same way: at
+0.45 mm and above the offset closes a small feature into a closed loop, or drives two offsets into
+each other, and what is left is a short circular path around nothing.
+
+**Why it matters more than it looks.** If the backplot is classifying it as a plunge then the file
+contains a real move, and the mill will cut it. A cut in the middle of a copper pour is not
+cosmetic.
+
+**Done when** the board plans identically at 0.40 mm and 0.45 mm except for the width of the cut,
+the stray feature is gone, and a test pins whatever produced it — with the Arduino Mega added to the
+corpus if that is what it takes to reproduce.
+
+#### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **defect · fixed**
+
+From the bench: *"Open the 'Arduino Mega 2560' project from the recent list. Then, file -> open
+recent -> Millburn_Test_Board Workflow one. When this project opens, notice that all of the layers
+are checked visible. Click preview. Now, most of the checked layers have unchecked themselves."*
+
+It needs a project to already be open: the second project opens with everything visible, and the
+first Preview rewrites that. Also confirmed in v0.1.5.
+
+**Where to look first.** Preview rebuilds the scene, and the visibility state it rebuilds from is
+either the previous project's or a default that the newly opened project never had a chance to
+write. The suspects are the remembered per-kind visibility carried across an open, and the layer
+rows being rebuilt from a scene rather than from the project that was just loaded.
+
+**Why it is worth fixing rather than explaining.** Visibility is how the operator checks alignment
+before cutting, and a control that changes itself when you press an unrelated button is one the
+operator stops trusting — against the stated goal of the whole application, which is confidence
+that things line up.
+
+**Done when** opening a project over another one and pressing Preview leaves every layer's tick
+exactly as the project was loaded with, and a test opens two projects in sequence and asserts it.
+
+**Fixed.** Both suspects were right, and they were the same mistake counted twice. `Rebuild` reads
+which rows are hidden *before* it rebuilds them, and on the rebuild that follows an open those rows
+still belong to the project being replaced. `ApplyViewState` then chose between that set and the
+project's saved view state **by counting**: a non-empty set won, an empty one fell through to the
+file. So the second project opened with every layer ticked — the old project's hidden ids matched
+none of its layers — and the first Preview, finding nothing hidden, fell through to the saved state
+and unticked four layers in front of the operator.
+
+The same confusion ran the other way within one project, and nobody had reported it: reveal every
+layer, change any setting, and the rebuild found no row hidden and hid the saved ones again.
+
+The distinction is now carried by null rather than by a count — null means there is nobody to ask,
+an empty set means everything is showing — and `Adopt` passes `fresh: true` so the rebuild after an
+open never reads the outgoing project's rows as this one's. The rule and the reason for it moved to
+`LayerVisibility` in `MillBurn.Viewer`, where `LayerVisibilityTests` pins both directions on a real
+scene. What those tests do not cover is the call site: `Adopt` passing `fresh: true` is one line in
+a view model the test project cannot reach, and it was checked by running.
+
+**Confirmed at the bench, 2026-09-22**, on a published build: *"Layers are correctly selected when
+switching projects."* That is the part no test here reaches — two projects opened in sequence in a
+real window — so it is the only evidence that the call site is right.
+
+#### 6.28 A whole export imports as Unknown because the names are not KiCad's — **defect · fixed**
+
+From the bench: a set of Olimex OLinuXino Gerbers (A13-OLinuXino-WIFI rev H) imports with every one
+of its twelve files marked Unknown, so nothing can be exported. The files are plain RS-274X in
+inches, `%FSLAX24Y24*%`, with no X2 attributes at all — there is nothing in them to read, so the
+role has to come from the name. The parser itself is fine: the board measures 134.45 × 121.46 mm,
+which means the inch format and the 2.4 coordinates were read correctly.
+
+| Their name | Ours | Why it misses |
+|---|---|---|
+| `Top.gbr`, `Bot.gbr` | `F_Cu`, `B_Cu` | no bare `Top`/`Bot` pattern at all |
+| `Top_Mask`, `Bot_Mask` | `F_Mask`, `B_Mask` | side is spelled `Top`/`Bot`, not `F`/`B` |
+| `Top_Silk`, `Bot_Silk` | `F_SilkS` | same, and `Silk` is not `SilkS` |
+| `Top_Paste`, `Bot_Paste` | `F_Paste` | same |
+| `Dimension.gbr` | `outline`, `profile` | a third word for the same thing |
+| `Ln1_Cu`, `Ln2_Cu` | `In1_Cu` | `Ln` for *layer*, not `In` for *inner* |
+| `Drill.xnc` | `.drl`, `.xln`, `.txt` | `.xnc` is not on the extension list |
+
+**The matching is the thing to change, not the list.** `FromFileName` scans a table with
+`string.Contains`, which is why the table has to be ordered most-specific-first and why adding a
+bare `Top` to it would be dangerous: `Top_Mask` contains `Top`, so one careless row turns every
+mask, silk and paste layer into copper. Copper is the layer that gets cut, so that mistake is the
+expensive direction.
+
+Matching whole fields instead removes the hazard. The name splits on `_`, `-` and `.` into words,
+and a rule names the words it wants: `{Top}` alone is top copper, `{Top, Mask}` is top mask,
+`{Dimension}` is the outline. Unmatched stays Unknown, which is the existing and correct answer for
+a name nobody can read — this widens what can be read without widening what gets guessed. The X2
+path already works this way: `SideField` splits into fields and compares whole words.
+
+**It is a four-layer board**, so even read correctly the inner copper is never exported, which is
+right — and it is not a board anybody is going to mill. The value is the naming, which is Altium's
+and Eagle's convention as much as Olimex's, and the next unfamiliar export is likelier to look like
+this than like KiCad.
+
+**Done when** that folder imports with every file named — the two coppers, both masks, both silks,
+both pastes, the outline and the drills — the inner layers read as inner copper rather than Unknown,
+and a test covers the naming with a case for the trap: a file called `Top_Mask` must not come back
+as copper. If the board joins the corpus, its licence needs checking first: it is Olimex open
+hardware, and `tests/boards` currently holds only sets whose terms were established when they went
+in.
+
+**Fixed**, and the matching is what changed rather than the table: `FromFileName` splits a name into
+whole words and a rule names the words it wants, so `Top` alone is copper and `Top_Mask` cannot be.
+The side is taken from the word nearest the kind, `.xnc` joined the drill extensions, and mask, silk
+and paste with no side stated stay Unknown rather than defaulting to the top. The fixtures are
+`TopBotNames` and `Millburn_Test_Board_Protel`; the Olimex board itself is not in the corpus, so its
+licence was never the question in the end. Reading its export summary is what found 6.29.
+
+**Confirmed on the board itself, 2026-09-22**, the product owner having supplied
+`A13-OLinuXino-WIFI hardware revision G2` — a sibling of the rev H this was found on. All twelve
+files are named: both coppers, both masks, both silks, both pastes, the outline, the two inner
+layers and the drills. Nothing reads as Unknown. The board is 119.63 x 119.63 mm, 40,475 objects,
+850 copper islands at 70 % coverage.
+
+**And reading it correctly showed up something that was always going to be wrong.** The panel
+warned *"2 files claim to be Inner copper: Ln1_Cu.gbr, Ln2_Cu.gbr"* — from the duplicate-role check,
+which exists to catch two files both claiming to be the top copper. Every four-layer board ever made
+has at least two inner layers, so that warning is noise by construction; it had simply never fired
+before, because until this fix no board in the corpus had a readable inner layer. `InnerCopper`
+joins `Unknown`, `DrillMap` and `Documentation` on the list of roles the check skips, for the same
+reason drill maps are on it. The board now imports with nothing worth checking at all.
+
+**It is still not a corpus candidate**, and its licence still has not been examined. It was read
+from a folder outside the repository and nothing was written.
+
+#### 6.29 An Excellon file in inches has its drill sizes read as something else — **defect · fixed**
+
+Found while fixing 6.28, by exporting the Olimex board once the layers could be read at all. The
+summary said *931 holes in 8 sizes* and listed them as 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.13 and
+0.16 mm. No such drills exist.
+
+The file declares `M72`, which is Excellon for inches, and its tool table is ordinary:
+
+```
+M72
+T01C0.0100      0.0100 in = 0.254 mm
+T02C0.0118      0.300 mm
+T03C0.0157      0.399 mm
+T05C0.0315      0.800 mm
+T13C0.0709      1.801 mm
+```
+
+So the smallest real drill on the board is 0.254 mm and the largest of the thirteen is 1.8 mm, and
+every one of them is reported as a fraction of its true size. The hole *positions* look right —
+the drilling programs travel a few hundred millimetres across a 120 mm board, which they could not
+do if the coordinates were out by the same factor — so this looks like the tool table specifically,
+not the file's units as a whole. That was not verified, and it should be first.
+
+**Why it is worse than a wrong label.** Everything downstream believes the number: which bit the
+operator is told to fit, whether a hole is too big to drill and should be routed instead, whether
+the tool library has anything that fits. A board whose holes are all reported as a fiftieth of a
+millimetre is one the application will reason about confidently and wrongly, and the CHECK lines
+that exist to catch exactly this kind of thing will be reassuring about the wrong sizes.
+
+**Nothing in the corpus would have caught it.** Every committed board is a metric KiCad export, so
+inch-mode Excellon has no coverage at all. That is the actual gap; this board is just where it
+surfaced.
+
+**Done when** the Olimex board reports thirteen tools between 0.254 mm and 1.80 mm, an inch-mode
+Excellon fixture is in the corpus, and a test reads the same holes from a metric and an inch
+version of one file and gets the same millimetres from both. It is worth checking at the same time
+whether the coordinates are right or merely close enough to look it.
+
+**Fixed, and the guess above was wrong in a way worth keeping.** It was not the tool table
+specifically. `M72` was not read *at all*, so the whole file was taken for metric, coordinates
+included: the parser knew `METRIC` and `INCH` as header keywords and nothing about `M71` or `M72`,
+which is the only way this file states its units, so the unit never left its default. The
+coordinates looked plausible because a board read at 1/25.4 scale still produces numbers that travel
+a few hundred millimetres. Nothing about that was evidence, and taking it for evidence would have
+sent the fix to the tool table and left every coordinate wrong.
+
+Both commands are read now, in the body as well as the header, and each tool's diameter is kept as
+the file wrote it — so a unit declared *after* the tool table, which is legal and what some older
+outputs do, still reaches the tools it was stated after.
+
+`tests/boards/PogoTest1-Inch` is the corpus's first inch-mode Excellon: PogoTest1's two drill files
+with every number divided by 25.4 and `METRIC` replaced by `M72`. `ExcellonParserTests` reads both
+versions and compares the millimetres, within the nanometre or two that a decimal inch cannot
+express exactly.
+
+**Confirmed on an Olimex board, 2026-09-22.** The revision to hand was G2 rather than the H this was
+found on, and it carries sixteen tools rather than thirteen: `Drill.xnc` opens `M48`, `M72`, then
+`T01C0.0100` through `T16C0.1575`. The application now reports **931 holes in 16 sizes, 0.25 to
+4.00 mm** — 0.0100 in is 0.254 mm and 0.1575 in is 4.0005 mm, so both ends land where the file says.
+
+The old reading is worth keeping beside that, because it was wrong in two ways rather than one: it
+said *931 holes in 8 sizes*, from 0.02 to 0.16 mm. Not only was every size a twenty-fifth of its
+true value — **eight of the sixteen sizes had collapsed into each other**, because drills that
+differ by a tenth of a millimetre differ by four microns once divided by 25.4, and rounding merged
+them. The hole count was right the whole time, which is exactly what made the summary look credible.
+
+#### 6.30 Copper sealed inside the board can be set to G-code — **defect · fixed**
+
+Found at the bench on a six-layer i.MX8M dev board, opened to see what would strain the
+application. Its four inner copper layers were ticked and set to G-code, and the export wrote
+**eight files and 58,369 lines** of machine program for them: `In1_Cu.nc` through `In4_Cu.nc` and a
+dry run each. Run one and the mill cuts a copy of an inner layer into whichever face is upwards.
+
+`LayerOperations.DefaultFor` returns `None` for inner copper, so nothing arrives set this way. But
+`Available` sends it to the catch-all that offers `None`, `Svg` and `Gcode`, so the picker on the
+layer row offers all three and the operator took one. Two lines above that catch-all the same file
+already says what should have happened:
+
+> *Drawings are for reading. Offering to burn or mill one is offering to make a mistake.*
+
+An inner layer is the stronger case, not the weaker one. A drawing is merely the wrong thing to
+cut; an inner layer is a thing no cutter or laser can ever reach, on any machine, in any setup —
+and the file it produces looks entirely plausible, which is what makes it dangerous.
+
+**A test has been asserting this all along without covering it.** `ExportPlannerTests` has
+`InnerCopperIsNeverExported`, and every line of its body checks a *default* — `DefaultFor`, and the
+three import presets. The name claims the export never happens; the body only shows it is not the
+starting point. This is the failure `/describe-test` exists to find, and it went unfound because the
+test was read by the person who had just written it.
+
+**Done when** `Available(LayerRole.InnerCopper)` is `[None]`, the layer row offers nothing else, a
+project saved with an inner layer set to G-code opens with it set back to None and says so rather
+than silently changing it, and `InnerCopperIsNeverExported` earns its name by planning a board with
+an inner layer and asserting no file comes out. The CHECK line that already names the inner layers
+should say they cannot be reached, not merely that they exist.
+
+**Not the same board as a corpus candidate.** That board is 13 MB with no established licence, and
+it cannot be milled at all — 2,460 gaps narrower than the cut. It is a performance reference, not a
+fixture. A two-layer fixture with a file renamed to `In1_Cu` reproduces this in a few kilobytes,
+and `TopBotNames` already carries one.
+
+**Fixed.** `Available(LayerRole.InnerCopper)` is `[None]`, so the picker on the layer row offers
+nothing else, and inner copper is gone from both copper rows in `LayerOperations.For` — so a setting
+that arrives by any other route plans to nothing and says why. The reason is given in the operator's
+terms rather than the application's: *a cutter cannot reach a layer inside the board*, not *cannot
+be exported as Gcode*, because the second invites the reader to go looking for the setting that
+would allow it.
+
+A project saved while the pairing was still offered is put right when it opens, and says so.
+`ProjectFile.Open` reconciles each saved output against what its layer can produce; the note reaches
+the CLI as a CHECK line and the window as a warning that stays for as long as the project is open.
+Only the impossible is touched — a merely unusual setting is the operator's business.
+
+`InnerCopperIsNeverExported` earns its name now: it plans `TopBotNames` with `Ln1_Cu.gbr` set by
+hand to G-code and then to SVG and asserts that no file comes out of either, having first checked
+the layer has copper on it, so that nothing is satisfied by an empty layer with nothing to cut. The
+body it used to have — the three import presets — is still there, under
+`InnerCopperIsNotTheStartingPoint`, which is the name it was always describing.
+
+**Confirmed at the bench, 2026-09-22**, on a published build: *"Inner layers are no longer
+exportable."*
+
+#### 6.31 Let the operator say what a layer is — **enhancement · open** — *asked for by the product owner*
+
+From the product owner, after a day of chasing naming conventions: *"Perhaps, instead of trying to
+match all the different naming schemes, we use the most common. But, as a future enhancement, we can
+provide a user with a way to define a file in someway. So, if we do miss one, or mis-interpret one,
+the user has a way to fix it on their own."*
+
+**This is the right answer to 6.28 and to every bug like it**, and most of it is already built. The
+saved project carries `RoleOverridden` beside each source's `Role`; `ProjectFile` writes it and
+reads it back; `ProjectRefresh` deliberately keeps a hand-set role when the folder changes under the
+project rather than re-detecting over it; `ProjectTests` covers that; and the CLI prints
+*"(role set by hand)"* when it sees one. Every part of the mechanism exists except a way to use it:
+`LayerRow.Role` is display-only, and no control anywhere in the application sets it.
+
+So the work is a picker on the layer row, the plumbing behind it, and saying which way a role was
+arrived at. `RoleGuessed` already distinguishes a role the file declared from one read off its name
+— the comment on `LayerRoles` says *"when it is used the caller is told, because a guess should look
+like a guess"* — and the row does not currently show that either.
+
+**What it changes about the matching.** With this in place the matcher only has to get the common
+schemes right: KiCad's `F_Cu`, the `Top`/`Bot` family that Altium, Eagle and Olimex share, and the
+classic extensions. Anything rarer becomes a two-click correction that survives a refresh, instead
+of a defect report and a new rule. Some of the naming work already done was compensating for the
+absence of this, and the entries above should be read in that light.
+
+**Done when** a layer whose role was guessed says so on its row, any layer's role can be set by hand
+from that row, the choice is saved with the project and survives a refresh of the source folder, and
+a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
+the test: it should be usable by hand even with every one of its files unrecognised.
+
+#### 6.32 Say where the project came from — **enhancement · open** — *asked for by the product owner*
+
+From the product owner: *"We should display the gerber folder somewhere so the user knows where the
+project is from."*
+
+**Nothing in the window says it.** `MillBurnProject.OriginFolder` is there and is used — for the
+folder a file dialog opens at, and for *"The source folder '…' is not there any more."* — but it is
+never shown while a project is open. The title shows `DisplayName`, which is the folder's last
+segment alone.
+
+That is the whole problem in one line: the author's own recent-projects list holds three entries
+reading `Millburn_Test_Board`, from `WorkingFolder/Millburn_Test_Board`, from
+`WorkingFolder/V0.1.4_Test`, and from a workflow folder inside `V0.1.5_Test`. The list distinguishes
+them because it shows the path underneath. Once one is open, nothing does — and the operator is a
+click from exporting programs built from a board they did not mean to open, which is the
+alignment-confidence problem this application exists to solve, arriving from the least interesting
+possible direction.
+
+**Where it belongs.** The Project info panel already carries what the board *is* — its size, its
+layer count, its holes — and has the Import folder button beside it, so where it came from belongs
+in the same place. The status bar is the wrong home: that row is contested, and the work in story 1
+showed what happens when something is added to it without regard for what it pushes out.
+
+Worth saying with it whether the project is a saved `.millburn` file or a folder opened directly,
+since those behave differently on a refresh, and worth eliding the middle of a long path rather than
+letting it push the panel wide.
+
+**Done when** an open project shows the folder it was imported from, a long path is readable without
+resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
+projects whose folders share a name can be told apart at a glance.
+
+#### 6.33 A superseded preview stops being watched, not stopped — **defect · open** — *found in the workshop*
+
+Found at the bench while testing story 2 on the six-layer i.MX8M board, where a preview takes seven
+to eight seconds and sixteen at 1 mm isolation: *"click preview on a new change that I know it has
+to generate, then as fast I can return the change and click preview again. The new click does
+interrupt the in-progress and cause a 'remembered in 0.11 s' message."*
+
+The window behaved correctly and the message was right. What it was not is an interruption.
+`ExportPlanner.Plan` takes no cancellation token; the token is read inside `PreviewBuild`, between
+programs, which is reached only after planning has finished. So a superseded run keeps planning to
+the end on its pool thread, and the new preview feels instant because it found an entry in the
+memo, not because the old work stopped.
+
+**Half of that is a feature.** The abandoned plan is stored on its way out, so going back to a
+setting that was mid-flight when it was dropped is a hit rather than a rebuild. That is some of why
+the bench session felt as quick as it did, and it should not be thrown away in fixing the rest.
+
+**The other half is not.** Nothing bounds how many abandoned runs are in flight. Nudging a setting
+five times on a board that plans in sixteen seconds can leave five full plans running at once, each
+holding its own intermediate geometry, on a machine whose operator is watching a sixth. The symptom
+would not look like this defect: it would look like the application becoming slow and memory-hungry
+for no visible reason, some minutes after the operator stopped doing anything unusual.
+
+**Done when** a superseded run stops within a program or two of being superseded rather than at the
+end of the plan, the plan it had already completed is still kept if it completed, and the number of
+plans in flight at once has a stated ceiling. Threading a token through `ExportPlanner.Plan` is the
+obvious half; deciding what to do with a half-built plan is the part worth thinking about.
+
+#### Not a defect: the circles in Universal Gcode Sender
+
+From the bench, with `Concerning_Circles.png`: *"I'm worried that the circles are not as good as
+they should be. The image on the left is the UI from Universal GCode Sender."*
+
+**They are as good as they should be.** `Arduino Mega 2560-F_Cu.nc` holds 4,241 `G2`/`G3` arcs, and
+MillBurn's own backplot is built by parsing that same emitted text rather than from the toolpaths
+that produced it — so both pictures are readings of one file, and only the rendering differs. UGS
+linearises an arc for display at a fixed segment length, which is why a pad's isolation looks like a
+polygon there and a curve here. grbl interpolates the arc itself on the machine, to its own
+`$12` arc tolerance, not to whatever a visualiser drew.
+
+Recorded so that it is not investigated twice. If a future change ever emits those circles as
+polylines instead, this entry is the evidence that they did not used to be.
+
+#### 6.34 An even number of outline passes costs twice the travel of an odd one — **defect · open** — *measured*
+
+Found while measuring sprint 1 story 3, on `GridStripConnector_Panelized`, and it is a property of
+the geometry rather than of the ordering: the optimizer is already doing the best that can be done
+with what it is given.
+
+A channel centreline cut at several depths alternates direction as it goes deeper — forward, then
+backward — because taking an open run the same way round twice means travelling its whole length
+back before the next pass can start. An **even** number of those passes therefore returns the tool
+to where the stack began; an **odd** number leaves it at the far end. Since story 3 a stack can be
+entered from either end, and that choice is worth much more when the stack traverses than when it
+comes back:
+
+| Step-down | Passes to 1.90 mm | Outline travel |
+|---|---|---|
+| 0.40 mm | 5 — odd | **337 mm** |
+| 0.65 mm | 3 — odd | **326 mm** |
+| 0.70 mm | 3 — odd | **326 mm** |
+| 0.50 mm | 4 — even | 721 mm |
+| 1.00 mm | 2 — even | 710 mm |
+
+Same board, same cutter, same fifty channels. **More than twice the travel for an even pass count**,
+and nothing the operator chose caused it — the step-down that suits the bit decides the parity, and
+the 0.8 mm end mill's note says to keep the step-down small.
+
+**Nothing here is wrong.** It is a saving not taken, and the shape of the fix is a question about
+how the passes are laid out rather than how they are ordered: an even stack needs a way to finish at
+the far end without paying a full-length return for it. Whether that is worth the complication is
+the first thing to decide, and the product owner cuts at 0.500 mm, which is the even case.
+
+**Done when** the outline's travel on the panel is within sight of the odd-parity figure at an even
+pass count, the cut itself is unchanged, and a test pins the relationship rather than the number.
+
+#### 6.35 A knife blade as a tool, for vinyl masking — **enhancement · open** — *asked for by the product owner*
+
+From the product owner, 2026-09-22: *"Add knife blades as a tool. For those who want to use a cutter
+to create a solder mask using vinyl masking."*
+
+Cut the mask openings out of adhesive vinyl with a drag knife, weed it, and lay it on the board:
+another way to get a soldermask onto a home-made board, alongside the laser and the mill that are
+there now. The machine is the same one, the file is the same shape, and the layer it comes from —
+the soldermask — is already read, already offered as SVG for the laser and as a pocket for the mill.
+This would be its third answer.
+
+**A knife is not an end mill with the depth turned down, and that is the whole of the work.** The
+blade trails the spindle centre by its own offset, so it does not point where the machine is going
+until it has been dragged far enough to swing round. Every corner therefore needs the path lengthened
+past it and re-entered — the overcut — or the blade tears the turn instead of cutting it. That
+compensation is what separates a drag knife from every tool this application currently models, and
+it is geometry rather than a setting: `ToolKind` has three members today and every one of them
+cuts where the spindle is.
+
+**What it would touch**, from a quick look rather than a design: `ToolKind` and the tool library,
+which is small; the toolpath the mask layer produces, which today is an area to clear and would
+instead be an outline to follow; and the emitter, which has no notion of a tool whose depth is a
+pressure and whose passes are single. The optimizer needs nothing new — a knife cuts closed contours
+and open runs like anything else.
+
+**Answered by the product owner, same day, and the answers make it smaller than it looked.**
+
+*The blade.* *"The traditional drag-knife option (we can figure out defaults at implementation
+time), or the 'Cricut' (non-driven) type. The cricut is still used as a kind of offset drag knife,
+it's just that the point of the blade is only a tiny bit offset compared to a traditional
+drag-knife."* So there is **one model, not two**: both are offset drag knives and the difference
+between them is the size of the offset. A number in the tool, not a branch in the code, and the
+Cricut is the small-offset case of the same arithmetic. Defaults are an implementation-time question.
+
+*Where it is cut.* *"We generate the g-code, let the user figure out how to use it."* — which is
+this application's standing boundary, and it removes mats, bed fixturing and the whole question of
+how the vinyl is held. It writes the file.
+
+*Growing the openings.* *"Great option to include in the tool config. Default 0."* A vinyl mask cut
+exactly to the pad has nothing holding it down, so the grow amount belongs beside the blade offset,
+and zero means the apertures as drawn.
+
+*Which layers.* **Open — more consideration needed.** The first answer was *"I see no reason to
+limit it by layer type. Any Gcode export can use any tool."*, and it was then reopened deliberately
+rather than settled, which is the right call: it is the one part of this that reaches past the knife.
+
+`LayerOperations.ToolKindFor` narrows the tool dropdown per operation today — a V-bit for isolation
+and engraving, an end mill for the outline, a drill for drilling, and no filter at all for a pocket,
+because both kinds are genuinely used there. It exists so that a meaningless pairing cannot be
+chosen. Read literally, "any G-code export can use any tool" removes it, which also permits a drill
+for isolation and an end mill for drilling.
+
+Two readings, and they are different pieces of work:
+
+- **Admit knives to every operation** and leave the rest of the filtering as it is. Small, and it
+  gets the vinyl mask cut.
+- **Drop the filtering altogether** and let the operator answer for the pairing. Larger, and the same
+  move [6.31](#631-let-the-operator-say-what-a-layer-is) makes for layer roles — when the rule cannot
+  know, offer the choice and name the consequence rather than guessing.
+
+What makes the second worth thinking about rather than simply doing: the filter is not only a
+convenience, it is the thing that stops a program being written for a pairing nobody can run, and
+this application's habit is to refuse rather than guess. What makes it worth thinking about rather
+than simply refusing: the pocket case already has no filter, which is an admission that the rule
+does not always know. Neither is obviously right. To be decided at the sprint boundary, not here.
+
+**Still open from this end:** the offset defaults, and whether a corner's overcut is derived from the
+offset alone or needs a separate swivel allowance on tight turns.
+
+**Not started, and deliberately not begun mid-sprint**: it is a feature, sprint 1 is about speed and
+accuracy, and new requests are prioritised at the sprint boundary (CONTRIBUTING).
+
+#### 6.36 A check should say what it is about — **enhancement · folded into 6.44**
+
+From the product owner, 2026-09-22: *"The CHECK section: Each item should list its source first, then
+the message. ie: Stock - <message> or Top copper - <message>. Also, might be nice to put that label in
+the layer's colour."*
+
+The list already mixes several kinds of thing — a layer's own warnings, the stock's refusals, advice
+about the tool library, and the export's refusals — and the only clue to which is which is whatever
+the sentence happens to begin with. Some already lead with a source (`Stock: ...`, `Not levelled:
+...`); most do not.
+
+The colour is the better half of the request. The layer rows are already coloured, and a check whose
+label carries its layer's colour is findable without reading anything — which is what a list you
+consult while the mill is running needs to be.
+
+**And the case that raised it.** The export's status line said *"1 thing(s) refused — see the
+checks"* while the check itself read *"Not levelled: Millburn_Test_Board-B_Cu.nc — ..."*. The word
+"refused" appeared nowhere in the list, so there was nothing to look for. From the bench: *"I don't
+know which check it is referring to."* Screenshot: `WorkingFolder/V0.2.0/Story 6 - Stop Climbing
+Outline/Screenshots/refused.png`.
+
+The status line now names what was refused and the file when there is only one, which was a small
+change made on the spot — and it is **not enough**, which is the second thing the bench said: *"it's
+there, but the link from status message to check is not really clear to the user."* Naming the thing
+still leaves the reader matching one sentence against a list of sentences. Making that link plain is
+part of this request rather than a separate one: the status names a refusal, and the reader should be
+able to *see* which line it means — the same word in both, or the line marked as a refusal rather
+than as advice, or the check itself highlighted when the message is about it.
+
+**Done when** every check line begins with the thing it is about, a layer's own checks carry that
+layer's colour, a reader can tell a refusal from advice without reading to the end of the sentence,
+and a status message that points at the checks points at one a reader can find without hunting.
+
+#### 6.37 The check list should fold away — **enhancement · folded into 6.44**
+
+From the product owner, 2026-09-22: *"The CHECK section should be minimizable (downwards) leaving
+just the title and the count visible."*
+
+Downwards, so the board keeps the room. The count stays visible because that is the part worth
+seeing at a glance: a job with three checks and a job with none should not look the same when the
+panel is folded.
+
+Worth deciding with it: whether the fold is remembered, and whether a new check unfolds it. Neither
+is obvious — a panel that reopens itself is the kind of thing that gets in the way once an operator
+has read the checks and decided they are fine, and a fold that hides a check that arrived afterwards
+is the opposite failure. The count in the title is what makes leaving it folded defensible.
+
+**Done when** the check section folds to its title and count, the board gets the space, and the
+count is legible folded.
+
+#### 6.38 A tab hop assumes the board does not fall half a millimetre — **defect · accepted** — *known limitation*
+
+Since [6.24](#624-the-outline-lifts-to-the-sky-between-laps-and-over-every-tab), the tool crosses a
+tab at 0.5 mm above the surface rather than climbing to the safe height. `Leveller.Write` adds the
+probed map's correction to **every** move, rapids included, with no clamp and no lower bound. So on a
+board whose probed surface dips more than 0.5 mm below the datum along a tab gap, the hop is written
+below zero — the cutter rubs, and `GcodeBackplot.RoleOf` calls a rapid that moves in plane below zero
+a gouge, so the window says "do not run this" about a file that is otherwise right.
+
+**New with that story, and worth saying so.** Before it, the only move at approach height was
+vertical, and `RoleOf` never calls a vertical move a gouge. This is a class of failure that did not
+previously exist, created by a change that is right in every other respect.
+
+**Accepted rather than fixed, and the product owner's reasoning is the measurement.** Half a
+millimetre of fall below datum is *"a lot. I mean, that's a whole 1 mm range"* across the board once
+the rise is counted with it. A laminate that bad is a workholding problem before it is a levelling
+one, and the operator is told about it: the file is condemned rather than silently run.
+
+**What would change if it ever bites.** Three ways, in the order they were judged:
+
+1. **Clamp rapids at levelling time** so a correction cannot push one below zero. Principled, and it
+   can only ever remove gouges — but it changes how every levelled program is written and belongs to
+   its own story with its own review rather than riding in on the end of another.
+2. **Refuse the hop when the map's fall exceeds the margin.** The emitter would have to know the map,
+   which today it does not.
+3. **Raise the hop floor.** Cheapest and the worst of the three: it gives back the saving on every
+   board to protect against one nobody has seen.
+
+**It is not silent.** A file this happens to is condemned by the gouge check before it can be run,
+which is why accepting it is defensible: the failure mode is a refused file and a confused operator,
+not a cut board.
+
+#### 6.39 Offsets are not counted — **defect · open** — *for the next sprint*
+
+`Work` counts Clipper booleans, point-in-polygon questions and the vertices handed to them, and each
+board's tally is recorded in `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` so a change in what a
+board costs is a diff somebody has to justify.
+
+**Offsets are missing, and every toolpath is built by one.** The fourteen call sites go straight to
+`Clipper.InflatePaths` rather than through `Polygons`, so there is nowhere central to count them. A
+field that could only ever read zero was left out rather than shipped, because somebody would
+eventually trust it.
+
+**What it costs to leave.** Isolation and outline are mostly offsetting, so the counts describe
+compositing and queries well and toolpath building badly. Work that doubled the offsetting would
+still move the vertex total — offsets are handed geometry either way — but it would not read as
+offsets, which makes the number harder to interpret than it should be.
+
+**And nothing stops a fifth bypass.** Booleans are counted because `Polygons` is the door they go
+through, but the door can be walked around: four call sites already did, and were only found by a
+review reading for them — two in `PassLinker`, one in `VoidCentreline`, one in
+`DrillAndOutlineOperations`. They are counted now, in place. A new `Clipper.Union` written tomorrow
+compiles and counts nothing, and the snapshot that is supposed to notice says the work got cheaper.
+
+**Done when** offsets go through a counting wrapper, `WorkCount` carries the field, and calling
+`Clipper.Union`, `Difference`, `Intersect`, `BooleanOp`, `InflatePaths` or `PointInPolygon` outside
+that wrapper is a build error rather than a habit — a banned-API list or an analyser rule. Then the
+tally is a fact about the program instead of a fact about who remembered. Fourteen offset sites in
+five files plus the rule: mechanical, and worth doing on its own rather than inside a story about
+something else.
+
+**The measured cost of not having had it**, so the value is on the record. The first baselines
+committed here were wrong, and a review found it by reading for uncounted calls rather than by any
+test failing. `ResolveEvenOdd` — the realiser's most-used boolean, and the one an aperture or region
+change would move — went through Clipper directly, as did `Separate` and the four sites above. On
+the Arduino Mega the corrected numbers are:
+
+| | as first recorded | actual | reported |
+|---|---:|---:|---:|
+| realising, booleans | 606 | 1,493 | 41 % |
+| realising, vertices | 392,557 | 452,560 | 87 % |
+| planning, booleans | 4 | 666 | 0.6 % |
+| planning, vertices | 201,860 | 804,781 | 25 % |
+
+A regression in resolving a 10,007-object board's geometry, or in anything the planner composites,
+would have left every baseline byte-identical. The counters were believed for a day, which is the
+whole argument for the rule: a tally nobody can bypass is worth more than a tally somebody has to
+remember to use.
+
+#### 6.40 What the work counters do not watch — **defect · open** — *for the next sprint*
+
+`WorkSnapshotTests` records what a board costs to realise and to plan, and a change in either is now
+a diff somebody has to account for. Four things it does not cover, written down while they are known
+rather than found later by something regressing quietly.
+
+**The optimizer is not in it.** The counts bracket `BoardLoader.LoadFolder` and `ExportPlanner.Plan`,
+and the route search is neither: it counts its own moves against a budget, which is a good measure of
+the search and no measure of what the search costs to run. Two-opt and or-opt on a board the size of
+the Mega are not free, and nothing here would notice them getting dearer. The move budget would hold
+the *quality* steady while the *price* climbed, which is exactly the shape that hides.
+
+**One output kind, one thickness.** Every case asks for `OutputKind.Gcode` at 1.6 mm. SVG export
+goes through different work — no depth, no passes, no linking — and is unmeasured. So is stock
+cutting, levelling, and milled holes, each of which is a chunk of geometry behind a setting nobody
+here turns on.
+
+**Four boards of the ten in `RealBoards`.** The four were picked for size and shape, which is the
+right instinct, but the boards that break things have historically been the awkward ones rather than
+the big ones — 6.30 came off a real export, and three bench bugs came off one board nobody had run.
+
+**`LoadSources` is not the path tested.** `LoadFolder` reparses and rebuilds, which is what makes the
+warm-up honest and the floor assertion meaningful. The app does not always take that route. Whatever
+the UI actually calls when a project is reopened is the path a user pays for, and it is not the path
+measured here.
+
+**Done when** the optimizer is bracketed and counted separately, at least one SVG case and one
+levelled case exist, and the board list is either extended or the choice of four is argued in the
+file. Not urgent, and deliberately not bundled into 6.39 — that one is about a tally that can be
+bypassed, this one is about a tally that is honest as far as it reaches and does not reach far
+enough.
+
+#### 6.41 A trace is filed under the next net, not its own — **defect · fixed**
+
+The parser batches consecutive `D01` strokes into one `DrawObject`, which keeps the object count
+near the number of traces rather than the number of segments and is worth keeping. The object was
+not emitted until something forced it out, and it read its attributes at *that* moment rather than
+at the moment the stroke was drawn. An object attribute applies to the objects that follow it, so
+this is backwards: a trace drawn under one net was filed under the next one.
+
+**KiCad writes exactly the shape that triggers it** — a net, some strokes, the next net, more
+strokes, with nothing in between to flush. From the author's own test board:
+
+```
+%TO.N,Net-(J3-Pin_1)*%
+X161092000Y-82608000D02*
+X159900000Y-83800000D01*      <- Pin_1
+X167900000Y-82608000D02*
+X161092000Y-82608000D01*      <- Pin_1, read back as Pin_2
+%TO.N,Net-(J3-Pin_2)*%
+```
+
+**`%TD*%` was the same bug with a worse ending.** It clears the attributes, so a stroke still open
+at that point was emitted with no net at all and disappeared from the netlist entirely — worse than
+a wrong name, because nothing looks out of place. The test board's net-point count rises from 77 to
+78 on the fix, and PogoTest1's top copper from 33 to 34; those are traces that had no net.
+
+**What it cost.** Nothing in the emitted G-code — the geometry was always right, only the names were
+wrong — and everything in the electrical check built on top of it. Before the fix, story 4's check
+reported 110 shorted groups on the Arduino Mega's top copper, 19 on the test board and 4 on
+PogoTest1. After it: 6, 0 and 0. The test board and the panel report zero, which is what the story
+asked for, and the Mega's remaining six are real gaps a 30° V-bit cannot cut.
+
+**How it was found.** By disbelieving a new check's output. The check was written, run against real
+boards, and reported a hundred and ten shorts on a manufactured Arduino — a board that demonstrably
+works. Proving the check's geometry correct on synthetic pads, and then that the artwork's own
+regions already held two net names each, left the parser as the only candidate. No test failed at
+any point in that sequence; the suite was green before and after.
+
+**The fix** flushes the open stroke before `%TO` and `%TD` change anything, which is what `%LP`
+already did before changing polarity, for the identical reason: neither a polarity nor a net can
+apply retroactively to copper already laid. `NetAttributionTests` covers it, including that
+batching still happens — a fix that flushed on every `D01` would pass the attribution tests and
+quietly multiply the object count on a real board.
+
+**A region had the same bug one object later**, found by review rather than by a board. A region is
+created at `G37` and read its attributes there, so a `%TD*%` between `G36` and `G37` took its net
+with it. No exporter in `tests/boards` writes that shape, so this is a guard and not a repair — but
+a pour is exactly where a short hides, and a pour that has lost its net is invisible to every check
+that reasons about nets. The attributes in force at `G36` are held instead, with anything set while
+the region is open laid over the top: neither end alone is right, since the opening set alone would
+ignore a writer that names the net inside the pair.
+
+#### 6.42 The electrical check reaches one planning path, and cannot say which kind of unnamed — **defect · folded into 6.44**
+
+Two things left undone by story 4, both found by review rather than by a board, and both recorded
+rather than bundled into a story that was about something else.
+
+**Only `ExportPlanner` runs it.** `JobBuilder` — the other planning path, and the one behind the
+CLI's own job command — still emits the old `UnreachableGaps` count and never calls
+`ElectricalCheck`, so an operator verifying from there gets "2 gap(s) are narrower than the cut"
+where the export path names the nets. The same board, checked two ways, answers differently. Done
+when both paths run the same check or there is one path.
+
+**And the residual cannot say which kind it is.** `NetCheck.Unnamed` counts merges no pair of names
+could be put to, and two quite different things land in it: copper carrying no net attribute, which
+is a short nobody can name; and two pieces of the *same* net being joined, which is a gap the tool
+equally cannot cut and electrically nothing at all, because they were one conductor already. The
+warning is worded to allow for both, which is honest and is not the same as useful — an operator
+reading "25 gaps" on the test board cannot tell how many matter. Telling them apart means asking,
+per merged region, whether the pieces that fell into it carry one name between them or none; the
+per-region attribution that 6.41's fix introduced is most of the machinery already.
+
+**Why the count is 25 there and not zero.** Worth writing down because a review asserted the board
+had no unnamed merges at all and it does: the test board carries copper with no net on it — the
+lettering, and the 0.5/0.8/1.0 test patterns — which fuses at a wide cut and has no name to be
+reported under. The 62 that the first arithmetic reported were wrong; the 25 that replaced them are
+real, and how many of them are *interesting* is exactly what this entry is about.
+
+#### 6.43 Check the board as its own job, not only as a line in a list — **enhancement · folded into 6.44**
+
+Asked after story 4 shipped, having watched the electrical check work: would it have been better as
+something the operator starts from a button or the Job menu, rather than as warnings produced while
+planning?
+
+**The answer is both, and the automatic half should stay.** The short on the Arduino Mega was found
+because the app said so without being asked. A button only protects an operator who thinks to press
+it, and the one most at risk is the one who does not know there is a question. It also runs before
+anything is written, which is what story 4 asked for: a gate, not a report.
+
+**But the warning channel is straining, in three ways already visible.**
+
+*The format caps what can be said.* Groups are capped at eight before falling back to a count, and
+each group's names at six, because one piece of copper holding twenty-three nets became a
+six-hundred-character sentence. That is a one-line-per-program channel carrying something that wants
+a table.
+
+*The findings are scattered.* Each isolation program reports its own, so a two-sided board answers
+in two places in the export listing, and nothing collects them.
+
+*And it dilutes the list.* The workshop screenshot for story 4's closure shows seventeen CHECK items
+before this story added anything; a dense board now adds eleven more lines to it. 6.36 and 6.37
+exist because that list is already hard to read, and this makes the case for them sharper rather
+than weaker. **This is the strongest argument for the product owner's instinct**, and it is a real
+cost of the shape story 4 chose.
+
+**What a check view would earn** is everything deliberately declined as too much for a warning line:
+
+- **Where the gap actually is.** `NetJoin.Near` is one of the group's own net points, which can be
+  far from the narrow place — documented as "this copper", not "here". Finding the gap means
+  intersecting the two grown outlines per join, which is unjustifiable for a one-liner and perfectly
+  justifiable for something the operator asked to run.
+- **The split in [6.42](#642).** Which unnamed gaps are nameless copper, and which are two pieces of
+  one net that nothing shorted.
+- **Reasoning across layers**, which per-program warnings cannot do.
+- **The rest of DRC.** Drill-to-copper clearance, an outline cut that severs a trace, a pocket that
+  removes part of a net. Story 4 refused an opens check because isolation cuts outside the copper
+  edge and *cannot* sever anything — it would have been a check that could never fire, which this
+  repository has been bitten by twice. Those three can fire, and they have nowhere to live today.
+
+**The shape suggested.** The automatic check stays and gets *shorter* — one line per layer, naming
+the count and pointing at the view — and the view becomes where it is read. That addresses the
+dilution and the format at once, rather than trading one for the other.
+
+**Done when** there is a way to check a board without exporting it, the result is collected in one
+place rather than per program, and the warnings that remain in the CHECK list are short enough not
+to crowd out everything else in it. Sits with 6.36 and 6.37: all three are the same observation,
+that the CHECK list is being asked to carry more than a flat list of strings can.
+
+#### 6.44 The checks become something you can read — **enhancement · open** — *agreed by the product owner 2026-09-23*
+
+Five entries were saying the same thing from different directions, and story 4 pushed the list past
+what it can carry. Agreed to work as one piece rather than five: **6.36** (a check should say what it
+is about), **6.37** (the list should fold away), **6.42** (the electrical check reaches one planning
+path and cannot say which kind of unnamed gap it found), **6.43** (check the board as its own job),
+and the two faults below that had no entry of their own. Those four are folded in here; none should
+be picked up separately.
+
+**The observation underneath all of them.** The CHECK list is an `ObservableCollection<string>`, and
+a check item is a bare string. There is no source, no severity beyond a single `bool IsError` buried
+in the parser diagnostics, and no identity — provenance is whatever the sentence happens to begin
+with. Every one of the five requests is a consequence: you cannot colour a label that does not
+exist, cannot fold a list into a count of things it cannot categorise, cannot link a status message
+to a line it cannot name, and cannot give a check a view of its own when the check is a sentence.
+
+**What story 4 did to it.** Seventeen items before the story; a dense board now adds eleven more. The
+warnings had to be capped at eight groups and six names each, because one piece of copper holding
+twenty-three nets became a six-hundred-character sentence. The format is straining, and the answer is
+not a longer sentence.
+
+**Two faults with no entry of their own**, both found while story 4 was being built:
+
+- **The electrical check does not run until you preview or export.** `RefreshWarnings` runs on load
+  and covers board-level things only; the isolation warnings arrive through `PreviewResult.Warnings`.
+  Open a board with a short on it, look at the CHECK panel, and it is not there. That is the
+  strongest argument for 6.43's button, and it is closer to a bug than to an enhancement.
+- **Two planning paths disagree.** `ExportPlanner` runs the check; `JobBuilder` — behind the CLI's
+  job command — still emits the old anonymous count. The same board, the same settings, two commands,
+  two different answers. Confirmed by running both.
+
+**The shape agreed.** A check stops being a string and becomes a thing with a source, a kind and a
+severity. The automatic check stays — the Mega's short was found because the app spoke without being
+asked, and a button only protects an operator who thinks to press it — but what it leaves in the list
+gets shorter, one line per layer pointing at somewhere fuller. That somewhere is 6.43's view, and it
+is where the expensive answers live: where the gap actually is rather than which copper it is in,
+which unnamed gaps are nameless copper and which are two pieces of one net that nothing shorted, and
+in time the checks that have nowhere to live today — drill-to-copper clearance, an outline cut that
+severs a trace, a pocket that removes part of a net.
+
+**Done when** a check carries its source and its kind rather than beginning with them by convention;
+the list can be read at a glance, folded to a count, and told apart from advice without reading to
+the end of a sentence; a status message that points at the checks points at one the reader can find;
+a board can be checked without exporting it; both planning paths answer the same; and the electrical
+findings are collected in one place rather than scattered one per program.
+
+**Not in it.** The severed-net family stays out until the operation that can sever is the one being
+checked — isolation cuts outside the copper edge and cannot, and a check that can never fire is the
+failure this repository has been bitten by twice.
+
+#### 6.45 Block apertures and the aperture transforms — **defect · open** — *no fixture exists yet*
+
+Two Gerber features the parser refuses outright, as errors:
+
+```
+Block apertures (%AB%) are not implemented yet.
+Aperture transform 'LM' is not implemented yet.
+```
+
+`%AB%` defines a reusable block of geometry that a later flash stamps out; `%LM`, `%LR` and `%LS`
+mirror, rotate and scale an aperture. Both are in the specification, both are legitimate, and some
+writers emit them as a matter of course.
+
+**Refusing is the right default and it is still a dead end.** The parser never silently drops
+geometry — a board it cannot realise is a board it will not cut — but for a file using these there is
+no workaround at all, not even a slow one. That is the class of fault worth removing.
+
+**Why it left story 5.** It shared a theme with reading the job file and nothing else. The job file
+is JSON into settings; this is stateful, nested geometry in the parser, where `%AB%` blocks can
+contain flashes of other blocks and the transforms compose. It is the harder half by a distance, and
+bundling them would have let the easy half carry the risk of the hard one.
+
+**And there is no board to test it on.** Every export in `tests/boards` comes from KiCad, which emits
+neither. A fixture has to come from somewhere before "realises correctly under test" means anything:
+either hand-written from the Ucamco specification, which is how `GerberParserTests` builds its
+fixtures today and keeps the repository clear of other tools' GPL test data, or a real export from a
+tool that emits them. **Settle that first** — the story is untestable until it exists, and a feature
+of this shape proved by a fixture its author also wrote is exactly the trap this project has been
+caught by twice.
+
+**Done when** a file using block apertures and aperture transforms realises to the same geometry the
+writer intended, under a test whose fixture somebody can point at the origin of.
+
+**Requirements:** G3 · [02 §2](02-Gerber-and-Geometry-Pipeline.md)
+
+#### 6.46 The job file tells us less than it appears to — **enhancement · parked** — *measured 2026-09-23*
+
+`.gbrjob` ships in every KiCad export and nothing reads it, which looked like an obvious gap and was
+sprint 1's story 5. It was surveyed before any code was written. The survey is the reason the story
+is parked, and it is written down here so the gap is not re-opened on the same assumptions.
+
+**Six job files across ten committed boards. Every one is KiCad Pcbnew 10.0.0**, so this sample says
+what KiCad 10 emits and nothing about what other writers omit.
+
+**Layer roles: nothing to gain.** Every board that *has* a job file already declares each layer's
+role inside the Gerber itself — 15 of 15 files on the test board, 13 of 13 on the Arduino Mega, 4 of
+4 on GridStripConnector. G6, reading `%TF.FileFunction`, has been done since M4. The one board in the
+repository whose files declare no role, `TopBotNames`, has **no job file at all**, which is exactly
+the shape you would expect: a writer modern enough to emit a job file is modern enough to put the
+attribute in the file. Reading roles from the job file would be a fallback that no committed board
+can reach — a path that cannot change an outcome, which is the failure this repository has been
+bitten by twice.
+
+**Thickness: it is not the number the operator wants.** All six say `BoardThickness: 1.6`. The
+product owner cuts the test board at **0.8**. The job file states what the *designer specified*;
+what matters at the mill is the copper-clad on the bed, and for someone milling their own boards
+those differ as a rule rather than as an exception. "Job file first, the operator's own entry still
+winning" would be safe, and would amount to pre-filling a number that then gets changed — while
+looking authoritative.
+
+**Board size: agrees exactly**, so it guards nothing in practice. `68.63 x 66.09` stated and
+realised on the test board; `101.854 x 53.594` against a realised `101.85 x 53.59` on the Mega.
+Worth having as a cross-check against a mismatched file set one day, and not worth a story.
+
+**What would change this.** A Gerber set from a writer that emits a job file *and* omits
+`%TF.FileFunction` from its layers would make the roles half real. A job file carrying a stackup the
+operator actually cuts to — rather than a design nominal — would make the thickness half real. Until
+one of those turns up, this is work whose effect cannot be demonstrated on any board here.
+
+**Not a criticism of the idea.** The gap is real and the reasoning that raised it was sound; what was
+missing was the measurement. Half a day of survey against ten boards is what turned an obvious
+improvement into a parked one, and that is the cheaper order to find out in.
+
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
 The first release cadence was a release a day, which suited a feature-shaped backlog. The product
@@ -3523,10 +4520,19 @@ slower, five-item sprint rather than a fortnight of small releases.
 **Every sprint opens by reading the open bugs and known issues** — the product owner's standing
 rule, and this sprint is the first to follow it. 6.24 came in that way: found at the bench while the
 five were being agreed, measured the same afternoon, and added as a sixth because it belonged to the
-theme. The places to read are this document's own "not started" and "found in the workshop"
-sections, the matrix's Partial rows, and
-[09](09-Machine-Accuracy-Investigations.md)'s open questions. A sprint that starts from a feature
-list and never looks at the defect list is how a known fault survives three releases.
+theme. A sprint that starts from a feature list and never looks at the defect list is how a known
+fault survives three releases.
+
+Three places to read, and the first of them is now one command:
+
+```
+grep -n 'defect · open' Documentation/06-Roadmap-and-Risks.md
+```
+
+then the matrix's Partial rows in [08](08-Requirements-Matrix.md), and
+[09](09-Machine-Accuracy-Investigations.md)'s open questions. Before the statuses were normalised
+this was a prose instruction to read two sections by eye, which is the kind of ritual that gets
+skipped on a busy afternoon.
 
 **Measured first, ranked after.** Three numbers set the order:
 

@@ -3,8 +3,8 @@ using System.Diagnostics;
 using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
-using MillBurn.Core;
 using MillBurn.Align;
+using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
 using MillBurn.Viewer;
@@ -17,7 +17,7 @@ namespace MillBurn.App.ViewModels;
 /// The shell's state: one open project, its layers and what each of them becomes, and how the
 /// viewport is coping.
 /// </summary>
-public sealed partial class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     /// <summary>The Phase 0 acceptance target from Documentation/06-Roadmap-and-Risks.md.</summary>
     public const int TargetSegments = 500_000;
@@ -28,11 +28,21 @@ public sealed partial class MainViewModel : ViewModelBase
     private RefreshPlan? _plan;
     private bool _suspendOutputChanges;
 
+    /// <summary>The preview in flight, so that the next edit cancels it rather than queueing.</summary>
+    private readonly LatestRun _previewRun = new();
+
+    /// <summary>Stops a preview still in flight when the window holding this goes away.</summary>
+    public void Dispose() => _previewRun.Dispose();
+
     [ObservableProperty]
     public partial BoardScene? Scene { get; set; }
 
     [ObservableProperty]
     public partial ToolpathScene? ToolpathScene { get; set; }
+
+    /// <summary>True while a preview is being built, so the window can say so instead of freezing.</summary>
+    [ObservableProperty]
+    public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial string BoardSummary { get; set; } = "No board loaded";
@@ -213,14 +223,34 @@ public sealed partial class MainViewModel : ViewModelBase
             Milling = milling,
         });
 
-        if (Gcode is not null && !HasProgram)
-        {
-            Preview();
-        }
-
-        StatusMessage = string.Create(
+        var confirmation = string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
             $"Settings saved. Safe height {machine.SafeZMm:F2} mm, dry run held at {dryRun.HeightMm:F2} mm.");
+
+        // The preview ends by writing its own status, and it now lands after this method has
+        // returned — so the confirmation is said once the preview is done rather than into a line
+        // the preview is about to overwrite. Saying it at all is the point: it repeats back the
+        // numbers that were just changed.
+        if (Gcode is not null && !HasProgram)
+        {
+            _ = ConfirmAfterPreview(confirmation);
+            return;
+        }
+
+        StatusMessage = confirmation;
+    }
+
+    /// <summary>Runs the preview, then says what was saved, so the confirmation is what is left up.</summary>
+    /// <param name="confirmation">The message to leave on the status line.</param>
+    private async Task ConfirmAfterPreview(string confirmation)
+    {
+        // Only over a preview that worked. A preview fails most readily on the settings that were
+        // just changed, and that is the one moment when replacing its message with "Settings saved"
+        // would hide the reason and look like success.
+        if (await PreviewAsync())
+        {
+            StatusMessage = confirmation;
+        }
     }
 
     public void SaveFraming(ProgramFraming framing)
@@ -419,6 +449,14 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowingNothing));
 
         Warnings.Clear();
+
+        // The project's own corrections go back first. This list is about to become the program's
+        // diagnostics, and a setting changed on the operator's behalf must not be the thing that
+        // disappears because they opened a file to look at it.
+        foreach (var note in _project.OpenNotes)
+        {
+            Warnings.Add(note);
+        }
 
         // Anything the parser could not make sense of. On somebody else's file this is the useful
         // part: it says which lines are not being drawn, so an empty-looking picture has a reason.
@@ -996,7 +1034,19 @@ public sealed partial class MainViewModel : ViewModelBase
     /// second control that could disagree with six rows at once is one answer too many.
     /// </summary>
     public ExportPlan? PlanExport(
-        OutputKind? filter = null, string? onlyLayer = null, DrillAlignment? alignment = null)
+        OutputKind? filter = null, string? onlyLayer = null, DrillAlignment? alignment = null) =>
+        ExportRequestFor(filter, onlyLayer, alignment)?.Plan();
+
+    /// <summary>
+    /// Everything the planner will need, read off the view model in one go.
+    ///
+    /// The reading has to happen on the UI thread, because <see cref="RecordOutputs"/> writes each
+    /// layer's setting back to the project first. The planning does not. Separating them is what
+    /// lets the slow half run on the thread pool from a snapshot that cannot change underneath it
+    /// while the operator carries on editing.
+    /// </summary>
+    private ExportRequest? ExportRequestFor(
+        OutputKind? filter, string? onlyLayer, DrillAlignment? alignment)
     {
         if (_board is null)
         {
@@ -1005,28 +1055,58 @@ public sealed partial class MainViewModel : ViewModelBase
 
         RecordOutputs();
 
-        var settings = _project.Settings.LayerOutputs.ToDictionary(
-            o => o.FileName, o => o, StringComparer.Ordinal);
+        return new ExportRequest(
+            _board,
+            _project.Settings.LayerOutputs.ToDictionary(o => o.FileName, o => o, StringComparer.Ordinal),
+            Library,
+            Nm.FromMillimetres(BoardThicknessMm),
+            filter,
+            Framing,
+            Settings.Machine,
+            _project.Settings.Job,
+            alignment,
+            onlyLayer);
+    }
 
-        var plan = ExportPlanner.Plan(
-            _board, settings, Library, Nm.FromMillimetres(BoardThicknessMm), filter,
-            framing: Framing, machineSettings: Settings.Machine, job: _project.Settings.Job, alignment: alignment);
-
-        if (onlyLayer is null)
+    /// <summary>A snapshot of the inputs to one export plan, and the planning it can then do.</summary>
+    private sealed record ExportRequest(
+        Board Board,
+        Dictionary<string, LayerOutputSettings> Outputs,
+        ToolLibrary Library,
+        long ThicknessNm,
+        OutputKind? Filter,
+        ProgramFraming Framing,
+        MachineSettings Machine,
+        JobOptions Job,
+        DrillAlignment? Alignment,
+        string? OnlyLayer)
+    {
+        public ExportPlan Plan()
         {
-            return plan;
+            var plan = ExportPlanner.Plan(
+                Board, Outputs, Library, ThicknessNm, Filter,
+                framing: Framing, machineSettings: Machine, job: Job, alignment: Alignment);
+
+            if (OnlyLayer is null)
+            {
+                return plan;
+            }
+
+            // "Export only this layer" narrows the *plan*, not the project. It used to set every
+            // other layer to Not exported and keep a snapshot to undo with, which is a state
+            // machine with edges: change a third layer while one is isolated and the snapshot
+            // describes a board that no longer exists. Filtering one plan has no such state — the
+            // settings are untouched, so there is nothing to put back.
+            return plan with
+            {
+                Items =
+                [
+                    .. plan.Items.Where(
+                        i => string.Equals(i.LayerFileName, OnlyLayer, StringComparison.Ordinal)),
+                ],
+                Skipped = [],
+            };
         }
-
-        // "Export only this layer" narrows the *plan*, not the project. It used to set every other
-        // layer to Not exported and keep a snapshot to undo with, which is a state machine with
-        // edges: change a third layer while one is isolated and the snapshot describes a board that
-        // no longer exists. Filtering one plan has no such state — the settings are untouched, so
-        // there is nothing to put back.
-        return plan with
-        {
-            Items = [.. plan.Items.Where(i => string.Equals(i.LayerFileName, onlyLayer, StringComparison.Ordinal))],
-            Skipped = [],
-        };
     }
 
     /// <summary>
@@ -1141,9 +1221,24 @@ public sealed partial class MainViewModel : ViewModelBase
 
             ReplaceExportWarnings(refusals);
 
-            StatusMessage = refusals.Count > 0
-                ? $"Wrote {plan.Count + extra} file(s) to {folder}. {refusals.Count} thing(s) refused — see the checks."
-                : $"Wrote {plan.Count + extra} file(s) to {folder}.";
+            // Named, not counted. "1 thing(s) refused — see the checks" sent the operator to a list
+            // where the word "refused" does not appear — the line reads "Not levelled: ..." — with
+            // nothing to tell a refusal from the ordinary advice beside it. From the bench: *"I
+            // don't know which check it is referring to."* Saying what was refused is the whole of
+            // the fix, and it costs nothing: the kinds are already in hand.
+            var kinds = refusals.Select(r => r.What).Distinct(StringComparer.Ordinal).ToList();
+
+            StatusMessage = refusals.Count switch
+            {
+                0 => $"Wrote {plan.Count + extra} file(s) to {folder}.",
+
+                // One refusal: name the file too, so there is nothing left to look up.
+                1 => $"Wrote {plan.Count + extra} file(s) to {folder}. "
+                    + $"{refusals[0].What}: {refusals[0].File} — see the checks.",
+
+                _ => $"Wrote {plan.Count + extra} file(s) to {folder}. "
+                    + $"{refusals.Count} refused — {string.Join(", ", kinds)} — see the checks.",
+            };
 
             return true;
         }
@@ -1161,69 +1256,158 @@ public sealed partial class MainViewModel : ViewModelBase
     /// them. Those two agree right up until the emitter has a bug, and only one of them is what the
     /// machine will run (Documentation/05, section 2.1).
     /// </summary>
-    public void Preview()
+    /// <summary>
+    /// Builds the preview off the UI thread, and abandons a run that a later edit has already made
+    /// pointless.
+    ///
+    /// The window stays live throughout: the snapshot is taken here, the planning and the backplot
+    /// happen on the thread pool, and only the applying of the result comes back. A second call
+    /// cancels the first rather than queueing behind it, because the answer being computed
+    /// describes a board the operator has already changed.
+    /// </summary>
+    /// <returns>
+    /// True when a preview was built, published, and had nothing to warn about. False when it
+    /// failed, was superseded, had nothing to show, or found rapid moves at cutting depth — in
+    /// every one of which the status line already carries something the operator needs more than
+    /// a caller's own message.
+    /// </returns>
+    public async Task<bool> PreviewAsync()
     {
-        if (PlanExport(OutputKind.Gcode) is not { } plan || _board is null)
+        if (ExportRequestFor(OutputKind.Gcode, onlyLayer: null, alignment: null) is not { } request
+            || _board is null)
         {
-            return;
+            return false;
         }
 
-        if (plan.Count == 0)
+        var bounds = _board.Bounds;
+        var profile = Settings.Machine.Profile;
+        var token = _previewRun.Begin();
+        PreviewResult result;
+
+        // Disposed already — shutdown, or a capture path that never raises ShutdownRequested. Set
+        // IsBusy here and nothing would ever clear it, because the run is over before it starts.
+        if (token.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        IsBusy = true;
+        var clock = Stopwatch.StartNew();
+
+        // What gets built while this runs. Counted rather than asked of the plan, because "was this
+        // remembered" is a question about this call and not about the object handed back — the same
+        // plan instance goes to the run that built it and to every run that reuses it.
+        //
+        // Two previews overlapping can only push this the safe way: another run's work lands in the
+        // count and this one says it built something. It cannot claim to have remembered work it
+        // actually did.
+        //
+        // Unidentifiable counts with the misses. A board whose layers carry no fingerprint is
+        // planned in full every time and increments nothing else — so leaving it out made the
+        // message read "remembered in 2.98 s" in exactly the case where nothing was remembered,
+        // which is the one thing it exists to not say.
+        var builtBefore = RealisedLayers.Misses + PlannedExports.Misses + PlannedExports.Unidentifiable;
+
+        try
+        {
+            result = await Task.Run(
+                () => PreviewBuild.From(request.Plan(), bounds, profile, token), token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded. The run that replaced this one owns the status and the busy flag now, so
+            // this one says nothing and clears nothing on its way out.
+            return false;
+        }
+        catch (Exception ex)
+        {
+            // Anything else is the planner or the parser failing on this board. It has to reach the
+            // operator: before this ran on a thread it came straight back out of the click, and
+            // unhandled it would now either take the window down or vanish into an unobserved task.
+            if (_previewRun.Finish(token))
+            {
+                IsBusy = false;
+                StatusMessage = $"Preview failed: {ex.Message}";
+            }
+
+            return false;
+        }
+
+        // Finishing is also the question "am I still the latest?". A run can complete perfectly
+        // well and still be stale — cancellation that arrives while the backplot is being built is
+        // never seen, and a finished task's continuation can be pumped after a newer run has
+        // already started. Publishing here would put this run's picture and G-code over the newer
+        // one's and clear the busy flag it had just set.
+        if (!_previewRun.Finish(token))
+        {
+            return false;
+        }
+
+        IsBusy = false;
+
+        if (result.ProgramCount == 0)
         {
             StatusMessage = "No layer is set to produce G-code.";
-            return;
+            return false;
         }
 
-        // The frame the plan used, not the board's own corner. With a blank the programs are
-        // written to the blank's lower-left, so undoing the board's shift instead draws every
-        // toolpath a border's width up and to the right of the copper it cuts — a picture that is
-        // wrong in a way the file is not, which is the worst kind of wrong a viewer can be.
-        var frame = plan.FrameFor(_board.Bounds);
-        var shift = new Point2(frame.MinX, frame.MinY);
-        var programs = new List<BackplotBuilder.Program>();
-        var cut = 0.0;
-        var travel = 0.0;
-        var plunges = 0;
-        var gouges = 0;
+        Apply(
+            result,
+            clock,
+            remembered: RealisedLayers.Misses + PlannedExports.Misses + PlannedExports.Unidentifiable
+                == builtBefore);
 
-        foreach (var item in plan.Items)
-        {
-            var classified = GcodeBackplot.Classify(GcodeParser.Parse(item.Content));
-            var measured = GcodeBackplot.Measure(classified, Settings.Machine.Profile);
+        // False when the picture came with a warning on it. A gouge is the most urgent thing this
+        // application ever says — rapid moves at cutting depth, do not run this — and a caller that
+        // takes true as licence to write its own message over the status line must not be given it
+        // here. A failure is not the only message worth protecting.
+        return result.GougeCount == 0;
+    }
 
-            // Kept apart by source layer rather than poured into one list. Merged, the viewer can
-            // only ever show every program's cuts at once — and looking at one layer's toolpath is
-            // the reason to open a backplot at all.
-            programs.Add(new BackplotBuilder.Program(
-                item.LayerFileName, item.LayerLabel, classified, item.Mirrored));
+    /// <summary>
+    /// Starts a preview without waiting for it, for the paths that have no way to await one.
+    ///
+    /// The result lands later, so a caller that sets its own status message afterwards will have it
+    /// overwritten when the preview arrives — say the message first, or await
+    /// <see cref="PreviewAsync"/> instead. Failures reach the status line rather than this caller,
+    /// which is why discarding the task here is safe.
+    /// </summary>
+    public void Preview() => _ = PreviewAsync();
 
-            cut += measured.CutMm;
-            travel += measured.TravelMm;
-            plunges += measured.PlungeCount;
-            gouges += measured.GougeCount;
-        }
-
-        Gcode = string.Join("\n", plan.Items.Select(i => i.Content));
-        // A mirrored program is written for the flipped stock, so it is flipped back for the
-        // drawing: what the picture is being asked is where the cuts land on *this* board, and a
-        // bottom-copper path drawn straight lands on the mirror image of the traces it isolates.
-        _backplot = BackplotBuilder.BuildPerProgram(
-            programs, shift, mirrorSumXNm: frame.MinX + frame.MaxX);
-
-        GcodeSummary = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{plan.Count} programs · {cut:F0} mm cut · {travel:F0} mm travel · {plunges} plunges");
+    /// <param name="result">What the run worked out.</param>
+    /// <param name="remembered">
+    /// True when nothing had to be built — board and settings both matched a run already done.
+    /// Said on the status line because the application is now fast enough to be disbelieved: a
+    /// preview that returns in seven hundredths of a second looks exactly like a button that did
+    /// nothing, and an operator who thinks nothing happened presses it again.
+    /// </param>
+    /// <param name="clock">
+    /// Running since the preview began, and read at the end rather than passed in already stopped.
+    /// "Working…" tells the operator the window has not died; the number afterwards tells them
+    /// whether twenty seconds was this board or a problem — so it has to count the rebuild below,
+    /// which is still on this thread and is most of the wait on a large board. A number that left
+    /// out the slow half would be quotable and wrong.
+    /// </param>
+    private void Apply(PreviewResult result, Stopwatch clock, bool remembered)
+    {
+        Gcode = result.Gcode;
+        _backplot = result.Backplot;
+        GcodeSummary = result.Summary;
 
         Rebuild(TimeSpan.Zero);
 
-        foreach (var warning in plan.Items.SelectMany(i => i.Warnings).Distinct(StringComparer.Ordinal))
+        foreach (var warning in result.Warnings)
         {
             Warnings.Add(warning);
         }
 
-        StatusMessage = gouges > 0
-            ? $"{gouges} rapid move(s) at cutting depth — do not run this."
-            : $"Previewing {plan.Count} program(s).";
+        // The warning gets the line to itself. A board that is about to be cut at rapid speed is
+        // not the moment to also report how briskly the picture was drawn.
+        StatusMessage = result.GougeCount > 0
+            ? $"{result.GougeCount} rapid move(s) at cutting depth — do not run this."
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"Previewing {result.ProgramCount} program(s), {(remembered ? "remembered" : "built")} in {clock.Elapsed.TotalSeconds:F2} s.");
     }
 
     // ------------------------------------------------------------------ refresh
@@ -1481,11 +1665,18 @@ public sealed partial class MainViewModel : ViewModelBase
         AttachProject(project);
         CancelRefresh();
 
-        Rebuild(elapsed);
+        // Fresh: the rows on screen still belong to the project being replaced, and none of what
+        // the operator hid in that one is a statement about this one. See 6.27.
+        Rebuild(elapsed, fresh: true);
     }
 
-    /// <summary>Realises the project's sources and rebuilds everything the window shows.</summary>
-    private void Rebuild(TimeSpan elapsed)
+    /// <summary>
+    /// Realises the project's sources and rebuilds everything the window shows.
+    ///
+    /// <paramref name="fresh"/> marks the rebuild that follows a different project being opened, so
+    /// that the rows on screen — still the old project's — are not read as this one's.
+    /// </summary>
+    private void Rebuild(TimeSpan elapsed, bool fresh = false)
     {
         var previous = Scene;
 
@@ -1542,7 +1733,16 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var hidden = Layers.Where(r => !r.IsVisible).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        // Null means "nobody on screen has an opinion yet", which is not the same as "nothing is
+        // hidden" — and reading the second as the first is 6.27. A project whose saved view state
+        // hid four layers opened with all of them ticked, because the rows still on screen belonged
+        // to the project before it; then the first Preview found no row hidden, fell back to the
+        // saved state, and unticked four layers the operator had just been shown. The same
+        // confusion ran the other way within one project: reveal every layer, change a setting, and
+        // the saved state hid them again.
+        var hidden = fresh || Layers.Count == 0
+            ? null
+            : Layers.Where(r => !r.IsVisible).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
 
         var board = ProjectFile.ToBoard(_project);
         _board = board;
@@ -2362,24 +2562,22 @@ public sealed partial class MainViewModel : ViewModelBase
         HiddenLayers = [.. Layers.Where(l => !l.IsVisible).Select(l => l.Id)],
     };
 
-    private void ApplyViewState(BoardScene scene, HashSet<string> alreadyHidden)
-    {
-        var hidden = alreadyHidden.Count > 0
-            ? alreadyHidden
-            : _project.ViewState.HiddenLayers.IsDefaultOrEmpty
-                ? null
-                : _project.ViewState.HiddenLayers.ToHashSet(StringComparer.Ordinal);
-
-        if (hidden is null)
-        {
-            return;
-        }
-
-        foreach (var layer in scene.Layers)
-        {
-            layer.Visible = !hidden.Contains(layer.Id);
-        }
-    }
+    /// <summary>
+    /// Hides what should be hidden: what is hidden on screen now, or — when there is nothing on
+    /// screen to ask — what the project was saved with. <see cref="LayerVisibility"/> holds the
+    /// rule and the reason it is not a count.
+    /// </summary>
+    /// <param name="scene">The scene whose layers are being shown or hidden.</param>
+    /// <param name="onScreen">
+    /// The rows currently hidden, or null when the window holds no rows for this project yet. An
+    /// empty set is an answer: it means every row is showing, and it must win over the saved state.
+    /// </param>
+    private void ApplyViewState(BoardScene scene, HashSet<string>? onScreen) =>
+        LayerVisibility.Apply(
+            scene,
+            LayerVisibility.Hidden(
+                onScreen,
+                _project.ViewState.HiddenLayers.IsDefaultOrEmpty ? [] : _project.ViewState.HiddenLayers));
 
     private void AttachProject(MillBurnProject project)
     {
@@ -2406,6 +2604,15 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         Warnings.Clear();
 
+        // First, and kept for as long as the project is open rather than only at the moment it
+        // opens: a setting this build will not honour was changed on the operator's behalf, and
+        // that is the kind of thing somebody needs to see when they come back to the window, not
+        // only in a status line they may have been looking away from.
+        foreach (var note in _project.OpenNotes)
+        {
+            Warnings.Add(note);
+        }
+
         foreach (var failure in board.Failures)
         {
             Warnings.Add($"Could not read {failure}");
@@ -2430,8 +2637,15 @@ public sealed partial class MainViewModel : ViewModelBase
         // Two files claiming to be the top copper is a real problem; two drill maps is a normal
         // export, because KiCad writes one per drill file. Warning about the second teaches people
         // to skim past the first.
+        //
+        // Inner copper is on that list for the same reason, and it was found the same way: the
+        // Olimex board in 6.28 has Ln1_Cu and Ln2_Cu, and every four-layer board ever made has at
+        // least two inner layers. The warning only became visible when 6.28 taught the matcher to
+        // read those names, which is the usual shape of this — reading a board correctly for the
+        // first time is what shows you the thing that was always going to be wrong about it.
         foreach (var group in board.Layers
-            .Where(l => l.Role is not (LayerRole.Unknown or LayerRole.DrillMap or LayerRole.Documentation))
+            .Where(l => l.Role is not (LayerRole.Unknown or LayerRole.DrillMap
+                or LayerRole.Documentation or LayerRole.InnerCopper))
             .GroupBy(l => l.Role)
             .Where(g => g.Count() > 1))
         {

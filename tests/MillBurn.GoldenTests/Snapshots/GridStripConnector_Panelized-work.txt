@@ -1,0 +1,17 @@
+GridStripConnector_Panelized
+============================
+
+layers          3
+objects         11,414
+programs        2
+moat (nm)       0
+
+realising
+  booleans      39
+  point tests   2,772
+  vertices      290,968
+
+planning
+  booleans      130
+  point tests   7,818
+  vertices      241,937

@@ -37,17 +37,18 @@ that would rebuild the export, asked for from the workshop as a head start for a
 the window to a scripted pipeline, and M30, a re-measured stock keeping the alignment holes it was
 cut with — found by asking what the pre-cut correction does to them, which is discard them.
 
-| Section | Rows | Done | Partial | Not started | Superseded |
-|---|---|---|---|---|---|
-| 01 Architecture | 15 | 8 | 0 | 7 | 0 |
-| 02 Gerber & geometry | 23 | 15 | 0 | 7 | 1 |
-| 03 Optimization | 10 | 7 | 1 | 1 | 1 |
-| 04 Machines & laser | 31 | 11 | 4 | 16 | 0 |
-| 05 Viewer & export | 36 | 16 | 4 | 14 | 2 |
-| **Requirements** | **115** | **57** | **9** | **45** | **4** |
+| Section | Rows | Done | Done — used on metal | Not started | Parked | Partial | Superseded |
+|---|---|---|---|---|---|---|---|
+| 01 Architecture | 15 | 12 | 0 | 3 | 0 | 0 | 0 |
+| 02 Gerber & geometry pipeline | 23 | 15 | 0 | 6 | 1 | 0 | 1 |
+| 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
+| 04 Machines, laser & mixed workflows | 31 | 10 | 1 | 16 | 0 | 4 | 0 |
+| 05 Viewer & export | 35 | 18 | 0 | 12 | 0 | 3 | 2 |
+| **Requirements** | **114** | **63** | **1** | **37** | **2** | **7** | **4** |
 
-Plus 9 acceptance criteria (4 met, 1 met so far, 2 never measured, 2 superseded) and 17 physical
-capabilities (13 proven, 1 partly, 3 never cut).
+**06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
+
+**07 Physically verified on a machine** — 17 rows: 1 partial, 13 proven, 3 untested.
 
 **The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 15
 not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That one
@@ -68,14 +69,14 @@ board being cut rather than from a document.
 | A1 | Writes files, never drives a machine — no serial, no jogging, no streaming | §1.1 | **Done** | no I/O port code anywhere in `src/` |
 | A2 | `src/` + `tests/` layout, strictly downward dependency graph | §2 | **Done** | 13 projects; `MillBurn.Mcp` declared, not built |
 | A3 | Permissive dependencies only; no copyleft in the graph | §3, §9 | **Done** | `THIRD-PARTY-NOTICES.md` |
-| A4 | Incremental pipeline: memoised stages keyed by structural hash | §4 | **Not started** | no `PipelineCache` type exists |
-| A5 | Cancellable: one `CancellationTokenSource` per edit, UI never blocks | §4 | **Not started** | no `CancellationToken` in `src/` |
+| A4 | Incremental pipeline: memoised stages keyed by structural hash | §4 | **Done** | `RealisedLayers.Get` keyed on bytes, role and options; stamps `Fingerprint`. Sprint 1 story 2 |
+| A5 | Cancellable: one `CancellationTokenSource` per edit, UI never blocks | §4 | **Done** | `LatestRun`, `PreviewBuild`; one source per edit by design, not sprinkled. Sprint 1 story 1 |
 | A6 | Debounce/coalesce window on slider drags | §4 | **Not started** | — |
 | A7 | Progressive reveal: paths drawn before the optimizer finishes | §4 | **Not started** | — |
 | A8 | Determinism: no unseeded RNG, no hash-order iteration | §4 | **Done** | `DeterminismTests`, 8 cases |
 | A9 | Project model: `.millburn` file, refresh from source | §5 | **Done** | `Project.cs`, `ProjectRefresh.cs` |
-| A10 | Pipeline work on the thread pool via `Task.Run` | §7 | **Not started** | 0 `Task.Run` in `MillBurn.App` |
-| A11 | Electrical DRC: connected components vs the X2 netlist | §8 | **Not started** | — |
+| A10 | Pipeline work on the thread pool via `Task.Run` | §7 | **Done** | one `Task.Run` at the pipeline boundary in `MainViewModel`, which is the whole of the design. Sprint 1 story 1 |
+| A11 | Electrical DRC: connected components vs the X2 netlist | §8 | **Done** | `ElectricalCheck` names the nets a cut cannot separate; confirmed at the bench against the board's own KiCad project. Sprint 1 story 4 |
 | A12 | Material simulation as preview and test oracle | §8 | **Not started** | also listed in Phase 6 |
 | A13 | G-code round trip: emit → parse → backplot → compare | §8 | **Done** | `BackplotTests`, `MirroredBackplotTests` |
 | A14 | Golden files over the corpus, deterministic | §8 | **Done** | 13 golden tests, 5 snapshots |
@@ -85,11 +86,11 @@ board being cut rather than from a document.
 
 | ID | Requirement | Source | Status | Evidence |
 |---|---|---|---|---|
-| G1 | Keep the semantics: X2 attributes carried through, not rasterised away | §1 | **Done** | both `%TF%` and KiCad 9 `G04 #@!` encodings |
+| G1 | Keep the semantics: X2 attributes carried through, not rasterised away | §1 | **Done** | both `%TF%` and KiCad 9 `G04 #@!` encodings; carried *correctly* only since 06 §6.41 — a trace was filed under the next net |
 | G2 | RS-274X + X2: apertures, full macro evaluator, polarity, arcs, step & repeat | §2 | **Done** | all 21 macro primitives; 24 corpus files, zero errors |
-| G3 | Block apertures `%AB%`, aperture transforms `%LM/LR/LS%` | §2 | **Not started** | reported as errors, never silently ignored |
+| G3 | Block apertures `%AB%`, aperture transforms `%LM/LR/LS%` | §2 | **Not started** | reported as errors, never silently ignored; split out of sprint 1 story 5 into 06 §6.45 — no fixture exists yet |
 | G4 | Excellon: zero-suppressed dialects, G85 slots, routed slots, plating | §2 | **Done** | `ExcellonParserTests`, `GerberDrillTests` |
-| G5 | Job file (`.gbrjob`) read for board-level metadata | title "X2/X3" | **Not started** | present in every KiCad export, unread |
+| G5 | Job file (`.gbrjob`) read for board-level metadata | title "X2/X3" | **Parked** | surveyed 2026-09-23: its roles duplicate `%TF.FileFunction`, its thickness is the design nominal not the stock — 06 §6.46 |
 | G6 | Layer auto-detection from `.FileFunction`, filename only as a labelled fallback | §3 | **Done** | `LayerRoles`; `AllLayerRolesTests` |
 | G7 | Geometry ops: offset, boolean, area, inversion, canonical form | §4 | **Done** | `Polygons.cs`; canonical-form golden test |
 | G8 | Voronoi-based isolation as an alternative to offsets | 01 §2 | **Not started** | was named in the layout table only; now removed from it |
@@ -118,11 +119,11 @@ board being cut rather than from a document.
 | O3 | Precedence constraints: inner pieces before the frame, depth stacks | §5 | **Done** | `Group` / `Stack` on `ToolpathPass` |
 | O4 | Three-position budget control, same result every time | §6 | **Done** | budget is moves examined, not milliseconds |
 | O5 | Do not lift when the link stays out of keep-out geometry | §7.1 | **Done** | `PassLinker`; shipped as 6.3, 13/17 links on a real board |
-| O6 | Eulerian path merging across the containment tree | §7.2 | **Not started** | the last open Phase 3 item |
+| O6 | Eulerian path merging across the containment tree | §7.2 | **Parked** | measured and not needed on any committed board; reopenable on a Gerber set that shows a gain — 03 §O6 |
 | O7 | Douglas–Peucker + G2/G3 arc fitting under a hard tolerance | §7.3 | **Done** | 301,097 → 15,191 lines on a panel, 2 µm bound |
 | O8 | Benchmark against pcb2gcode on the corpus as a CI gate | §8 | **Superseded** | gate compares against MillBurn's own NN baseline |
 | O9 | Zero precedence violations, asserted in the golden tests | §8 | **Done** | `PanelOrderTests` |
-| O10 | Local search never makes travel worse than the baseline | §8 | **Partial** | cycling on open runs bounded, not fixed |
+| O10 | Local search never makes travel worse than the baseline | §8 | **Done** | a search that could apply 321,413 improvements and finish worse now settles in fifteen. Sprint 1 story 3 |
 
 ## 04 — Machines, laser & mixed workflows
 
@@ -199,7 +200,7 @@ board being cut rather than from a document.
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
 | V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** — backlash and squareness built | `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`; axis scale, cutter diameter, return to zero and tram not started |
 | V35 | About window: version, build date, and a manual check for a newer release | 06 §6.23 | **Done** | `ReleaseCheck` (parse + compare, no network), `AboutWindow`, `TravelDemo`; `ReleaseCheckTests` |
-| V36 | The outline drops straight to the next lap, and hops tabs at the tab's own height | 06 §6.24 | **Not started** | 59 s of vertical motion measured on the test board's outline, most of it avoidable |
+| V36 | The outline drops straight to the next lap, and hops tabs at the tab's own height | 06 §6.24 | **Done** | 45.4 mm of vertical motion down to 27.4 on the test board; about eight minutes off a 66-up panel. Sprint 1 story 6 |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 

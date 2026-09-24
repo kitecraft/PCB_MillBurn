@@ -1,5 +1,6 @@
 using Clipper2Lib;
 using MillBurn.Core;
+using MillBurn.Geometry;
 
 namespace MillBurn.Cam;
 
@@ -73,6 +74,7 @@ public static class VoidCentreline
         var byLine = Clipper.InflatePaths(
             axis, radius, JoinType.Round, EndType.Round, arcTolerance: sagittaNm);
 
+        Work.Boolean(Polygons.VertexCount(loop) + Polygons.VertexCount(byLine));
         var missed = Clipper.Difference(loop, byLine, FillRule.NonZero);
 
         // A hundredth of a square millimetre of slack, for the slivers an offset leaves along an
@@ -475,7 +477,7 @@ public static class VoidCentreline
                     (long)Math.Round(tip.X + (dx * reach)),
                     (long)Math.Round(tip.Y + (dy * reach)));
 
-                if (Clipper.PointInPolygon(probe, ribbon) != PointInPolygonResult.IsInside)
+                if (Polygons.PointIn(probe, ribbon) != PointInPolygonResult.IsInside)
                 {
                     break;
                 }
@@ -579,4 +581,5 @@ public static class VoidCentreline
 
         return Math.Sqrt((dx * dx) + (dy * dy));
     }
+
 }

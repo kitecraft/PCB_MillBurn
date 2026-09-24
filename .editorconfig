@@ -1,0 +1,161 @@
+# The mechanical half of Documentation/10-Style-and-Voice.md, in a form the build can enforce.
+#
+# Warnings are errors here, so a rule set to `warning` below is a rule the whole codebase already
+# follows — it is being locked in, not introduced. Every one of them was checked by turning it on
+# and building the solution; see Documentation/10 §11. Preferences that are merely usual are left at
+# `suggestion`, where an editor shows them and the build stays quiet: a style rule that fails a
+# build it did not need to fail teaches people to suppress rules.
+#
+# A severity on a `dotnet_naming_rule` or a `csharp_*` layout option does NOT reach the build on its
+# own — the analyser that reports them has to be given one too. That is what the
+# `dotnet_diagnostic.IDE****.severity` lines below are for, and without them this whole file is
+# decoration that an editor honours and CI does not.
+
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,axaml,xaml}]
+indent_size = 4
+
+[*.{csproj,props,slnx,json,yml,yaml,md,html,css,js}]
+indent_size = 2
+
+# Python's indentation is part of its syntax: the wrong width here is a broken script or, worse, a
+# body quietly attached to the wrong scope.
+[*.py]
+indent_size = 4
+
+# Markdown uses two trailing spaces for a hard line break.
+[*.md]
+trim_trailing_whitespace = false
+
+# Gerber, Excellon, G-code and the golden baselines are fixtures and output: byte-for-byte, never
+# reformatted. .gitattributes marks the same list `-text` for the same reason — the two lists are
+# meant to stay identical, so add to both or neither.
+[*.{gbr,ger,drl,txt,nc,ngc,gbrjob}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+[*.sh]
+end_of_line = lf
+
+[*.cs]
+
+# ---- layout
+#
+# IDE0055 is what carries every option in this section to the build. The tree is clean under it.
+
+dotnet_diagnostic.IDE0055.severity = warning
+
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_preserve_single_line_blocks = true
+
+# This codebase writes a short object initializer on one line — `{ Enabled = true, WidthMm = 183 }`
+# — and IDE0055 would otherwise demand a line each.
+csharp_new_line_before_members_in_object_initializers = false
+
+# `using` at the top, System first — the order every file is already in.
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# ---- the rules the code already keeps everywhere
+
+# `namespace MillBurn.Core;` — every file in the tree.
+csharp_style_namespace_declarations = file_scoped:warning
+
+# Braces even on one-line bodies: a second statement added later should not change behaviour.
+csharp_prefer_braces = true:warning
+
+dotnet_style_namespace_match_folder = true:suggestion
+
+# Unused usings are a compile error elsewhere in this build; say it here too.
+dotnet_diagnostic.IDE0005.severity = warning
+
+# ---- preferences, shown but not enforced
+
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_range_operator = true:suggestion
+csharp_style_prefer_index_operator = true:suggestion
+csharp_style_inlined_variable_declaration = true:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+dotnet_style_prefer_conditional_expression_over_return = true:suggestion
+dotnet_style_readonly_field = true:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+
+# ---- names
+#
+# Documentation/10 §2: names are words, not abbreviations, and British spelling in identifiers —
+# neither of which an analyser can check. These are the shapes it can.
+#
+# IDE1006 is what carries them to the build. The rules are tried in the order they appear and the
+# first matching one wins, so the narrow symbol groups have to come first: a `private const` is a
+# field and would otherwise be caught by the private-field rule and asked for an underscore.
+
+dotnet_diagnostic.IDE1006.severity = warning
+
+dotnet_naming_rule.constants_are_pascal_case.severity = warning
+dotnet_naming_rule.constants_are_pascal_case.symbols = constants
+dotnet_naming_rule.constants_are_pascal_case.style = pascal_case
+
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+dotnet_naming_symbols.constants.applicable_accessibilities = *
+
+# A private static readonly field is a constant in everything but the keyword — a tool table, a
+# parsed pattern — and this codebase names it like one.
+dotnet_naming_rule.static_readonly_fields_are_pascal_case.severity = warning
+dotnet_naming_rule.static_readonly_fields_are_pascal_case.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_fields_are_pascal_case.style = pascal_case
+
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static,readonly
+dotnet_naming_symbols.static_readonly_fields.applicable_accessibilities = *
+
+dotnet_naming_rule.private_fields_are_underscore_camel.severity = warning
+dotnet_naming_rule.private_fields_are_underscore_camel.symbols = private_fields
+dotnet_naming_rule.private_fields_are_underscore_camel.style = underscore_camel_case
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_rule.types_are_pascal_case.severity = warning
+dotnet_naming_rule.types_are_pascal_case.symbols = types_and_members
+dotnet_naming_rule.types_are_pascal_case.style = pascal_case
+
+dotnet_naming_symbols.types_and_members.applicable_kinds = class,struct,interface,enum,delegate,method,property,event
+dotnet_naming_symbols.types_and_members.applicable_accessibilities = *
+
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _

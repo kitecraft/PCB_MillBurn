@@ -20,6 +20,8 @@
   </p>
 </div>
 
+---
+
 <img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with its isolation and cut-out toolpaths drawn over the copper">
 
 <sub>A 66-up panel — 11,414 objects, 198 copper islands — with the emitted isolation and cut-out programs drawn back over the copper they were made from.</sub>
@@ -326,7 +328,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.1.6.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.2.0.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 <table>

@@ -164,6 +164,9 @@ public static class RouteOptimizer
         private readonly bool[] _lookAgain;
         private readonly List<int>[] _candidates;
 
+        /// <summary>How many nodes here reverse at a cost. See <see cref="Reversible"/>.</summary>
+        private readonly int _rigidCount;
+
         public Solver(List<RouteNode> nodes, Point2 from, MachineProfile machine, Point2? returnTo)
         {
             _nodes = nodes;
@@ -174,6 +177,7 @@ public static class RouteOptimizer
             _choice = new int[nodes.Count];
             _lookAgain = new bool[nodes.Count];
             _candidates = BuildCandidates();
+            _rigidCount = nodes.Count(n => n.Kind is RouteKind.Fixed or RouteKind.Stack);
         }
 
         public Point2 Finish { get; private set; }
@@ -444,6 +448,11 @@ public static class RouteOptimizer
                     continue;
                 }
 
+                if (!Reversible(i, j))
+                {
+                    continue;
+                }
+
                 var hasAfterRun = After(j, out var afterRun);
                 var oldCost = Cost(before, entry) + (hasAfterRun ? Cost(ExitAt(j), afterRun) : 0);
 
@@ -462,6 +471,59 @@ public static class RouteOptimizer
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Whether reversing positions <paramref name="i"/> to <paramref name="j"/> costs what
+        /// <see cref="TryTwoOpt"/> thinks it costs.
+        ///
+        /// Two-opt evaluates two edges and leaves the interior alone, on the grounds that reversal
+        /// does not change what the interior costs. That holds when each node's reversed traversal
+        /// mirrors its original: a closed contour is entered and left at the same vertex, and an
+        /// open run's flip swaps its ends, so an interior edge comes out the same length backwards.
+        ///
+        /// A fixed stack does neither. Its flip is the identity while its entry and exit are
+        /// different points, so an interior edge d(End(k), Start(k+1)) becomes d(End(k+1), Start(k))
+        /// — a different number, which the move never counted. The search then applies "gains" that
+        /// are not gains, never settles, and stops wherever its budget runs out.
+        ///
+        /// Measured on 25 fixed stacks: 16,057 applied improvements at Balanced and 321,413 at
+        /// Thorough, ending on two different routes. That is roadmap O10's "299,044 improvements on
+        /// 50 nodes", and the panel's outline is fifty-one fixed stacks and nothing else.
+        ///
+        /// Refusing the move is the honest fix and not the whole one: the reversal is often a real
+        /// improvement, and evaluating it properly costs a walk of the span rather than two
+        /// distances. What makes refusing tolerable is that the same stacks should not be fixed in
+        /// the first place — an alternating channel can be entered from either end — and that is the
+        /// other half of this story.
+        /// </summary>
+        private bool Reversible(int i, int j)
+        {
+            // The overwhelmingly common case: an isolation program is closed contours all the way
+            // down, so there is nothing to scan for and no reason to pay for the scan.
+            if (_rigidCount == 0)
+            {
+                return true;
+            }
+
+            // And the other end of it: an outline is often rigid all the way down, where every span
+            // contains one and the scan can only ever say no. Answering that in one comparison
+            // matters because this sits inside the candidate loop, which runs for every node on
+            // every sweep.
+            if (_rigidCount == _nodes.Count)
+            {
+                return false;
+            }
+
+            for (var p = i; p <= j; p++)
+            {
+                if (_nodes[_order[p]].Kind is RouteKind.Fixed or RouteKind.Stack)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void Reverse(int i, int j)
@@ -533,6 +595,15 @@ public static class RouteOptimizer
 
                     for (var reversed = 0; reversed < 2; reversed++)
                     {
+                        // Reversing a run of one is just flipping that node, which every kind
+                        // evaluates correctly. Reversing two or three re-orders their interior, and
+                        // that is only free for nodes whose flip mirrors them — the same condition
+                        // two-opt needs, for the same reason.
+                        if (reversed == 1 && length > 1 && !Reversible(start, end))
+                        {
+                            continue;
+                        }
+
                         var head = reversed == 0
                             ? EntryAt(start)
                             : _nodes[_order[end]].EntryFor(_nodes[_order[end]].Flip(_choice[end]));

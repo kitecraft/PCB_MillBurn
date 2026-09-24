@@ -1,0 +1,17 @@
+Millburn_Test_Board
+===================
+
+layers          15
+objects         6,527
+programs        19
+moat (nm)       0
+
+realising
+  booleans      144
+  point tests   485
+  vertices      212,239
+
+planning
+  booleans      140
+  point tests   320
+  vertices      133,991

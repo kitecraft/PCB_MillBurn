@@ -7,6 +7,7 @@ PogoTest1-B_Cu.nc
   lines     502
   sha256    32cfaf35124f15b4
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
+  summary   8 nets · all separated
   summary   Mirrored · flip the stock left-to-right
   summary   531 mm cutting, 96 mm travel
   summary   3m 16s – 3m 26s · 501 lines
@@ -29,12 +30,13 @@ PogoTest1-B_Cu.nc
 PogoTest1-Edge_Cuts.nc
   operation Cut out
   layer     Board outline
-  lines     133
-  sha256    aefbdfafcb0dc62d
+  lines     115
+  sha256    8c7465fd36782f27
   summary   1.00 mm cutter outside the profile · 1.90 mm deep in 0.40 mm passes
   summary   676 mm cutting, 71 mm travel
-  summary   3m 0s – 3m 5s · 132 lines
+  summary   2m 49s – 2m 53s · 114 lines
   summary   Simplified: 336 → 57 moves, 24 arcs (83 % fewer)
+  summary   One continuous descent per feature: 2 depth lap(s) carried straight on without lifting
   comment   ( PCB_MillBurn - PogoTest1-Edge_Cuts — Cut out )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Board outline )
@@ -43,9 +45,9 @@ PogoTest1-Edge_Cuts.nc
   comment   ( One extra pass at 1.10 mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the board. )
   control   M3 S10000 · M5 · M30
   depths    -1.900, -1.600, -1.200, -1.100, -0.800, -0.400
-  moves     47 rapid, 48 feed, 24 arc
+  moves     29 rapid, 48 feed, 24 arc
   distance  675.82 mm cutting, 71.38 mm travel
-  plunges   30
+  plunges   16
   extent    -0.500 .. 21.390 x -0.500 .. 37.380 mm
 
 PogoTest1-F_Cu.nc
@@ -54,6 +56,7 @@ PogoTest1-F_Cu.nc
   lines     146
   sha256    e61c3137fa45ca7d
   summary   0.127 mm isolated · 1 pass at 0.050 mm deep
+  summary   8 nets · all separated
   summary   319 mm cutting, 88 mm travel
   summary   1m 57s – 2m 1s · 145 lines
   summary   Simplified: 2,721 → 83 moves, 39 arcs (97 % fewer)

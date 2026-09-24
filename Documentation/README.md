@@ -30,6 +30,7 @@ A modern, UI-driven replacement for `pcb2gcode`, targeting **CNC mills**, **lase
 | 07 | [UI Framework Decision](07-UI-Framework-Decision.md) | MAUI vs. Avalonia vs. WPF for this app, and why it's a cheap decision |
 | 08 | [Requirements Matrix](08-Requirements-Matrix.md) | Every requirement in 01-07 traced to what exists in the tree, with the queue-order analysis |
 | 09 | [Machine Accuracy Investigations](09-Machine-Accuracy-Investigations.md) | Root-cause analyses from real machines: what was measured, what was concluded, and which conclusions were wrong |
+| 10 | [Style and Voice](10-Style-and-Voice.md) | The rules the code, the tests, the emitted files and these documents already follow — written down, with their reasons |
 
 ## Reference checkouts in this workspace
 

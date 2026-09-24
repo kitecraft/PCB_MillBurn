@@ -20,6 +20,22 @@ public enum RouteKind
     Fixed,
 
     /// <summary>
+    /// A stack of passes whose order is fixed but which can be taken from either end.
+    ///
+    /// This is what a channel centreline becomes once it is cut at several depths. The passes
+    /// alternate direction as they go deeper — forward, then backward — because taking an open run
+    /// the same way round twice means travelling its whole length back before the second pass can
+    /// start. That alternation is why the stack is not <see cref="Closed"/>, and it used to make it
+    /// <see cref="Fixed"/>, which threw away the fact that the whole alternation can equally begin
+    /// at the other end. Flipping every pass in the stack keeps the depth order exactly as it was
+    /// and enters from the far side.
+    ///
+    /// On the panel that is fifty of fifty-one profiles in the program that cuts the board free,
+    /// each of them offering one way in where there were always two (roadmap O10, sprint story 3).
+    /// </summary>
+    Stack,
+
+    /// <summary>
     /// A closed contour. Enter at any vertex, and leave from the same one.
     ///
     /// That entry and exit coincide is the fact that makes closed loops cheap to optimise: the
@@ -53,6 +69,20 @@ public sealed class RouteNode
     public required Point2 End { get; init; }
 
     /// <summary>
+    /// Where a reversed traversal of a <see cref="RouteKind.Stack"/> starts and finishes.
+    ///
+    /// Kept explicitly rather than derived, because a stack's reversed ends are not its own ends
+    /// swapped. Reversing a stack means flipping every pass in it while leaving their order alone —
+    /// shallow still before deep — so the reversed traversal begins at the first pass's far end and
+    /// finishes at the last pass's near end. With an even number of alternating passes both of
+    /// those land back where they began, which is a shape neither Open nor Closed can express.
+    /// </summary>
+    public Point2 ReversedStart { get; init; }
+
+    /// <inheritdoc cref="ReversedStart"/>
+    public Point2 ReversedEnd { get; init; }
+
+    /// <summary>
     /// Candidate entry vertices for a closed contour, in path order.
     ///
     /// A sample rather than every vertex: a 2,000-point contour does not need 2,000 configurations
@@ -72,7 +102,7 @@ public sealed class RouteNode
     /// <summary>How many ways this node can be entered.</summary>
     public int OptionCount => Kind switch
     {
-        RouteKind.Open => 2,
+        RouteKind.Open or RouteKind.Stack => 2,
         RouteKind.Closed => Math.Max(Entries.Count, 1),
         _ => 1,
     };
@@ -89,6 +119,7 @@ public sealed class RouteNode
     public Point2 EntryFor(int option) => Kind switch
     {
         RouteKind.Open => option == 0 ? Start : End,
+        RouteKind.Stack => option == 0 ? Start : ReversedStart,
         RouteKind.Closed => Entries.Count == 0 ? Start : Entries[Math.Clamp(option, 0, Entries.Count - 1)],
         _ => Start,
     };
@@ -97,13 +128,39 @@ public sealed class RouteNode
     public Point2 ExitFor(int option) => Kind switch
     {
         RouteKind.Open => option == 0 ? End : Start,
+        RouteKind.Stack => option == 0 ? End : ReversedEnd,
         RouteKind.Closed => EntryFor(option),
         RouteKind.Fixed => End,
         _ => Start,
     };
 
     /// <summary>The configuration that reverses this one. Loops and points have none.</summary>
-    public int Flip(int option) => Kind == RouteKind.Open ? 1 - option : option;
+    public int Flip(int option) =>
+        Kind is RouteKind.Open or RouteKind.Stack ? 1 - option : option;
+
+    /// <summary>
+    /// A stack of passes taken in a fixed order, enterable from either end.
+    ///
+    /// <paramref name="reversedStart"/> and <paramref name="reversedEnd"/> are where the traversal
+    /// begins and ends when every pass in the stack is flipped; see <see cref="ReversedStart"/> for
+    /// why they are given rather than derived.
+    /// </summary>
+    public static RouteNode ForStack(
+        int reference,
+        Point2 start,
+        Point2 end,
+        Point2 reversedStart,
+        Point2 reversedEnd,
+        int group = 0) => new()
+        {
+            Kind = RouteKind.Stack,
+            Reference = reference,
+            Start = start,
+            End = end,
+            ReversedStart = reversedStart,
+            ReversedEnd = reversedEnd,
+            Group = group,
+        };
 
     public static RouteNode ForPoint(int reference, Point2 at, int group = 0) => new()
     {

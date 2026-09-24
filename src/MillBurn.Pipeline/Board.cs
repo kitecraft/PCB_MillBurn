@@ -1,8 +1,9 @@
 using Clipper2Lib;
+using MillBurn.Cam;
 using MillBurn.Core;
+using MillBurn.Geometry;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
-using MillBurn.Geometry;
 
 namespace MillBurn.Pipeline;
 
@@ -16,7 +17,23 @@ public sealed record BoardLayer
     /// <summary>True when the role came from the filename because the file declared none.</summary>
     public required bool RoleGuessed { get; init; }
 
+    /// <summary>
+    /// What this layer was realised from: its bytes, its role and the realisation options, hashed.
+    ///
+    /// Two layers with the same fingerprint hold the same geometry, which lets a later stage decide
+    /// whether its own inputs have changed without walking the geometry again. Empty when the layer
+    /// was built by a path that does not go through <see cref="RealisedLayers"/>, and a caller that
+    /// cannot identify every layer must not assume anything about the board.
+    /// </summary>
+    public string Fingerprint { get; init; } = string.Empty;
+
     public required Paths64 Area { get; init; }
+
+    /// <summary>
+    /// Where each net-bearing object left copper. Empty unless the exporter wrote X2 net attributes,
+    /// which most do and some do not — a Protel export carries none.
+    /// </summary>
+    public IReadOnlyList<NetPoint> Nets { get; init; } = [];
 
     public required Bounds Bounds { get; init; }
 

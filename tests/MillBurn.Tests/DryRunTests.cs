@@ -1,7 +1,6 @@
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

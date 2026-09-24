@@ -105,9 +105,11 @@ public static class ToolpathRouter
     /// <summary>
     /// The node for one stack.
     ///
-    /// A stack of one closed contour keeps every entry vertex as a choice. A stack of several — a
-    /// tabbed profile, cut in runs and at several depths — is fixed: its passes have to run in the
-    /// order and direction they were built in, so the only question left is where it goes.
+    /// A stack of one closed contour keeps every entry vertex as a choice. A stack of open runs —
+    /// a channel centreline cut at several depths, alternating direction as it goes — keeps its
+    /// order but offers both of its ends. A mixed stack, which is what a tabbed profile is, is
+    /// fixed: its passes have to run in the order and direction they were built in, so the only
+    /// question left is where it goes.
     /// </summary>
     private static RouteNode NodeFor(int reference, IReadOnlyList<ToolpathPass> passes, List<int> stack)
     {
@@ -122,11 +124,36 @@ public static class ToolpathRouter
 
         // Every pass in a closed stack is the same contour at a different depth, so rotating them
         // all to the same vertex is still valid and keeps the nearest-entry saving.
-        if (passes.All(p => p.Closed) && stack.All(i => SameContour(first, passes[i])))
+        //
+        // Asked of the stack, not of the toolpath. `passes.All` here meant that one open run
+        // anywhere in the program demoted every closed stack in it — on a panel, the frame, sitting
+        // beside fifty open channels.
+        if (stack.All(i => passes[i].Closed) && stack.All(i => SameContour(first, passes[i])))
         {
             return RouteNode.ForClosed(reference, [.. first.Path.Select(s => s.From)], group);
         }
 
+        // An all-open stack can be taken from either end: the passes keep their order, every one of
+        // them is flipped, and shallow still comes before deep. The reversed ends are the first
+        // pass's far end and the last pass's near end, which for an even number of alternating
+        // passes are both the far end — neither an open run nor a loop, and the reason
+        // RouteKind.Stack exists.
+        //
+        // **Every pass, and the condition is not decoration.** A tabbed profile is closed shallow
+        // passes followed by the open runs between its tabs, and "reversing" that is not a
+        // reversal: Materialise leaves a closed pass alone and flips each tab run where it stands,
+        // so every tab gap becomes a traverse of the whole run while the node's stated entry and
+        // exit stay put and the solver sees the move as free. Measured on three tabbed profiles
+        // before this line said `All`: a plan promising 202.93 mm of travel produced passes that
+        // travel 1286.24 mm, and the ordering left the program worse than it found it — 229.85 mm
+        // to 1286.24 mm. RoutedProgramTravelTests walks the passes rather than believing the plan.
+        if (stack.All(i => !passes[i].Closed))
+        {
+            return RouteNode.ForStack(
+                reference, first.Start, last.End, first.End, last.Start, group);
+        }
+
+        // Mixed, so its direction is not ours to change.
         return RouteNode.ForFixed(reference, first.Start, last.End, group);
     }
 
@@ -155,7 +182,9 @@ public static class ToolpathRouter
 
         if (!pass.Closed)
         {
-            // A fixed stack has one option and must not be reversed.
+            // Option 1 is a stack taken from its other end, which means every one of its passes
+            // flipped — and only an all-open stack is offered that, because flipping some of the
+            // passes in a mixed one is not a reversal of anything (see NodeFor).
             return step.Option == 0 ? pass : pass with { Path = Reverse(pass.Path) };
         }
 

@@ -1,12 +1,12 @@
 using System.Globalization;
+using System.Text;
 using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
-using System.Text;
-using MillBurn.Gerber;
-using MillBurn.Gerber.Model;
-using MillBurn.Gerber.Excellon;
 using MillBurn.Geometry;
+using MillBurn.Gerber;
+using MillBurn.Gerber.Excellon;
+using MillBurn.Gerber.Model;
 
 namespace MillBurn.Pipeline;
 
@@ -22,7 +22,10 @@ public static class BoardLoader
     private static readonly string[] GerberExtensions =
         [".gbr", ".ger", ".gtl", ".gbl", ".gts", ".gbs", ".gto", ".gbo", ".gtp", ".gbp", ".gko", ".gm1"];
 
-    private static readonly string[] DrillExtensions = [".drl", ".xln"];
+    // .xnc is the Excellon NC extension Altium, Eagle and Olimex write where KiCad writes .drl.
+    // Recognising the name without opening the file is no use: the layer was read as a drill and
+    // then never loaded, so the board came up with no holes and nothing said why.
+    private static readonly string[] DrillExtensions = [".drl", ".xln", ".xnc"];
 
     public static Board LoadFolder(string folder, RealisationOptions? options = null)
     {
@@ -103,9 +106,17 @@ public static class BoardLoader
                 // which read no holes out of it and warned about a units declaration the file
                 // plainly had, so the drill layers vanished from a project that opened fine from a
                 // folder.
-                layers.Add(LayerRoleInfo.IsDrill(role) && !IsGerberText(text)
-                    ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
-                    : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options));
+                // Built once per distinct file, role and set of options. A preview that follows a
+                // ticked checkbox changes none of those for any layer, so the whole board is served
+                // from memory and the work that used to be repeated is simply not done.
+                layers.Add(RealisedLayers.Get(
+                    fileName,
+                    content,
+                    role,
+                    options,
+                    () => LayerRoleInfo.IsDrill(role) && !IsGerberText(text)
+                        ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
+                        : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options)));
             }
             catch (Exception ex) when (ex is GerberParseException or DecoderFallbackException)
             {
@@ -164,6 +175,7 @@ public static class BoardLoader
             Role = role,
             RoleGuessed = roleGuessed,
             Area = layer.Area,
+            Nets = layer.Nets,
             Bounds = layer.Bounds,
             ObjectCount = layer.ObjectCount,
             DeclaredNegative = layer.DeclaredNegative,

@@ -2,7 +2,6 @@ using MillBurn.Align;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
-using Xunit;
 
 namespace MillBurn.Tests;
 

@@ -85,9 +85,12 @@ PCB_MillBurn.slnx
 └── tests/
     ├── MillBurn.Tests           xUnit unit + property tests
     ├── MillBurn.GoldenTests     Golden-file and determinism regression
-    ├── boards/                  Six real KiCad exports, committed as fixtures
-    └── corpus/                  Empty. Where a pcb2gcode test-data checkout is looked for;
-                                 GPL-3.0, so never committed, and those tests skip without it
+    └── boards/                  Seven real KiCad exports, committed as fixtures.
+                                 `RealBoards` throws when they are missing: absence is a broken
+                                 checkout, not a reason to skip. A pcb2gcode corpus is looked for
+                                 outside the repository — `WorkingFolder/pcb2gcode/…`, or
+                                 MILLBURN_GERBER_CORPUS — since it is GPL-3.0 and never committed,
+                                 and those tests do skip without it
 ```
 
 Three projects are named here for the shape of the graph rather than for what they hold today.
@@ -122,7 +125,7 @@ consumer references for the emitter and the parser, to serve one feature most of
 | Reactive/debounce | **System.Threading.Channels** (or `System.Reactive`) | MIT | Pipeline re-run coalescing. |
 | Templating (post) | **Scriban** | BSD-2 | User-editable preamble/postamble/line templates. |
 | Numerics | **System.Numerics** / **MathNet.Numerics** | MIT | SVD for the Kabsch/affine fiducial fit, thin-plate-spline height interpolation. |
-| Tests | **xUnit**, **Verify** | Apache/MIT | Golden-file snapshot testing. |
+| Tests | **xUnit** | Apache-2.0 | The only test dependency. Verify is pinned and deliberately unused: the golden snapshotter is forty lines of our own (`GoldenTests/Snapshot.cs`), because a library that launches a diff tool is a liability in a headless run. |
 
 Explicitly **not** used: Boost.Geometry, GEOS native, libgerbv, Cairo. Those are pcb2gcode's
 dependency chain and they are the reason it is painful to build on Windows. Everything above is a
@@ -130,7 +133,9 @@ NuGet package that restores on a clean Windows box with no vcpkg, no MSYS2, no C
 
 ## 4. The incremental pipeline — **designed, not built**
 
-> **Status.** Nothing in this section exists. There is no `PipelineCache`, no `CancellationToken`
+> **Status, 2026-09-20.** Nothing in this section exists yet, and building it is
+> [Sprint 1](../Sprints/Sprint-01-Speed-and-Accuracy.md) stories 1 and 2 — the thread pool and
+> cancellation first, then the memoised stages. There is no `PipelineCache`, no `CancellationToken`
 > anywhere in `src/`, and no debounce. `MillBurn.Pipeline` is a set of builders that run start to
 > finish on the calling thread, and every export recomputes from the parsed board.
 >
@@ -195,7 +200,7 @@ file to someone else or re-open it in two years and reproduce byte-identical G-c
 `millproject` INI file references external paths and stores no provenance; that is a real
 reproducibility problem for a workflow that spans days and two machines.
 
-Settings/machine profiles live in `%LOCALAPPDATA%\PCB_MillBurn\` as JSON, importable/exportable
+Settings/machine profiles live in `%AppData%\PCB_MillBurn\` as JSON (`SpecialFolder.ApplicationData`, which roams), importable/exportable
 so the community can share machine profiles.
 
 ## 6. UI shape

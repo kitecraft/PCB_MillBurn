@@ -1,7 +1,6 @@
 using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

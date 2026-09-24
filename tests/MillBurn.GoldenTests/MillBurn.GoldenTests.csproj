@@ -20,8 +20,9 @@
   </ItemGroup>
 
   <!--
-    The board locator is shared with MillBurn.Tests rather than duplicated. The real KiCad exports
-    are not committed, so anything that needs them has to skip cleanly on a fresh clone.
+    The board locator is shared with MillBurn.Tests rather than duplicated: one definition of where
+    the boards are, so the two assemblies cannot disagree. The boards themselves are committed, and
+    the locator throws when they are missing — a checkout without them is broken rather than partial.
   -->
   <ItemGroup>
     <Compile Include="..\MillBurn.Tests\RealBoards.cs" Link="RealBoards.cs" />

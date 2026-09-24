@@ -5,9 +5,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MillBurn.Cam;
 using MillBurn.Core;
+using MillBurn.Geometry;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
-using MillBurn.Geometry;
 
 namespace MillBurn.Pipeline;
 
@@ -271,15 +271,78 @@ public static class ProjectFile
             });
         }
 
+        var saved = sources.ToImmutable();
+        var (settings, notes) = Reconcile(manifest.Settings ?? new ProjectSettings(), saved);
+
         return new MillBurnProject
         {
-            Sources = sources.ToImmutable(),
-            Settings = manifest.Settings ?? new ProjectSettings(),
+            Sources = saved,
+            Settings = settings,
             ViewState = manifest.ViewState ?? new ProjectViewState(),
             OriginFolder = manifest.OriginFolder,
             FilePath = path,
             SchemaVersion = manifest.SchemaVersion,
+            OpenNotes = notes,
         };
+    }
+
+    /// <summary>
+    /// Puts back any saved output its layer cannot produce, and says what it put back.
+    ///
+    /// What a layer may become is a judgement this application makes, and judgements change: 6.30
+    /// withdrew G-code from inner copper, because a file that cuts a copy of a sealed layer into
+    /// whichever face is upwards is worse than no file. Projects saved before that still hold the
+    /// old setting, and it must not survive the opening — nor be corrected in silence, which would
+    /// mean the application quietly cut something different from what it was last told to.
+    ///
+    /// Only the impossible is touched. A layer whose output is merely unusual is the operator's
+    /// business, and a file named in the settings but missing from the sources is left alone: it is
+    /// not this method's business to decide what a settings entry with no layer means.
+    ///
+    /// **Impossible means <see cref="LayerOperations.For"/> returning None, not absence from
+    /// <see cref="LayerOperations.Available"/>**, because the first is what the export planner asks
+    /// and the two do not agree everywhere. `Available` withholds SVG from a drill layer, while
+    /// `For(PlatedDrill, Svg)` is a vector export that really works and that the drills import
+    /// default offers. Gating on `Available` threw away a configured output and told the operator
+    /// it could not be exported, which was not true — the more expensive of the two mistakes
+    /// available here, since the point of this method is to never change a job in silence.
+    /// </summary>
+    private static (ProjectSettings Settings, ImmutableArray<string> Notes) Reconcile(
+        ProjectSettings settings, ImmutableArray<ProjectSource> sources)
+    {
+        // Not ToDictionary: a manifest naming one file twice is malformed, and Open's callers catch
+        // IOException and InvalidDataException only, so a duplicate key would crash the application
+        // rather than be reported. Last one wins, which is how the archive is read anyway.
+        var roles = new Dictionary<string, LayerRole>(StringComparer.Ordinal);
+        foreach (var source in sources)
+        {
+            roles[source.FileName] = source.Role;
+        }
+
+        var notes = ImmutableArray.CreateBuilder<string>();
+        var outputs = settings.LayerOutputs.ToBuilder();
+
+        for (var i = 0; i < outputs.Count; i++)
+        {
+            var output = outputs[i];
+            if (output.Output == OutputKind.None
+                || !roles.TryGetValue(output.FileName, out var role)
+                || LayerOperations.For(role, output.Output) != OperationKind.None)
+            {
+                continue;
+            }
+
+            notes.Add(
+                $"{output.FileName} was saved as {LayerOperations.Label(output.Output)} and has been "
+                + $"set back to {LayerOperations.Label(OutputKind.None)}: "
+                + LayerOperations.WhyNot(role, output.Output));
+
+            outputs[i] = output with { Output = OutputKind.None };
+        }
+
+        return notes.Count == 0
+            ? (settings, [])
+            : (settings with { LayerOutputs = outputs.ToImmutable() }, notes.ToImmutable());
     }
 
     /// <summary>Realises a project's sources into a board, without touching the disk they came from.</summary>

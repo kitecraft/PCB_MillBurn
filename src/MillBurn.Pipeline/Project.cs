@@ -331,6 +331,16 @@ public sealed class MillBurnProject
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
+    /// <summary>
+    /// What had to be put right when this project was opened, in the operator's own terms.
+    ///
+    /// Deliberately not saved: it describes one opening, not the document. A project written when a
+    /// pairing was still offered — inner copper set to G-code, before 6.30 withdrew it — opens with
+    /// that setting corrected, and this is how the correction gets said out loud. Changing what a
+    /// project cuts and not mentioning it is the one thing that must not happen.
+    /// </summary>
+    public ImmutableArray<string> OpenNotes { get; set; } = [];
+
     public bool IsDirty
     {
         get => _isDirty;

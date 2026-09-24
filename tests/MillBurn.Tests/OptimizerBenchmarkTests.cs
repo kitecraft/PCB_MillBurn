@@ -2,7 +2,6 @@ using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Optimize;
 using MillBurn.Pipeline;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace MillBurn.Tests;

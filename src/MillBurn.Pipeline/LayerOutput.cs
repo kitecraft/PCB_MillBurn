@@ -1,3 +1,4 @@
+using System.Globalization;
 using MillBurn.Core;
 
 namespace MillBurn.Pipeline;
@@ -136,9 +137,14 @@ public static class LayerOperations
     {
         (_, OutputKind.None) => OperationKind.None,
 
-        (LayerRole.TopCopper or LayerRole.BottomCopper or LayerRole.InnerCopper, OutputKind.Gcode)
+        // Inner copper is absent from both, deliberately. A layer sealed inside the board is one
+        // no cutter or laser can reach on any machine in any setup, and the file it would produce
+        // looks entirely plausible: eight files and 58,369 lines of isolation for the four inner
+        // layers of a six-layer board, each of which would cut a copy of an inner layer into
+        // whichever face happened to be upwards. See 6.30.
+        (LayerRole.TopCopper or LayerRole.BottomCopper, OutputKind.Gcode)
             => OperationKind.Isolation,
-        (LayerRole.TopCopper or LayerRole.BottomCopper or LayerRole.InnerCopper, OutputKind.Svg)
+        (LayerRole.TopCopper or LayerRole.BottomCopper, OutputKind.Svg)
             => OperationKind.MaskOpen,
 
         (LayerRole.PlatedDrill or LayerRole.NonPlatedDrill, OutputKind.Gcode) => OperationKind.Drilling,
@@ -178,8 +184,40 @@ public static class LayerOperations
             => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
         // Drawings are for reading. Offering to burn or mill one is offering to make a mistake.
         LayerRole.Unknown or LayerRole.DrillMap or LayerRole.Documentation => [OutputKind.None],
+
+        // And an inner layer is the stronger case, not the weaker one. A drawing is merely the
+        // wrong thing to cut; copper sealed inside the board cannot be reached at all.
+        LayerRole.InnerCopper => [OutputKind.None],
         _ => [OutputKind.None, OutputKind.Svg, OutputKind.Gcode],
     };
+
+    /// <summary>
+    /// What the operator calls an output kind. The enum's own name is not it: the picker says
+    /// "G-code", and a warning that says "Gcode" is, to the person reading it, about something else.
+    /// </summary>
+    public static string Label(OutputKind output) => output switch
+    {
+        OutputKind.None => "Not exported",
+        OutputKind.Gcode => "G-code",
+        OutputKind.Svg => "SVG",
+        _ => output.ToString(),
+    };
+
+    /// <summary>
+    /// Why a layer cannot become what it was asked to become, in the operator's own terms.
+    ///
+    /// The general answer names the pairing, which is all there is to say about a drawing set to
+    /// G-code. Inner copper gets a sentence of its own because its reason is physical rather than a
+    /// limit of this application: there is no machine, and no way of holding the work, that reaches
+    /// copper sealed inside the board. Saying only that it "cannot be exported as G-code" invites
+    /// the reader to look for the setting that would allow it.
+    /// </summary>
+    public static string WhyNot(LayerRole role, OutputKind output) =>
+        role == LayerRole.InnerCopper
+            ? "a cutter cannot reach a layer inside the board."
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"{LayerRoleInfo.Label(role)} cannot be exported as {Label(output)}.");
 
     /// <summary>The output a layer gets by default, which is what most boards want.</summary>
     /// <summary>

@@ -17,6 +17,15 @@ namespace MillBurn.Gerber.Excellon;
 public sealed class ExcellonParser
 {
     private readonly Dictionary<int, DrillTool> _tools = [];
+
+    /// <summary>
+    /// Each tool's diameter exactly as the file wrote it, before it became nanometres.
+    ///
+    /// Kept because the unit can be declared after the tool table — legal, and what some older
+    /// outputs do — and a diameter already converted under the wrong unit cannot be recovered from
+    /// the converted number alone. See 6.29.
+    /// </summary>
+    private readonly Dictionary<int, double> _toolDiameters = [];
     private readonly List<DrillHit> _hits = [];
     private readonly List<DrillSlot> _slots = [];
     private readonly List<GerberDiagnostic> _diagnostics = [];
@@ -174,6 +183,11 @@ public sealed class ExcellonParser
             return;
         }
 
+        if (ReadUnitCommand(line))
+        {
+            return;
+        }
+
         if (line[0] == 'T')
         {
             ReadToolDefinition(line, lineNumber);
@@ -181,6 +195,55 @@ public sealed class ExcellonParser
         }
 
         // M48, FMAT, VER, ICI, detour/feed settings: header noise we do not need.
+    }
+
+    /// <summary>
+    /// <c>M72</c> and <c>M71</c>: the other way a file states its units, and the only way some
+    /// state them at all.
+    ///
+    /// 6.29 was this line going unread. An Olimex export declares <c>M72</c> and then an ordinary
+    /// tool table, and every diameter in it was taken for millimetres: 0.0100 in, a 0.254 mm drill,
+    /// was reported as a 0.01 mm one. Nothing downstream doubts that number — it decides which bit
+    /// the operator is told to fit, whether a hole is too big to drill and must be routed instead,
+    /// and whether the library holds anything that fits — so the board is reasoned about
+    /// confidently and wrongly, with the CHECK lines that exist to catch exactly this being
+    /// reassuring about the wrong sizes.
+    ///
+    /// Accepted in the body as well as the header, because that is where they appear in files whose
+    /// header holds only <c>M48</c>.
+    /// </summary>
+    private bool ReadUnitCommand(string line)
+    {
+        var unit = line.StartsWith("M72", StringComparison.Ordinal) ? LengthUnit.Inches
+            : line.StartsWith("M71", StringComparison.Ordinal) ? LengthUnit.Millimetres
+            : (LengthUnit?)null;
+
+        if (unit is not { } declared)
+        {
+            return false;
+        }
+
+        var changed = _unit != declared;
+        _unit = declared;
+        _unitSeen = true;
+        ApplyUnitDefaults();
+
+        // Tools already read were converted under whichever unit was in force at the time.
+        // Re-reading them from the raw diameters is the whole reason those are kept.
+        //
+        // Only before anything has been drilled, though. A file that declares METRIC, defines its
+        // tools, drills three hundred holes and *then* says M72 is saying something about what
+        // follows; rewriting T1 from 1 mm to 25.4 mm there would change the size of holes already
+        // emitted under the old declaration, which is worse than the fault this repairs.
+        if (changed && _hits.Count == 0 && _slots.Count == 0)
+        {
+            foreach (var (number, diameter) in _toolDiameters)
+            {
+                _tools[number] = _tools[number] with { DiameterNm = Nm.From(diameter, _unit) };
+            }
+        }
+
+        return true;
     }
 
     private void ApplyUnitDefaults()
@@ -273,6 +336,7 @@ public sealed class ExcellonParser
         }
 
         _tools[number] = new DrillTool(number, Nm.From(diameter, _unit), _pendingToolFunction);
+        _toolDiameters[number] = diameter;
         _pendingToolFunction = null;
     }
 
@@ -302,6 +366,11 @@ public sealed class ExcellonParser
                 ReadToolDefinition(line, lineNumber);
             }
 
+            return;
+        }
+
+        if (ReadUnitCommand(line))
+        {
             return;
         }
 

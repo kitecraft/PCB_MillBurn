@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using MillBurn.Core;
 using MillBurn.Gcode;
-using Xunit;
 
 namespace MillBurn.Tests;
 

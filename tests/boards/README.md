@@ -7,6 +7,36 @@ Two provenances, and the difference matters:
 
 - The `GridStripConnector*`, `PogoTest1*` and `Millburn_Test_Board` boards are **contributed by the repository owner**
   under the project's [MIT licence](../../LICENSE).
+- `Millburn_Test_Board_Protel` is **the test board again**, exported from the same KiCad project
+  with Protel extensions (`.gtl`, `.gbl`, `.gts`, `.gm1`) and X2 turned off in the dialog — the two
+  screenshots beside the files record exactly which settings those were. Turning X2 off does not
+  remove the attributes: KiCad writes them as `G04 #@! TF.FileFunction,...` comments instead, and
+  the parser reads that form, so **the layers here are still named by their attributes and not by
+  their filenames**. Do not reach for this board to test filename matching; `TopBotNames` is the one
+  for that. What it covers that nothing else does is the comment form itself, the Protel extensions,
+  and a single merged `.drl` that carries no attributes at all — so its role comes from its
+  extension alone, and its holes are all read as plated because the file never says otherwise. The
+  geometry is identical to `Millburn_Test_Board`, which makes the two comparable on purpose.
+
+- `TopBotNames` is **PogoTest1 again**, under the same licence: the same geometry with its files
+  renamed to the `Top` / `Bot` / `Dimension` / `Ln1_Cu` convention that Altium, Eagle and Olimex
+  use, and with the `TF.FileFunction` attribute stripped out. Both halves of that are deliberate.
+  The renaming is what it tests; the stripping is what makes it a test at all, because a file that
+  still declares its own function is never asked what its name means. Only that one attribute went:
+  the others record when the file was made and by what, and nothing reads them to decide a role.
+  `Ln1_Cu.gbr` holds the top copper's geometry — an inner layer is never exported, so what is in it
+  does not matter, only what it is called. `Top_Mask.gbr` and `Bot_Mask.gbr` are byte-identical, and
+  that is not a mistake: PogoTest1's two mask files differ only in the attribute that was removed,
+  because its mask openings are the same on both sides.
+- `PogoTest1-Inch` is **PogoTest1's two drill files and nothing else**, converted arithmetically:
+  every coordinate and diameter divided by 25.4, `METRIC` replaced by `M72`, and nothing else
+  touched. It is the corpus's only inch-mode Excellon, which is how 6.29 survived — an inch file
+  states its units with `M72` and no other line, that line was not read, and every drill in the
+  board was reported at a fiftieth of its size. Not a board: there is nothing to realise and no
+  Gerbers beside it, and the test that uses it parses the two files directly and compares the
+  millimetres against PogoTest1's own. Being a conversion, it cannot catch the parser being wrong
+  about inches in a way the conversion was also wrong about — only a unit not being read at all,
+  which is the failure that happened.
 - The `Arduino_*` boards come from [KiCad-Arduino-Boards](https://github.com/sabogalc/KiCad-Arduino-Boards)
   by Camilo Sabogal, released under the **WTFPL**, which places no condition on redistribution at
   all. They are third-party work, they are attributed here and in

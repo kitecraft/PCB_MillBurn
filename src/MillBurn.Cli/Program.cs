@@ -1,15 +1,15 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using MillBurn.Align;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Export;
+using MillBurn.Gcode;
 using MillBurn.Gerber;
 using MillBurn.Gerber.Excellon;
 using MillBurn.Gerber.Model;
-using MillBurn.Pipeline;
-using MillBurn.Align;
-using MillBurn.Gcode;
 using MillBurn.Optimize;
+using MillBurn.Pipeline;
 using MillBurn.Viewer;
 using SkiaSharp;
 
@@ -822,12 +822,32 @@ internal static class Program
         return null;
     }
 
+    /// <summary>
+    /// Opens a project, and says out loud anything that had to be put right to open it.
+    ///
+    /// <see cref="ProjectFile.Open"/> corrects a saved output this build will not honour — inner
+    /// copper set to G-code, saved before 6.30 withdrew that pairing. Every command that reads a
+    /// project goes through here, so the correction is never silent whichever one was run: a
+    /// project that plans differently from the way it was saved has to say so before it plans.
+    /// </summary>
+    private static MillBurnProject OpenProject(string path)
+    {
+        var project = ProjectFile.Open(path);
+
+        foreach (var note in project.OpenNotes)
+        {
+            Console.Error.WriteLine($"  CHECK       {note}");
+        }
+
+        return project;
+    }
+
     private static int ProjectInfo(string path)
     {
         MillBurnProject project;
         try
         {
-            project = ProjectFile.Open(path);
+            project = OpenProject(path);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
@@ -866,7 +886,7 @@ internal static class Program
         MillBurnProject project;
         try
         {
-            project = ProjectFile.Open(path);
+            project = OpenProject(path);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
@@ -1213,12 +1233,22 @@ internal static class Program
             }
         }
 
+        // Opened once and kept. Opening it again below for the thickness printed every CHECK line
+        // twice, which teaches the reader that the checks repeat and are therefore skimmable.
+        MillBurnProject? project = null;
+
         Board board;
         try
         {
-            board = input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
-                ? ProjectFile.ToBoard(ProjectFile.Open(input))
-                : BoardLoader.LoadFolder(input);
+            if (input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                project = OpenProject(input);
+                board = ProjectFile.ToBoard(project);
+            }
+            else
+            {
+                board = BoardLoader.LoadFolder(input);
+            }
         }
         catch (Exception ex) when (ex is IOException or DirectoryNotFoundException or InvalidDataException)
         {
@@ -1235,11 +1265,7 @@ internal static class Program
         // Not given: the project's own thickness, then the app's — never a fixed 1.6.
         if (thicknessMm <= 0)
         {
-            var saved = input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
-                ? ProjectFile.Open(input)
-                : null;
-
-            thicknessMm = ThicknessFor([], saved, app)!.Value.Mm;
+            thicknessMm = ThicknessFor([], project, app)!.Value.Mm;
         }
 
         // A named tool from the library wins; otherwise the geometry flags build one, which is
@@ -1531,7 +1557,7 @@ internal static class Program
         {
             if (input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
             {
-                project = ProjectFile.Open(input);
+                project = OpenProject(input);
                 board = ProjectFile.ToBoard(project);
             }
             else
@@ -2360,7 +2386,7 @@ internal static class Program
         // The blank, from the project or the flags, so the grid is written in the same frame as
         // the programs it will level.
         var project = args[1].EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
-            ? ProjectFile.Open(args[1])
+            ? OpenProject(args[1])
             : null;
 
         var settings = board.Layers.ToDictionary(
@@ -2575,7 +2601,7 @@ internal static class Program
         try
         {
             return input.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
-                ? ProjectFile.ToBoard(ProjectFile.Open(input))
+                ? ProjectFile.ToBoard(OpenProject(input))
                 : BoardLoader.LoadFolder(input);
         }
         catch (Exception ex) when (ex is IOException or DirectoryNotFoundException or InvalidDataException)
@@ -2599,7 +2625,7 @@ internal static class Program
         var app = AppSettings.LoadOrDefault();
 
         var project = args[1].EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)
-            ? ProjectFile.Open(args[1])
+            ? OpenProject(args[1])
             : null;
 
         var settings = board.Layers.ToDictionary(
@@ -3006,11 +3032,17 @@ internal static class Program
             // One number is the same border all round, which is what somebody types first.
             1 when !double.IsNaN(borders[0]) => options with
             {
-                LeftMm = borders[0], RightMm = borders[0], BottomMm = borders[0], TopMm = borders[0],
+                LeftMm = borders[0],
+                RightMm = borders[0],
+                BottomMm = borders[0],
+                TopMm = borders[0],
             },
             4 when borders.TrueForAll(b => !double.IsNaN(b)) => options with
             {
-                LeftMm = borders[0], BottomMm = borders[1], RightMm = borders[2], TopMm = borders[3],
+                LeftMm = borders[0],
+                BottomMm = borders[1],
+                RightMm = borders[2],
+                TopMm = borders[3],
             },
             _ => options,
         };
