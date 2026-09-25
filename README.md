@@ -218,6 +218,27 @@ depths in different passes, so it is the travel that compares, not the cutting.<
 - **No lift where there is nothing to lift over.** When the next pass starts where the last one ended, in material
   already cut, the tool carries on without going up to safe height and coming back down.
 
+### And then it got better again
+
+<img src="art/screenshots/travel-0.2.0-vs-0.1.6.png" alt="The same panel's travel moves side by side: v0.2.0 on the left with 1688 mm of travel and 556 plunges, v0.1.6 on the right with 1755 mm and 614 plunges">
+
+<sub><b>v0.2.0 (left)</b> against <b>v0.1.6 (right)</b> — the same board, the same settings, the same
+<b>40,276 mm of cutting</b> in both. Only the getting there changed.</sub>
+
+| | v0.1.6 | v0.2.0 |
+|---|---:|---:|
+| Cutting | 40,276 mm | 40,276 mm |
+| Travel | 1,755 mm | **1,688 mm** |
+| Plunges | 614 | **556** |
+
+**The plunges are the part worth looking at.** Travel is the number that sounds important, and 67 mm of it is
+a few seconds. But every plunge saved is a retract to safe height, a rapid back to a point the tool was already
+standing over, and a slow feed down again — on a machine whose Z moves at 100 mm/min, **about 2.7 seconds each**.
+Fifty-eight of them is a couple of minutes, on a job where nothing about the cutting changed at all.
+
+That came from the optimizer learning that a channel cut at several depths can be entered from either end, and from
+the tool staying down between passes that touch. Neither changes a single cutting move.
+
 pcb2gcode got the whole job working long before this project existed — see [Thanks](#thanks). This is one place
 where there was room to do more, and [Documentation/03](Documentation/03-Toolpath-Optimization.md) explains how.
 
