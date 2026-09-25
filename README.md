@@ -20,6 +20,19 @@
   </p>
 </div>
 
+> [!NOTE]
+> **In progress — `release/0.3.0`.** You are looking at a sprint branch, not a release. Released
+> code is on [`main`](https://github.com/kitecraft/PCB_MillBurn/tree/main), and the newest build you
+> can download is [v0.2.0](https://github.com/kitecraft/PCB_MillBurn/releases/latest). Nothing in
+> this section has shipped yet.
+>
+> **Sprint 2 — fix what is broken.** The first sprint defined by the defect list rather than by a
+> theme: six of the seven open defects, plus three requirements the product owner named. The seventh
+> waits for a board that can prove it. Nothing has landed yet.
+>
+> **[Read the sprint document →](Sprints/Sprint-02-Fix-What-Is-Broken.md)** — what is in it, what is
+> blocked before it can start, and the one large item deliberately left out.
+
 ---
 
 <img src="art/screenshots/hero.png" alt="PCB_MillBurn showing a 66-up panel with its isolation and cut-out toolpaths drawn over the copper">
