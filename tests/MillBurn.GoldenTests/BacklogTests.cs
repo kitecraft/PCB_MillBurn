@@ -41,7 +41,9 @@ public sealed partial class BacklogTests
 
         if (Rewriting || !File.Exists(path))
         {
-            File.WriteAllText(path, built);
+            // In the platform's own line endings, or every update run leaves a whole-file diff that
+            // says nothing. The comparison normalises, so this only affects what lands on disk.
+            File.WriteAllText(path, built.Replace("\n", Environment.NewLine));
 
             if (!Rewriting)
             {

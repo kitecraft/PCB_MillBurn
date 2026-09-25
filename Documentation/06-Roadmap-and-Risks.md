@@ -3568,7 +3568,7 @@ calls a gouge without qualification and the window answers with "do not run this
 worth more than the 0.6 mm, so the tool comes up to zero — which clears any tab there can be, keeps
 the crossing a rapid, and adds nothing to the cut length.
 
-#### 6.25 An isolation path bows into an arc where the copper is straight — **defect · open** — *measured, not fixed*
+#### 6.25 An isolation path bows into an arc where the copper is straight — **defect · fixed**
 
 From the bench, on the Arduino Mega 2560: *"One cut line near the middle-bottom of the board is not
 straight. It's an arc."* Screenshot: `WorkingFolder/V0.1.6/Error_Screenshots/Bad_cut_line.png`.
@@ -3601,6 +3601,19 @@ straight — finds this:
 
 The first two are top copper, which is what the screenshots show; the rest are below what is visible
 at that zoom and are the same fault.
+
+**The cause, found in sprint 2.** An arc replaces segments, not points, and the fitter checked only
+its own vertices. An offset emits a rounded corner as three vertices about 18 µm apart and then one
+straight run of twelve millimetres; six such points fit a 39 mm circle to within 0.8 µm, and the arc
+through them bowed through the empty middle where nothing contradicted it. Fixed by checking the
+middle of every segment an arc replaces, against a threshold taken from the measured distribution —
+honest arcs stray 4.6 µm at the 99th percentile, these eight strayed 74 to 464 µm, and nothing lies
+between. Two extra moves on the whole board.
+
+**The reasoning below pointed the wrong way, and is kept because the wrong turn is instructive.**
+A constant angular extent does *not* mean something is quantising: `MinimumSweepRadians = 0.3` rad is
+17.19°, so every gentle curve the fitter emits comes out just over it. The constant angle was the
+acceptance threshold, not the fault.
 
 **Every one of them subtends about 17.6°.** The chords run from 0.3 mm to 12 mm — a factor of forty
 — and the radius scales with the chord to keep the angle fixed. That is the whole finding. A fitter
@@ -4509,6 +4522,60 @@ one of those turns up, this is work whose effect cannot be demonstrated on any b
 **Not a criticism of the idea.** The gap is real and the reasoning that raised it was sound; what was
 missing was the measurement. Half a day of survey against ten boards is what turned an obvious
 improvement into a parked one, and that is the cheaper order to find out in.
+
+#### 6.47 Isolation cuts inside a hole that is about to be drilled — **defect · open** — *found in the workshop, low priority, a later sprint*
+
+From the bench, on the Arduino Mega 2560, confirmed in v0.2.0: *"there are two non-plated holes that
+get cut lines inside the hole. Left edge, just above center, a very shot distance in from the
+edge."*
+
+**Both holes found and measured.** They are the only two entries in the NPTH file — 0.65 mm, at
+board (6.568, 41.130) and (6.568, 35.350), which is exactly where the bench said. The top copper
+program makes **17 cutting moves inside the first and 18 inside the second**, the nearest of them
+138 µm from a centre whose hole radius is 325 µm.
+
+**There is no copper in either hole.** Sixty-one samples across each disc, none of them on copper.
+So the cutter is not isolating anything in there.
+
+**And the isolation is still arithmetically right**, which is what makes this worth writing down
+rather than simply fixing:
+
+| | |
+|---|---|
+| Hole radius | 325 µm |
+| Nearest copper to the centre | 477 µm — so the copper edge stands 152 µm clear of the hole |
+| Moat asked for, and achieved | 0.400 mm, 0.415 mm |
+
+A 0.415 mm moat swept inward from copper 477 µm out reaches to 62 µm from the centre. The passes
+inside the hole are the last laps of a moat around copper that really is there. Nothing is
+miscomputed; the moat is simply wider than the gap between the copper and the hole, and the hole is
+not a thing the isolation knows about.
+
+**Why it is a defect anyway.** It cuts material that the next operation removes, so it is time spent
+for nothing — and worse, it is time spent *looking wrong*: an operator who sees the cutter tracking
+through a hole has no way to tell that from a fault, and the whole value of the backplot is that it
+can be trusted at a glance. The same reasoning as 6.30: a program that does something indefensible
+for a defensible reason still has to stop doing it.
+
+**What it is not.** Not dangerous. The run order is isolate, then drill, so at isolation time the
+hole is solid copper-clad and the cutter is cutting material, not air. A workflow that drilled first
+would be plunging a V-bit into an open hole, which is worth knowing if the order ever becomes a
+choice.
+
+**Likely shape of the fix.** Subtract the known hole footprints from the region the isolation is
+allowed to cut, so a pass stops at the hole's edge rather than crossing it. The drill layers are
+already loaded and their positions and diameters are already known — `BoardLayer.Drill` carries
+them — so this is a clip, not a new measurement. Worth checking what it does to a pass that would be
+cut in two by a hole in its middle: two passes and an extra lift, or one pass that dips through, and
+the second is what happens today.
+
+**Done when** no copper program cuts inside a hole the same export is going to drill, on the Mega
+and on the test board, and a test covers both holes by position.
+
+**Deferred by the product owner, 2026-09-24**, on the day it was reported and measured: low
+priority, a later sprint. It arrived after sprint 2 was agreed and is deliberately not being pulled
+in — the cutting is correct, the cost is time and a picture that reads wrong, and neither is worth
+reopening a sprint for.
 
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 

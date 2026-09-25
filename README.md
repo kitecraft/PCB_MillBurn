@@ -28,7 +28,12 @@
 >
 > **Sprint 2 — fix what is broken.** The first sprint defined by the defect list rather than by a
 > theme: six of the seven open defects, plus three requirements the product owner named. The seventh
-> waits for a board that can prove it. Nothing has landed yet.
+> waits for a board that can prove it.
+>
+> - **An isolation path no longer bows into an arc where the copper is straight.** Eight of them
+>   reached the Arduino Mega's programs, the worst 464 µm off a twelve-millimetre run — cutting into
+>   copper that was supposed to stay. An arc replaces segments, not points, and the fitter only
+>   checked its own vertices. Two extra moves on the whole board.
 >
 > **[Read the sprint document →](Sprints/Sprint-02-Fix-What-Is-Broken.md)** — what is in it, what is
 > blocked before it can start, and the one large item deliberately left out.

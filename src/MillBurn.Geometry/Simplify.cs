@@ -124,11 +124,29 @@ public static class Simplify
     /// two stages compose: an arc within its tolerance of a point that was itself within tolerance
     /// of the original can be twice as far from the original as either number suggests. Splitting
     /// the budget is what makes the stated bound the one that actually holds.
+    ///
+    /// <c>chordToleranceNm</c> bounds the same thing for the middles of the segments, which the
+    /// vertices cannot speak for. It is deliberately looser than the vertex tolerance: the points
+    /// arrive already thinned, so a retained chord spans several original samples and its middle
+    /// sits below the true curve by construction. Measured across the Arduino Mega's 4,246 fitted
+    /// arcs, the legitimate ones depart from their chords by 1.1 µm at the median and 4.6 µm at the
+    /// 99th percentile — and the eight bad ones by 74 to 464 µm. There is no third population
+    /// between, which is what makes a threshold here safe rather than a guess.
+    ///
+    /// **It defaults to ten times the vertex tolerance rather than to off.** A guard whose absence
+    /// cut copper that was meant to stay is the wrong thing to make opt-in: the next caller — a
+    /// laser path, a new operation — would reintroduce 6.25 silently and the build would stay
+    /// green. Scaling with the tolerance also keeps the two in the documented order however the
+    /// caller sets it, and keeps the end-to-end bound proportional to the number the caller chose.
+    /// Pass <see cref="long.MaxValue"/> to turn it off, which only a test reproducing the fault
+    /// should want.
     /// </summary>
     public static IReadOnlyList<ArtSegment> FitArcs(
-        IReadOnlyList<Point2> points, long toleranceNm, int minimumPoints = 5)
+        IReadOnlyList<Point2> points, long toleranceNm, int minimumPoints = 5, long? chordToleranceNm = null)
     {
         ArgumentNullException.ThrowIfNull(points);
+
+        var chordBound = chordToleranceNm ?? Math.Max(toleranceNm * 10, 1);
 
         var segments = new List<ArtSegment>();
         if (points.Count < 2)
@@ -139,7 +157,7 @@ public static class Simplify
         var i = 0;
         while (i < points.Count - 1)
         {
-            var end = LongestArcFrom(points, i, toleranceNm, minimumPoints, out var centre, out var clockwise);
+            var end = LongestArcFrom(points, i, toleranceNm, minimumPoints, chordBound, out var centre, out var clockwise);
 
             if (end > i)
             {
@@ -166,7 +184,7 @@ public static class Simplify
     /// </summary>
     private static int LongestArcFrom(
         IReadOnlyList<Point2> points, int start, long toleranceNm, int minimumPoints,
-        out Point2 centre, out bool clockwise)
+        long chordToleranceNm, out Point2 centre, out bool clockwise)
     {
         centre = default;
         clockwise = false;
@@ -194,6 +212,31 @@ public static class Simplify
                 {
                     fits = false;
                     break;
+                }
+
+                // And the middle of the segment leading here, which is the part no vertex speaks
+                // for.
+                //
+                // **An arc replaces segments, not points.** Checked only at its vertices it is
+                // unconstrained everywhere between them, and on a real board that gap is enormous:
+                // an offset emits a rounded corner as three vertices about 18 µm apart and then one
+                // straight run of twelve millimetres. Six such points — three at each end — sit
+                // within 0.8 µm of a 39 mm circle, because anything nearly collinear fits a huge
+                // circle. The arc through them then bowed 464 µm away from the straight segment it
+                // replaced, through empty space where no vertex contradicted it, and cut into
+                // copper that was meant to stay. Eight of those reached the Arduino Mega's
+                // programs.
+                if (k > start)
+                {
+                    var mid = new Point2(
+                        (points[k - 1].X + points[k].X) / 2,
+                        (points[k - 1].Y + points[k].Y) / 2);
+
+                    if (Math.Abs(mid.DistanceTo(c) - radius) > chordToleranceNm)
+                    {
+                        fits = false;
+                        break;
+                    }
                 }
             }
 

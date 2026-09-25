@@ -83,10 +83,140 @@ all of them 17.6°, recorded in 06 §6.25. A consistent angle across instances i
 that is not noise, it is something quantising. The arc tolerance, the sagitta and the round-join
 approximation are all places a straight run could acquire a curve.
 
-**Done when** the two instances on the Mega come out straight, a test fails if either returns, and
-the closure says what the 17.6° was.
+**Done when** all eight instances on the Mega come out straight, a test fails if any returns, and the
+closure says what the curve really was. The test that would have caught it is
+`ArcFittingTests.TheMegaHasNoArcSweepingAcrossStraightCopper`, which asserts the bench's own
+criterion — no arc of radius over 5 mm in a copper program — on both copper layers.
+
+### What it turned out to be
+
+**An arc replaces segments, not points — and the fitter only checked its own vertices.**
+
+An offset emits a rounded corner as three vertices about 18 µm apart, and then one straight run of
+twelve millimetres with nothing in between. Six such points — three at each end — sit within 0.8 µm
+of a 39 mm circle, because anything nearly collinear fits a huge circle. The arc through them was
+therefore accepted, and it bowed **464 µm through the empty middle**, where no vertex contradicted
+it, and cut into copper that was supposed to stay.
+
+**The 17.6° was a red herring, and so was the reasoning that followed it.** 06 §6.25 argued that a
+constant angular extent means something is quantising. It does not: `Simplify.FitArcs` refuses any
+arc sweeping less than `MinimumSweepRadians = 0.3` rad — **17.19°** — so every gentle curve it emits
+comes out just over that. The constant angle was the acceptance threshold, not the fault.
+
+**A wrong turn worth recording**, because it cost half a day and would have cost more. An early
+measurement appeared to show the simplifier moving the path by at most 5 µm, and that was written up
+here as "the simplifier is innocent". It was wrong: the measurement compared each original vertex
+against the *nearest point anywhere* on the simplified path, and on a 9,482-point contour that folds
+back near itself, a bowed vertex sits close to some unrelated part of the path. The mistake was
+found by asking a better-posed question — what did each suspect arc replace, by position in the path
+rather than by proximity — which gave six vertices, two clusters, and a twelve-millimetre gap.
+
+**The fix** checks the middle of every segment an arc replaces, not only its ends. The threshold is
+measured rather than chosen: across the 4,246 arcs fitted to the Mega's top copper, the honest ones
+stray 1.1 µm at the median and 4.6 µm at the 99th percentile, and the eight bad ones stray 74 to
+464 µm. Nothing lies between 5 and 74 µm, so the check allows 10 µm — twice the worst honest arc,
+a seventh of the mildest bad one.
+
+**That calibration is the whole difference between a fix and a trade.** Two earlier attempts were
+stricter and rejected honest arcs with the invented ones, costing 29 % to 57 % more moves — exactly
+the failure the test plan below warns about. The calibrated check costs **two extra moves across the
+whole board**.
+
+### Test plan — the bench
+
+**Board:** `tests/boards/Arduino_Mega_2560`, which is committed, so this needs nothing from the
+workshop. **Settings:** the defaults — 30° V-bit, 0.1 mm deep, 0.4 mm isolation width — and 1.6 mm
+thickness. Any settings will do as long as both runs use the same ones.
+
+**What to look for.** Eight places where a straight run of copper is cut as a shallow curve. All
+coordinates are in the exported program's frame, which is the board's lower-left corner:
+
+| | Program | From | To | Bow |
+|---|---|---|---|---|
+| 1 | `F_Cu` | 64.849, 9.541 | 52.782, 9.541 | **464 µm** |
+| 2 | `F_Cu` | 82.022, 24.830 | 70.292, 24.830 | **451 µm** |
+| 3 | `F_Cu` | 35.731, 20.688 | 44.067, 20.684 | 320 µm |
+| 4 | `F_Cu` | 65.655, 48.200 | 67.496, 50.042 | 101 µm |
+| 5 | `B_Cu` | 72.466, 17.048 | 72.466, 25.791 | 337 µm |
+| 6 | `B_Cu` | 8.980, 48.305 | 13.443, 43.842 | 243 µm |
+| 7 | `B_Cu` | 81.443, 30.853 | 85.327, 30.853 | 150 µm |
+| 8 | `B_Cu` | 56.845, 3.828 | 56.845, 5.725 | 74 µm |
+
+Numbers 1, 2, 5 and 7 have endpoints sharing an X or a Y, so the run between them is provably
+straight and the bow is unambiguous. Numbers 1 and 2 are the two the product owner saw.
+
+**In the window.** Open the board, set the top copper to G-code, Preview, and zoom to each `F_Cu`
+row above. The toolpath should run straight between those two points. It is worth looking at 1 and 2
+before any fix as well as after — *"one cut line near the middle-bottom of the board is not straight,
+it's an arc"* is how it was first described, and knowing what that looks like makes the after-shot
+convincing rather than merely clean.
+
+**From the command line**, which is the quicker check and the one that cannot be argued with:
+
+```
+millburn-cli export tests/boards/Arduino_Mega_2560 --thickness 1.6 --write -o out
+```
+
+then look in `out` for a `G2` or `G3` whose `I`/`J` describe a radius over 5 mm. Every arc in a
+correct program belongs to a pad or a corner, and no pad on this board is 39 mm across. **One
+line of evidence: a radius greater than 5 mm in a copper program is the fault, and there should be
+none.** Eight is what it is today.
+
+**Pass.** No arc in either copper program has a radius over 5 mm, and the eight rows above are
+straight lines. **Fail, and worth reporting:** any arc of large radius remains, or a run that was
+straight before is now made of many short segments instead — trading a wrong curve for a bloated
+program is not a fix, and the line count in the export summary will say so.
+
+**Also check nothing else moved.** The same export should still simplify about as well as it does
+now — the summary line reports it, and a large change in the arc count means legitimate arcs were
+lost along with the invented ones.
 
 **Requirements:** — · [06 §6.25](../Documentation/06-Roadmap-and-Risks.md)
+
+### Closed — 2026-09-25
+
+**Met.** All eight instances come out straight, the program is the same size, and the product owner
+confirmed it at the bench: *"The original problem lines are fixed. I have not found any others.
+Performance seems to be unaffected."*
+
+**The manual test.** The plan above, run on `tests/boards/Arduino_Mega_2560` at the default V-bit,
+0.1 mm deep and 0.4 mm isolation. The two rows the bench had originally reported — `F_Cu` at
+(64.849, 9.541) → (52.782, 9.541) and (82.022, 24.830) → (70.292, 24.830) — were looked at before
+and after, and the other six checked with them.
+
+**What was observed.**
+
+| | before | after |
+|---|---|---|
+| Arcs of implausible radius, `F_Cu` | 4 | **0** |
+| Arcs of implausible radius, `B_Cu` | 4 | **0** |
+| Worst bow | **464 µm** | none |
+| Moves, `F_Cu` | 18,130 | 18,130 |
+| Moves, `B_Cu` | 8,851 | 8,853 |
+
+Two extra moves on the whole board. That number is the story: two earlier attempts at the same fix
+were stricter, rejected honest arcs along with invented ones, and cost 29 % to 57 % more moves —
+which the plan above had already named as the way to fail. The difference between them is a
+threshold measured rather than chosen.
+
+**The test that would have caught it** is
+`ArcFittingTests.TheMegaHasNoArcSweepingAcrossStraightCopper`, run over both copper layers. It is
+the only one of the three in that file that goes through `PathSimplifier`, so it is the only one
+that would notice the call site quietly ceasing to pass a chord tolerance — the other two hand
+`Simplify` the value themselves and would pass while the product shipped the bug.
+
+**What is left open.**
+
+- **The arc fitter's threshold is calibrated against one board.** 3 mm in the test and 10 µm in the
+  simplifier both come from the Arduino Mega's distribution. Another board with a genuinely curved
+  trace of large radius would be refused a legitimate arc — the failure would be a bigger program
+  rather than a wrong cut, and the test names the number so it can be argued with.
+- **A wrong turn is recorded above** rather than deleted: an early measurement appeared to clear the
+  simplifier and was written into this document before it was checked properly. It was wrong for a
+  specific and repeatable reason, which is why it stays.
+- **[6.47](../Documentation/06-Roadmap-and-Risks.md)** was found and measured while this story was
+  open — isolation cutting inside a hole about to be drilled — and deferred by the product owner the
+  same day.
 
 ---
 
@@ -216,6 +346,13 @@ above by name.
 ---
 
 ## Deliberately out
+
+**6.47 — isolation cuts inside a hole that is about to be drilled.** Reported from the bench on
+2026-09-24, after this sprint was agreed, and deferred by the product owner the same day. A sprint
+defined by the defect list has to say what it does when the list grows underneath it: this one is
+low priority and waits. The cutting is arithmetically correct — a 0.415 mm moat around copper
+standing 152 µm clear of a 0.65 mm hole necessarily sweeps across it — so what it costs is time and
+a backplot that reads wrong, and neither is worth reopening a sprint for.
 
 **6.45 — block apertures and the aperture transforms.** An open defect, and the only one not in a
 sprint that set out to fix them all, so the reason belongs here rather than in a footnote. It cannot

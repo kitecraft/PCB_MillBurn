@@ -21,6 +21,34 @@ public sealed record SimplifyOptions
     public bool FitArcs { get; init; } = true;
 
     /// <summary>
+    /// How far a fitted arc may stray from the middle of a segment it replaces.
+    ///
+    /// **An arc replaces segments, not points**, and checked only at its vertices it is
+    /// unconstrained everywhere between them. On the Arduino Mega that let eight arcs bow across
+    /// straight runs — the worst of them 464 µm off a twelve-millimetre segment, cutting into copper
+    /// that was supposed to stay.
+    ///
+    /// Ten microns, and the number is measured rather than chosen. Across the 4,246 arcs fitted to
+    /// that board's top copper, the honest ones stray 1.1 µm at the median and 4.6 µm at the 99th
+    /// percentile; the eight bad ones stray 74 to 464 µm. **Nothing at all lies between 5 and
+    /// 74 µm**, so this sits in an empty gap: twice the worst honest arc, a seventh of the mildest
+    /// bad one.
+    ///
+    /// Looser than <see cref="ToleranceNm"/> on purpose. The points arrive already thinned, so a
+    /// retained chord spans several original samples and its middle sits below the true curve by
+    /// construction — judging it as strictly as a vertex rejects a third of the arcs on a real
+    /// board, which is not a fix but a trade: a wrong curve for a program half as large again.
+    ///
+    /// **So the end-to-end bound is not <see cref="ToleranceNm"/> alone**, and saying otherwise
+    /// would be the kind of stated guarantee nobody checks. A vertex stays within `ToleranceNm` of
+    /// the original; the middle of a chord may sit five times that away. At the default that is
+    /// 10 µm, which is about eight percent of a 0.127 mm cut rather than the two percent the vertex
+    /// bound buys — worth knowing before anyone tightens `ToleranceNm` expecting the whole error to
+    /// follow it down. Set as a multiple so that it does.
+    /// </summary>
+    public long ChordToleranceNm { get; init; } = Nm.FromMillimetres(0.002) * 5;
+
+    /// <summary>
     /// How many points an arc must span to be worth making.
     ///
     /// Low values turn measurement noise into arcs of implausible radius; a controller that takes
@@ -147,7 +175,7 @@ public static class PathSimplifier
         }
 
         var segments = options.FitArcs
-            ? Simplify.FitArcs(simplified, half, options.MinimumArcPoints)
+            ? Simplify.FitArcs(simplified, half, options.MinimumArcPoints, options.ChordToleranceNm)
             : Lines(simplified);
 
         return segments.Count == 0 ? path : segments;

@@ -4,14 +4,14 @@ PogoTest1
 PogoTest1-B_Cu.nc
   operation Isolation routing
   layer     Bottom copper
-  lines     1551
-  sha256    da8434113ecdcfa7
+  lines     1554
+  sha256    edc7548ced79c628
   summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
   summary   8 nets · all separated
   summary   Mirrored · flip the stock left-to-right
   summary   1473 mm cutting, 147 mm travel
-  summary   8m 37s – 9m 6s · 1,550 lines
-  summary   Simplified: 9,648 → 1,333 moves, 254 arcs (86 % fewer)
+  summary   8m 37s – 9m 6s · 1,553 lines
+  summary   Simplified: 9,648 → 1,336 moves, 253 arcs (86 % fewer)
   summary   Ordering: 157 mm rapid → 150 mm (5 % less)
   summary   Stayed down for 25 of 41 pass links (2.9 mm), saving that many plunges
   warning   Mirrored: the stock must be flipped left-to-right about its vertical centreline, and re-registered. Flipping it the other way cuts a mirror image.
@@ -24,8 +24,8 @@ PogoTest1-B_Cu.nc
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
   control   M3 S10000 · M5 · M30
   depths    -0.050
-  moves     134 rapid, 1148 feed, 254 arc
-  distance  1472.59 mm cutting, 146.66 mm travel
+  moves     134 rapid, 1152 feed, 253 arc
+  distance  1472.58 mm cutting, 146.66 mm travel
   plunges   88
   extent    0.000 .. 20.751 x 0.000 .. 36.741 mm
 
