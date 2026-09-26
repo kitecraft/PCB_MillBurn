@@ -81,7 +81,7 @@ public static class PocketOperation
 
             while (true)
             {
-                var offset = Clipper.InflatePaths(
+                var offset = Polygons.Inflate(
                     region, -inset, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
 
                 if (offset.Count == 0)
@@ -154,7 +154,7 @@ public static class PocketOperation
         var count = 0;
         foreach (var region in Polygons.Separate(Polygons.UnionSelf(regions)))
         {
-            var fits = Clipper.InflatePaths(
+            var fits = Polygons.Inflate(
                 region, -width / 2, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
 
             if (fits.Count == 0)

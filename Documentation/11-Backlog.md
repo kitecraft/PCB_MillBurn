@@ -4,14 +4,12 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (4)
+## Defects (2)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
 | # | what | note |
 |---|---|---|
-| [6.39](06-Roadmap-and-Risks.md#639-offsets-are-not-counted--defect--open--for-the-next-sprint) | Offsets are not counted | for the next sprint |
-| [6.40](06-Roadmap-and-Risks.md#640-what-the-work-counters-do-not-watch--defect--open--for-the-next-sprint) | What the work counters do not watch | for the next sprint |
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 
@@ -65,4 +63,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**23 open**, of 48 entries in the roadmap.
+**21 open**, of 48 entries in the roadmap.

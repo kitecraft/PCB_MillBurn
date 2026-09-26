@@ -215,12 +215,11 @@ public static class PassLinker
         var before = Ribbon(previous, half, sagittaNm);
         var after = Ribbon(next, half, sagittaNm);
 
-        Work.Boolean(Polygons.VertexCount(before) + Polygons.VertexCount(after));
-        var allowed = Clipper.Union(before, after, FillRule.NonZero);
+        var allowed = Polygons.Union(before, after);
 
         // The slack goes on the region rather than off the link: shrinking the link would let a
         // genuinely short overhang through, and growing the region by a micron cannot.
-        allowed = Clipper.InflatePaths(
+        allowed = Polygons.Inflate(
             allowed, SlackNm, JoinType.Round, EndType.Polygon, arcTolerance: sagittaNm);
 
         var link = new Paths64
@@ -232,11 +231,10 @@ public static class PassLinker
             },
         };
 
-        var swept = Clipper.InflatePaths(
+        var swept = Polygons.Inflate(
             link, half, JoinType.Round, EndType.Round, arcTolerance: sagittaNm);
 
-        Work.Boolean(Polygons.VertexCount(swept) + Polygons.VertexCount(allowed));
-        var outside = Clipper.Difference(swept, allowed, FillRule.NonZero);
+        var outside = Polygons.Difference(swept, allowed);
 
         // Clipper leaves degenerate slivers where two boundaries touch. A square a micron on a side
         // is not a gouge in anybody's copper.
@@ -251,7 +249,7 @@ public static class PassLinker
     /// island *inside* an isolation ring as cleared ground — which is the copper the ring exists to
     /// protect, and the one mistake here that would cut a trace in half.
     /// </summary>
-    private static Paths64 Ribbon(ToolpathPass pass, long half, long sagittaNm) => Clipper.InflatePaths(
+    private static Paths64 Ribbon(ToolpathPass pass, long half, long sagittaNm) => Polygons.Inflate(
         new Paths64 { Tessellate.Flatten(pass.Path, sagittaNm) },
         half,
         JoinType.Round,

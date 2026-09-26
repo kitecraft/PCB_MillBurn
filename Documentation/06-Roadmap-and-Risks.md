@@ -4348,7 +4348,7 @@ one, and the operator is told about it: the file is condemned rather than silent
 which is why accepting it is defensible: the failure mode is a refused file and a confused operator,
 not a cut board.
 
-#### 6.39 Offsets are not counted — **defect · open** — *for the next sprint*
+#### 6.39 Offsets are not counted — **defect · fixed**
 
 `Work` counts Clipper booleans, point-in-polygon questions and the vertices handed to them, and each
 board's tally is recorded in `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` so a change in what a
@@ -4377,6 +4377,48 @@ tally is a fact about the program instead of a fact about who remembered. Fourte
 five files plus the rule: mechanical, and worth doing on its own rather than inside a story about
 something else.
 
+**Fixed.** `Polygons.Inflate` and `Polygons.Sweep` count the offset and delegate; all fifteen
+offset sites go through them, and the four booleans that were counting themselves by hand beside
+the call go through the `Polygons` wrappers that already existed. Nothing outside
+`src/MillBurn.Geometry/Polygons.cs` calls Clipper's boolean, offset or point-in-polygon entry
+points, and `Microsoft.CodeAnalysis.BannedApiAnalyzers` with the ban list at the root of the
+repository makes a new one a build error. Verified by planting a direct call back into
+`IsolationOperation` and watching the build fail, rather than by trusting the rule was wired up.
+
+**How much had been invisible**, which is the answer to "what did leaving it cost":
+
+| Board | offsets realising | offsets planning | planning vertices before → after |
+|---|---:|---:|---|
+| Arduino Mega | 8,024 | 1,323 | 885,555 → **1,273,512** |
+| Panel | 10,622 | 359 | 290,968 → 431,953 |
+| Test board, wide moat | 6,237 | 1,451 | 478,595 → 739,613 |
+| PogoTest1 | 293 | 29 | — |
+
+Realising the Mega does **8,024 offsets against 1,493 booleans** — five times as many operations as
+the counters were watching — and a third of the geometry the planner hands to Clipper was going
+unrecorded. Worse than a blind spot: a change that replaced a boolean with an offset would have
+shown booleans down and vertices down, so the snapshot whose job is to notice would have reported
+that the work got cheaper.
+
+**The first ban list was incomplete, and the review proved it by compiling.** It named six methods
+and missed `Xor`, one of `BooleanOp`'s overloads, every double-precision overload, and — the one
+that mattered — the classes the static facade is built on. `Clipper.InflatePaths` is a few lines
+over `ClipperOffset`; banning the facade left the door beside it wide open, and
+`new ClipperOffset()` inside `MillBurn.Cam` built with no warnings. So the same fault the entry was
+written about would have come back the same way, through a door nobody had thought to close.
+
+The list is exhaustive now — enumerated off the type rather than recalled from what the code
+happens to call — and the fix was checked the way the hole was found: three ways round planted in
+`IsolationOperation` produce ten diagnostics where they produced none.
+
+**The hole that is left, deliberately.** `Polygons.cs` suppresses the rule for the whole file
+rather than per call site, because a pragma repeated fourteen times stops being read. A new method
+*inside that file* that calls Clipper without counting is not caught. That is one file to review
+rather than a source tree, and it is written at the top of it.
+
+Tests are not covered by the ban, also deliberately: a test that checks geometry with the same
+wrapper it is checking is testing itself.
+
 **The measured cost of not having had it**, so the value is on the record. The first baselines
 committed here were wrong, and a review found it by reading for uncounted calls rather than by any
 test failing. `ResolveEvenOdd` — the realiser's most-used boolean, and the one an aperture or region
@@ -4395,7 +4437,7 @@ would have left every baseline byte-identical. The counters were believed for a 
 whole argument for the rule: a tally nobody can bypass is worth more than a tally somebody has to
 remember to use.
 
-#### 6.40 What the work counters do not watch — **defect · open** — *for the next sprint*
+#### 6.40 What the work counters do not watch — **defect · fixed** — *one part refused, and why*
 
 `WorkSnapshotTests` records what a board costs to realise and to plan, and a change in either is now
 a diff somebody has to account for. Four things it does not cover, written down while they are known
@@ -4426,6 +4468,49 @@ levelled case exist, and the board list is either extended or the choice of four
 file. Not urgent, and deliberately not bundled into 6.39 — that one is about a tally that can be
 bypassed, this one is about a tally that is honest as far as it reaches and does not reach far
 enough.
+
+**Fixed, except for one part that was the wrong thing to ask for.**
+
+**The optimizer is counted.** `Work.Search` records one search and the steps it spent —
+`RoutePlan.Improvements` says what the search *achieved*, and this says what it *cost*, which is
+the gap the entry was worried about. The number was already there: the solver counts its own steps
+against the budget and was throwing them away on return. Added once per search rather than once
+per move, because the inner loop runs hundreds of thousands of times on a panel and an interlocked
+increment inside it would be a cost worth measuring rather than a measurement. The panel plans in
+2 searches over 575 steps.
+
+**Two corrections the review made to it.** A group of fewer than three nodes returns before the
+search runs, and was not counted at all — so a change that split routing into many tiny groups
+would have made these counters *fall* while the optimizer did more, which is the one direction a
+regression must never move a number in. And the field was called `SearchMoves` and documented as
+"the only honest measure of what the search costs", which overstates it: a step is one dequeue, it
+includes iterations the don't-look bits discard, and it excludes the candidates weighed inside a
+single step. It is budget spend, it is now called `SearchSteps`, and the documentation says what it
+does and does not see.
+
+**SVG is measured, and getting there corrected the premise.** Under the milling defaults nothing
+produces SVG — masks and silkscreen are off, because somebody milling copper has no use for them —
+so asking for `OutputKind.Svg` planned an empty job. The floor assertion caught it doing no work at
+all, which is what that assertion is for. The case uses `ImportDefaults.LaserEtching`, the workflow
+that actually emits SVG and the one the product owner runs, and its baseline is informative because
+of its zeroes: SVG planning does **no offsetting and no route search**.
+
+**Seven boards of ten, and the choice argued in the file** rather than left to be inferred — the
+Uno as an ordinary two-layer board, the unpanelised connector beside the panel so the pair says
+what panelising costs, and the all-layers pogo set because it carries every role at once.
+
+**`LoadSources` is no longer an open question, and the answer was reassuring.** The app's own load
+path costs exactly what the tested one costs — 144 booleans, 6,237 offsets, 229,341 vertices either
+way, to the digit — so the baselines were an account of the path the operator takes after all. It
+is asserted as a relationship rather than snapshotted as a number, because the claim is "whatever a
+board costs, it costs the same either way in".
+
+**The levelled case was refused, and the "done when" above is wrong to have asked for it.**
+Levelling is not in `MillBurn.Pipeline`: it is a post-process over emitted G-code, run from the CLI
+against a probe log. `WorkSnapshotTests` brackets loading and planning, so there is no point in
+that file where a levelled run exists to measure. Bolting one on would have measured something
+else and called it levelling. It wants its own harness, and that is a different piece of work than
+this one — the same judgement 6.39 made about not being bundled into a story about something else.
 
 #### 6.41 A trace is filed under the next net, not its own — **defect · fixed**
 

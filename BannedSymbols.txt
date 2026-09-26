@@ -1,0 +1,58 @@
+# Clipper's counted operations, banned outside src/MillBurn.Geometry/Polygons.cs.
+#
+# Every boolean, offset and point-in-polygon question the program asks is supposed to land in
+# `Work`, so that `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` is a true account of what a
+# board costs and a regression in geometry is a diff somebody has to justify. That only holds if
+# there is one door and it cannot be walked around. Before 6.39 it could: fifteen offset sites went
+# straight to Clipper and counted nothing, and four boolean sites counted themselves by hand — all
+# of which were found by a review reading for them rather than by anything failing.
+#
+# Polygons.cs suppresses RS0030 at the top, with the reason. Tests are not covered: a test that
+# checks geometry with the same wrapper it is checking is testing itself, so they call Clipper
+# directly on purpose.
+#
+# The list is exhaustive over Clipper's boolean, offset, Minkowski and point-in-polygon entry
+# points, both integer and double, plus the classes underneath them — checked by enumerating the
+# type rather than by recalling what the code happens to call today. The first version of this file
+# listed six methods and missed `Xor`, one `BooleanOp` overload, every double overload, and all
+# four classes; a review found that by compiling them.
+#
+# Clipper.Area and Clipper.GetBounds are deliberately absent. They are cheap reads over geometry
+# already in hand, not operations whose cost a board's tally should describe.
+
+M:Clipper2Lib.Clipper.InflatePaths(Clipper2Lib.Paths64,System.Double,Clipper2Lib.JoinType,Clipper2Lib.EndType,System.Double,System.Double); use Polygons.Inflate, which counts the offset
+M:Clipper2Lib.Clipper.Union(Clipper2Lib.Paths64,Clipper2Lib.FillRule); use Polygons.UnionSelf or ResolveEvenOdd, which count the boolean
+M:Clipper2Lib.Clipper.Union(Clipper2Lib.Paths64,Clipper2Lib.Paths64,Clipper2Lib.FillRule); use Polygons.Union, which counts the boolean
+M:Clipper2Lib.Clipper.Difference(Clipper2Lib.Paths64,Clipper2Lib.Paths64,Clipper2Lib.FillRule); use Polygons.Difference, which counts the boolean
+M:Clipper2Lib.Clipper.Intersect(Clipper2Lib.Paths64,Clipper2Lib.Paths64,Clipper2Lib.FillRule); use Polygons.Intersect, which counts the boolean
+M:Clipper2Lib.Clipper.PointInPolygon(Clipper2Lib.Point64,Clipper2Lib.Path64); use Polygons.PointIn, which counts the test
+M:Clipper2Lib.Clipper.MinkowskiSum(Clipper2Lib.Path64,Clipper2Lib.Path64,System.Boolean); use Polygons.Sweep, which counts it as the offset it is
+M:Clipper2Lib.Clipper.BooleanOp(Clipper2Lib.ClipType,Clipper2Lib.Paths64,Clipper2Lib.Paths64,Clipper2Lib.PolyTree64,Clipper2Lib.FillRule); use Polygons.Separate, which counts the boolean
+M:Clipper2Lib.Clipper.BooleanOp(Clipper2Lib.ClipType,Clipper2Lib.Paths64,Clipper2Lib.Paths64,Clipper2Lib.FillRule); use the Polygons wrapper for the operation you want, which counts it
+M:Clipper2Lib.Clipper.Xor(Clipper2Lib.Paths64,Clipper2Lib.Paths64,Clipper2Lib.FillRule); nothing uses this yet; add a counting wrapper to Polygons before it does
+M:Clipper2Lib.Clipper.MinkowskiDiff(Clipper2Lib.Path64,Clipper2Lib.Path64,System.Boolean); nothing uses this yet; add a counting wrapper to Polygons before it does
+
+# The double-precision overloads. Nothing in this repository works in doubles — coordinates are
+# integer nanometres, which is the point of Nm — so these should never appear. Banned anyway,
+# because "nobody would write that" is what was said about the fifteen offset sites.
+M:Clipper2Lib.Clipper.Union(Clipper2Lib.PathsD,Clipper2Lib.FillRule); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.Union(Clipper2Lib.PathsD,Clipper2Lib.PathsD,Clipper2Lib.FillRule,System.Int32); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.Difference(Clipper2Lib.PathsD,Clipper2Lib.PathsD,Clipper2Lib.FillRule,System.Int32); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.Intersect(Clipper2Lib.PathsD,Clipper2Lib.PathsD,Clipper2Lib.FillRule,System.Int32); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.Xor(Clipper2Lib.PathsD,Clipper2Lib.PathsD,Clipper2Lib.FillRule,System.Int32); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.BooleanOp(Clipper2Lib.ClipType,Clipper2Lib.PathsD,Clipper2Lib.PathsD,Clipper2Lib.FillRule,System.Int32); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.BooleanOp(Clipper2Lib.ClipType,Clipper2Lib.PathsD,Clipper2Lib.PathsD,Clipper2Lib.PolyTreeD,Clipper2Lib.FillRule,System.Int32); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.InflatePaths(Clipper2Lib.PathsD,System.Double,Clipper2Lib.JoinType,Clipper2Lib.EndType,System.Double,System.Int32,System.Double); this repository works in integer nanometres; use Polygons.Inflate
+M:Clipper2Lib.Clipper.MinkowskiSum(Clipper2Lib.PathD,Clipper2Lib.PathD,System.Boolean); this repository works in integer nanometres; use Polygons.Sweep
+M:Clipper2Lib.Clipper.MinkowskiDiff(Clipper2Lib.PathD,Clipper2Lib.PathD,System.Boolean); this repository works in integer nanometres; use Polygons
+M:Clipper2Lib.Clipper.PointInPolygon(Clipper2Lib.PointD,Clipper2Lib.PathD,System.Int32); this repository works in integer nanometres; use Polygons.PointIn
+
+# **The classes the static facade is built on.** `Clipper.InflatePaths` is a few lines over
+# `ClipperOffset`, and `Clipper.Union` a few over `Clipper64`; banning only the facade leaves the
+# door beside it open, and a review proved that by compiling `new ClipperOffset()` inside
+# MillBurn.Cam with the build staying green. Nothing in `src/` uses these types, so banning the
+# whole type costs nothing and closes the way round.
+T:Clipper2Lib.ClipperOffset; use Polygons.Inflate, which counts the offset
+T:Clipper2Lib.Clipper64; use the Polygons wrapper for the operation you want, which counts it
+T:Clipper2Lib.ClipperD; this repository works in integer nanometres; use Polygons
+T:Clipper2Lib.ClipperBase; use Polygons, which counts what it asks Clipper for

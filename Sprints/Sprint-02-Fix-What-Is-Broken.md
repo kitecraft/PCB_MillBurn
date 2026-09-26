@@ -6,8 +6,14 @@ branching from the older release branch would have dropped it again at the next 
 
 **The product owner's direction:** fix all the known bugs, and take A6, M12 and V31 with them.
 
-So: six of the seven open defects and three requirements, and for the first time the sprint is
-defined by the defect list rather than by a theme. That is only possible because the list exists —
+So: six of the seven open defects and three requirements — eight stories, because the three
+requirements are three pieces of work rather than one grouped item. They were written as a single
+story to begin with, on the grounds that none was a sprint's worth on its own; that is an argument
+about size and not about what they are. A6 is about the preview, M12 about a fixture and V31 about
+the dry run, and closing them together would have meant one closure trying to answer for three
+unrelated things. Corrected by the product owner before any of the three was started.
+
+For the first time the sprint is defined by the defect list rather than by a theme. That is only possible because the list exists —
 before 0.2.0 there were twenty-four different status strings across the roadmap and no way to ask
 what was broken. There is now [a backlog](../Documentation/11-Backlog.md), and this sprint is what
 it is for.
@@ -529,28 +535,147 @@ the optimizer's cost is recorded per board.
 **Requirements:** — · [06 §6.39](../Documentation/06-Roadmap-and-Risks.md),
 [§6.40](../Documentation/06-Roadmap-and-Risks.md)
 
-## Story 6 — The three the product owner asked for
+### Closed — 2026-09-26
 
-Grouped because none is a sprint's worth on its own, and all three are about the operator rather than
-about the copper.
+**Met, with one part of 6.40 refused and argued rather than forced.**
 
-**A6 — slider drags stop re-planning on every pixel.** Debounce and coalesce, so dragging a width
-slider plans the value you stopped on rather than every value you passed through. Only meaningful
-now that the pipeline is off the UI thread and cancellable, which is why it waited.
+**6.39 — offsets, and a door that cannot be walked around.** `Polygons.Inflate` and
+`Polygons.Sweep` count the offset and delegate. All fifteen offset sites go through them, and the
+four booleans that were counting themselves by hand beside the call now go through the `Polygons`
+wrappers that already existed — so nothing outside one file touches Clipper's counted entry points,
+and `BannedApiAnalyzers` makes a new one a build error. Proved by planting a direct call back into
+`IsolationOperation` and watching the build fail, rather than by trusting the wiring.
 
-**M12 — a corner-stop fixture generator, as the recommended default.** The fixture that makes a board
-repeatable: cut it once, and every board after that registers against the same two edges.
+| Board | offsets realising | offsets planning | planning vertices before → after |
+|---|---:|---:|---|
+| Arduino Mega | 8,024 | 1,323 | 885,555 → **1,273,512** |
+| Panel | 10,622 | 359 | 290,968 → 431,953 |
+| Test board, wide moat | 6,237 | 1,451 | 478,595 → 739,613 |
 
-**V31 — a dry run that is the real program raised.** Every move as written, spindle off, every Z
-offset by a rise (default 3 mm), so plunges and lifts show and the time is the real time. It refuses
-when the lowest point would not clear the stock, and on `G92`, `G10` and `G38`, because a program
-that redefines the coordinate system cannot be safely lifted. The existing flat dry run stays as a
-choice.
+Realising the Mega does 8,024 offsets against 1,493 booleans — five times as many operations as the
+counters were watching — and a third of the geometry the planner hands to Clipper was unrecorded.
+The sharpest way to put the risk: a change that swapped a boolean for an offset would have shown
+booleans down and vertices down, so the snapshot whose job is to notice would have said the work
+got cheaper.
 
-**Done when** all three are in, each with the test that covers it, and V31 refuses the three cases
-above by name.
+**6.40 — what the counters watch.** The optimizer is counted: `Work.Search` records one search and
+the steps it spent, which is what the search *cost* against `RoutePlan.Improvements`, which is
+what it *achieved*. The number already existed and was being discarded on return. Counted once per
+search, not once per move — the inner loop runs hundreds of thousands of times on a panel, and an
+increment in there would be a cost worth measuring rather than a measurement.
 
-**Requirements:** A6, M12, V31
+SVG is measured, and getting there corrected the premise: under the milling defaults nothing
+produces SVG, so the case planned an empty job and the floor assertion caught it doing no work at
+all. It uses `ImportDefaults.LaserEtching` now — the workflow that actually emits SVG, and the one
+the product owner runs. Its baseline earns its place through its zeroes: SVG planning does no
+offsetting and no route search.
+
+Seven boards of ten, with the choice argued in the file. And `LoadSources` — the path the app takes
+when a project is reopened — costs exactly what the tested path costs, 144 booleans, 6,237 offsets
+and 229,341 vertices either way, to the digit. That was an open question about whether this whole
+folder measured a path nobody uses; it is an assertion now rather than an assumption.
+
+**The levelled case was refused.** Levelling is not in `MillBurn.Pipeline` at all — it is a
+post-process over emitted G-code, run from the CLI against a probe log — and `WorkSnapshotTests`
+brackets loading and planning. There is no point in that file where a levelled run exists to
+measure, so bolting one on would have measured something else and called it levelling. The "done
+when" asked for the wrong thing; 06 §6.40 now says so, and says it wants its own harness.
+
+**What the review found, and it was the story's own headline claim.** The first ban list named six
+methods; it missed `Xor`, a `BooleanOp` overload, every double-precision overload, and the classes
+the static facade is built on. `Clipper.InflatePaths` is a few lines over `ClipperOffset`, so
+banning only the facade left the door beside it open — `new ClipperOffset()` inside `MillBurn.Cam`
+compiled clean. The claim that a direct call was a build error was simply false for three ways in.
+The list is enumerated off the type now, and three ways round planted in `IsolationOperation`
+produce ten diagnostics where they produced none.
+
+Two more, both on the new search counter: a group of fewer than three nodes returned before it was
+recorded, so splitting routing into many tiny groups would have made the counters fall while the
+optimizer did more work. And it was called `SearchMoves` and claimed to be "the only honest measure
+of what the search costs" — a step is one dequeue, including ones the don't-look bits discard and
+excluding the candidates weighed within a step. It is `SearchSteps` now and the doc says what it
+misses.
+
+**What is left open.**
+
+- **One hole in the ban, deliberately.** `Polygons.cs` suppresses the rule for the whole file
+  rather than per call site, because a pragma repeated fourteen times stops being read. A new
+  method *inside that file* that forgets to count is not caught — one file to review rather than a
+  source tree, and it is written at the top of it.
+- **Levelling is still unmeasured**, and now has a reason and a shape rather than a line in a list.
+- **Nothing here makes the program faster.** It is an instrument. What it buys is that the next
+  regression is visible, which is exactly what the first baselines committed — wrong by a factor of
+  two hundred on planning booleans — showed was not true before.
+
+---
+
+## Story 6 — Slider drags stop re-planning on every pixel
+
+**Problem.** Dragging an isolation-width slider asks for a plan at every value it passes through,
+not the value it stops on. Each of those is a full plan of the board, and the operator wanted one.
+
+**What.** Debounce and coalesce, so the pipeline sees the value the drag settled on.
+
+**Why.** It is the last part of the story sprint 1 started. Moving planning off the UI thread
+(story 1) stopped the window freezing, and stopping a superseded run (6.33, this sprint's story 3)
+stopped the abandoned work running to the end — but the run is still *started*, and on a
+sixteen-second board a drag across twenty pixels asks for twenty of them. Cancellation makes that
+survivable rather than free; not asking is free.
+
+**How.** The debounce belongs beside `LatestRun` in the view model, which is already where "the
+newest edit wins" lives. It has to be a delay on *starting*, not another layer of cancelling, or it
+is the same work with a longer name.
+
+**Done when** a drag of any length plans once, at the value the operator let go on, and a test
+proves the intermediate values were never planned rather than planned and discarded.
+
+**Requirements:** A6
+
+---
+
+## Story 7 — A corner-stop fixture, as the recommended default
+
+**Problem.** A board cut today and a board cut next week do not register against anything, so the
+second one has to be aligned by eye.
+
+**What.** Generate the fixture: cut it once, and every board after that registers against the same
+two edges.
+
+**Why.** It is what makes a double-sided board repeatable, and it is the thing the author's own
+workflow does by hand with an L-shaped jig — [06](../Documentation/06-Roadmap-and-Risks.md) records
+the laser side of that. Recommending a default matters more than the generator: the value is in
+everyone using the *same* two edges.
+
+**How.** Unknown until the shape is decided — that is the first question, not the implementation.
+It touches the stock and blank machinery that already exists rather than adding a new operation.
+
+**Done when** the generator emits a fixture program, the recommended default is named in the UI
+where the choice is made, and a test pins the registration geometry.
+
+**Requirements:** M12
+
+---
+
+## Story 8 — A dry run that is the real program raised
+
+**Problem.** The dry run available today is flat: it traces the path at one height. It does not show
+plunges and lifts, and its time is not the job's time.
+
+**What.** Every move as written, spindle off, every Z offset by a rise — 3 mm by default — so the
+Z motion is visible and the estimate is real.
+
+**Why.** A dry run exists to be believed before a cut. One that leaves out the Z motion leaves out
+the part that takes the time and the part that crashes.
+
+**How.** It refuses rather than guesses when it cannot be safe: when the lowest point would not
+clear the stock, and on `G92`, `G10` and `G38`, because a program that redefines the coordinate
+system cannot be lifted by adding to Z. The flat dry run stays as a choice — it is the right tool
+for checking XY alone.
+
+**Done when** the raised run emits the real program with Z offset, the estimate matches the job's,
+each of the three refusals is named in its own message, and a test covers each refusal by name.
+
+**Requirements:** V31
 
 ---
 

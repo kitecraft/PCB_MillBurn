@@ -1,0 +1,22 @@
+GridStripConnector
+==================
+
+layers          6
+objects         64
+programs        2
+moat (nm)       0
+output          Gcode
+
+realising
+  booleans      40
+  offsets       52
+  point tests   42
+  vertices      4,826
+
+planning
+  booleans      4
+  offsets       7
+  searches      2
+  search steps  4
+  point tests   48
+  vertices      8,480

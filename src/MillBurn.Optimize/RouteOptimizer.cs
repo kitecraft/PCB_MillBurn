@@ -329,6 +329,13 @@ public static class RouteOptimizer
             if (_order.Length < 3)
             {
                 RefreshFinish();
+
+                // Counted even though nothing ran, because `Searches` is a count of groups the
+                // optimizer was handed and this is one of them. Skip it and a change that split
+                // routing into many tiny groups would make the search counters *fall* while the
+                // optimizer did more work overall — a regression moving the number in the
+                // reassuring direction, which is the one shape these counters must not have.
+                Work.Search(0);
                 return 0;
             }
 
@@ -361,6 +368,12 @@ public static class RouteOptimizer
             }
 
             RefreshFinish();
+
+            // What the search cost, as against `improvements`, which is what it achieved. Counted
+            // here because `steps` is the budget's own unit and is otherwise discarded the moment
+            // this returns — see `Work.Search`, and 6.40, which is the entry that asked for it.
+            Work.Search(steps);
+
             return improvements;
         }
 

@@ -32,6 +32,15 @@
     <PackageVersion Include="System.IO.Hashing" Version="10.0.11" />
   </ItemGroup>
 
+  <!--
+    Banned API analyser (MIT), build-time only. It is what makes 6.39's counting a property of the
+    program rather than of who remembered: Clipper's own boolean and offset entry points are a
+    build error everywhere except the one wrapper that counts them.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4" />
+  </ItemGroup>
+
   <!-- Post-processor templating (BSD-2). -->
   <ItemGroup>
     <PackageVersion Include="Scriban" Version="7.4.0" />

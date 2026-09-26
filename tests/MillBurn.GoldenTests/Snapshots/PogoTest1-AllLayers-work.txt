@@ -1,0 +1,22 @@
+PogoTest1-AllLayers
+===================
+
+layers          12
+objects         388
+programs        7
+moat (nm)       0
+output          Gcode
+
+realising
+  booleans      28
+  offsets       293
+  point tests   166
+  vertices      15,731
+
+planning
+  booleans      14
+  offsets       25
+  searches      7
+  search steps  115
+  point tests   199
+  vertices      31,340

@@ -236,7 +236,7 @@ public static class BoardLoader
                 new Point64(slot.To.X, slot.To.Y),
             };
 
-            slotPaths.AddRange(Clipper.InflatePaths(
+            slotPaths.AddRange(Polygons.Inflate(
                 Polygons.From(line), radius, JoinType.Round, EndType.Round, arcTolerance: options.SagittaNm));
         }
 

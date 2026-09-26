@@ -142,7 +142,7 @@ public static class IsolationOperation
         {
             // Centreline of pass n: half a width clear of the copper, then one step per extra pass.
             var offset = (width / 2) + options.BiasNm + (pass * step);
-            var contours = Clipper.InflatePaths(
+            var contours = Polygons.Inflate(
                 copper, offset, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
 
             if (contours.Count == 0)
@@ -329,7 +329,7 @@ public static class IsolationOperation
 
         var islandsBefore = OuterRingCount(Polygons.UnionSelf(copper));
 
-        var grown = Clipper.InflatePaths(
+        var grown = Polygons.Inflate(
             copper, options.EffectiveWidthNm / 2, JoinType.Round, EndType.Polygon,
             arcTolerance: options.SagittaNm);
 

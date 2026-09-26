@@ -3,9 +3,9 @@ Millburn_Test_Board
 
 layers          15
 objects         6,527
-programs        19
+programs        4
 moat (nm)       0
-output          Gcode
+output          Svg
 
 realising
   booleans      144
@@ -14,9 +14,9 @@ realising
   vertices      229,341
 
 planning
-  booleans      140
-  offsets       277
-  searches      19
-  search steps  396
-  point tests   320
-  vertices      211,017
+  booleans      4
+  offsets       0
+  searches      0
+  search steps  0
+  point tests   0
+  vertices      1,380

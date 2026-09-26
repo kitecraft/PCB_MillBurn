@@ -2141,7 +2141,7 @@ public static class ExportPlanner
     private static Toolpath BuildEngrave(
         BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary)
     {
-        var contours = Clipper.InflatePaths(
+        var contours = Polygons.Inflate(
             layer.Area, -tool.WidthAtDepth(setting.DepthFor(OperationKind.Engrave)) / 2, JoinType.Round, EndType.Polygon);
 
         var passes = new List<ToolpathPass>();

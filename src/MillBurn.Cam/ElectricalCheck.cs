@@ -184,7 +184,7 @@ public static class ElectricalCheck
         // left out: it pushes the cut further from the copper and so can only make two pieces
         // harder to separate, and a check that reported a short the operator could fix by setting
         // bias back to zero would be reporting the setting rather than the board.
-        var grown = Clipper.InflatePaths(
+        var grown = Polygons.Inflate(
             copper, reach, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
 
         var regions = Polygons.Separate(grown).ToList();

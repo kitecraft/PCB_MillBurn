@@ -2,6 +2,17 @@ using System.IO.Hashing;
 using Clipper2Lib;
 using MillBurn.Core;
 
+// This is the one file allowed to call Clipper's counted operations, and the ban list at the root
+// of the repository is what makes that true everywhere else. Every method below that suppresses
+// the rule tallies the call into `Work` on the line above it; that is the whole bargain, and it is
+// why `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` can be read as what a board costs.
+//
+// Disabled for the file rather than per call site, because a pragma repeated fourteen times stops
+// being read. If a new method here calls Clipper without counting, nothing will complain — which
+// is the residual risk 6.39 leaves behind, and it is one file to review rather than the whole
+// source tree.
+#pragma warning disable RS0030 // Do not use banned APIs
+
 namespace MillBurn.Geometry;
 
 /// <summary>
@@ -41,6 +52,57 @@ public static class Polygons
 
         Work.Boolean(VertexCount(contours));
         return Clipper.Union(contours, FillRule.EvenOdd);
+    }
+
+    /// <summary>
+    /// Clipper's offsetting, counted. Every toolpath in the program is built by one of these.
+    ///
+    /// **The door that was not there.** Booleans have been counted since the work counters landed
+    /// because <c>Polygons</c> is the door they go through; offsets had no door, so the fifteen
+    /// call sites went straight to Clipper and the tally described compositing well and toolpath
+    /// building not at all. 6.39 is this method and the analyser rule that makes walking round it
+    /// a build error.
+    ///
+    /// <paramref name="arcTolerance"/> is the sagitta for round joins — how far the tessellated
+    /// corner may sit inside the true arc. Zero lets Clipper choose, which is what the callers that
+    /// do not care already did.
+    /// </summary>
+    public static Paths64 Inflate(
+        Paths64 paths,
+        double delta,
+        JoinType joinType,
+        EndType endType,
+        double arcTolerance = 0.0)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        Work.Offset(VertexCount(paths));
+        return Clipper.InflatePaths(paths, delta, joinType, endType, arcTolerance: arcTolerance);
+    }
+
+    /// <summary>One path, for the callers that offset a single contour.</summary>
+    public static Paths64 Inflate(
+        Path64 path,
+        double delta,
+        JoinType joinType,
+        EndType endType,
+        double arcTolerance = 0.0)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        return Inflate([path], delta, joinType, endType, arcTolerance);
+    }
+
+    /// <summary>
+    /// Clipper's Minkowski sum, counted as the offset it is: a shape swept along a path.
+    /// </summary>
+    public static Paths64 Sweep(Path64 pattern, Path64 along, bool closed)
+    {
+        ArgumentNullException.ThrowIfNull(pattern);
+        ArgumentNullException.ThrowIfNull(along);
+
+        Work.Offset(pattern.Count + along.Count);
+        return Clipper.MinkowskiSum(pattern, along, closed);
     }
 
     /// <summary>Clipper's point-in-polygon, counted. One place, so a new caller cannot skip the tally.</summary>

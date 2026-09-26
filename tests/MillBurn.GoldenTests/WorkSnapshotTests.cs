@@ -38,23 +38,52 @@ namespace MillBurn.GoldenTests;
 /// What prompted this: carrying net names through realisation cost 77 % on top of realising the
 /// Arduino Mega at all — 72.6 ms to 128.4 ms — and nothing in the suite noticed. In the counts it is
 /// unmissable, because the point tests went from about fifteen hundred to more than half a million.
+///
+/// **Offsets joined the report in 6.39**, and they are most of what building a toolpath is. Until
+/// then the fifteen call sites went straight to Clipper, so these baselines described compositing
+/// a board well and building programs from it not at all — work that doubled the offsetting moved
+/// the vertex line and nothing said why. Every vertex total here rose when they were counted,
+/// which is the measure of how much had been invisible: the Mega's planning went from 885,555 to
+/// 1,273,512, so a third of the geometry that stage handles was going unrecorded.
 /// </summary>
 public sealed class WorkSnapshotTests(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData(RealBoards.PogoTest1, 0, "PogoTest1-work")]
-    [InlineData(RealBoards.MillburnTestBoard, 0, "Millburn_Test_Board-work")]
-    [InlineData(RealBoards.Panel, 0, "GridStripConnector_Panelized-work")]
+    [InlineData(RealBoards.PogoTest1, 0, OutputKind.Gcode, "PogoTest1-work")]
+    [InlineData(RealBoards.MillburnTestBoard, 0, OutputKind.Gcode, "Millburn_Test_Board-work")]
+    [InlineData(RealBoards.Panel, 0, OutputKind.Gcode, "GridStripConnector_Panelized-work")]
+
+    // **SVG, which was unmeasured until 6.40.** Every case here asked for G-code, and the two go
+    // through different work: no depth, no passes, no linking, and no route search worth the name.
+    // A regression in what an SVG export costs would have moved nothing in this folder.
+    [InlineData(RealBoards.MillburnTestBoard, 0, OutputKind.Svg, "Millburn_Test_Board-svg-work")]
+
+    // **Three more boards, and the choice is argued now rather than assumed.** The first four were
+    // picked for size and shape, which is the right instinct and the wrong sample: the boards that
+    // have broken things here were the awkward ones, not the big ones — 6.30 came off a real
+    // export, and three bench faults came off one board nobody had run. The Uno is an ordinary
+    // two-layer board of a kind nothing else here represents; the unpanelised connector is the
+    // panel's own single board, so the pair says what panelising costs; and the all-layers pogo
+    // set carries every role at once, which is the shape that finds role-dispatch mistakes.
+    [InlineData(RealBoards.ArduinoUno, 0, OutputKind.Gcode, "Arduino_Uno-work")]
+    [InlineData(RealBoards.GridStripConnector, 0, OutputKind.Gcode, "GridStripConnector-work")]
+    [InlineData(RealBoards.PogoTest1AllLayers, 0, OutputKind.Gcode, "PogoTest1-AllLayers-work")]
 
     // A moat wide enough to take several laps, which is what anybody actually cuts. The cases above
     // all clear their copper in a single pass, so the multi-pass machinery — the extra laps, and
     // PassLinker deciding whether the tool may be dragged from one to the next — barely runs: this
-    // board plans 140 booleans over 120,668 vertices at the default moat and 798 over 384,078 here.
+    // board plans 140 booleans over 211,017 vertices at the default moat and 724 over 739,613 here.
     // ProgramSnapshotTests added a wide-moat case for the same reason, and the same argument applies
-    // to what that work costs. Five of six is not much of a sample either way; RealBoards has ten.
-    [InlineData(RealBoards.MillburnTestBoard, 400_000, "Millburn_Test_Board-wide-moat-work")]
-    [InlineData(RealBoards.ArduinoMega, 0, "Arduino_Mega_2560-work")]
-    public void TheWorkThisBoardCostsIsUnchanged(string board, long isolationWidthNm, string snapshot)
+    // to what that work costs.
+    //
+    // (Those two figures were 140 over 120,668 and 798 over 384,078 when this was written, and both
+    // vertex totals grew when 6.39 started counting offsets. Quoted numbers in a comment go stale
+    // silently — nothing asserts against prose — so they are worth re-reading whenever the
+    // baselines beside them move.)
+    [InlineData(RealBoards.MillburnTestBoard, 400_000, OutputKind.Gcode, "Millburn_Test_Board-wide-moat-work")]
+    [InlineData(RealBoards.ArduinoMega, 0, OutputKind.Gcode, "Arduino_Mega_2560-work")]
+    public void TheWorkThisBoardCostsIsUnchanged(
+        string board, long isolationWidthNm, OutputKind kind, string snapshot)
     {
         var folder = RealBoards.Directory(board);
 
@@ -70,12 +99,20 @@ public sealed class WorkSnapshotTests(ITestOutputHelper output)
         var realising = watch.Elapsed;
         var afterLoad = Work.Since(before);
 
+        // **The SVG case is the laser workflow, not the milling one relabelled.** Under the milling
+        // defaults nothing produces SVG — masks and silkscreen are off, because somebody milling
+        // copper has no use for them — so asking for `OutputKind.Svg` there plans an empty job and
+        // measures nothing. `LaserEtching` turns copper and silkscreen into artwork to burn a
+        // resist with, which is the workflow that actually emits SVG and the one the product owner
+        // runs. Found by the floor assertion below, which is what it is for.
+        var defaults = kind == OutputKind.Svg ? ImportDefaults.LaserEtching : ImportDefaults.Milling;
+
         var settings = loaded.Layers.ToDictionary(
             l => l.FileName,
             l => new LayerOutputSettings
             {
                 FileName = l.FileName,
-                Output = LayerOperations.DefaultFor(l.Role),
+                Output = LayerOperations.DefaultFor(l.Role, defaults),
                 IsolationWidthNm = isolationWidthNm,
             },
             StringComparer.Ordinal);
@@ -83,7 +120,10 @@ public sealed class WorkSnapshotTests(ITestOutputHelper output)
         watch.Restart();
 
         var plan = ExportPlanner.Plan(
-            loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode);
+            // The settings say what each layer naturally produces; `kind` says which of those to
+            // plan. So the SVG case is not the G-code case relabelled — it is the soldermask and
+            // silkscreen layers on their own, which is a different pipeline end to end.
+            loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), kind);
 
         var planning = watch.Elapsed;
 
@@ -124,26 +164,97 @@ public sealed class WorkSnapshotTests(ITestOutputHelper output)
         Line(report, "objects", loaded.TotalObjects);
         Line(report, "programs", plan.Count);
 
-        // Unlike every other line here, this one is not a measurement: it is the theory's own
-        // argument written back out, so it cannot move unless the InlineData does. It earns its
-        // place anyway — it is what stops the two test-board cases being pointed at each other's
-        // baseline, which is otherwise a silent swap — but do not read it as something observed.
+        // Unlike the counted lines, these two are not measurements: they are the theory's own
+        // arguments written back out, so they cannot move unless the InlineData does. They earn
+        // their place anyway — between them they are what stops the three test-board cases being
+        // pointed at each other's baselines, which is otherwise a silent swap — but do not read
+        // either as something observed.
         Line(report, "moat (nm)", isolationWidthNm);
+        report.Append("output".PadRight(16)).Append(kind.ToString()).Append(NewLine);
         report.Append('\n');
 
         report.Append("realising\n");
         Line(report, "  booleans", afterLoad.Booleans);
+        Line(report, "  offsets", afterLoad.Offsets);
         Line(report, "  point tests", afterLoad.PointTests);
         Line(report, "  vertices", afterLoad.Vertices);
         report.Append('\n');
 
         report.Append("planning\n");
         Line(report, "  booleans", afterPlan.Booleans);
+        Line(report, "  offsets", afterPlan.Offsets);
+        Line(report, "  searches", afterPlan.Searches);
+        Line(report, "  search steps", afterPlan.SearchSteps);
         Line(report, "  point tests", afterPlan.PointTests);
         Line(report, "  vertices", afterPlan.Vertices);
 
         Snapshot.Match(snapshot, report.ToString());
     }
+
+    /// <summary>
+    /// The path the application actually takes costs what the baselines above say it costs.
+    ///
+    /// **Every case above loads with `LoadFolder`, and the app does not always.** That was the
+    /// fourth gap 6.40 wrote down. `LoadFolder` reparses and rebuilds from disk, which is what
+    /// makes the warm-up in those cases honest and their floor assertion meaningful; reopening a
+    /// project hands the bytes it already has to `LoadSources`. If the two did different amounts
+    /// of geometry, this whole folder would be an account of a path the operator never takes —
+    /// and nothing would have said so, because both produce a `Board` and neither complains.
+    ///
+    /// Asserted as equality rather than snapshotted, because the claim is a relationship and not
+    /// a number: whatever a board costs to realise, it costs the same either way in. Both memos
+    /// are forgotten in between, or the second reads the first's answers and the comparison is of
+    /// caching.
+    /// </summary>
+    [Fact]
+    public void TheAppsOwnLoadPathCostsTheSame()
+    {
+        var folder = RealBoards.Directory(RealBoards.MillburnTestBoard);
+
+        _ = BoardLoader.LoadFolder(folder);
+
+        RealisedLayers.Forget();
+        var before = Work.Taken;
+        var viaFolder = BoardLoader.LoadFolder(folder);
+        var folderCost = Work.Since(before);
+
+        var sources = Directory.EnumerateFiles(folder)
+            .Where(BoardLoader.IsBoardFile)
+            .Order(StringComparer.Ordinal)
+            .Select(f => (
+                Path.GetFileName(f),
+                File.ReadAllBytes(f),
+                LayerRoles.FromFileName(Path.GetFileName(f))))
+            .ToList();
+
+        RealisedLayers.Forget();
+        before = Work.Taken;
+        var viaSources = BoardLoader.LoadSources(RealBoards.MillburnTestBoard, sources);
+        var sourcesCost = Work.Since(before);
+
+        output.WriteLine($"LoadFolder:  {folderCost}");
+        output.WriteLine($"LoadSources: {sourcesCost}");
+
+        // A floor before the comparison, because two zeroes are equal. Everything below is relative
+        // — it says the two paths cost the same, not what they cost — so if the counters ever came
+        // unhooked, or both loads were served from a memo neither `Forget` reached, this would pass
+        // while measuring nothing at all. The theory above has the numbers; this needs only to know
+        // that work happened.
+        Assert.True(
+            folderCost.Booleans > 0 && folderCost.Offsets > 0 && folderCost.Vertices > 0,
+            $"loading the board did {folderCost}, so there is nothing here for the two paths to "
+            + "agree about.");
+
+        Assert.Equal(viaFolder.Layers.Count, viaSources.Layers.Count);
+        Assert.Equal(viaFolder.TotalObjects, viaSources.TotalObjects);
+        Assert.Equal(folderCost, sourcesCost);
+    }
+
+    /// <summary>
+    /// The report is built with `\n` throughout and normalised on comparison, so the baselines do
+    /// not carry a platform in them.
+    /// </summary>
+    private const char NewLine = '\n';
 
     private static void Line(StringBuilder into, string name, long value) =>
         into.Append(name.PadRight(16))

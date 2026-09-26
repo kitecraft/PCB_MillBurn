@@ -1,0 +1,22 @@
+Arduino_Uno
+===========
+
+layers          13
+objects         6,674
+programs        10
+moat (nm)       0
+output          Gcode
+
+realising
+  booleans      1,537
+  offsets       5,429
+  point tests   6,705
+  vertices      336,977
+
+planning
+  booleans      310
+  offsets       613
+  searches      11
+  search steps  1,334
+  point tests   5,222
+  vertices      722,524

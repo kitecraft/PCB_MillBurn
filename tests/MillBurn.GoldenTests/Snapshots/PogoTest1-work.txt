@@ -5,13 +5,18 @@ layers          9
 objects         382
 programs        6
 moat (nm)       0
+output          Gcode
 
 realising
   booleans      26
+  offsets       293
   point tests   162
-  vertices      14,846
+  vertices      15,441
 
 planning
   booleans      16
+  offsets       29
+  searches      6
+  search steps  173
   point tests   195
-  vertices      24,315
+  vertices      38,775
