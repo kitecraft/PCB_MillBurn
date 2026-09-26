@@ -3649,7 +3649,7 @@ this fault for its opposite. The Arduino Mega 2560 is not
 in `tests/boards`, and both instances are on it, so reproducing this in a test most likely means
 committing it to the corpus — as 6.26 also needs.
 
-#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **defect · open** — *found in the workshop*
+#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **defect · fixed**
 
 From the bench, on the same board: *"There also seems to be a misplaced hole. IF top copper
 isolation >= 0.45 then the misplaced hole appears. But, if the isolation is <0.45 then the misplaced
@@ -3670,6 +3670,59 @@ cosmetic.
 **Done when** the board plans identically at 0.40 mm and 0.45 mm except for the width of the cut,
 the stray feature is gone, and a test pins whatever produced it — with the Arduino Mega added to the
 corpus if that is what it takes to reproduce.
+
+**The reproduction needed one more number than the report carried, and it cost a round trip.** Asked
+to try again on v0.1.6 and v0.2.0, the bench could not make it happen at all. The project cuts its
+top copper at **0.045 mm deep**, not the 0.05 default, and that is the whole difference: at 0.045 the
+V-bit takes 0.124 mm, four passes clear 0.441 and five clear 0.546, so 0.45 mm is the first width
+that asks for a fifth pass. At 0.05 mm deep the same board takes four passes at both 0.40 and 0.45
+and plans identically, which is why nothing appeared. The width threshold in the title is a pass
+count boundary, and a pass count boundary moves with the depth.
+
+**What it is.** Located by measuring `2_Errors_On_This_Board.png` against the board outline — the
+transform checked against 6.25's known bowed line, whose midpoint the second red box lands on —
+the stray sits at **(15.47, 31.47) mm** from the board's lower-left corner. In the emitted program
+at 0.045 mm / 0.45 mm it is a plunge, three moves and a retract: a four-point loop 175 µm long and
+28 µm wide, enclosing 4,971 µm², where the fifth pass's offsets closed on each other. Absent at
+0.40 mm. So the guess above was right about the mechanism and wrong about nothing.
+
+**Fixed**, and the first attempt at the fix was not enough, which is the part worth recording. A
+contour narrower than the cut cannot have come from copper — copper offset outward by half a width
+on every side comes back at least one full width across — so a bounding box under the cut width was
+refused. That cleared 122 slivers on this board and **left the reported one standing**: it measures
+126.4 µm across a 124.1 µm cut and clears the test by two microns. The bench's *"I'm unable to
+reproduce the original issue"* is what forced the check that found it; without going back to the
+screenshot the story would have shipped as fixed.
+
+The rule that works asks what the loop *encircles*, against what the plunge starting it already
+removes — a disc one cut wide, `π(w/2)²`. Nothing real comes near it: across five boards at two
+depths and two widths, the smallest positive-area contour is 360,000 µm², thirty times the
+threshold, and not one is refused. The cap at two cut widths is the guard that makes it safe, and it
+is not cosmetic — a long thin hole encloses very little too, and one on this board runs 2.03 mm; a
+hole's worth is in the run of moat it clears, and dropping one would leave a ridge of copper lying
+in the middle of the moat.
+
+**What it bought, on the Mega's top copper at 0.045 mm / 0.45 mm:**
+
+| | before | after |
+|---|---|---|
+| Isolation passes | 1,373 | **999** |
+| Plunges | 1,373 | **999** |
+| Cutting | 14,612.0 mm | 14,554.7 mm |
+| Travel | 1,664.4 mm | **1,433.8 mm** |
+
+374 plunge-and-retract cycles at about three seconds each, for four tenths of one per cent of the
+cutting. At the default 0.05 mm / 0.40 mm the same board loses 325 of 1,242.
+
+**Confirmed at the bench, 2026-09-25**, on a published build: *"Verified fixed."* That is the part
+no test here reaches — the product owner's condition was the picture, *"we can't have random blue
+rings laying about"*, and a picture is not an assertion.
+
+`IsolationSliverTests`
+pins the reported coordinate at both widths, the whole board on both sides, and the two directions
+the rule must not break in: the smallest island a board can carry still gets its ring, and a
+0.337 mm slot in a pour — where the second pass down it is under two microns wide and encloses
+8,800 µm², under the 12,100 a plunge takes — is still cut.
 
 #### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **defect · fixed**
 
@@ -5063,3 +5116,29 @@ reasoning is in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria).
    Candle's and bCNC's grid-matrix formats are still waiting on a real example — a parser written
    from a memory of a format is worse than none. (The app itself never talks to a machine —
    [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
+
+#### 6.48 Where the pointer is, in the board's own numbers — **enhancement · open** — *asked for in the workshop*
+
+From the bench, 2026-09-25: *"Put a small rectangular display in the top right corner of the UI and
+have it display the coordinates. Also, if possible turn the mouse into a crosshair."*
+
+**Asked for the day it would have saved an afternoon.** 6.26 was reported as *"a misplaced hole"*
+with no position, because there was no way to read one off the screen. Finding it again took a
+screenshot measured against the board outline in a script, with the transform checked by aiming it
+at 6.25's known bowed line. A number in the corner of the window would have turned that into one
+sentence of the original report.
+
+**What it is for, beyond bug reports.** Checking a fixture offset, measuring the gap between two
+traces before choosing a moat, confirming a hole is where the drill file says — all of these are
+questions the viewer can already answer geometrically and cannot answer out loud.
+
+**The awkward part is which origin.** The G-code is referenced to the board's lower-left corner, the
+Gerbers carry their own, and the stock and the laser jig have theirs. A readout that does not say
+which one it is quoting is worse than none — the same argument 6.36 makes about a check that does
+not say what it is about. The likely answer is the board's lower-left, which is what the emitted
+programs use and therefore what an operator at the machine is holding in their head, with the origin
+named beside the numbers rather than assumed.
+
+**Done when** the pointer's position shows continuously in board coordinates while it is over the
+canvas, the readout says which origin it is measured from, and the cursor is a crosshair over the
+canvas and an arrow everywhere else. A screenshot of a fault carries its own coordinate.

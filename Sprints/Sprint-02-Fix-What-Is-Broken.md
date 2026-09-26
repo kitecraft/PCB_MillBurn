@@ -244,6 +244,86 @@ the width that produced it.
 
 **Requirements:** — · [06 §6.26](../Documentation/06-Roadmap-and-Risks.md)
 
+### Closed — 2026-09-25
+
+**Met.** The board is clean at every isolation width from 0.1 mm to 1.0 mm — the smallest loop that
+survives anywhere on it is 0.165 mm across, against a 0.124 mm cut — and `IsolationSliverTests`
+covers the width that produced the fault along with the one that did not. Confirmed at the bench on
+a published build: *"Verified fixed."*
+
+**How to reproduce it, which took a round trip to establish.** Asked to try again, the bench could
+not make the fault happen on either v0.1.6 or v0.2.0. The missing ingredient is in the project, not
+the settings dialog: `Arduino Mega 2560.millburn` cuts its top copper at **0.045 mm deep**, where
+the V-bit takes 0.124 mm. Four passes clear 0.441 mm and five clear 0.546, so 0.45 is the first
+width asking for a fifth. At the 0.05 mm default the board takes four passes at both 0.40 and 0.45
+and plans identically. The threshold in the bug's title is a pass count boundary, and it moves with
+the depth.
+
+**What it is.** The screenshot was measured against the board outline to get a coordinate — the
+transform checked by aiming it at 6.25's known bowed line, whose midpoint the other red box in
+`2_Errors_On_This_Board.png` lands on to three decimal places. The stray sits at **(15.47, 31.47) mm**
+from the board's lower-left: a plunge, three moves and a retract tracing a loop 175 µm long and
+28 µm wide that encloses 4,971 µm², left where the fifth pass's offsets closed on each other.
+
+**The first fix was not enough, and only the bench's failure to reproduce caught it.** A contour
+narrower than the cut cannot have come from copper, so a bounding box under the cut width was
+refused. That cleared 122 slivers and left the reported one standing — it measures 126.4 µm across
+a 124.1 µm cut and clears the test by two microns. Had the reproduction guide gone out unchecked,
+the story would have closed on a fix for a different bug.
+
+**What the rule is now.** What the loop encircles, against what the plunge starting it already
+takes out: a disc one cut wide, `π(w/2)²`. Offsetting a point gives exactly that disc, so the bound
+is exact for an island, and measurement says nothing real is near it — across the Mega, the Uno, the
+test board, the connector and the pogo jig, at two depths and two widths, the smallest positive-area
+contour is 360,000 µm², thirty times the threshold, and the rule refuses none of them. The cap at
+two cut widths is what makes it safe: a long thin hole encloses little too, one on this board runs
+2.03 mm, and dropping it would leave a ridge of copper down the middle of the moat.
+
+**What was observed**, Mega top copper at 0.045 mm / 0.45 mm:
+
+| | before | after |
+|---|---|---|
+| Plunges | 1,373 | **999** |
+| Cutting | 14,612.0 mm | 14,554.7 mm |
+| Travel | 1,664.4 mm | **1,433.8 mm** |
+
+374 plunge-and-retract cycles — about three seconds each — for four tenths of one per cent of the
+cutting. At the 0.05 mm / 0.40 mm default the same board loses 325 of 1,242.
+
+**Three baselines moved.** `PogoTest1-wide-moat` drops 8 plunges and 23 mm of travel for 0.7 mm less
+cutting, and gains a line: the note below. `Millburn_Test_Board-wide-moat-work` falls from 796
+booleans to 724.
+
+`Arduino_Mega_2560-work` goes the other way, and it is worth saying why rather than accepting it:
+planning vertices 885,225 → 885,555, with booleans and point tests identical to the digit. That
+baseline plans at one pass and 0.05 mm deep, where this board drops **two** contours on the whole
+top copper — measured, not assumed. `PassLinker` calls `Clears` for each consecutive pair within
+reach of each other, two counted booleans a time; the count is unchanged, so the same number of link
+decisions ran, and the extra vertices are those decisions now being made between real passes rather
+than between a real pass and a splinter with six points in it. A quarter of a per mille, in the
+direction that means the optimizer is looking at the board instead of at litter.
+
+**Said out loud.** The isolation program now carries a note — *"325 loop(s) too small to be a cut
+were not planned: each was under a cut wide, or enclosed less than the plunge starting it would
+remove"* — for the same reason the achieved width and the pass cap are reported. It is a rule
+applied without being asked for, on a dense board it accounts for a quarter of the plunges, and an
+operator comparing a plan against the picture should be able to see that loops were refused rather
+than wonder.
+
+**What is left open.**
+
+- **Nothing checks the viewer**, and nothing can. The product owner's condition was *"as long as the
+  UI shows correctly, we can't have random blue rings laying about"* — a picture, not an assertion.
+  It was checked at the bench and passed, and the next change to this rule will need checking the
+  same way.
+- **[6.48](../Documentation/06-Roadmap-and-Risks.md)** came out of closing this one: a coordinate
+  readout in the corner of the window, and a crosshair pointer. The bug this story fixed was
+  reported without a position because there was no way to read one off the screen, and recovering it
+  took a screenshot measured against the board outline in a script.
+- **The two-cut-width cap is a scale, not a law.** It is what separates a dot from a path, and it is
+  chosen against this board's distribution; a board whose geometry leaves compact holes of two or
+  three cut widths would keep them, and they would look like the same fault.
+
 ---
 
 ## Story 3 — A superseded preview actually stops

@@ -4,13 +4,12 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (7)
+## Defects (6)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
 | # | what | note |
 |---|---|---|
-| [6.26](06-Roadmap-and-Risks.md#626-a-hole-that-is-not-a-hole-at-isolation-widths-of-045-mm-and-over--defect--open--found-in-the-workshop) | A hole that is not a hole, at isolation widths of 0.45 mm and over | found in the workshop |
 | [6.33](06-Roadmap-and-Risks.md#633-a-superseded-preview-stops-being-watched-not-stopped--defect--open--found-in-the-workshop) | A superseded preview stops being watched, not stopped | found in the workshop |
 | [6.34](06-Roadmap-and-Risks.md#634-an-even-number-of-outline-passes-costs-twice-the-travel-of-an-odd-one--defect--open--measured) | An even number of outline passes costs twice the travel of an odd one | measured |
 | [6.39](06-Roadmap-and-Risks.md#639-offsets-are-not-counted--defect--open--for-the-next-sprint) | Offsets are not counted | for the next sprint |
@@ -18,7 +17,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 
-## Enhancements (15)
+## Enhancements (16)
 
 Something new or better, which is not the same as something broken.
 
@@ -39,6 +38,7 @@ Something new or better, which is not the same as something broken.
 | [6.32](06-Roadmap-and-Risks.md#632-say-where-the-project-came-from--enhancement--open--asked-for-by-the-product-owner) | Say where the project came from | asked for by the product owner |
 | [6.35](06-Roadmap-and-Risks.md#635-a-knife-blade-as-a-tool-for-vinyl-masking--enhancement--open--asked-for-by-the-product-owner) | A knife blade as a tool, for vinyl masking | asked for by the product owner |
 | [6.44](06-Roadmap-and-Risks.md#644-the-checks-become-something-you-can-read--enhancement--open--agreed-by-the-product-owner-2026-09-23) | The checks become something you can read | agreed by the product owner 2026-09-23 |
+| [6.48](06-Roadmap-and-Risks.md#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--open--asked-for-in-the-workshop) | Where the pointer is, in the board's own numbers | asked for in the workshop |
 
 ## Part-built (3)
 
@@ -66,4 +66,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**25 open**, of 47 entries in the roadmap.
+**25 open**, of 48 entries in the roadmap.

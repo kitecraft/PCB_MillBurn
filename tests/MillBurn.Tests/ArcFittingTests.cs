@@ -110,6 +110,16 @@ public sealed class ArcFittingTests(ITestOutputHelper output)
         Assert.NotEmpty(guarded);
         Assert.Equal(points[0], guarded[0].From);
         Assert.Equal(points[^1], guarded[^1].To);
+
+        // And the straight run is still straight. The radius test above is a proxy, and a cold
+        // reading of this file found what it lets through: three chained arcs of 2.9 mm would
+        // satisfy every assertion so far while bowing across the gap exactly as before. What the
+        // fixture is actually about is that the twelve millimetres between the two clusters come
+        // back as one line, so that is what is asserted.
+        var run = Assert.Single(
+            guarded, s => !s.IsArc && s.From.DistanceTo(s.To) > Nm.FromMillimetres(11));
+
+        output.WriteLine($"    guarded: the run is {run.From.DistanceTo(run.To) / 1e6:F3} mm of line");
     }
 
     /// <summary>
@@ -147,6 +157,22 @@ public sealed class ArcFittingTests(ITestOutputHelper output)
             Assert.InRange(arc.From.DistanceTo(arc.Centre), Nm.FromMillimetres(0.99), Nm.FromMillimetres(1.01));
             Assert.InRange(arc.Centre.DistanceTo(new Point2(0, 0)), 0, Nm.FromMillimetres(0.01));
         }
+
+        // And they are most of it. Everything above is satisfied by one small correct arc beside
+        // thirty straight lines — which is the over-correction this test exists to catch, wearing
+        // the costume of a pass. So the arcs have to account for the circle: the sum of what they
+        // sweep, against the 2π a full turn needs.
+        // `ArtSegment.SweptAngle` rather than anything worked out here from the chord: a chord says
+        // nothing about an arc past half a turn, and a full circle — which this input can legitimately
+        // come back as — has no chord at all.
+        var swept = arcs.Sum(a => a.SweptAngle());
+
+        output.WriteLine($"the arcs sweep {swept:F2} rad of {2 * Math.PI:F2}");
+
+        Assert.True(
+            swept > 5.5,
+            $"the arcs sweep only {swept:F2} rad of the {2 * Math.PI:F2} a circle needs, so most of "
+            + "it came back as line moves and the arcs found are a token.");
     }
 
     /// <summary>
@@ -157,8 +183,8 @@ public sealed class ArcFittingTests(ITestOutputHelper output)
     /// `Simplify` the value themselves and would pass happily while the product shipped the bug.
     /// </summary>
     [Theory]
-    [InlineData(LayerRole.TopCopper, 4_100)]
-    [InlineData(LayerRole.BottomCopper, 2_050)]
+    [InlineData(LayerRole.TopCopper, 4_030)]
+    [InlineData(LayerRole.BottomCopper, 2_035)]
     public void TheMegaHasNoArcSweepingAcrossStraightCopper(LayerRole role, int arcsExpected)
     {
         var layer = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.ArduinoMega))
@@ -194,14 +220,29 @@ public sealed class ArcFittingTests(ITestOutputHelper output)
             $"{role} carries {wild.Count} arc(s) of implausible radius:\n  " + string.Join("\n  ", wild));
 
         // And the fix must not have paid for that by giving up simplification. The floors are within
-        // about three percent of what this board actually fits — 4,245 on the top copper and 2,127
+        // about three percent of what this board actually fits — 4,159 on the top copper and 2,100
         // on the bottom — because the earlier drafts of this fix lost 11 % and 19 % of the arcs
         // while still passing anything slacker, and that is precisely the regression worth catching.
         // Close enough to bite, far enough not to flap on a Clipper version that tessellates a
         // little differently.
+        //
+        // Re-measured when 6.26 landed: dropping the loops that go around nothing took 86 arcs off
+        // the top copper and 27 off the bottom, because a loop nobody cuts fits no arcs. The old
+        // figures were 4,245 and 2,127, which left the top floor a bare 1.4 % clear — this pair is
+        // the same three percent of a number that is now true.
+        // Counted off the geometry rather than read from `result.Arcs`. The two should agree, and
+        // that is asserted — but the floor below is the load-bearing one, and a reported count that
+        // had drifted from what was emitted would carry it while the program shipped line moves.
+        var arcs = simplified.Passes.SelectMany(p => p.Path).Count(s => s.IsArc);
+
         Assert.True(
-            result.Arcs >= arcsExpected,
-            $"only {result.Arcs} arcs were fitted on the {role}, against {arcsExpected} expected: the "
+            arcs == result.Arcs,
+            $"{role}: the simplifier reports {result.Arcs} arcs and the geometry carries {arcs}. One "
+            + "of the two is lying, and every number quoted about this stage comes from the report.");
+
+        Assert.True(
+            arcs >= arcsExpected,
+            $"only {arcs} arcs were fitted on the {role}, against {arcsExpected} expected: the "
             + "check is now refusing honest curves too, and the program will have grown to match.");
     }
 }

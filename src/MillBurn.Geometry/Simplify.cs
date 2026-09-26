@@ -146,6 +146,12 @@ public static class Simplify
     {
         ArgumentNullException.ThrowIfNull(points);
 
+        // Zero would not turn the check off, it would turn *arc fitting* off: no real midpoint sits
+        // exactly on the circle, so every candidate would be refused and every path would come back
+        // as line moves — a program three times the size, with nothing said about why. Refused
+        // rather than accepted quietly, because the caller who passes it means the opposite.
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chordToleranceNm ?? 1, nameof(chordToleranceNm));
+
         var chordBound = chordToleranceNm ?? Math.Max(toleranceNm * 10, 1);
 
         var segments = new List<ArtSegment>();

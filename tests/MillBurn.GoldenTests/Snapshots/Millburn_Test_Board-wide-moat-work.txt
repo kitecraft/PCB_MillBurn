@@ -12,6 +12,6 @@ realising
   vertices      212,239
 
 planning
-  booleans      796
+  booleans      724
   point tests   320
-  vertices      478,595
+  vertices      463,013

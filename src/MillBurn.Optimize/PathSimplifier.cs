@@ -44,9 +44,37 @@ public sealed record SimplifyOptions
     /// the original; the middle of a chord may sit five times that away. At the default that is
     /// 10 µm, which is about eight percent of a 0.127 mm cut rather than the two percent the vertex
     /// bound buys — worth knowing before anyone tightens `ToleranceNm` expecting the whole error to
-    /// follow it down. Set as a multiple so that it does.
+    /// follow it down.
+    ///
+    /// **So it really is a multiple, not a constant that happens to equal one.** It was written as
+    /// the literal `0.002 mm × 5` and read as scaling, which is a trap rather than a bug: today only
+    /// the default is used, and the two numbers agree. A caller who loosens `ToleranceNm` to 0.05 mm
+    /// for a rough pass would get a 25 µm vertex bound against a 10 µm chord bound — the chord check
+    /// stricter than the vertex one, the documented order inverted, and honest arcs refused. One who
+    /// tightens it to 0.5 µm would leave the chord free to stray forty times further than the number
+    /// they set. Overriding it is still allowed, and then it is exactly what was asked for.
     /// </summary>
-    public long ChordToleranceNm { get; init; } = Nm.FromMillimetres(0.002) * 5;
+    public long ChordToleranceNm
+    {
+        // Floored, so that `None with { FitArcs = true }` — the one composition that reaches the
+        // fitter with no vertex tolerance to scale from — cannot hand it a bound of zero, which
+        // would refuse every candidate and quietly emit line moves instead. `Reduce` returns before
+        // that today, and this is so it does not have to be the only thing that does.
+        get => _chordToleranceNm ?? Math.Max(ToleranceNm * ChordMultiple, 1);
+
+        // Refused here rather than in `Simplify.FitArcs`, which would throw part-way through an
+        // export and name a parameter the caller never wrote.
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            _chordToleranceNm = value;
+        }
+    }
+
+    /// <summary>How much looser the chord bound is than the vertex bound. See above for the five.</summary>
+    public const int ChordMultiple = 5;
+
+    private readonly long? _chordToleranceNm;
 
     /// <summary>
     /// How many points an arc must span to be worth making.
