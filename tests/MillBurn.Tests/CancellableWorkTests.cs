@@ -105,6 +105,31 @@ public sealed class CancellableWorkTests(ITestOutputHelper output)
         Assert.False(runs.IsRunning);
     }
 
+    /// <summary>
+    /// A run stopped by something that is not a successor cannot publish either — and that is why
+    /// whatever stopped it has to clear up after it.
+    ///
+    /// **The contract `MainViewModel.StopPreview` leans on.** An edit that invalidates a preview
+    /// cancels it without starting another, so there is no replacement run to set the status and
+    /// clear the busy flag. `Finish` returning false is what stops the cancelled run doing either
+    /// on its way out; if it ever returned true here, the run would publish a picture of settings
+    /// the operator had already left, which is the fault this was written for. Asserted rather
+    /// than assumed, because `Cancel` nulls the current run while `Finish` compares against it, and
+    /// the two agreeing is not obvious from either side alone.
+    /// </summary>
+    [Fact]
+    public void ARunCancelledWithoutASuccessorCannotPublish()
+    {
+        using var runs = new LatestRun();
+
+        var token = runs.Begin();
+        runs.Cancel();
+
+        Assert.True(token.IsCancellationRequested);
+        Assert.False(runs.IsRunning);
+        Assert.False(runs.Finish(token));
+    }
+
     // ------------------------------------------------------------------ the work itself
 
     private static ExportPlan TestBoardPlan()

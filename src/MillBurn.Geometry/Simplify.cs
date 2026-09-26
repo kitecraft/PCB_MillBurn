@@ -112,6 +112,16 @@ public static class Simplify
     }
 
     /// <summary>
+    /// How much looser the chord bound is than the vertex tolerance when the caller does not say.
+    ///
+    /// Named rather than written in place because <c>SimplifyOptions</c> in the optimizer sets the
+    /// same bound a second way, and the two agreeing is not obvious: that stage splits its budget
+    /// and hands this method half of it, so its own multiple is half of this one. Two literals
+    /// standing in that relationship by coincidence is how they come apart later.
+    /// </summary>
+    public const int DefaultChordMultiple = 10;
+
+    /// <summary>
     /// Replaces runs of points that lie on a common circle with a single arc.
     ///
     /// Greedy and forward-only: start from each point, extend while everything still sits within
@@ -146,13 +156,16 @@ public static class Simplify
     {
         ArgumentNullException.ThrowIfNull(points);
 
-        // Zero would not turn the check off, it would turn *arc fitting* off: no real midpoint sits
-        // exactly on the circle, so every candidate would be refused and every path would come back
-        // as line moves — a program three times the size, with nothing said about why. Refused
-        // rather than accepted quietly, because the caller who passes it means the opposite.
+        // Zero would not turn either check off, it would turn *arc fitting* off: no real point or
+        // midpoint sits exactly on the circle, so every candidate would be refused and every path
+        // would come back as line moves — a program three times the size, with nothing said about
+        // why. Refused rather than accepted quietly, because the caller who passes it means the
+        // opposite. Both bounds, because leaving one of them checked and the other not is how the
+        // next reader concludes the unchecked one is safe.
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(toleranceNm);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chordToleranceNm ?? 1, nameof(chordToleranceNm));
 
-        var chordBound = chordToleranceNm ?? Math.Max(toleranceNm * 10, 1);
+        var chordBound = chordToleranceNm ?? Math.Max(toleranceNm * DefaultChordMultiple, 1);
 
         var segments = new List<ArtSegment>();
         if (points.Count < 2)

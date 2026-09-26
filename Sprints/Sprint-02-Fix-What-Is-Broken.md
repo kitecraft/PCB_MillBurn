@@ -348,6 +348,71 @@ return trip, and a test proves the abandoned run ended early rather than finishe
 
 **Requirements:** A5 · [06 §6.33](../Documentation/06-Roadmap-and-Risks.md)
 
+### Closed — 2026-09-26
+
+**Met.** A superseded run stops at its next check rather than at the end of the plan, a plan that
+completed is still kept, and the number in flight is stated and readable. Confirmed at the bench on
+the i.MX8M board this was found on: *"Verified."*
+
+**What was done.** `ExportPlanner.Plan` takes a token and reads it between layers, between programs
+and between toolpaths — the innermost of the three is where simplification and route optimisation
+spend the seconds, so it is the one that decides how long a cancelled run keeps going. The token has
+**no default** at `ExportRequest.Plan`, deliberately: a token with a default is a token somebody
+forgets, which is the shape of the chord-tolerance trap `/code-review` found in story 1, and the one
+call site that matters is in a view model no test can reach. The preview passes its run's token;
+`PlanExport`, which every synchronous caller funnels through, says `CancellationToken.None` out loud.
+
+**What was observed.**
+
+| | |
+|---|---|
+| Stopped 5 layers into 15 | 12,426 vertices, against 133,908 for the whole board |
+| Four overlapping previews | 1 ran to a plan |
+| Returning to the setting you left | still a memo hit |
+| A cancelled plan | no longer remembered |
+
+**The half the entry said to think about was a misreading of the bench, not a trade-off.** 6.33
+credited the abandoned run finishing with the *"remembered in 0.11 s"* that was seen. It should not
+have: the operator changed a setting, previewed, changed it **back**, and previewed again, so the
+plan remembered is the one for the setting returned *to* — cached before any of it started. The
+abandoned plan was for the setting left. Cancelling early therefore costs almost nothing, and both
+halves are asserted rather than argued.
+
+**A second fault, found at the bench while testing the first.** *"If I change a setting, click
+preview, then change the setting back, the preview completes instead of being interrupted on the
+setting change."* `OnOutputChanged` returned early when nothing was drawn — and while a preview is
+building nothing is drawn, because the edit that started it cleared the last one. Worse than waste:
+the finished preview drew itself, showing programs for the setting just left. Fixed by stopping the
+run above that guard, and in `ForgetProgram` too, which `Adopt` calls before swapping projects.
+
+**The test that would have caught it** does not exist and cannot: `MillBurn.Tests` does not
+reference `MillBurn.App`, so nothing reaches `OnOutputChanged` or `Adopt`.
+`CancellableWorkTests.ARunCancelledWithoutASuccessorCannotPublish` pins the contract underneath —
+after a cancel with no successor, `Finish` returns false, which is exactly why the caller has to
+clear the busy flag itself.
+
+**Two mistakes of mine, both caught by running rather than by thinking.**
+
+- Four of the six new tests read global counters — `Work`, and the memo's hits and misses — while
+  `MillBurn.Tests` runs its classes in parallel. They passed under `--filter` and failed the moment
+  the suite ran, which is the exact shape `Parallelism.cs` was written about. The counter-reading
+  ones moved to `MillBurn.GoldenTests`, which runs one test at a time, with the fixture shared by
+  linking as `RealBoards.cs` is.
+- A Python edit converted `ExportPlanner.cs` from CRLF to LF. Git normalises on commit so nothing
+  looked wrong, and what broke was the build: IDE0055 is an error here and reported it as three
+  formatting complaints inside a comment nobody had touched.
+
+**What is left open.**
+
+- **Nothing tests the view model**, and that is a gap this story could not close. Both faults live
+  in `MainViewModel`, the fix for the second one is four lines there, and the only check either got
+  is the bench.
+- **The ceiling is measured, not enforced.** `PlansInFlight` and `PeakPlansInFlight` are readable
+  and nothing acts on them. If a board ever appears where four abandoned runs still overlap long
+  enough to matter, the answer is a bound on concurrency, and that is a different piece of work.
+
+---
+
 ---
 
 ## Story 4 — The outline's even-pass penalty

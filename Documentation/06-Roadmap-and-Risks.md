@@ -4017,7 +4017,7 @@ letting it push the panel wide.
 resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
 projects whose folders share a name can be told apart at a glance.
 
-#### 6.33 A superseded preview stops being watched, not stopped — **defect · open** — *found in the workshop*
+#### 6.33 A superseded preview stops being watched, not stopped — **defect · fixed**
 
 Found at the bench while testing story 2 on the six-layer i.MX8M board, where a preview takes seven
 to eight seconds and sixteen at 1 mm isolation: *"click preview on a new change that I know it has
@@ -4044,6 +4044,58 @@ for no visible reason, some minutes after the operator stopped doing anything un
 end of the plan, the plan it had already completed is still kept if it completed, and the number of
 plans in flight at once has a stated ceiling. Threading a token through `ExportPlanner.Plan` is the
 obvious half; deciding what to do with a half-built plan is the part worth thinking about.
+
+**Fixed.** `ExportPlanner.Plan` takes a token and reads it in three places: between layers, between
+programs — one file per bit, so a drill layer is six or seven of them — and between toolpaths, the
+innermost loop and the one where simplification and route optimisation actually spend the seconds.
+A run stopped five layers into the fifteen-layer test board hands Clipper 12,426 vertices against
+133,908 for the whole thing, which is the measurement that tells a run which stopped apart from one
+which finished and then threw. Of four overlapping previews, one produces a plan.
+
+**The half that was worth thinking about turned out to be a misreading, and the entry above is where
+it came from.** *"Half of that is a feature"* credited the abandoned run finishing with the
+*"remembered in 0.11 s"* the bench saw. It should not. The sequence was: change a setting, preview,
+change it **back**, preview again — so the plan that was remembered is the one for the setting
+returned *to*, built and cached before any of it started. The abandoned plan was for the setting
+*left*, and it only ever pays if the operator goes back to that. So a cancelled plan is no longer
+kept, and the journey that felt fast still is: `CancelledPlanningWorkTests` asserts both halves.
+
+What must never be kept instead is a **truncated** plan. A plan abandoned five layers into fifteen
+is a plan with most of the board missing, and stored under the settings that made it, the next
+preview would be served it instantly and looking entirely normal — an export with no bottom copper
+and no outline. `PlannedExports.Get` calls the builder outside its lock and stores only what the
+builder returns, so a throw stores nothing; that is pinned rather than left to hold by accident.
+
+**The ceiling is a property, not a number.** Four clicks start four plans however this is written.
+What changed is what they then do: before, all four ran the board to the end, so five nudges on a
+sixteen-second board meant eighty seconds of pool time nobody would read and the memory to go with
+it. Nothing is enforced — a semaphore would serialise previews, which is what sprint 1 moved off the
+UI thread to avoid — so `ExportPlanner.PlansInFlight` and `PeakPlansInFlight` are there to be read,
+and what is asserted is that the superseded runs do not run to the end.
+
+**A second fault, found at the bench while testing the first, and the worse of the two.** From the
+workshop: *"When the app is not busy but has a drawn preview, making a change to an option (top
+copper isolation) removes the preview as it's no longer valid for the current settings. But, if I
+change a setting, click preview, then change the setting back, the preview completes instead of
+being interrupted on the setting change."*
+
+`OnOutputChanged` returned early when nothing was drawn — and **while a preview is building nothing
+is drawn**, because the edit that started it cleared the last one. So the case that most needed
+handling was the one that returned before doing anything, and the method never cancelled a running
+preview in any case. It is not only wasted work: `Finish` still said the run was current, so the
+finished preview **drew itself** — programs for the setting just left, under a window showing the
+setting just returned to. That entry's own words for this are *"the most convincing kind of wrong"*.
+
+The stop now happens above the guard. It also happens in `ForgetProgram`, which `Adopt` calls before
+swapping projects — the same bug where it is worse, a preview of the board being replaced finishing
+and drawing itself over the board that replaced it. And because an edit cancels without starting a
+successor, there is no replacement run to own the status and the busy flag, so the thing that
+cancelled clears them; missing that would leave the window spinning over nothing.
+
+**Confirmed at the bench, 2026-09-26**, on the i.MX8M board this was found on: *"Verified."* That is
+where it has to be confirmed — `MillBurn.Tests` does not reference `MillBurn.App`, so no test here
+reaches `OnOutputChanged` or `Adopt`, and what holds underneath them is
+`CancellableWorkTests.ARunCancelledWithoutASuccessorCannotPublish`.
 
 #### Not a defect: the circles in Universal Gcode Sender
 

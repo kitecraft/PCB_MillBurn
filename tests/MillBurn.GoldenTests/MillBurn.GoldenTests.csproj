@@ -26,6 +26,13 @@
   -->
   <ItemGroup>
     <Compile Include="..\MillBurn.Tests\RealBoards.cs" Link="RealBoards.cs" />
+
+    <!--
+      Story 3's cancellation fixture, shared the same way and for the same reason. Its tests are
+      split across the two assemblies on purpose: the ones that read the global work and memo
+      counters have to run where classes do not run in parallel, and the rest do not.
+    -->
+    <Compile Include="..\MillBurn.Tests\PlanningCancellationFixture.cs" Link="PlanningCancellationFixture.cs" />
   </ItemGroup>
 
   <ItemGroup>

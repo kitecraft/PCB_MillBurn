@@ -509,21 +509,36 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        ForgetProgram();
+        // A preview still building had to go with it — it would have drawn itself back over what
+        // this just cleared — so say so. Losing one silently is the same complaint as a preview
+        // that completes when it should not have: the operator is owed an account of what the
+        // window did, not just of what they asked for.
+        var stopped = ForgetProgram();
+
         Rebuild(TimeSpan.Zero);
         OnPropertyChanged(nameof(HasProgram));
         OnPropertyChanged(nameof(ShowingNothing));
-        StatusMessage = "Closed the program.";
+        StatusMessage = stopped
+            ? "Closed the program, and stopped the preview that was building. Preview again when you want it."
+            : "Closed the program.";
     }
 
-    private void ForgetProgram()
+    /// <returns>True if a preview was still building and has been stopped.</returns>
+    private bool ForgetProgram()
     {
+        // Opening another project is the same situation as editing this one, and worse: a preview
+        // of the board being replaced would finish and draw itself over the board that replaced it.
+        // `Adopt` calls this before it swaps the project, which is why the stop belongs here.
+        var stopped = StopPreview();
+
         _backplot = [];
         _programBounds = null;
         _programPath = null;
         Gcode = null;
         GcodeSummary = string.Empty;
         Warnings.Clear();
+
+        return stopped;
     }
 
     // ------------------------------------------------------------------ height mapping
@@ -1035,7 +1050,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public ExportPlan? PlanExport(
         OutputKind? filter = null, string? onlyLayer = null, DrillAlignment? alignment = null) =>
-        ExportRequestFor(filter, onlyLayer, alignment)?.Plan();
+        ExportRequestFor(filter, onlyLayer, alignment)?.Plan(CancellationToken.None);
 
     /// <summary>
     /// Everything the planner will need, read off the view model in one go.
@@ -1081,11 +1096,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         DrillAlignment? Alignment,
         string? OnlyLayer)
     {
-        public ExportPlan Plan()
+        /// <summary>
+        /// Plans this request, stopping if <paramref name="token"/> is cancelled.
+        ///
+        /// **The token has no default, and that is the whole point.** Sprint 1 sold a cancellable
+        /// preview and delivered half of one: the token was read between programs in `PreviewBuild`,
+        /// which is only reached once planning has finished, so a superseded run planned to the end
+        /// on its pool thread. The planner takes a token now, but a token with a default is a token
+        /// somebody forgets — the same shape as the chord tolerance in 6.25, where a call site that
+        /// quietly stopped passing one would have shipped the bug with a green suite. Requiring it
+        /// makes both callers say out loud whether their work can be abandoned: the preview passes
+        /// its run's token, and <see cref="PlanExport"/> — which every synchronous caller goes
+        /// through, on the UI thread, where there is nobody to abandon it for — says none.
+        /// </summary>
+        public ExportPlan Plan(CancellationToken token)
         {
             var plan = ExportPlanner.Plan(
                 Board, Outputs, Library, ThicknessNm, Filter,
-                framing: Framing, machineSettings: Machine, job: Job, alignment: Alignment);
+                framing: Framing, machineSettings: Machine, job: Job, alignment: Alignment,
+                token: token);
 
             if (OnlyLayer is null)
             {
@@ -1311,12 +1340,20 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             result = await Task.Run(
-                () => PreviewBuild.From(request.Plan(), bounds, profile, token), token);
+                () => PreviewBuild.From(request.Plan(token), bounds, profile, token), token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Superseded. The run that replaced this one owns the status and the busy flag now, so
-            // this one says nothing and clears nothing on its way out.
+            // Superseded by another preview, or stopped by an edit that made it pointless. Either
+            // way whatever ended it owns the status and the busy flag — the next run sets both, and
+            // <see cref="StopPreview"/> clears them when there is no next run — so this one says
+            // nothing and clears nothing on its way out.
+            //
+            // **Filtered on this run's own token**, because planning can now throw one of these
+            // too and not every one of them means "the operator moved on". An inner token, or a
+            // future stage that uses one of its own, would otherwise take this branch: nothing
+            // cleared, nothing said, and the window busy over a run that is not coming back. The
+            // guard sends anything else to the failure path below, where it reaches somebody.
             return false;
         }
         catch (Exception ex)
@@ -2167,7 +2204,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // reach it.
         DescribeBlank(_project.Settings.Job.Blank);
 
-        if (_backplot.Count == 0)
+        // A preview still building is building a picture of the settings that have just changed,
+        // and this has to happen *above* the guard below rather than after it. While one is
+        // building there is nothing drawn — the edit that started it cleared the last picture — so
+        // `_backplot.Count == 0` was true in exactly the case that needed the most doing, and the
+        // method returned before it could stop anything. From the bench: *"if I change a setting,
+        // click preview, then change the setting back, the preview completes instead of being
+        // interrupted on the setting change."*
+        var stopped = StopPreview();
+
+        if (_backplot.Count == 0 && !stopped)
         {
             return;
         }
@@ -2177,6 +2223,28 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         GcodeSummary = string.Empty;
         Rebuild(TimeSpan.Zero);
         StatusMessage = "Output changed. Preview again to see the new programs.";
+    }
+
+    /// <summary>
+    /// Stops a preview that is still building, and takes on what it would have cleared.
+    ///
+    /// **A cancelled run says nothing on its way out**, by design: `Finish` tells it that something
+    /// replaced it, so it publishes no result and clears no flag, because the run that replaced it
+    /// owns both. When the thing that cancelled it is an *edit* rather than another preview there
+    /// is no replacement, so the busy flag is this method's to clear — miss it and the window sits
+    /// spinning over nothing until the next preview finishes.
+    /// </summary>
+    /// <returns>True if there was a run to stop.</returns>
+    private bool StopPreview()
+    {
+        if (!_previewRun.IsRunning)
+        {
+            return false;
+        }
+
+        _previewRun.Cancel();
+        IsBusy = false;
+        return true;
     }
 
     /// <summary>

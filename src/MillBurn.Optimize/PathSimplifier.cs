@@ -71,8 +71,22 @@ public sealed record SimplifyOptions
         }
     }
 
-    /// <summary>How much looser the chord bound is than the vertex bound. See above for the five.</summary>
-    public const int ChordMultiple = 5;
+    /// <summary>
+    /// How much looser the chord bound is than the vertex bound. See above for the five.
+    ///
+    /// **Derived from `Simplify`'s own default rather than written beside it.** The two have to
+    /// agree, and today they do — but only because `Reduce` splits the budget and hands the fitter
+    /// half of this tolerance, so ten times a half is five times the whole. Written as two
+    /// literals they would be equal by coincidence, and the first change to that split would part
+    /// them by a factor of two, in the loosening direction, with every test still green.
+    /// </summary>
+    public const int ChordMultiple = Simplify.DefaultChordMultiple / BudgetShare;
+
+    /// <summary>
+    /// How the tolerance is split between thinning and fitting. `Reduce` gives each half, because
+    /// the two stages compose — see the comment there, which is where the number is spent.
+    /// </summary>
+    public const int BudgetShare = 2;
 
     private readonly long? _chordToleranceNm;
 
@@ -191,7 +205,7 @@ public static class PathSimplifier
         // point that was itself within tolerance of the original sits at up to the sum of the two
         // from where the board actually needs the cutter. Splitting makes ToleranceNm the bound
         // that holds end to end rather than one that is quietly doubled.
-        var half = Math.Max(options.ToleranceNm / 2, 1);
+        var half = Math.Max(options.ToleranceNm / SimplifyOptions.BudgetShare, 1);
         var simplified = Simplify.DouglasPeucker(points, half);
 
         // A closed contour must still close. Douglas–Peucker keeps the first and last points, and

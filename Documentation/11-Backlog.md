@@ -4,13 +4,12 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (6)
+## Defects (5)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
 | # | what | note |
 |---|---|---|
-| [6.33](06-Roadmap-and-Risks.md#633-a-superseded-preview-stops-being-watched-not-stopped--defect--open--found-in-the-workshop) | A superseded preview stops being watched, not stopped | found in the workshop |
 | [6.34](06-Roadmap-and-Risks.md#634-an-even-number-of-outline-passes-costs-twice-the-travel-of-an-odd-one--defect--open--measured) | An even number of outline passes costs twice the travel of an odd one | measured |
 | [6.39](06-Roadmap-and-Risks.md#639-offsets-are-not-counted--defect--open--for-the-next-sprint) | Offsets are not counted | for the next sprint |
 | [6.40](06-Roadmap-and-Risks.md#640-what-the-work-counters-do-not-watch--defect--open--for-the-next-sprint) | What the work counters do not watch | for the next sprint |
@@ -66,4 +65,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**25 open**, of 48 entries in the roadmap.
+**24 open**, of 48 entries in the roadmap.
