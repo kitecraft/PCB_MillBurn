@@ -165,7 +165,14 @@ public static class Simplify
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(toleranceNm);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chordToleranceNm ?? 1, nameof(chordToleranceNm));
 
-        var chordBound = chordToleranceNm ?? Math.Max(toleranceNm * DefaultChordMultiple, 1);
+        // Saturating, not wrapping. The multiply overflows above a tenth of long.MaxValue, the
+        // product comes back negative, Math.Max hands out 1 nm, and arc fitting switches silently
+        // *off* — the opposite of what a caller asking for an enormous tolerance meant. The doc
+        // above tells them to pass long.MaxValue to turn the check off, so they are one parameter
+        // away from the same shape. Fail loose, which is what they asked for.
+        var chordBound = chordToleranceNm ?? (toleranceNm > long.MaxValue / DefaultChordMultiple
+            ? long.MaxValue
+            : Math.Max(toleranceNm * DefaultChordMultiple, 1));
 
         var segments = new List<ArtSegment>();
         if (points.Count < 2)

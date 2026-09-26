@@ -5,7 +5,7 @@ PogoTest1-B_Cu.nc
   operation Isolation routing
   layer     Bottom copper
   lines     1527
-  sha256    706584d63ddacfb9
+  sha256    4a0edcbf2cb6a148
   summary   0.450 mm isolated · 4 passes of 0.127 mm at 0.050 mm deep
   summary   8 nets · all separated
   summary   Mirrored · flip the stock left-to-right
@@ -20,7 +20,7 @@ PogoTest1-B_Cu.nc
   comment   ( BOTTOM SIDE. Flip the stock left-to-right about its vertical centreline, then re-register. Coordinates below are already mirrored for that flip. )
   comment   ( Bottom copper )
   comment   ( 30° V-bit, 0.1 mm tip at 0.050 mm deep cuts 0.127 mm wide. )
-  comment   ( 3 loop[s] too small to be a cut were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove. )
+  comment   ( 3 loops too small to be a cut were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove. )
   comment   ( 0.400 mm of isolation asked for; 4 passes clears 0.450 mm. )
   comment   ( 0.01 mm of depth error changes that by 0.0054 mm. )
   control   M3 S10000 · M5 · M30

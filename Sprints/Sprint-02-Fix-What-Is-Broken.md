@@ -438,6 +438,70 @@ work snapshots record the new figure.
 
 **Requirements:** O10 · [06 §6.34](../Documentation/06-Roadmap-and-Risks.md)
 
+### Closed — 2026-09-26 · accepted, not fixed
+
+**The story's own first question answered itself.** *"Whether that is worth the complication is the
+first thing to decide"* — and once the ratio was turned into time, it decided. The 395 mm of extra
+rapid at the product owner's 0.500 mm step-down is **about twelve seconds** at the profile's
+2,000 mm/min, on a job the program estimates at 40m 49s – 42m 39s. Under half a per cent.
+[6.34](../Documentation/06-Roadmap-and-Risks.md) is now `defect · accepted`, carrying the number so
+the 2× figure cannot re-open it on its own.
+
+**Everything in the entry reproduced**: 337, 721, 326, 326 and 710 mm across the five step-downs,
+on `GridStripConnector_Panelized`. Nothing was wrong with the observation; what was missing was the
+denominator.
+
+**What the measuring added.** It is not extra lifting — both cases emit 59 rapids and 59 plunges,
+the same hops with the even ones longer. It is not the local search — `Thorough` matches `Balanced`
+exactly, the even case's *constructed* route is 732 mm before any improvement, and the odd case's
+construction lands near 326 and improves by under half a per cent, which is why its program has no
+`Ordering:` line at all. So the entry's reading was right: a fix would have to change what
+construction is handed, not how it searches. And the obvious levers are bad trades — forcing an odd
+count by shrinking the step-down adds about a quarter to the cutting to save hundreds of
+millimetres of rapid; letting an even stack traverse pays one run-length inside the stack to save
+one outside.
+
+**A wrong turn, recorded rather than tidied away.** Partway through I reported that the optimizer's
+objective disagreed with the emitted program — 1,050 mm planned against 337 mm emitted — and said
+that had to be understood before any fix. It was my own measurement: I routed the whole outline in
+one call from a start point of my choosing, which is not what `ExportPlanner` does. The planner's
+own figures track the file to within three per cent — 701 mm predicted, 721 mm emitted. The product
+owner spent a turn on that before it was corrected.
+
+**What is left open.** Nothing in this story, and nothing 6.34 asked for — no line was changed on
+its account. The entry names what would re-open it: a board where travel is a large share of the
+job, or a machine slow enough in rapid that 395 mm is minutes.
+
+**The branch is not empty, though**, because the `/code-review` run this story ended with read the
+whole sprint and found six things in stories 1 to 3. They are fixed here rather than left for a
+sprint nobody has planned:
+
+- **Two more paths where a preview outlives what it describes**, which is 6.33 in siblings that
+  were not looked at. `ResetLayerSettings` would have published a preview over the settings it had
+  just reset; `ApplyRefresh` swaps the board's source bytes, so the preview finishing after it
+  describes copper that no longer exists — and that one was not clearing the backplot either.
+- **A comment that claimed a guarantee no test holds**: `PlansInFlight` said `CancellableWorkTests`
+  pinned it. Nothing does, and the one test that reads the peak says in its own doc that it does
+  not assert it. Now marked diagnostic, which is what it is.
+- **Two overflows that fail the wrong way.** `toleranceNm * 10` wraps negative above a tenth of
+  `long.MaxValue`, `Math.Max` hands back 1 nm, and arc fitting switches silently *off* — the
+  opposite of what a caller asking for an enormous tolerance meant, and the doc invites them to
+  pass `long.MaxValue`. Both sites now saturate.
+- **An integer division that rounds in silence**: `ChordMultiple = DefaultChordMultiple /
+  BudgetShare` is only the derivation it claims while the numerator is even. A constant expression
+  that divides by zero when it is not makes that a compile error at the edit rather than a surprise
+  later.
+- **`loop(s)` reached the operator as `loop[s]`**, because parentheses delimit a G-code comment and
+  the writer rewrites them. It says `1 loop` or `3 loops` now, like every other count in that file.
+
+**O10 needed nothing from this story** — *"local search never makes travel worse than the
+baseline"* was met in sprint 1 story 3, and it is listed here because it is the requirement this
+ground belongs to. The measurements confirm it rather than test it: the even case improves by 4 %
+and the odd case by under half a per cent, neither gets worse, and `Thorough` never differs from
+`Balanced`.
+
+---
+
 ---
 
 ## Story 5 — The counters count everything

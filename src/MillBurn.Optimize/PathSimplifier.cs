@@ -60,7 +60,9 @@ public sealed record SimplifyOptions
         // fitter with no vertex tolerance to scale from — cannot hand it a bound of zero, which
         // would refuse every candidate and quietly emit line moves instead. `Reduce` returns before
         // that today, and this is so it does not have to be the only thing that does.
-        get => _chordToleranceNm ?? Math.Max(ToleranceNm * ChordMultiple, 1);
+        get => _chordToleranceNm ?? (ToleranceNm > long.MaxValue / ChordMultiple
+            ? long.MaxValue
+            : Math.Max(ToleranceNm * ChordMultiple, 1));
 
         // Refused here rather than in `Simplify.FitArcs`, which would throw part-way through an
         // export and name a parameter the caller never wrote.
@@ -81,6 +83,18 @@ public sealed record SimplifyOptions
     /// them by a factor of two, in the loosening direction, with every test still green.
     /// </summary>
     public const int ChordMultiple = Simplify.DefaultChordMultiple / BudgetShare;
+
+    /// <summary>
+    /// The division above has to come out whole, or the derivation quietly lies.
+    ///
+    /// Integer division rounds: make `DefaultChordMultiple` 15 and this becomes 7 rather than 7.5,
+    /// a chord bound seven per cent tighter than the geometry layer's own — in the direction that
+    /// refuses honest arcs, and with nothing able to notice. Checked here rather than in a test
+    /// because it is a fact about two constants: dividing by zero in a constant expression is a
+    /// compile error, so it fails at the edit that breaks it rather than at the next full run.
+    /// </summary>
+    private const int WholeOrTheDerivationIsWrong =
+        1 / (Simplify.DefaultChordMultiple % BudgetShare == 0 ? 1 : 0);
 
     /// <summary>
     /// How the tolerance is split between thinning and fitting. `Reduce` gives each half, because

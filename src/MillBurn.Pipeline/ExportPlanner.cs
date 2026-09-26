@@ -392,9 +392,14 @@ public static class ExportPlanner
     /// no reason, some minutes after they stopped doing anything unusual — which nobody would think
     /// to report as a cancellation bug.
     ///
-    /// So the ceiling is measured rather than asserted in prose. A superseded run now stops at its
-    /// next check, so the number in flight is one plan plus however many are between a check and
-    /// their way out; <c>CancellableWorkTests</c> pins that, and this is the counter it reads.
+    /// **Diagnostic only, and no test asserts either of them.** An earlier draft of this comment
+    /// said `CancellableWorkTests` pinned the ceiling. It does not, and neither does anything else:
+    /// `CancellablePlanningTests.SupersededRunsDoNotRunToTheEnd` prints the peak and says in its
+    /// own doc that it is not asserted, because it counts how quickly this machine started four
+    /// tasks rather than anything about the fix. What is asserted there is the property — the run
+    /// nobody superseded produces a plan and at least one that was superseded does not. These two
+    /// are here to be read by somebody looking at a slow window, and a comment claiming a
+    /// guarantee no test holds is worse than no comment.
     /// Nothing enforces it — a semaphore would serialise previews, which is the thing sprint 1
     /// moved off the UI thread to avoid.
     ///

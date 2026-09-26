@@ -1498,10 +1498,19 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // The worst of the three: this swaps the source bytes, so a preview still building is
+        // describing copper that no longer exists. Left running it publishes the old board's
+        // programs against the new geometry and takes the status line with them — and unlike a
+        // settings change, nothing here was clearing the backplot either.
+        var stopped = ForgetProgram();
+
         ProjectRefresh.Apply(_project, plan, taking);
         Rebuild(TimeSpan.Zero);
         CancelRefresh();
-        StatusMessage = $"Refreshed {taking.Count} file(s). Save to keep this.";
+
+        StatusMessage = stopped
+            ? $"Refreshed {taking.Count} file(s), and stopped the preview of the old ones. Save to keep this."
+            : $"Refreshed {taking.Count} file(s). Save to keep this.";
     }
 
     /// <summary>
@@ -2134,14 +2143,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _project.Touch();
 
         // The programs were made from the settings that just changed, so they are no longer a
-        // picture of anything. Cleared rather than left to look current.
+        // picture of anything. Cleared rather than left to look current — and a preview still
+        // building is making another one, which would publish itself over this the moment it
+        // finished and overwrite the message below with its own. This path clears the backplot by
+        // hand instead of going through <see cref="OnOutputChanged"/>, which is how it came to be
+        // missing the stop that one grew. See 6.33.
+        var stopped = StopPreview();
+
         _backplot = [];
         Gcode = null;
         GcodeSummary = string.Empty;
 
         Rebuild(TimeSpan.Zero);
 
-        StatusMessage = "Every layer is back to what a freshly imported board starts with.";
+        StatusMessage = stopped
+            ? "Every layer is back to what a freshly imported board starts with, and the preview that was building has stopped."
+            : "Every layer is back to what a freshly imported board starts with.";
     }
 
     private void RefreshFacts(Board board)

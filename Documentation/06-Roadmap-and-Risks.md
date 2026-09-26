@@ -4092,6 +4092,18 @@ and drawing itself over the board that replaced it. And because an edit cancels 
 successor, there is no replacement run to own the status and the busy flag, so the thing that
 cancelled clears them; missing that would leave the window spinning over nothing.
 
+**And two more paths, found by review after the bench had signed it off.** `OnOutputChanged` and
+`ForgetProgram` were the two that had been looked at; `ResetLayerSettings` and `ApplyRefresh` clear
+the picture their own way and had been missed. Resetting every layer to its defaults while a
+preview builds would have published that preview over the settings it just reset, and taken the
+*"Every layer is back to…"* message with it. Accepting a source refresh is the worse of the two —
+it swaps the board's bytes, so the preview finishing afterwards describes copper that no longer
+exists, and nothing there was clearing the backplot at all. Both now stop the run and say they did.
+
+That three of the four needed the same line is the argument for a single place to express "this
+picture is no longer of anything", and there is not one: each path clears the backplot by hand.
+Worth an entry of its own if a fifth appears.
+
 **Confirmed at the bench, 2026-09-26**, on the i.MX8M board this was found on: *"Verified."* That is
 where it has to be confirmed — `MillBurn.Tests` does not reference `MillBurn.App`, so no test here
 reaches `OnOutputChanged` or `Adopt`, and what holds underneath them is
@@ -4112,7 +4124,7 @@ polygon there and a curve here. grbl interpolates the arc itself on the machine,
 Recorded so that it is not investigated twice. If a future change ever emits those circles as
 polylines instead, this entry is the evidence that they did not used to be.
 
-#### 6.34 An even number of outline passes costs twice the travel of an odd one — **defect · open** — *measured*
+#### 6.34 An even number of outline passes costs twice the travel of an odd one — **defect · accepted** — *measured, and worth twelve seconds*
 
 Found while measuring sprint 1 story 3, on `GridStripConnector_Panelized`, and it is a property of
 the geometry rather than of the ordering: the optimizer is already doing the best that can be done
@@ -4144,6 +4156,43 @@ the first thing to decide, and the product owner cuts at 0.500 mm, which is the 
 
 **Done when** the outline's travel on the panel is within sight of the odd-parity figure at an even
 pass count, the cut itself is unchanged, and a test pins the relationship rather than the number.
+
+**Accepted, 2026-09-26, after measuring what it is worth.** Everything above reproduces exactly —
+337, 721, 326, 326 and 710 mm for the five step-downs, on the same board. What the entry never did
+was convert the ratio into time, and that is the whole decision:
+
+| | |
+|---|---|
+| Extra rapid at the product owner's 0.500 mm | 395 mm |
+| At the profile's 2,000 mm/min rapid rate | **≈ 12 seconds** |
+| The job that rapid belongs to | 40m 49s – 42m 39s |
+
+**"More than twice the travel" is true and it is the wrong unit.** Travel is a small fraction of a
+job that spends forty minutes cutting, so doubling it costs under half a per cent of the run. The
+entry read as a large saving because it compared a number against itself rather than against the
+job — the same mistake `OptimizerBenchmarkTests` warns about in the other direction when it refuses
+to pin milliseconds. Kept here rather than deleted so that the 2× figure cannot re-open it on its
+own.
+
+**What the measuring established about the cause**, since it is now the record:
+
+- **It is not extra lifting.** Both cases emit 59 rapids and 59 plunges — the same hops, each one
+  longer. The even case has 38 hops over 5 mm totalling 643 mm against 11 totalling 211 mm.
+- **It is not the local search.** `Thorough` and `Balanced` produce identical routes. The even
+  case's *constructed* route is already 732 mm before any improvement and finishes at 701; the odd
+  case's construction lands near 326 and improves by under half a per cent, which is why no
+  `Ordering:` line appears in its program at all. So the entry's reading is right — the optimizer
+  is doing what can be done with what it is given, and a fix would have to change what construction
+  is handed rather than how it searches.
+- **The obvious levers are bad trades.** Forcing an odd pass count by shrinking the step-down adds
+  about a quarter to the cutting — thousands of millimetres at feed — to save hundreds at rapid.
+  Letting an even stack traverse costs one run-length inside the stack to save one outside it,
+  which is a wash.
+
+**What would re-open it.** A board where travel is a large share of the job rather than a small one
+— many short features and little cutting, which is the opposite of a panel — or a machine whose
+rapid rate is low enough that 395 mm is minutes rather than seconds. Both are measurable before any
+work starts, and the measurement above is the one to repeat.
 
 #### 6.35 A knife blade as a tool, for vinyl masking — **enhancement · open** — *asked for by the product owner*
 

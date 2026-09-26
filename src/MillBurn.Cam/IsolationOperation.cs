@@ -187,8 +187,13 @@ public static class IsolationOperation
             // reason the achieved width and the pass cap are reported rather than assumed. Somebody
             // comparing a plan against the picture should be able to see that loops were refused,
             // and go and look at what <see cref="Sliver"/> says about which.
+            // "loop(s)" reaches the operator as "loop[s]": parentheses delimit a G-code comment,
+            // so the writer rewrites them. Every other count in this file says "1 pass" or
+            // "4 passes", and this is the one line of the new guard they actually read.
+            var loops = dropped == 1 ? "1 loop" : Invariant($"{dropped} loops");
+
             notes.Add(Invariant(
-                $"{dropped} loop(s) too small to be a cut were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove."));
+                $"{loops} too small to be a cut were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove."));
         }
 
         if (options.WidthNm > 0)

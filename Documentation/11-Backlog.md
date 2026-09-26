@@ -4,13 +4,12 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (5)
+## Defects (4)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
 | # | what | note |
 |---|---|---|
-| [6.34](06-Roadmap-and-Risks.md#634-an-even-number-of-outline-passes-costs-twice-the-travel-of-an-odd-one--defect--open--measured) | An even number of outline passes costs twice the travel of an odd one | measured |
 | [6.39](06-Roadmap-and-Risks.md#639-offsets-are-not-counted--defect--open--for-the-next-sprint) | Offsets are not counted | for the next sprint |
 | [6.40](06-Roadmap-and-Risks.md#640-what-the-work-counters-do-not-watch--defect--open--for-the-next-sprint) | What the work counters do not watch | for the next sprint |
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
@@ -56,6 +55,7 @@ Here so that nothing looks forgotten. Each says why in 06.
 | # | what | state |
 |---|---|---|
 | [6.16](06-Roadmap-and-Risks.md#616-a-re-measured-stock-keeps-the-holes-it-was-cut-with--enhancement--parked) | A re-measured stock keeps the holes it was cut with | `enhancement · parked` |
+| [6.34](06-Roadmap-and-Risks.md#634-an-even-number-of-outline-passes-costs-twice-the-travel-of-an-odd-one--defect--accepted--measured-and-worth-twelve-seconds) | An even number of outline passes costs twice the travel of an odd one | `defect · accepted` |
 | [6.36](06-Roadmap-and-Risks.md#636-a-check-should-say-what-it-is-about--enhancement--folded-into-644) | A check should say what it is about | `enhancement · folded into 6.44` |
 | [6.37](06-Roadmap-and-Risks.md#637-the-check-list-should-fold-away--enhancement--folded-into-644) | The check list should fold away | `enhancement · folded into 6.44` |
 | [6.38](06-Roadmap-and-Risks.md#638-a-tab-hop-assumes-the-board-does-not-fall-half-a-millimetre--defect--accepted--known-limitation) | A tab hop assumes the board does not fall half a millimetre | `defect · accepted` |
@@ -65,4 +65,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**24 open**, of 48 entries in the roadmap.
+**23 open**, of 48 entries in the roadmap.
