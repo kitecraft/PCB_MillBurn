@@ -3205,7 +3205,7 @@ takes the same options, as every export does.
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
 
-#### 6.19 A dry run that is the real run, raised — **enhancement · open**
+#### 6.19 A dry run that is the real run, raised — **enhancement · built**
 
 Requested from the workshop: *"The dry-run could be much better representative of a real run. The
 lack of z-moves lowers the usefulness of the current dry-run too much. What if the dry-run was just a
@@ -3243,6 +3243,59 @@ height. The export's dry-run tick is unchanged.
 
 **Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
 with every plunge in the air, and its run time lands where the real program's does.
+
+**Built, and confirmed at the bench 2026-09-27**: the Z motion is there, the time lands where the
+real program's does, and nothing touched the board.
+
+**What it is, asserted move by move.** The raised run has the same number of moves as the real
+program, the same X and Y, the same kinds, and every Z exactly the rise higher —
+`ItIsTheRealProgramWithEveryZThreeMillimetresHigher` checks that against four programs across three
+boards rather than checking that the lowest point is clear, which is a much weaker claim. The Z
+travel is the real program's to three decimal places; the flat run's is **zero**. On the test board
+the deepest program comes out 1.10 mm above the stock, which is 6.19's own arithmetic for a 1.6 mm
+board cut 0.3 mm through, now measured instead of reasoned.
+
+**Two decisions that differ from what this entry specified**, both taken to keep that claim true:
+
+- **No opening lift.** The flat run adds `G0 Z<height>` at the top, on the argument that a dry run
+  should not trust the file to lift first. A raised run cannot: an extra move makes it no longer
+  the real program with a constant added, and the move-by-move check — the strongest thing here —
+  stops being possible. What keeps it safe instead is the clearance check on the way out, which
+  reads the finished program back and refuses it.
+- **A machine-coordinate Z is refused, not passed through.** This entry says `G53` moves are "left
+  exactly as written". Leaving them is right for a move in the plane and wrong for one carrying a
+  Z: the safety check reads the rewritten file back and has no way to know that one Z in it is in
+  another coordinate system, so the promise would have a hole in it. Refused with the line number.
+  `G53` without a Z still passes through untouched.
+
+**The choice is in three places.** *Settings › Dry run* offers a raised copy or held flat, each
+with its own number; the CLI takes `--dry-run-rise` or `--dry-run-height`, each implying its style,
+and refuses both together because they are different promises. The settings confirmation used to
+read *"dry run held at 5.00 mm"* unconditionally and would now be wrong half the time — it says
+which kind it is.
+
+**The existing tests now ask for the flat run by name.** They were written when flat was the only
+thing a dry run did, and V31 changed the default; leaning on it would have turned them into tests
+of something else, and most of them would still have passed.
+
+**Three things the review changed after it was first built**, all of them in the promise rather
+than the plumbing:
+
+- **Moves before the first commanded Z are not measured.** The parser's Z starts at zero because it
+  has to start somewhere, and counting that zero as a commanded position made `LowestZMm` read
+  0.00 mm for any program that travelled before it lifted — so `--start-gcode "G0 X0 Y0"`, which
+  framing warns about but permits, was refused whatever the rise, with advice to raise it further
+  that could never help. `DryRunReport.LowestZMm` already said it reports commanded positions only;
+  it now does. The flat run was never affected: its header commands a Z on the first line.
+- **The refusal list grew two families it had missed.** `G92.1/.2/.3` restore a saved work offset —
+  exactly what the `G92` refusal is for — and were invisible to a matcher that read the decimal
+  into the digit run and then failed to parse `92.3` as an integer. `G43`, `G43.1` and `G49` move
+  the Z datum the rise is measured from, and had never been considered; `G43.1` is what a tool
+  setter writes into start G-code, which reaches every program.
+- **The header no longer promises the real time when the feeds are not real.** With
+  *keep feeds* off, every F is replaced by the rapid rate — so the sentence *"the time this takes
+  is the time the real program takes"* was false, in the one place the operator reads at the
+  machine. It is now conditional, and says so when the time means nothing.
 
 #### 6.20 Which way up is this stock? — **enhancement · open**
 

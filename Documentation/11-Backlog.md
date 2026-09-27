@@ -13,7 +13,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 
-## Enhancements (18)
+## Enhancements (17)
 
 Something new or better, which is not the same as something broken.
 
@@ -27,7 +27,6 @@ Something new or better, which is not the same as something broken.
 | [6.7](06-Roadmap-and-Risks.md#67-teaching-the-conventions-coachmarks-and-a-first-run-walkthrough--enhancement--open--needs-research) | Teaching the conventions: coachmarks and a first-run walkthrough | needs research |
 | [6.15](06-Roadmap-and-Risks.md#615-the-companion-page-names-the-commands-that-would-rebuild-it--enhancement--open) | The companion page names the commands that would rebuild it | — |
 | [6.18](06-Roadmap-and-Risks.md#618-a-paste-stencil-to-3d-print--enhancement--open) | A paste stencil to 3D-print | — |
-| [6.19](06-Roadmap-and-Risks.md#619-a-dry-run-that-is-the-real-run-raised--enhancement--open) | A dry run that is the real run, raised | — |
 | [6.20](06-Roadmap-and-Risks.md#620-which-way-up-is-this-stock--enhancement--open) | Which way up is this stock? | — |
 | [6.21](06-Roadmap-and-Risks.md#621-every-hole-approached-from-the-same-side--enhancement--open--possibly-a-global-setting-rather-than-always-on) | Every hole approached from the same side | possibly a global setting rather than always on |
 | [6.31](06-Roadmap-and-Risks.md#631-let-the-operator-say-what-a-layer-is--enhancement--open--asked-for-by-the-product-owner) | Let the operator say what a layer is | asked for by the product owner |
@@ -65,4 +64,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**23 open**, of 51 entries in the roadmap.
+**22 open**, of 51 entries in the roadmap.

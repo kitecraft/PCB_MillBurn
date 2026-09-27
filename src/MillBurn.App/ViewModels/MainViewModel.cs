@@ -233,7 +233,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         var confirmation = string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
-            $"Settings saved. Safe height {machine.SafeZMm:F2} mm, dry run held at {dryRun.HeightMm:F2} mm.");
+            $"Settings saved. Safe height {machine.SafeZMm:F2} mm, {DescribeDryRun(dryRun)}.");
 
         // The preview ends by writing its own status, and it now lands after this method has
         // returned — so the confirmation is said once the preview is done rather than into a line
@@ -247,6 +247,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         StatusMessage = confirmation;
     }
+
+    /// <summary>
+    /// What the dry run will be, in the words the operator chose it with.
+    ///
+    /// The confirmation repeats back the numbers that changed, so it has to say which kind of dry
+    /// run they now have: "held at 5.00 mm" and "raised 3.00 mm" are different promises, and the
+    /// one somebody is about to trust should not be inferred from a setting they cannot see.
+    /// </summary>
+    private static string DescribeDryRun(DryRunSettings dryRun) => dryRun.Style == DryRunStyle.Raised
+        ? string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"dry run raised {dryRun.RiseMm:F2} mm above the real program")
+        : string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"dry run held flat at {dryRun.HeightMm:F2} mm");
 
     /// <summary>Runs the preview, then says what was saved, so the confirmation is what is left up.</summary>
     /// <param name="confirmation">The message to leave on the status line.</param>
@@ -1253,6 +1268,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 {
                     var (text, report) = DryRun.Rewrite(item.Content, new DryRunOptions
                     {
+                        Style = Settings.DryRun.Style,
+                        RiseMm = Settings.DryRun.RiseMm,
                         HeightMm = Settings.DryRun.HeightMm,
                         KeepFeeds = Settings.DryRun.KeepFeeds,
                         RapidMmPerMin = Settings.Machine.RapidMmPerMin,

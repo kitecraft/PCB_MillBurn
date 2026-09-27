@@ -92,7 +92,13 @@ public sealed class ProgramViewTests(ITestOutputHelper output)
     [Fact]
     public void ADryRunIsAllTravelAndStillHasSomethingToDraw()
     {
-        var (dry, report) = DryRun.Rewrite(Program(RealBoards.PogoTest1, OperationKind.Isolation));
+        // The flat run by name, because it is the one this describes: holding every Z at the safe
+        // height is what makes the whole program classify as travel. A raised run keeps its feeds
+        // and its depths, so its cutting moves are still cutting moves — in the air, but not
+        // travel — and this test would be describing something else.
+        var (dry, report) = DryRun.Rewrite(
+            Program(RealBoards.PogoTest1, OperationKind.Isolation),
+            new DryRunOptions { Style = DryRunStyle.Flat });
 
         Assert.Null(report.Refusal);
 

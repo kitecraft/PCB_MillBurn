@@ -29,7 +29,8 @@ internal static class Program
             Console.WriteLine("                                 --set <layer>=svg|svg-|gcode|none  (svg- inverts)");
             Console.WriteLine("                                 --thickness <mm> the board's thickness (default: the project's, then the app's)");
             Console.WriteLine("                                 --dry-run also writes a .dryrun.nc that cuts nothing");
-            Console.WriteLine("                                 --dry-run-height <mm> how high to hold it (default 5)");
+            Console.WriteLine("                                 --dry-run-rise <mm>   the real program lifted (default 3)");
+            Console.WriteLine("                                 --dry-run-height <mm> or held flat at one height (5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
             Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
@@ -1514,8 +1515,22 @@ internal static class Program
 
         var write = args.Contains("--write", StringComparer.OrdinalIgnoreCase);
         var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
-        var dryRunHeightMm = AppSettings.LoadOrDefault().DryRun.HeightMm;
+        var saved = AppSettings.LoadOrDefault();
+        var dryRunHeightMm = saved.DryRun.HeightMm;
+        var dryRunRiseMm = saved.DryRun.RiseMm;
+        var dryRunStyle = saved.DryRun.Style;
         OutputKind? only = null;
+
+        // Checked before either value is parsed. Asking which of two conflicting flags won is a
+        // question about the command line, not about the numbers on it — and a bad number in one
+        // of them would otherwise answer with "needs a positive rise", which is not the problem.
+        if (Argument(args, "--dry-run-height") is not null && Argument(args, "--dry-run-rise") is not null)
+        {
+            Console.Error.WriteLine(
+                "--dry-run-height and --dry-run-rise ask for different kinds of dry run: "
+                + "a height holds every Z at one level, a rise lifts the real program. Pick one.");
+            return 1;
+        }
 
         if (Argument(args, "--dry-run-height") is { } heightText)
         {
@@ -1526,6 +1541,24 @@ internal static class Program
                 return 1;
             }
 
+            // Asking for a height is asking for the flat run: a raised one has no single height to
+            // hold, which is the whole difference between them. Said by the flag rather than
+            // requiring a second one, because "--dry-run-height 5 --dry-run-flat" is a sentence
+            // that repeats itself.
+            dryRunStyle = DryRunStyle.Flat;
+            dryRun = true;
+        }
+
+        if (Argument(args, "--dry-run-rise") is { } riseText)
+        {
+            if (!double.TryParse(riseText, NumberStyles.Float, CultureInfo.InvariantCulture, out dryRunRiseMm)
+                || dryRunRiseMm <= 0)
+            {
+                Console.Error.WriteLine("--dry-run-rise needs a positive rise in millimetres.");
+                return 1;
+            }
+
+            dryRunStyle = DryRunStyle.Raised;
             dryRun = true;
         }
 
@@ -1836,6 +1869,8 @@ internal static class Program
             {
                 var (text, report) = DryRun.Rewrite(item.Content, new DryRunOptions
                 {
+                    Style = dryRunStyle,
+                    RiseMm = dryRunRiseMm,
                     HeightMm = dryRunHeightMm,
                     KeepFeeds = app.DryRun.KeepFeeds,
                     RapidMmPerMin = app.Machine.RapidMmPerMin,
@@ -1849,8 +1884,14 @@ internal static class Program
 
                 var name = DryRunName(item.TargetName);
                 dryRuns[name] = text;
-                dryRunNotes[item.TargetName] = FormattableString.Invariant(
-                    $"dry run    {name} · held at {report.LowestZMm:F3} mm, spindle off");
+                // Each branch formatted on its own, because a conditional between two interpolated
+                // strings is a `string` by the time `Invariant` sees it and binds to the wrong
+                // overload.
+                dryRunNotes[item.TargetName] = dryRunStyle == DryRunStyle.Raised
+                    ? FormattableString.Invariant(
+                        $"dry run    {name} · raised {dryRunRiseMm:F2} mm, lowest point {report.LowestZMm:F3} mm, spindle off")
+                    : FormattableString.Invariant(
+                        $"dry run    {name} · held at {report.LowestZMm:F3} mm, spindle off");
             }
         }
 
