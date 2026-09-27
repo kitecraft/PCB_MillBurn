@@ -5564,3 +5564,36 @@ wrong question convincingly.
 
 **Depends on nothing.** It reuses `TestCut`'s emitter, its setup file, its two-visit probe
 workflow and its guide generator.
+
+**Three design questions, put to the product owner and answered, 2026-09-27.** Recorded here rather
+than in a sprint document because the item was taken into sprint 2 and then held for the next one;
+whoever picks it up starts from decided ground rather than re-deriving it.
+
+*A new kind beside `Depth` and `Feed`, not a retune of either.* The two tests are read differently
+and want opposite defaults, and overloading the working one to avoid an enum member would wreck it:
+
+| | `Depth` | `Copper` |
+|---|---|---|
+| Asks | how wide does this bit cut, against depth | where does the copper stop |
+| Read with | a caliper, across the band | a loupe, rung by rung |
+| Starts at | 0.020 mm | 0.010 mm |
+| Steps | 0.050 mm | 0.010 mm |
+| Rungs | 6 | 12 |
+
+*One ladder, shallow to deep*, plus the repeat-the-first-rung check the coupon already puts at its
+far end — on a ladder read by eye a tilt moves the transition, so the repeat is worth as much here
+as it is on the depth series.
+
+*The test picks its own probe spacing*, finer than the coupon rule gives, with the guide saying
+what it chose and why. Not a dialog box and not a warning, and the global probing setting is left
+alone — real boards do not want this and would pay minutes for it.
+
+**Done when** `Copper` is a kind in the dialog and the CLI with defaults that start at 0.010 mm and
+step 0.010 mm, the coupon is one ladder with the repeat at its far end, its probing routine is finer
+than the board rule gives and says so on the guide page, the spacing rule lives in one place rather
+than two, the guide tells the operator what the two transitions mean and how to tell ribbing from
+thickness, and a test pins the emitted depths to the rungs they belong to.
+
+**Not part of it.** Reading the answer back into the isolation depth. The test writes a number on a
+page and the operator types it into Settings; closing that loop means a project knowing which coupon
+it was calibrated against, and that is its own argument.

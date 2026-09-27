@@ -5,8 +5,6 @@ rather than from `release/0.2.0` — the front page gained the optimizer compari
 branching from the older release branch would have dropped it again at the next one.
 
 **The product owner's direction:** fix all the known bugs, and take A6, M12 and V31 with them.
-Extended on 2026-09-27 with one enhancement, 6.52, the copper-thickness test cut — which breaks
-this sprint's own scope rule, deliberately and once. See *Deliberately out* at the foot.
 
 So: six of the seven open defects and three requirements — eight stories, because the three
 requirements are three pieces of work rather than one grouped item. They were written as a single
@@ -44,7 +42,6 @@ out*. The three requirements the product owner named are added to the six.
 | A6 | Debounce and coalesce slider drags | Requirements matrix |
 | M12 | Corner-stop fixture generator — the recommended default | Requirements matrix |
 | V31 | A dry run that is the real program raised | 06 §6.19 |
-| [6.52](../Documentation/06-Roadmap-and-Risks.md) | A test cut that finds where the copper stops | Added by the product owner, 2026-09-27 |
 
 **Ordered by what a board pays for.** 6.25 is first because it is the only one that spoils copper: a
 pass bows into the region it is supposed to leave alone, on a board somebody actually cut. 6.26 is
@@ -973,78 +970,6 @@ still happening twenty-eight times a drag and still unexamined.
 
 ---
 
-## Story 10 — A test cut that finds where the copper stops
-
-**Problem.** Every depth in this program is a guess made once and then inherited. Isolation cuts
-0.05 mm because that is the default, not because anybody measured the copper on the piece in the
-vice — and one-ounce foil is about **0.035 mm**, so 0.05 mm is already into the substrate on a good
-board and short of the copper on a plated one. There is no way to find out except by cutting a
-board and looking at it afterwards.
-
-**What.** A new test cut that answers it directly: a ladder of rungs, the first very shallow, each
-one a small increment deeper, each rung a band of overlapping stepover passes wide enough to read.
-Look at it under a loupe, find where the copper stops and where the substrate starts, and cut
-between them.
-
-**Why.** It is the one number the whole isolation result rests on and the only one the app has
-never had a way to measure. It also costs about **three and a half minutes** of scrap to answer.
-
-**How.** Decided with the product owner, 2026-09-27, three questions and three answers.
-
-**A new kind beside `Depth` and `Feed`, not a retune of either.** The geometry already exists —
-`TestCutKind.Depth` cuts bands at increasing depth today. What stops it answering this is its own
-documented purpose: it steps 0.05 mm, *"Wide steps on purpose"*, because it exists to fit a
-straight line through width-against-depth for a V-bit and a narrow spread disappears inside a
-caliper's error. One of those steps is wider than the whole copper layer. Overloading it would
-wreck a working test to avoid adding an enum member.
-
-| | `Depth` | `Copper` |
-|---|---|---|
-| Asks | how wide does this bit cut, against depth | where does the copper stop |
-| Read with | a caliper, across the band | a loupe, rung by rung |
-| Starts at | 0.020 mm | 0.010 mm |
-| Steps | 0.050 mm | 0.010 mm |
-| Rungs | 6 | 12 |
-
-**One ladder, shallow to deep**, plus the repeat-the-first-rung check the coupon already does at
-the far end. Measured by driving the existing generator at copper resolution — `testcut depth
---lines 12 --from 0.01 --step 0.01 --rungs 0` — the coupon is **19.0 x 47.5 mm**, each rung 20
-passes stepping 0.079 mm, about 214 seconds of cutting.
-
-**The test picks its own probe spacing.** A coupon already gets its own rather than the board's,
-via `Math.Max(4, Math.Min(StockWidthMm, StockHeightMm) / 3)` — on this coupon 6.3 mm, a 3 x 8 grid
-of 24 touches. Three columns across 17 mm of probed width leaves the map interpolating over 8.5 mm,
-and an ordinary piece of clamped copper-clad is 0.1-0.2 mm out of flat. Only a fraction of that
-falls across a coupon this small, but a few hundredths is several rungs of a 0.010 mm step. For
-this kind the target goes finer, the guide says what it chose and why, and the global probing
-setting is left alone — real boards do not want this and would pay minutes for it.
-
-**That expression is currently written out twice**, in `Program.cs` and `MainWindow.axaml.cs`, so
-the rule has no single home and nothing keeps the two in step. Whichever way the number changes, it
-gets one home first.
-
-**The risk that decides whether the test is honest.** The stepover is derived from the *predicted*
-width of the shallowest line, and the premise of this test is that the tool model is not trusted.
-A blunter tip than the library believes leaves ribs of copper between passes on the shallow rungs —
-still a reading, but it means *the stepover was too wide at that depth*, not *the copper is thicker
-than that*. Two different faults that look identical through a loupe. The guide separates them or
-the test answers the wrong question convincingly; a rung-by-rung note of the predicted width beside
-the commanded stepover is probably how.
-
-**Done when** `Copper` is a kind in the dialog and the CLI with defaults that start at 0.010 mm and
-step 0.010 mm, the coupon is one ladder with the repeat at its far end, its probing routine is
-finer than the board rule gives and says so on the guide page, the spacing rule lives in one place
-rather than two, the guide tells the operator what the two transitions mean and how to tell ribbing
-from thickness, and a test pins the emitted depths to the rungs they belong to.
-
-**Requirements:** 06 §6.52
-
-**Not in this story.** Reading the answer back into the isolation depth — the test writes a number
-on a page and the operator types it into Settings. Closing that loop means a project knowing which
-coupon it was calibrated against, and that is its own argument.
-
----
-
 ## Deliberately out
 
 **6.47 — isolation cuts inside a hole that is about to be drilled.** Reported from the bench on
@@ -1068,19 +993,14 @@ enough to be its own sprint, and it would not be finished beside nine other item
 
 **6.16 and 6.46**, both parked with reasons, and neither reason has changed.
 
+**6.52 — a test cut that finds where the copper stops.** Asked for by the product owner on
+2026-09-27 and written up as a tenth story the same day, then held for the next sprint before any
+of it was built. It is the only item here that was *in* and came out again, so it is worth saying
+why plainly: it is an enhancement, this sprint is the defect list, and the rule below was written
+to stop exactly this. The work of writing the story was not wasted — the design questions were put
+and answered, and all three answers are recorded in
+[6.52](../Documentation/06-Roadmap-and-Risks.md) rather than in a sprint document that no longer
+carries it. Whoever starts it next sprint starts from decided ground.
+
 **Anything that is not on the list.** A sprint defined by the defect list stops meaning that the
-moment a feature is added to it.
-
-### That last line was overtaken on 2026-09-27
-
-The product owner added [6.52](../Documentation/06-Roadmap-and-Risks.md), the copper-thickness test
-cut, as story 10. It is an enhancement and it was not on the list, so the sentence above is now
-describing a rule this sprint has broken rather than one it keeps.
-
-Left standing rather than quietly deleted, because the rule was right and the cost of breaking it
-is real: "fix what is broken" no longer describes the whole of this sprint, and the next one cannot
-point at the defect list and say *that is the scope* without explaining why the last one did not.
-What the rule was protecting against is a sprint that never ends because anything can be added to
-it; one enhancement, added deliberately and named here, is not that. Two would be.
-
-The scope is now: the defect list, A6, M12, V31, and 6.52 by explicit direction.
+moment a feature is added to it. Tested once, on 2026-09-27, and it held.
