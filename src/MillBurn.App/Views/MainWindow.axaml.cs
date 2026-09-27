@@ -1687,6 +1687,9 @@ public partial class MainWindow : Window
     private void OnMachineChecksGuideClicked(object? sender, RoutedEventArgs e) =>
         OpenHelp(Path.Combine("guides", "machine-checks.html"));
 
+    private void OnCornerStopsGuideClicked(object? sender, RoutedEventArgs e) =>
+        OpenHelp(Path.Combine("guides", "corner-stops.html"));
+
     /// <summary>
     /// Opens a shipped help page in the user's own browser.
     ///

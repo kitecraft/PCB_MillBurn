@@ -42,9 +42,9 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 01 Architecture | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
 | 02 Gerber & geometry pipeline | 23 | 15 | 0 | 6 | 1 | 0 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
-| 04 Machines, laser & mixed workflows | 31 | 10 | 1 | 16 | 0 | 4 | 0 |
-| 05 Viewer & export | 35 | 18 | 0 | 12 | 0 | 3 | 2 |
-| **Requirements** | **114** | **64** | **1** | **36** | **2** | **7** | **4** |
+| 04 Machines, laser & mixed workflows | 31 | 10 | 1 | 15 | 0 | 4 | 1 |
+| 05 Viewer & export | 35 | 19 | 0 | 11 | 0 | 3 | 2 |
+| **Requirements** | **114** | **65** | **1** | **34** | **2** | **7** | **5** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -140,7 +140,7 @@ board being cut rather than from a document.
 | M9 | Job / Step / Setup / Fixture model | §3 | **Not started** | `JobBuilder` builds one job, not a workflow |
 | M10 | Use Case 1 (etch-resist then mill) end to end | §3 | **Not started** | Phase 5 "done when" — unmet |
 | M11 | Use Case 2 (mill, mask, outline, laser pads) end to end | §3 | **Not started** | Phase 5 "done when" — unmet |
-| M12 | Corner-stop fixture generator — the recommended default | §4.1 | **Not started** | — |
+| M12 | Corner-stop fixture generator — the recommended default | §4.1 | **Superseded** | The generator was declined 2026-09-27 and the requirement met by `Help/guides/corner-stops.html` instead: the datum it would have stored is a work offset the controller already owns, and the geometry is a pocket with three islands anyone can draw once. Reachable from the contents and the Help menu, which `HelpPagesTests` enforces |
 | M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Done** | `Blanks`, `BlankOperation`; work zero, page and mirror axis all follow it |
 | M29 | Laser verification: burn into the blank's border and measure | 06 §5.6.5 | **Not started** | the mill defines its datum; the laser only trusts one |
 | M30 | A re-measured (pre-cut) stock keeps the alignment holes it was cut with | 06 §6.16 | **Not started** | parked 2026-09-19: built on branch `005_StockKeepsItsHoles`, too hard to follow in the window |
@@ -195,7 +195,7 @@ board being cut rather than from a document.
 | V28 | Build-on-stock options in a dialog of their own | 06 §6.14 | **Not started** | to examine; *Project info* is crowded |
 | V29 | Align from the stock's waste holes, from either side of the board, and choose which programs move | 06 §6.14 | **Done** | `ExportPlanner.Movable`, `DrillAlignment.Moved`, the dialog's waste/flip ticks; `AlignmentTests.OnlyTheProgramsNamedAreMoved`, `TheStockIsNeverMovedEvenWhenNamed`; CLI `align --waste-holes --flipped`, `export --align-moves` |
 | V30 | A paste stencil to 3D-print: STL from a paste layer, apertures shrunk to the right volume, thinner steps only where release needs them, optional locating lip | 06 §6.18 | **Not started** | *Job › Paste stencil…*; target volume from Phase 9's rule |
-| V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Not started** | refuses when the lowest point would not clear the stock, and on `G92`/`G10`/`G38`; the flat dry run stays as a choice |
+| V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Done** | move-for-move identical to the real program with every Z lifted; refuses on depth, on a program that commands no Z at all, on `G92`, `G10`, `G38`, `G43`/`G49` and their decimal variants, and on a machine-referenced Z (`G53`, `G28`, `G30`); the flat run is a choice in Settings and `--dry-run-height`. Sprint 2 story 8 |
 | V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180° |
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
 | V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** — backlash and squareness built | `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`; axis scale, cutter diameter, return to zero and tram not started |

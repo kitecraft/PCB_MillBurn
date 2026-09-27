@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Corner stops · PCB_MillBurn</title>
+<!--
+  A guide, and only a guide. M12 was going to generate the fixture; the product owner's decision on
+  2026-09-27 was that it should not, because there is nothing here the operator cannot do once with
+  the CAM they already have, and a generated fixture would need the app to own a datum that the
+  controller already owns better. So nothing on this page describes app output — if an edit is
+  tempted to write "the app does X" about a fixture, that is the decision being reversed by accident.
+
+  Source material: Documentation/04-Machines-Laser-and-Mixed-Workflows.md section 4.1.1. Every
+  number on this page comes from there; if one changes there it changes here. Section 4.1.1 is
+  written as a feature specification, so read it for the numbers, not for who does the work.
+
+  One guide, one file. The styles are inside so the page can be printed, copied or mailed on its own.
+  All the drawings are inline SVG, which means there is no images/ folder to keep in step and nothing
+  to strip metadata from — and no workshop photo whose GPS tag has to be removed first.
+-->
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --surface: #ffffff;
+    --text: #1c1f24;
+    --muted: #5b6470;
+    --rule: #dcdfe4;
+    --accent: #0b5fa5;
+    --warn-bg: #fff4e5;
+    --warn-rule: #d98324;
+    --code-bg: #f1f2f4;
+    --copper: #c7864a;
+    --board: #e9ece4;
+    --plate: #f4f1ec;
+    --tray: #e4e0d8;
+    --pad: #b9b2a5;
+    --yes: #2f7d4f;
+    --no: #9a4a3c;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b;
+      --surface: #1b1f25;
+      --text: #e6e9ee;
+      --muted: #9aa4b2;
+      --rule: #333941;
+      --accent: #74b3ff;
+      --warn-bg: #2a2115;
+      --warn-rule: #d98324;
+      --code-bg: #232830;
+      --copper: #b87a44;
+      --board: #2a2f36;
+      --plate: #20252c;
+      --tray: #191d22;
+      --pad: #4a525c;
+      --yes: #6dc08c;
+      --no: #e08575;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 48rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem;
+  }
+
+  h1 { font-size: 1.85rem; line-height: 1.2; margin: 0 0 0.3rem; }
+  h2 { font-size: 1.2rem; margin: 2.5rem 0 0.6rem; }
+  h3 { font-size: 1rem; margin: 1.6rem 0 0.4rem; }
+  p { margin: 0.8rem 0; }
+  .lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 1.5rem; }
+  .home { font-size: 0.9rem; margin-bottom: 1.5rem; }
+  a { color: var(--accent); }
+
+  code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.92em;
+    background: var(--code-bg); padding: 0.08rem 0.35rem; border-radius: 3px;
+  }
+
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 0.5rem 0.8rem 0.5rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .note, .warn {
+    background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+    padding: 0.8rem 1rem; margin: 1.25rem 0; font-size: 0.95rem;
+  }
+  .warn { background: var(--warn-bg); border-left-color: var(--warn-rule); }
+  .note p:first-child, .warn p:first-child { margin-top: 0; }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+
+  ol, ul { padding-left: 1.4rem; }
+  li { margin: 0.45rem 0; }
+
+  figure { margin: 1.75rem 0; }
+  figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 0.45rem; }
+
+  .diagram { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0.6rem; }
+  .diagram svg { display: block; width: 100%; height: auto; }
+
+  .plate { fill: var(--plate); stroke: var(--rule); stroke-width: 1.5; }
+  .tray { fill: var(--tray); stroke: var(--rule); stroke-width: 1; }
+  .pad { fill: var(--pad); stroke: var(--text); stroke-width: 1.2; }
+  .stock { fill: var(--board); stroke: var(--muted); stroke-width: 1.5; }
+  .tool { fill: var(--muted); stroke: var(--text); stroke-width: 1.2; }
+  .face { stroke: var(--yes); stroke-width: 3; fill: none; stroke-linecap: round; }
+  .bad { stroke: var(--no); stroke-width: 2.5; fill: none; }
+  .chip { fill: var(--no); }
+  .push { stroke: var(--warn-rule); stroke-width: 2.5; fill: none; }
+  .dim { stroke: var(--muted); stroke-width: 1; }
+  .span { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+  .tip { fill: var(--warn-rule); }
+  .lbl { fill: var(--muted); font: 11px ui-monospace, Consolas, monospace; }
+  .lbl-ok { fill: var(--yes); font: 11px ui-monospace, Consolas, monospace; }
+  .lbl-no { fill: var(--no); font: 11px ui-monospace, Consolas, monospace; }
+  .engrave { fill: var(--muted); font: 10px ui-monospace, Consolas, monospace; letter-spacing: 0.04em; }
+  .title { fill: var(--text); font: 600 12px system-ui, sans-serif; }
+
+  @media print {
+    body { max-width: none; }
+    pre, table, figure, .note, .warn { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<p class="home"><a href="../index.html">PCB_MillBurn help</a> › Guides</p>
+
+<h1>Corner stops</h1>
+
+<p class="lead">
+  Cut a locating corner into a sacrificial plate once. After that, every job on that size of stock
+  starts the same way: push the stock into the corner, load the file, run. No edge finding, no
+  touching off X and Y, no measuring. It is the most repeatable way to set up this machine, and it
+  is the one to use when you are making the same board more than once.
+</p>
+
+<div class="note">
+  <p>
+    <strong>This is a workshop job, not an app feature.</strong> Nothing here is generated for you
+    — you cut the fixture yourself, once, with whatever CAM you already use, and your
+    <em>controller</em> remembers where it is. That is the whole point: the fixture lives in the
+    machine's own coordinates, so no software needs to own it, and it keeps working if you never
+    open this program again.
+  </p>
+</div>
+
+<h2>What it is</h2>
+
+<p>
+  A shallow tray milled into a plate that stays bolted to the table. The tray floor is where the
+  stock lies. Three small pads, left standing at the plate's original height, poke up from the floor
+  near two of the tray's walls — two on the front, one on the left. Their inner faces are the only
+  three places the stock ever touches, and because the tray was cut by the machine itself, the
+  machine already knows exactly where those faces are.
+</p>
+
+<figure>
+  <div class="diagram">
+    <svg viewBox="0 0 520 340" role="img" aria-label="Plan view of a sacrificial plate with a shallow rectangular tray milled into it. Two pads stand on the tray's front wall, spaced far apart, and one pad stands on the left wall near its middle. A sheet of stock sits in the tray pushed against all three pads, with an arrow showing it being pushed towards the front-left corner. The tray's front-left corner is open, so the stock's own corner touches nothing.">
+      <defs>
+        <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" class="tip"/>
+        </marker>
+      </defs>
+
+      <!-- The plate, bolted to the table. -->
+      <rect x="8" y="8" width="504" height="324" rx="4" class="plate"/>
+      <circle cx="28" cy="28" r="6" class="tray"/>
+      <circle cx="492" cy="28" r="6" class="tray"/>
+      <circle cx="28" cy="312" r="6" class="tray"/>
+      <circle cx="492" cy="312" r="6" class="tray"/>
+
+      <!-- The tray: 1 mm deep, bigger than the stock on the two far sides. -->
+      <rect x="40" y="46" width="440" height="252" class="tray"/>
+
+      <!-- The stock, seated. -->
+      <rect x="70" y="86" width="340" height="162" class="stock"/>
+
+      <!-- Three pads, standing at the original plate height. -->
+      <rect x="92" y="248" width="42" height="18" class="pad"/>
+      <rect x="346" y="248" width="42" height="18" class="pad"/>
+      <rect x="52" y="146" width="18" height="42" class="pad"/>
+
+      <!-- The three reference faces, and only those. -->
+      <line x1="92" y1="248" x2="134" y2="248" class="face"/>
+      <line x1="346" y1="248" x2="388" y2="248" class="face"/>
+      <line x1="70" y1="146" x2="70" y2="188" class="face"/>
+
+      <!-- Push direction: one diagonal, towards the corner. -->
+      <line x1="150" y1="60" x2="104" y2="100" class="push" marker-end="url(#tip)"/>
+      <text x="156" y="64" class="lbl">push once, this way</text>
+
+      <!-- The relieved corner: open tray floor, outside both stock edges. -->
+      <rect x="42" y="250" width="46" height="40" class="bad" fill="none" stroke-dasharray="4 3"/>
+      <line x1="65" y1="290" x2="65" y2="310" class="dim"/>
+      <text x="26" y="324" class="lbl-ok">relief — the stock's own corner touches nothing</text>
+
+      <!-- How far apart the front pads are, centre to centre. -->
+      <line x1="113" y1="266" x2="113" y2="276" class="dim"/>
+      <line x1="367" y1="266" x2="367" y2="276" class="dim"/>
+      <line x1="113" y1="276" x2="367" y2="276" class="span"/>
+      <text x="196" y="292" class="lbl">~80% of the edge</text>
+
+      <text x="230" y="170" class="title">stock</text>
+      <text x="418" y="92" class="lbl">tray floor —</text>
+      <text x="418" y="106" class="lbl">1.0 mm down</text>
+
+      <text x="52" y="34" class="engrave">G55 · X-12.500 Y-8.000 · 100x80x1.6 stock · 2026-09</text>
+    </svg>
+  </div>
+  <figcaption>
+    Plan view, looking down at the table. The three green faces are the whole fixture. Everything
+    else is clearance: the tray runs past the stock on the back and right so an oversize sheet still
+    drops in, and past the pads on the front and left so chips have somewhere to go.
+  </figcaption>
+</figure>
+
+<h2>Why three pads and not two rails</h2>
+
+<p>
+  The obvious build is a continuous L — two strips of aluminium screwed down at right angles. It
+  works, and it is over-constrained. A 60 mm reference face has sixty millimetres of places for a
+  chip or a burr to sit, and a single one of them tips the whole sheet. Worse, nothing tells you it
+  happened: the stock still feels seated, still looks seated, and is a tenth or two out of square.
+</p>
+
+<p>
+  The fixturing answer to this is a hundred years old and is called <strong>3-2-1 locating</strong>.
+  Constrain each degree of freedom exactly once, and no more than once.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Degrees of freedom</th><th>Constrained by</th><th>Here</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Z, and tip and tilt</td>
+      <td>3 points on the primary plane</td>
+      <td>The tray floor, since the stock lies flat on it</td>
+    </tr>
+    <tr>
+      <td>Y, and rotation</td>
+      <td><strong>2</strong> stops on the secondary datum</td>
+      <td>Two pads on the front, as far apart as the stock allows</td>
+    </tr>
+    <tr>
+      <td>X</td>
+      <td><strong>1</strong> stop on the tertiary datum</td>
+      <td>One pad on the left, near the middle of the edge</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Three pads is exactly constrained, which buys two things. Swarf between them falls into open space
+  instead of under a reference face. And when something <em>does</em> get trapped, the stock lifts
+  off one of the other pads, so the fault shows up as a gap you can see.
+</p>
+
+<figure>
+  <div class="diagram">
+    <svg viewBox="0 0 520 230" role="img" aria-label="Two plan views side by side. On the left, a continuous L-shaped rail with a chip trapped part way along the front face; the stock is visibly rotated away from the rail. On the right, three separate pads with the chip in the open gap between the two front pads; the stock is still seated against all three.">
+      <!-- Left: the continuous rail. -->
+      <text x="16" y="20" class="title">Two rails</text>
+      <rect x="16" y="30" width="222" height="188" class="tray"/>
+      <rect x="34" y="176" width="196" height="16" class="pad"/>
+      <rect x="34" y="60" width="16" height="116" class="pad"/>
+      <!-- Stock rotated off the rail by the chip. -->
+      <g transform="rotate(-2.1 130 120)">
+        <rect x="50" y="66" width="180" height="110" class="stock"/>
+      </g>
+      <circle cx="140" cy="172" r="4" class="chip"/>
+      <text x="150" y="168" class="lbl-no">one chip</text>
+      <text x="34" y="212" class="lbl-no">and nothing tells you</text>
+
+      <!-- Right: three pads. Each pad's face sits under the stock, not beside it. -->
+      <text x="282" y="20" class="title">Three pads</text>
+      <rect x="282" y="30" width="222" height="188" class="tray"/>
+      <rect x="320" y="176" width="40" height="16" class="pad"/>
+      <rect x="456" y="176" width="40" height="16" class="pad"/>
+      <rect x="300" y="100" width="16" height="40" class="pad"/>
+      <rect x="316" y="66" width="180" height="110" class="stock"/>
+      <line x1="320" y1="176" x2="360" y2="176" class="face"/>
+      <line x1="456" y1="176" x2="496" y2="176" class="face"/>
+      <line x1="316" y1="100" x2="316" y2="140" class="face"/>
+      <circle cx="400" cy="184" r="4" class="chip"/>
+      <text x="356" y="212" class="lbl-ok">same chip, no contact</text>
+    </svg>
+  </div>
+  <figcaption>
+    The rotation on the left is drawn at two degrees so you can see it. In life it is a twentieth of
+    that, which is the problem — it is a quarter of a millimetre at the far corner and it looks
+    exactly like a seated sheet.
+  </figcaption>
+</figure>
+
+<p>
+  Sensible numbers to start from, all of which are yours to change:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Dimension</th><th>Starting point</th><th>Why that</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Pad length, along the edge</td><td class="num">10–15 mm</td><td>Long enough to be a face rather than a point; short enough that a chip usually misses it</td></tr>
+    <tr><td>Pad thickness, into the plate</td><td class="num">6–8 mm</td><td>Stiff enough not to deflect under a push, in MDF as well as aluminium</td></tr>
+    <tr><td>Spacing of the two front pads</td><td class="num">~80% of the edge</td><td>The wider they are, the less a given error turns into rotation</td></tr>
+    <tr><td>Pad height above the tray floor</td><td class="num">1.0 mm</td><td>For 1.6 mm stock — see below, and check it</td></tr>
+    <tr><td>Position of the single X pad</td><td class="num">centred on its edge</td><td>Nothing to gain from putting it anywhere else; one point is one point</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  If you would rather screw down a strip of aluminium than mill a plate, do — it is a real option and
+  plenty of people work that way. Just know that you are choosing the less repeatable of the two,
+  and that you cannot tell from looking when it has gone wrong.
+</p>
+
+<h2>Relieve the inside corner, or none of this works</h2>
+
+<p>
+  This is the detail that decides whether the fixture is any good, and it is the one that is easiest
+  to leave out.
+</p>
+
+<p>
+  A 3 mm end mill cannot cut a sharp inside corner. It leaves a 1.5 mm radius. Push a square stock
+  corner into a radiused corner and it does not reach the two faces at all — it rides up on the
+  fillet and sits several tenths out of position, silently, and by a different amount every time
+  depending on how square that particular stock corner happens to be.
+</p>
+
+<p>
+  The fix is to cut the corner away entirely: a relief larger than the cutter radius, so both
+  reference faces stay flat right up to the relief and the stock's own corner sits in fresh air and
+  touches nothing. With three separate pads you get this for free, which is the third reason to
+  prefer them.
+</p>
+
+<figure>
+  <div class="diagram">
+    <svg viewBox="0 0 520 250" role="img" aria-label="Two close-up plan views of an inside corner. On the left the corner has a rounded fillet left by the cutter; the square stock corner rides on the fillet and both reference faces are left open, the gaps shaded. On the right the corner has been cut away into a relief pocket, the stock corner hangs over the empty relief, and both faces are in full contact.">
+      <!-- LEFT: the fillet a 3 mm cutter leaves. The solid plate is the darker fill underneath; the
+           pocket is cut into it. The arc is centred on the sharp corner it replaces, so the material
+           bulges into the pocket, which is the whole problem. -->
+      <text x="16" y="18" class="title">Sharp corner, as cut</text>
+      <rect x="16" y="26" width="234" height="180" class="plate"/>
+      <path d="M 46 36 L 46 150 A 30 30 0 0 1 76 180 L 240 180 L 240 36 Z" class="tray"/>
+      <!-- The two gaps, shaded, because in a line drawing they are otherwise invisible — which is
+           also exactly why they are invisible on the machine. -->
+      <rect x="46" y="36" width="21" height="114" class="chip" opacity="0.3"/>
+      <rect x="76" y="159" width="164" height="21" class="chip" opacity="0.3"/>
+      <!-- Stock, flush at top and right so only the two datum faces show a gap. It touches the
+           fillet at one point on the diagonal, r over root two in from each face. -->
+      <rect x="67" y="36" width="173" height="123" class="stock"/>
+      <path d="M 46 150 A 30 30 0 0 1 76 180" class="bad"/>
+      <circle cx="67" cy="159" r="5" class="bad" fill="none"/>
+      <text x="16" y="224" class="lbl-no">it rides on the 1.5 mm fillet</text>
+      <text x="16" y="240" class="lbl-no">both datum faces left open</text>
+
+      <!-- RIGHT: relieved. The notch takes the corner away, so both faces stay flat up to it. -->
+      <text x="282" y="18" class="title">Corner relieved</text>
+      <rect x="270" y="26" width="234" height="180" class="plate"/>
+      <path d="M 300 36 L 300 136 L 284 136 L 284 196 L 352 196 L 352 180 L 494 180 L 494 36 Z" class="tray"/>
+      <rect x="300" y="36" width="194" height="144" class="stock"/>
+      <line x1="300" y1="46" x2="300" y2="134" class="face"/>
+      <line x1="360" y1="180" x2="488" y2="180" class="face"/>
+      <text x="270" y="224" class="lbl-ok">both faces in full contact</text>
+      <text x="270" y="240" class="lbl-ok">corner hangs over the relief</text>
+    </svg>
+  </div>
+  <figcaption>
+    Left, both gaps at once: the stock is touching neither datum and is being located by a curve.
+    Right, the corner is gone, so the two faces are all that is left to touch — which is the whole
+    idea.
+  </figcaption>
+</figure>
+
+<h2>How tall the pads are, and why it matters so much</h2>
+
+<p>
+  The pads have to be <strong>lower than the top face of the stock</strong>. The outline pass runs
+  the cutter along the stock edge, right beside them, and a stop standing 3 mm proud of a 1.6 mm
+  board is a broken cutter and a ruined plate.
+</p>
+
+<p>
+  For 1.6 mm stock, cut the tray <strong>1.0 mm</strong> deep. That is enough to stop the sheet, with
+  0.6 mm of the pad still safely below the work.
+</p>
+
+<p>
+  <strong>Work it out from your own stock rather than copying the number.</strong> Take your stock
+  thickness and leave at least 0.5 mm of it above the pads:
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Stock</th><th>Tray depth</th><th>Left above the pads</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="num">1.6 mm</td><td class="num">1.0 mm</td><td class="num">0.6 mm</td></tr>
+    <tr><td class="num">1.0 mm</td><td class="num">0.5 mm</td><td class="num">0.5 mm</td></tr>
+    <tr><td class="num">0.8 mm</td><td class="num">0.3 mm</td><td class="num">0.5 mm</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="warn">
+  <p>
+    <strong>A fixture is cut for one stock thickness.</strong> Nothing checks this for you, and
+    running 0.8 mm stock in a tray cut for 1.6 mm puts the pads 0.2 mm <em>above</em> the work. That
+    is the number on this page that breaks a tool when it is wrong — so put the thickness on the
+    plate, in the label below, and read it before you clamp anything.
+  </p>
+</div>
+
+<figure>
+  <div class="diagram">
+    <svg viewBox="0 0 520 220" role="img" aria-label="Two cross-sections side by side. On the left a pad one millimetre tall sits below the top of a 1.6 millimetre sheet of stock, with 0.6 millimetres of clearance, and an end mill descends past it without touching. On the right a pad three millimetres tall stands above the stock and the descending end mill collides with it.">
+      <!-- LEFT: 1.0 mm pad. Drawn at 20 px per mm throughout, so the proportions are the real ones. -->
+      <text x="16" y="20" class="title">1.0 mm pad — 1.6 mm stock</text>
+      <rect x="16" y="150" width="232" height="52" class="plate"/>
+      <line x1="64" y1="150" x2="248" y2="150" class="dim"/>
+      <!-- pad: 20 px = 1.0 mm, top at y=130 -->
+      <rect x="32" y="130" width="32" height="20" class="pad"/>
+      <!-- stock: 32 px = 1.6 mm, lying on the floor at y=150, top at y=118 -->
+      <rect x="64" y="118" width="170" height="32" class="stock"/>
+      <line x1="64" y1="130" x2="64" y2="150" class="face"/>
+      <!-- cutter, just inside the stock edge and right beside the pad, cutting through to the floor -->
+      <rect x="66" y="26" width="22" height="126" class="tool"/>
+      <!-- the clearance: 12 px = 0.6 mm, between the pad top and the stock top, carried across on
+           an extension line from the pad so the two heights are compared where you can see them -->
+      <line x1="64" y1="130" x2="216" y2="130" class="span"/>
+      <line x1="210" y1="118" x2="210" y2="130" class="dim"/>
+      <line x1="204" y1="118" x2="216" y2="118" class="dim"/>
+      <line x1="204" y1="130" x2="216" y2="130" class="dim"/>
+      <text x="126" y="112" class="lbl-ok">0.6 mm clear</text>
+      <text x="20" y="176" class="lbl">plate</text>
+      <text x="100" y="146" class="lbl">stock</text>
+      <text x="16" y="216" class="lbl-ok">the cutter passes, clear of the stop</text>
+
+      <!-- RIGHT: 3.0 mm pad, same stock. -->
+      <text x="282" y="20" class="title">3.0 mm pad — same stock</text>
+      <rect x="282" y="150" width="222" height="52" class="plate"/>
+      <line x1="330" y1="150" x2="504" y2="150" class="dim"/>
+      <!-- pad: 60 px = 3.0 mm, top at y=90, which is above the stock top at y=118 -->
+      <rect x="298" y="90" width="32" height="60" class="pad"/>
+      <rect x="330" y="118" width="160" height="32" class="stock"/>
+      <!-- cutter coming down over the pad, because the pad is where it expected clear air -->
+      <rect x="312" y="26" width="22" height="64" class="tool"/>
+      <circle cx="323" cy="90" r="14" class="bad" fill="none"/>
+      <text x="346" y="86" class="lbl-no">the cutter finds it</text>
+      <text x="346" y="100" class="lbl-no">1.4 mm above the work</text>
+      <text x="282" y="216" class="lbl-no">a broken cutter and a ruined plate</text>
+    </svg>
+  </div>
+  <figcaption>
+    Cross-section through the left-hand pad, drawn at twenty pixels per millimetre so the 0.6 mm is
+    the real proportion. The cutter is shown going right through the stock, which is what the outline
+    pass does.
+  </figcaption>
+</figure>
+
+<h2>Cutting the plate — once, ever</h2>
+
+<p>
+  About four minutes of cutting. Do it carefully, because everything afterwards depends on it and
+  nothing afterwards checks it.
+</p>
+
+<ol>
+  <li>
+    <strong>Bolt a sacrificial plate down</strong> — MDF, HDPE and aluminium all work; the plate only
+    has to be flat, stable and not move again. It can be the spoilboard itself if the spoilboard is
+    bolted rather than taped.
+  </li>
+  <li>
+    <strong>Surface it flat in the machine</strong>, with a facing pass over at least the area the
+    tray will occupy. This matters twice over: the tray floor and the pad tops both come from this
+    surface, so if it is not flat, the pad heights are not what you asked for and the stock does not
+    lie flat either.
+  </li>
+  <li>
+    <strong>Home the machine.</strong> Everything below ends up stored as a machine coordinate, and
+    that is only as good as your ability to return to the same frame next week. If your machine has
+    homing switches, use them — this is exactly what they are for. If it has none, read
+    <em>when not to bother</em> at the end of this page first.
+  </li>
+  <li>
+    <strong>Draw the tray in whatever CAM you already use.</strong> Fusion, FreeCAD, Estlcam,
+    Carbide Create — any of them will pocket a shape. Make it your stock size plus a millimetre or
+    two of slack on the back and right, and <em>only</em> on the back and right: the front and left
+    are the datum and must stay exactly where you put them. Leave the three pads standing as islands
+    inside that pocket. There is no shape here that needs anything clever.
+  </li>
+  <li>
+    <strong>Look at the file before you cut it.</strong> <em>File &rsaquo; Open G-code</em> in this
+    app reads any <code>.nc</code>, whoever wrote it, and draws what it will do — or use your
+    sender's own preview. You are about to cut into the one plate every future job is referenced to.
+  </li>
+  <li>
+    <strong>Fit a flat end mill and cut it.</strong> 3 mm or 6 mm, either is fine; just size the
+    corner relief for the one you actually fit, as above.
+  </li>
+  <li>
+    <strong>Deburr and blow it out.</strong> Run a knife along the top edge of each pad and the edge
+    of the tray floor. A raised burr on a pad face is worth a tenth of a millimetre and is invisible.
+  </li>
+</ol>
+
+<div class="note">
+  <p>
+    <strong>No CAM that does islands? Use rectangles.</strong> Pocket the plain stock-sized rectangle
+    1.0 mm deep, which leaves you a continuous L of wall on the front and left. Then take that wall
+    away everywhere except at the three pads, with three or four more shallow rectangular pockets
+    along the same two edges. Every cut is a rectangle, the result is identical, and the corner
+    relief falls out of it because the wall is gone at the corner.
+  </p>
+</div>
+
+<h3>Record the datum, and write it on the plate</h3>
+
+<p>
+  This is the half that makes the fixture worth having, and it lives in your controller rather than
+  in any software. Seat a piece of stock in the corner, find its lower-left corner in X and Y the way
+  you normally would — edge finder, a pin, or touching off on the two edges — and <strong>save that
+  position as a work offset</strong>: <code>G54</code>, <code>G55</code>, whatever your sender
+  offers. That offset <em>is</em> the fixture.
+</p>
+
+<p>
+  It is the same corner this app calls work zero, so nothing needs translating: select the offset and
+  the program's origin is already where the stock's corner will be.
+</p>
+
+<p>
+  Then write the plate's own numbers on its face — engraved if you feel like cutting them, a
+  permanent marker if you do not:
+</p>
+
+<div class="diagram" style="max-width: 24rem;">
+  <svg viewBox="0 0 300 54" role="img" aria-label="A label reading G55, datum X minus 12.500 Y minus 8.000, for 100 by 80 by 1.6 millimetre stock, dated 2026 dash 09.">
+    <rect x="2" y="2" width="296" height="50" rx="3" class="plate"/>
+    <text x="14" y="24" class="engrave">G55 · X-12.500 Y-8.000</text>
+    <text x="14" y="42" class="engrave">100x80x1.6 stock · 2026-09</text>
+  </svg>
+</div>
+
+<p>
+  That is not decoration. Six months from now, on a Sunday, with the spoilboard resurfaced twice and
+  three plates in a drawer, it is the only thing that answers <em>which jig is this, what thickness
+  is it cut for, and where is its zero</em>. Write the machine coordinates down as well as the offset
+  number: offsets get overwritten by accident, and the numbers let you put it back.
+</p>
+
+<h2>Using it — every job after that</h2>
+
+<p>
+  This is the part that pays for the four minutes.
+</p>
+
+<ol>
+  <li><strong>Drop the stock in the tray and push it into the corner.</strong> One firm push along
+    the diagonal, towards the corner, with the same pressure every time. Not a shove — you are
+    seating a sheet against three pads, not clamping it.</li>
+  <li><strong>Clamp or tape it down</strong> without disturbing it, and check it is still against all
+    three pads afterwards. Tightening a clamp is the usual way stock walks off a datum.</li>
+  <li><strong>Select the fixture's work offset</strong> — the <code>G55</code>, or whichever you
+    saved — and <strong>set Z on the stock top</strong>. That is all. X and Y come from the fixture,
+    so there is no edge finding and no touching off in the plane, on this job or any later one.</li>
+  <li><strong>Run isolate, drill, cut out.</strong> When a tool change forces you to set Z again,
+    touch off on the same spot every time.</li>
+</ol>
+
+<div class="warn">
+  <p>
+    <strong>Check the outline clears the pads — nothing else will.</strong> The fixture references
+    the <em>stock</em>, not the finished board, and the outline pass cuts <em>inside</em> the stock,
+    so in a correctly laid-out job the cutter never comes near a pad. But a board placed hard against
+    the edge of its stock will run the outline straight through one, and neither this app nor your
+    sender knows the fixture exists. Leave a few millimetres of margin on the two datum edges, and
+    press F5 to look at the toolpath against the stock before you cut.
+  </p>
+  <p>
+    A board that has <em>already</em> been cut out is a different problem, and a corner stop is not
+    the answer to it.
+  </p>
+</div>
+
+<h2>How accurate is it, honestly</h2>
+
+<p>
+  Very repeatable, and less accurate than you would guess — and the two are not the same thing. The
+  fixture itself contributes almost nothing, because it was not measured, it was <em>defined</em>:
+  the machine cut it in its own coordinates. Nearly all the error is the stock.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Source</th><th>Contribution</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Fixture position</td><td class="num">~0 — defined, not measured</td></tr>
+    <tr><td><strong>Sheared or sawn FR4 edge, out of straight</strong></td><td class="num"><strong>0.1–0.25 mm</strong> — dominant</td></tr>
+    <tr><td>Milled datum edges (see below)</td><td class="num">0.02–0.05 mm</td></tr>
+    <tr><td>Burrs, swarf, inconsistent push</td><td class="num">0.05 mm</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  So a corner stop against stock as supplied lands around <strong>±0.15–0.25 mm</strong>. That is
+  excellent for drilling and for cutting out, and it repeats session after session, which is why this
+  is the recommended way to set up a repeat job. It is <strong>not</strong> the 50 µm that a pinned
+  double-sided board reaches, and you should not lay out a 0.2 mm trace expecting it.
+</p>
+
+<div class="warn">
+  <p>
+    <strong>Square the stock and the whole budget collapses.</strong> The error is a crooked stock
+    edge, so mill the two datum edges on the machine as the job's first cut. They are then true by
+    construction, and ±0.15–0.25 mm becomes <strong>±0.05 mm</strong>. It costs one pass and a few
+    millimetres of stock, and it is the single highest-value thing you can add to this workflow.
+  </p>
+</div>
+
+<h2>Double-sided work needs a second corner</h2>
+
+<p>
+  Flipping the stock swaps which physical edge meets which pad, so one corner cannot register both
+  sides. The answer is a second corner stop, mirrored, on the same plate. Draw both while you are in
+  the CAM anyway and cut them in one setup: it costs a few more minutes of machine time and nothing
+  else, and doing it later means re-establishing the first one's datum to place the second against.
+</p>
+
+<p>
+  Save it as its own work offset — <code>G55</code> and <code>G56</code>, say — and write both on
+  the plate. The flip then becomes: turn the stock over, seat it in the other corner, switch offset,
+  re-zero Z.
+</p>
+
+<figure>
+  <div class="diagram">
+    <svg viewBox="0 0 520 210" role="img" aria-label="Plan view of one plate carrying two trays. The left tray has its pads on the front and left, labelled top side. The right tray is its mirror image with pads on the front and right, labelled bottom side after the flip. An arrow between them shows the stock being flipped over.">
+      <rect x="8" y="8" width="504" height="194" rx="4" class="plate"/>
+
+      <!-- Left: the top-side corner. -->
+      <rect x="26" y="40" width="200" height="130" class="tray"/>
+      <rect x="48" y="152" width="34" height="14" class="pad"/>
+      <rect x="170" y="152" width="34" height="14" class="pad"/>
+      <rect x="34" y="88" width="14" height="34" class="pad"/>
+      <rect x="48" y="60" width="156" height="92" class="stock"/>
+      <line x1="48" y1="152" x2="82" y2="152" class="face"/>
+      <line x1="170" y1="152" x2="204" y2="152" class="face"/>
+      <line x1="48" y1="88" x2="48" y2="122" class="face"/>
+      <text x="26" y="32" class="title">Top side</text>
+      <text x="26" y="188" class="lbl">datum at the front-left</text>
+
+      <!-- Flip. -->
+      <path d="M 244 96 A 30 22 0 0 1 292 96" class="push" marker-end="url(#tip2)"/>
+      <defs>
+        <marker id="tip2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" class="tip"/>
+        </marker>
+      </defs>
+      <text x="238" y="130" class="lbl">flip</text>
+
+      <!-- Right: the mirrored corner. -->
+      <rect x="302" y="40" width="200" height="130" class="tray"/>
+      <rect x="324" y="152" width="34" height="14" class="pad"/>
+      <rect x="446" y="152" width="34" height="14" class="pad"/>
+      <rect x="480" y="88" width="14" height="34" class="pad"/>
+      <rect x="324" y="60" width="156" height="92" class="stock"/>
+      <line x1="324" y1="152" x2="358" y2="152" class="face"/>
+      <line x1="446" y1="152" x2="480" y2="152" class="face"/>
+      <line x1="480" y1="88" x2="480" y2="122" class="face"/>
+      <text x="302" y="32" class="title">Bottom side</text>
+      <text x="302" y="188" class="lbl">mirrored — front-right datum</text>
+    </svg>
+  </div>
+  <figcaption>
+    Two trays, one plate, one facing operation. The X stop moves to the other side because after the
+    flip it is the other physical edge of the stock that has to be located.
+  </figcaption>
+</figure>
+
+<p>
+  A four-sided nest pocket would also survive the flip, but only with a clearance fit — and
+  clearance is slop. Two exactly-constrained corners beat one loose box.
+</p>
+
+<div class="note">
+  <p>
+    <strong>This is not a replacement for pinning.</strong> If you need the two sides of a
+    double-sided board to line up to tens of microns, drill before you flip and pin through the holes
+    you already made. A mirrored corner stop is the convenient answer, not the accurate one; use it
+    when 0.15 mm between the sides is fine, which for through-hole work it usually is.
+  </p>
+</div>
+
+<h2>When not to bother</h2>
+
+<ul>
+  <li><strong>A one-off board.</strong> The fixture takes four minutes plus a facing pass, and
+    setting work zero by eye takes one. Cut a corner stop when you expect to come back to that stock
+    size.</li>
+  <li><strong>Stock smaller than the board.</strong> Nothing to push against on two edges.</li>
+  <li><strong>A machine without repeatable homing.</strong> The datum is a machine coordinate held
+    in a work offset. If you cannot return to the same machine frame next session, last session's
+    offset points somewhere else, and you are better off with something you re-find each time.</li>
+  <li><strong>Stock of a thickness the tray was not cut for.</strong> The pads end up too low to stop
+    the sheet, or — worse — standing above it. One fixture, one thickness.</li>
+  <li><strong>Stock you cannot get flat on the tray floor.</strong> Bowed single-sided stock lifts in
+    the middle; the corner will locate it perfectly and the cut depth will still be wrong. That is a
+    <a href="../faq.html#levelling">height map</a> problem, not a fixturing one.</li>
+</ul>
+
+<footer>
+  PCB_MillBurn &mdash; MIT licensed. <a href="../index.html">Help contents</a> &middot;
+  <a href="../faq.html">Questions and answers</a>
+</footer>
+
+</body>
+</html>

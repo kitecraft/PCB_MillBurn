@@ -722,13 +722,39 @@ workflow does by hand with an L-shaped jig — [06](../Documentation/06-Roadmap-
 the laser side of that. Recommending a default matters more than the generator: the value is in
 everyone using the *same* two edges.
 
-**How.** Unknown until the shape is decided — that is the first question, not the implementation.
-It touches the stock and blank machinery that already exists rather than adding a new operation.
-
-**Done when** the generator emits a fixture program, the recommended default is named in the UI
-where the choice is made, and a test pins the registration geometry.
+**How.** No code. The product owner's decision, 2026-09-27: *"I don't think I want this is code. I
+think a help guide that users can follow to create their own corner stop guide is fine. I don't
+think we need to code anything or produce anything for them at this point."*
 
 **Requirements:** M12
+
+### Closed — 2026-09-27 · met by a guide
+
+**Met, and the requirement is met without a generator.** `Help/guides/corner-stops.html` ships in
+the Help menu and the contents: [04 §4.1.1](../Documentation/04-Machines-Laser-and-Mixed-Workflows.md)'s
+three-pad 3-2-1 corner, the relief, the pad height worked out from the operator's own stock, the
+error budget, the squaring operation that collapses it, and the mirrored second corner — with six
+line drawings rather than photographs, which also means no workshop photo's GPS tag to strip.
+
+**The argument for not building it is better than the one for building it.** Two things came out of
+writing the guide:
+
+- **The datum belongs in the controller, not in the app.** The half that looked like the valuable
+  one — remembering where the fixture is so later jobs use it — is a work offset. `G55` does this,
+  every sender exposes it, and it survives the app being uninstalled. Storing it here would have
+  been a second, worse copy of a thing the machine already owns, and one more place for the two to
+  disagree.
+- **There is no hard geometry in it.** The fixture is a pocket with three islands, or — for CAM that
+  will not do islands — four rectangles. Anyone who can run this app can draw that once. A generator
+  would have had to learn stock size, margin, cutter diameter and thickness in order to emit what a
+  person draws in ten minutes and cuts once, ever.
+
+**What the guide has to carry instead**, because no code is checking it: that a fixture is cut for
+one stock thickness and running thinner stock puts the pads above the work, and that the outline
+must be checked to clear the pads. Both are stated as warnings at the point they bite, and the
+suggested label engraves the thickness onto the plate so the first one is answered by looking at it.
+
+**Nothing in `src/` changed** beyond the Help menu item and its handler.
 
 ---
 
@@ -752,6 +778,138 @@ for checking XY alone.
 each of the three refusals is named in its own message, and a test covers each refusal by name.
 
 **Requirements:** V31
+
+### Closed — 2026-09-27
+
+**Met.** Confirmed at the bench on a published build: the Z motion is there, the run time lands
+where the real program's does, and nothing touched the board.
+
+**The claim is checked move by move, which is stronger than the entry asked for.** 6.19's done-when
+is about the machine; the test is that the raised program has the same number of moves as the real
+one, the same X and Y, the same kinds, and every Z exactly the rise higher — across four programs
+on three boards. Checking only that the lowest point clears the stock would pass for a great many
+programs that are not the real one lifted.
+
+| | |
+|---|---|
+| Z travel, real vs raised | 15 mm vs 15 mm |
+| Z travel, flat | **0 mm** — what the old dry run threw away |
+| Lowest point, test board | 1.10 mm above the stock, over 19 programs |
+
+**Where it refuses**, each with a test: too deep for the rise (and the message names the rise that
+would do — 5.00 mm for a 4.5 mm cut), `G92`, `G10`, `G38`, and a machine-coordinate Z. Incremental
+mode was already refused and still is.
+
+**Two decisions that differ from the entry.** No opening lift, because an extra move makes the run
+no longer a copy and kills the move-by-move check; the clearance check on the way out is what keeps
+it safe. And `G53` carrying a Z is refused rather than left alone — the safety check reads the
+rewritten file back and cannot know that one Z is in another coordinate system, so leaving it means
+the promise has a hole. Both are recorded in 6.19 as departures rather than presented as what was
+asked for.
+
+**The choice is wired in three places**: Settings, the CLI's two flags, and the confirmation line —
+which used to say "dry run held at 5.00 mm" unconditionally and would now be wrong half the time.
+Asking the CLI for both a rise and a height is refused, because they are different promises.
+
+**The existing tests now name the flat style.** They predate there being a choice, and V31 changed
+the default; leaning on it would have quietly turned them into tests of the raised run, and most
+would still have passed. Same lesson as story 1's chord tolerance.
+
+### What the code review found, and what was done
+
+Ten findings, all in this story's own work. Every one is fixed; each has a test, and the two that
+mattered were mutation-checked against the code before the fix.
+
+**The one that would have reached the bench.** With the raised style — now the default — any
+program that travelled in X or Y before commanding a Z was refused outright, and told to raise
+further. That advice could never work: the number being refused was the parser's implicit start at
+Z0, which no rise changes, so every retry gave the same answer. `--start-gcode "G0 X0 Y0"` is
+enough to trigger it, and framing only *warns* about such a line, never rejects it. The dry run was
+lost entirely for the person most likely to want one.
+
+The fix was already written down. `DryRunReport.LowestZMm` says it reports *"commanded positions,
+not the machine's starting one — where the tool is before the first line runs is the operator's
+business, and a generator that claimed otherwise would be claiming something it cannot know."*
+Counting the implicit zero broke that sentence. Moves before the first commanded Z are now excluded
+from both the measurement and the clearance check, and the flat run is untouched because its header
+commands a Z on the first line.
+
+**Two holes in the refusal guards**, both of which produced a raised dry run with no refusal at all:
+
+| Missed | What it does | Why it slipped |
+|---|---|---|
+| `G92.1`, `G92.2`, `G92.3` | Restore a saved work offset — the thing the `G92` refusal exists to stop | The word matcher read the decimal point into the digit run, then failed to parse `"92.3"` as an integer |
+| `G43`, `G43.1`, `G49` | Move the Z datum the rise is measured from | Never considered. `G43.1` is what a tool setter writes into start G-code, which reaches every program |
+
+A negative `G43.1` was caught only by accident — the parser mistook it for a Z move — and the
+message it produced was nonsense: `raise by at least 50.50 mm` for a 3 mm rise.
+
+**Four smaller ones, all true.**
+
+- The raised header said *"the time this takes is the time the real program takes"* unconditionally,
+  while `KeepFeeds = false` replaces every feed with the rapid rate. It was the one false sentence
+  in the file, on the one page read standing at the machine. The sentence is now conditional, and
+  says plainly that the time means nothing when the feeds are off.
+- `G53` passed through the rise *and* the feed rewrite, so with feeds off it was the only line in
+  the file still carrying a cutting feed.
+- `Offset` re-formatted with `0.###`, which drops trailing zeros: `Z2.000` came out as `Z5`. Every
+  Z line in the dry run differed in *shape* from the real program — defeating the reason that method
+  preserves everything else on the line. Verified on a real export: the dry run's Z words are now
+  `Z2.950 Z3.500 Z5.000` against the real `Z-0.050 Z0.500 Z2.000`.
+- The settings check blocked **Save** on the flat height whatever style was chosen, so picking the
+  raised run could kill the Save button over a number with no effect on the file — with the tab it
+  pointed at showing nothing wrong. Each style is now judged on its own number, and a rise of zero
+  or less is caught in Settings rather than as one clearance refusal per program at export time.
+
+### The second review found two more, both introduced by the first round's fixes
+
+Worth recording because of where they came from: the first review's top finding was that excluding
+the parser's uncommanded Z0 was necessary. Doing it introduced two new holes, and neither was
+visible from the change itself.
+
+**A program that commands no Z at all was handed back as itself, reported as raised.** With every
+move excluded from the measurement, the measurement was empty, and an empty measurement fell back
+to reporting the rise. So the file came back byte-for-byte unchanged apart from the spindle, under
+a header saying *every Z raised by 3.00 mm* and a summary quoting a lowest point of 3.000 mm that
+no line in it asks for. Set work zero as that header instructs and it cuts at Z0 for its length.
+Refused now. Nothing the app emits looks like this — every program it writes opens with a lift —
+but `DryRun` is public and a file somebody else wrote is what a dry run is for.
+
+**And the clearance flag could come back false with nothing refused.** `StaysClear` tests where a
+move starts as well as where it ends, and the first measured move inherits its start from the last
+move that was deliberately *not* measured. So `G1 X20 Y20 F300` in start G-code produced a file
+that shipped carrying its own evidence that the promise was broken — and nothing in `src/` reads
+the flag, so nobody would ever have seen it. The boundary is exempt at its starting end only now,
+every later move is still checked at both, and a run that is not clear is refused outright rather
+than written with a false flag.
+
+**The comment that said this could not happen was the tell.** It asserted as an invariant that
+`lowest >= floor` implies `clear`, which was false for exactly the reason above. It now says the
+relationship is reasoning rather than proof, and the code checks `clear` separately instead of
+trusting it.
+
+**Two gaps of the same family, found by asking what else the guards miss.** `G73` is a canned cycle
+outside the 81–89 range the retract check knew about, so its Z rose and its R did not — the cycle
+drills through its own retract, which is the failure that check exists to prevent. And `G28`/`G30`
+end at a machine position whatever their Z word says, so raising one moves the waypoint and not the
+destination; refused now, like `G53`.
+
+**And a test that had stopped testing what it named.** `CommentSyntaxTests.TheDryRunHeaderIsWellFormed`
+called `Rewrite` with no options, so when V31 changed the default it silently switched from checking
+the flat header to the raised one — without failing. It now names all four combinations, and a
+second test pins the timing sentence to the feeds.
+
+**What is left open.**
+
+- **The flat run still rewrites a `G53` Z**, which was true before this story and is wrong for the
+  same reason the raised one refuses it: it turns a machine-coordinate move into a work-coordinate
+  one. Out of scope here — it is pre-existing behaviour and changing it is its own decision — but
+  it should not go unrecorded.
+- **The rise is one number for the whole program.** A job whose deepest pass is much deeper than
+  the rest is refused on account of that pass, when a smaller rise would have been fine for all the
+  others. Refusing is the right default; a per-program rise would be a feature, not a fix.
+
+---
 
 ---
 
