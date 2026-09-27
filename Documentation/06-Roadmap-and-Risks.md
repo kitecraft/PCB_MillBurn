@@ -4104,6 +4104,14 @@ That three of the four needed the same line is the argument for a single place t
 picture is no longer of anything", and there is not one: each path clears the backplot by hand.
 Worth an entry of its own if a fifth appears.
 
+**A fifth and a sixth appeared before the sprint ended**, both found by review rather than by use:
+`SaveMachineSettings` and `SaveFraming`. Saving machine settings tested `Gcode is not null` to
+decide whether to re-preview, and a run still building has `Gcode == null` — so the condition was
+false in exactly the case where a run was outstanding, and the preview finished and published
+programs cut to the safe height and rapid rate that had just been replaced. Framing was worse: it
+goes into the header and footer of every program, and nothing there stopped a run, cleared a
+drawn preview, or rebuilt. Both fixed, and both are why [6.51](#) now exists.
+
 **Confirmed at the bench, 2026-09-26**, on the i.MX8M board this was found on: *"Verified."* That is
 where it has to be confirmed — `MillBurn.Tests` does not reference `MillBurn.App`, so no test here
 reaches `OnOutputChanged` or `Adopt`, and what holds underneath them is
@@ -5328,3 +5336,115 @@ named beside the numbers rather than assumed.
 **Done when** the pointer's position shows continuously in board coordinates while it is over the
 canvas, the readout says which origin it is measured from, and the cursor is a crosshair over the
 canvas and an arrow everywhere else. A screenshot of a fault carries its own coordinate.
+
+#### 6.49 A slider drag writes the settings file on every tick — **defect · fixed**
+
+Found while mapping A6. `OnBoardThicknessMmChanged` calls `SaveSettings`, which calls
+`AppSettings.Save()` — a JSON file written to disk — and the thickness slider snaps to 0.1 mm
+ticks over a 0.4–3.2 mm range, so a full-range drag writes it **twenty-eight times**.
+
+**What it is saving is not even the project.** The project's own thickness is recorded separately;
+this is the app-wide default, remembered as *"where the next new board starts"*. So the writes are
+for a value nobody is going to read until the next time a board is imported, and twenty-seven of
+the twenty-eight are immediately superseded by the twenty-eighth.
+
+**Why it is a defect rather than untidiness.** Disk I/O inside a drag loop is on the UI thread, it
+is the one cost in that loop that does not scale with the board but with the file system, and it is
+the kind of thing that is fine on a warm SSD and horrible on a network share or a tired stick. It
+also multiplies whatever else the drag is doing: 6.49 and A6's rebuild both happen per tick.
+
+**Split out of A6 by the product owner**, and rightly: A6 is a debounce, and this is a write that
+should not be happening at that moment whether or not anything is debounced. Fixing the debounce
+would hide it — twenty-eight writes become one — without the write ever having been examined.
+
+**Done when** a drag writes the settings file no more than once, the value still survives a restart,
+and it is clear from the code when the write happens rather than it being a side effect of a
+property setter.
+
+**Fixed, and it needed no machinery.** The settings file is *already* written when the window
+closes — `Closing` saves the window placement, and that goes through the same `SaveSettings` and
+writes the whole object. So the fix is to stop writing from the setter and nothing else:
+`RememberSettings` holds the value for the session, and the close path persists it along with
+everything else. A full-range drag now writes the file **zero** times instead of twenty-eight, and
+the one write on close was happening anyway.
+
+**What it costs.** The thickness default from a session that ends in a crash. It is read only when
+the next board is imported, so the trade is twenty-eight disk writes per drag against losing a
+convenience default in a crash — and it is written down rather than left to be discovered.
+
+**Every other caller still writes immediately, which is right.** A theme picked, a file opened, a
+folder chosen: discrete events, one write each. The thickness slider was the only per-tick writer.
+Panel width looked like a second one and is not — it is guarded by a one-pixel threshold and only
+fires from the close handler.
+
+**Where the write happens is now stated at the close handler**, because "then when *is* it written?"
+should be answerable from the code rather than by working out which other setting happens to save
+first.
+
+**Confirmed at the bench, 2026-09-26**: *"verified."* There is no test — the change is four lines
+in a view model `MillBurn.Tests` cannot reach, which is the third time this sprint.
+
+#### 6.50 Nothing can test the view model — **enhancement · open** — *three times in one sprint*
+
+`MillBurn.Tests` does not reference `MillBurn.App`, so nothing in `MainViewModel` is reachable from
+a test. That is a deliberate boundary — the pipeline is testable precisely because it knows nothing
+about a window — but the view model has stopped being a thin shell over it, and sprint 2 paid for
+that three times:
+
+| | What was in the view model | How it was caught |
+|---|---|---|
+| [6.27](#) | `Adopt` passing `fresh: true` — one line | The bench |
+| [6.33](#) | `OnOutputChanged` returning before it could stop a preview | The bench, then a review for two more paths |
+| [6.49](#) | A settings write on a property setter | Reading the code while mapping something else |
+
+And a fourth that cuts the other way: sprint 2 story 6 wrote a debounce, tested it eight ways, and
+the tests all passed while the wiring in the view model was broken — because the wiring is the part
+they could not see. The bench checks passed too, for a different reason, so nothing caught it but a
+review tracing the code by hand.
+
+**What is actually untestable is small.** Most of `MainViewModel` is arithmetic and string building
+that would test fine; what needs a window is the dispatcher, the file dialogs and the rendering.
+The parts that keep going wrong — when a preview is cancelled, what an edit invalidates, when a
+setting is persisted — are decisions, not drawing.
+
+**Done when** the decisions are reachable. That is likely a seam rather than a test project that
+references the app: the rules pulled into something with no Avalonia in it, the way `LatestRun` and
+`PlannedExports` already are, leaving the view model to call them. Each of the three faults above
+would have been a unit test under that shape.
+
+**Not urgent, and not free.** It is a refactor of the largest file in the repository, and doing it
+badly would be worse than the gap. It belongs in a sprint that has room for it, and the argument
+for it is the table above rather than a principle.
+
+#### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · open** — *six paths and counting*
+
+Six methods in `MainViewModel` have to notice that an edit has made the drawn programs wrong, and
+each does it by hand:
+
+| | What it changes | What it has to do |
+|---|---|---|
+| `OnOutputChanged` | a layer's output or settings | stop a run, clear the backplot, rebuild |
+| `ResetLayerSettings` | every layer at once | the same, plus its own status |
+| `ApplyRefresh` | the board's source bytes | the same, and the program too |
+| `ForgetProgram` | the project, via `Adopt` | the same, and the property notifications |
+| `SaveMachineSettings` | safe height, rapid rate, decimals | the same |
+| `SaveFraming` | the header and footer of every program | the same |
+
+**Every one of them was wrong at some point, and each was found separately.** 6.33 came from the
+bench and fixed the first; a review found the next two; a later review found the last two and a
+missing pair of property notifications in the fourth. None of them was found by a test, because
+`MillBurn.Tests` cannot reach the view model ([6.50](#)).
+
+**The shape of the fault is always the same.** Each site decides for itself what "invalidate"
+means, and the decisions have drifted: some stop the run, some clear the backplot, some rebuild,
+some set a status, one raised property notifications and the rest did not. The bug is never in the
+clearing — it is in a path that forgot one of the five.
+
+**Done when** there is one method that means "the programs on screen are no longer of this job",
+every one of the six calls it, and what it does is stated once. It is a small refactor, and its
+value is that the seventh path cannot be written wrong — which matters more than the six, because
+the six are now correct and the seventh is the one nobody has thought of yet.
+
+**Depends on nothing**, but is worth far more with [6.50](#): behind a seam, this method is the
+single most testable thing in the view model, and the six faults above would each have been a
+failing test rather than a bench report or a review.

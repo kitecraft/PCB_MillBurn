@@ -609,27 +609,103 @@ misses.
 
 ---
 
-## Story 6 — Slider drags stop re-planning on every pixel
+## Story 6 — A slider drag rebuilds once
 
-**Problem.** Dragging an isolation-width slider asks for a plan at every value it passes through,
-not the value it stops on. Each of those is a full plan of the board, and the operator wanted one.
+**The premise this story was written on was wrong, and the correction is the useful part.** It
+said a drag asks for a plan at every value it passes through, and that cancellation made that
+survivable rather than free. **Nothing plans on a drag.** Planning happens when Preview is clicked
+and at no other time; the only property change that previews as a side effect is the Settings
+dialog's Save, which is already on-commit. That reasoning was invented when this story was drafted,
+not taken from A6, which says only *"debounce/coalesce window on slider drags"*.
 
-**What.** Debounce and coalesce, so the pipeline sees the value the drag settled on.
+**Problem, measured.** What a tick does cost, on the Arduino Mega:
 
-**Why.** It is the last part of the story sprint 1 started. Moving planning off the UI thread
-(story 1) stopped the window freezing, and stopping a superseded run (6.33, this sprint's story 3)
-stopped the abandoned work running to the end — but the run is still *started*, and on a
-sixteen-second board a drag across twenty pixels asks for twenty of them. Cancellation makes that
-survivable rather than free; not asking is free.
+| Per tick | |
+|---|---|
+| `ProjectFile.ToBoard` | **5.4 ms**, and zero geometry — the realisation memo absorbs all of it |
+| The same on the test board | 0.4 ms |
+| A full-range thickness drag | 28 ticks, so ≈ 152 ms of UI thread |
+| And when a preview is on screen | a whole `Rebuild`: scene build, and every `LayerRow` destroyed and re-created |
 
-**How.** The debounce belongs beside `LatestRun` in the view model, which is already where "the
-newest edit wins" lives. It has to be a delay on *starting*, not another layer of cancelling, or it
-is the same work with a longer name.
+**What.** Debounce the invalidate-and-rebuild, so a drag rebuilds once at the value it settled on.
 
-**Done when** a drag of any length plans once, at the value the operator let go on, and a test
-proves the intermediate values were never planned rather than planned and discarded.
+**Why.** 152 ms of copying every Gerber's bytes to reach a memo hit is the cheap half; the
+expensive half is the `Rebuild`, which happens whenever the operator has a preview up — which is
+exactly when they are most likely to be adjusting something.
+
+**How.** There is no debounce anywhere in the app today and no drag-completed signal on either
+slider — no `Thumb.DragCompleted`, no `LostFocus` binding, no `UpdateSourceTrigger`. So the delay
+goes beside `LatestRun` in the view model, which is already where "the newest edit wins" lives.
+
+**The trap, written down before it is fallen into.** `Rebuild` destroys and re-creates every
+`LayerRow`, re-seeding from `_project.Settings` — including the row whose control the operator is
+holding. A debounce that parks a pending value outside the project loses it to any `Rebuild` fired
+from another path.
+
+**Two more corrections to the original text.** There are exactly two sliders in the application,
+board thickness and blank border; the isolation width named in the first draft is a `NumericUpDown`.
+Both sliders already snap to ticks, which is the only rate limiting that exists today.
+
+**Done when** a drag of any length rebuilds once, at the value the operator let go on, and a test
+proves the intermediate values never reached the rebuild rather than reaching it and being
+discarded.
 
 **Requirements:** A6
+
+### Closed — 2026-09-26 · already satisfied, and no code written
+
+**A6 holds, and it held before this story started.** `OnOutputChanged` already coalesces a drag,
+by accident of the guard it uses to decide whether there is anything to invalidate:
+
+```
+var stopped = StopPreview();
+if (_backplot.Count == 0 && !stopped) { return; }
+_backplot = [];
+...
+Rebuild(TimeSpan.Zero);
+```
+
+The first tick of a drag finds a picture on screen, clears it and rebuilds. **Every tick after that
+finds `_backplot` empty** — the first one emptied it — and no preview running, so it returns before
+reaching `Rebuild`. A drag of twenty-eight ticks rebuilds once, and a drag with nothing on screen
+rebuilds not at all. That is what A6 asked for.
+
+**So this story wrote a debounce, wired it in, tested it seven ways, took it to the bench, and then
+took it out again.** The class and its tests are gone. What is left is the trace above and this
+account of it.
+
+**The premise was wrong twice, and the second one is mine.** The first draft said a drag asked for a
+plan at every value it passed through; nothing plans on a drag, and that was corrected before any
+code was written. The rewrite then said a drag cost twenty-eight rebuilds at 5.4 ms each — 152 ms
+of UI thread on the Arduino Mega. That figure came from timing `ProjectFile.ToBoard` in a loop and
+multiplying by the tick count, which is arithmetic rather than measurement: `ToBoard` runs *inside*
+`Rebuild`, and `Rebuild` runs once. The 5.4 ms is real; the twenty-eight was invented.
+
+**What a tick actually costs**, which is the useful residue: `RecordOutputs` over every row,
+`_project.Touch()`, `DescribeBlank`, `StopPreview` — microseconds — and, on the thickness slider
+only, **a settings file written to disk**. That last one is [6.49](../Documentation/06-Roadmap-and-Risks.md),
+split out at the product owner's direction before any of this was known, and it is now the whole of
+what a drag costs that is worth anything.
+
+**The bench passed all four checks against a broken implementation.** That is the part worth
+keeping. The wiring put `Settle.Request()` *below* the guard, so ticks two to twenty-eight never
+reached it: the leading run happened, the trailing run never did, and the scene was left showing the
+first tick's value rather than the one the operator stopped on. All four manual checks passed
+anyway, because with the guard already coalescing, a broken debounce and no debounce look identical
+from the outside. The checks were mine to design and they could not have caught it.
+
+**What found it** was `/code-review`, tracing the guard against the leading run's first statement.
+Not the tests — eight of them, all passing, none able to reach `MainViewModel`. The header of that
+test file said as much while the file was being written.
+
+**What is left open.**
+
+- **The guard is load-bearing and nothing says so.** A6 now depends on `_backplot.Count == 0` being
+  the coalescing mechanism, which is not what that line was written for and not what its comment
+  describes. Anything that makes the invalidation path rebuild unconditionally reintroduces the
+  per-tick cost with no test to notice. Worth an entry if it is ever touched.
+- **`Debounce` was good code for a problem that did not exist.** It is in the history if a real one
+  turns up — a genuine per-keystroke path, or A7's progressive reveal.
 
 ---
 
@@ -676,6 +752,63 @@ for checking XY alone.
 each of the three refusals is named in its own message, and a test covers each refusal by name.
 
 **Requirements:** V31
+
+---
+
+## Story 9 — The settings file stops being written mid-drag
+
+**Problem.** `OnBoardThicknessMmChanged` writes the app settings to disk, so a full-range drag of
+the thickness slider writes the JSON **twenty-eight times** — and what it is saving is not the
+project's thickness but the app-wide default, the value that decides where the *next* new board
+starts. Twenty-seven of the twenty-eight are superseded immediately.
+
+**What.** Write it once, or later, or somewhere that is not a property setter.
+
+**Why.** Disk I/O in a drag loop runs on the UI thread, is the one cost in that loop that scales
+with the file system rather than with the board, and is fine on a warm SSD and horrible on a
+network share.
+
+**How.** Unsettled. The narrow fix is to move the write off the setter; the broader question is
+whether an app-wide default should be saved on change at all rather than on close.
+
+**Why it is not part of story 6.** Split out at the product owner's direction, and the reason is
+worth keeping: a debounce would *hide* this — twenty-eight writes become one — without the write
+ever having been examined. It is a thing that should not be happening at that moment whether or not
+anything is debounced.
+
+**Added to the sprint after it was agreed**, which the sprint's own rule says has to be declared:
+it is a defect, found while working the list, and it is small. Take it out if you would rather it
+waited, as 6.45 and 6.47 did.
+
+**Requirements:** — · [06 §6.49](../Documentation/06-Roadmap-and-Risks.md)
+
+### Closed — 2026-09-26
+
+**Met, and with less code than the story expected.** A full-range drag writes the settings file
+**zero** times, down from twenty-eight; the value still survives a restart; and where the write
+happens is stated at the place it happens. Confirmed at the bench: *"verified."*
+
+**The fix is a deletion.** `Closing` already saves the window placement, and that goes through
+`SaveSettings`, which writes the whole object — so the thickness default was going to be persisted
+on close whatever the setter did. Holding it in memory with `RememberSettings` and letting the
+close path write it is the entire change.
+
+**What it costs**, said rather than glossed: a session that ends in a crash loses the thickness
+default. It is read only when the next board is imported.
+
+**Worth noting against story 6.** This was split out of A6 on the grounds that a debounce would
+have *hidden* it — twenty-eight writes becoming one — without the write being examined. That turned
+out to matter more than it looked: story 6's debounce was removed entirely because the problem it
+addressed did not exist, and had the write not been split out first it would have gone with it,
+still happening twenty-eight times a drag and still unexamined.
+
+**What is left open.**
+
+- **No test, and none reachable.** Four lines in a view model `MillBurn.Tests` does not reference.
+  Third time this sprint; the pattern is now worth an entry of its own rather than a line in each
+  closure.
+
+---
 
 ---
 

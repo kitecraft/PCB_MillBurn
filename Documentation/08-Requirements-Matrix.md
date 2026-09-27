@@ -39,12 +39,12 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 
 | Section | Rows | Done | Done — used on metal | Not started | Parked | Partial | Superseded |
 |---|---|---|---|---|---|---|---|
-| 01 Architecture | 15 | 12 | 0 | 3 | 0 | 0 | 0 |
+| 01 Architecture | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
 | 02 Gerber & geometry pipeline | 23 | 15 | 0 | 6 | 1 | 0 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
 | 04 Machines, laser & mixed workflows | 31 | 10 | 1 | 16 | 0 | 4 | 0 |
 | 05 Viewer & export | 35 | 18 | 0 | 12 | 0 | 3 | 2 |
-| **Requirements** | **114** | **63** | **1** | **37** | **2** | **7** | **4** |
+| **Requirements** | **114** | **64** | **1** | **36** | **2** | **7** | **4** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -71,7 +71,7 @@ board being cut rather than from a document.
 | A3 | Permissive dependencies only; no copyleft in the graph | §3, §9 | **Done** | `THIRD-PARTY-NOTICES.md` |
 | A4 | Incremental pipeline: memoised stages keyed by structural hash | §4 | **Done** | `RealisedLayers.Get` keyed on bytes, role and options; stamps `Fingerprint`. Sprint 1 story 2 |
 | A5 | Cancellable: one `CancellationTokenSource` per edit, UI never blocks | §4 | **Done** | `LatestRun`, `PreviewBuild`; one source per edit by design, not sprinkled. Sprint 1 story 1 |
-| A6 | Debounce/coalesce window on slider drags | §4 | **Not started** | — |
+| A6 | Debounce/coalesce window on slider drags | §4 | **Done** | Already satisfied, by the invalidation guard in `OnOutputChanged` rather than by a debounce: a drag rebuilds at most once whatever its length. Nothing plans on a drag at all. Traced, not built — sprint 2 story 6 |
 | A7 | Progressive reveal: paths drawn before the optimizer finishes | §4 | **Not started** | — |
 | A8 | Determinism: no unseeded RNG, no hash-order iteration | §4 | **Done** | `DeterminismTests`, 8 cases |
 | A9 | Project model: `.millburn` file, refresh from source | §5 | **Done** | `Project.cs`, `ProjectRefresh.cs` |

@@ -145,6 +145,12 @@ public partial class MainWindow : Window
         {
             vm.SavePanelWidth(Split.ColumnDefinitions[0].ActualWidth);
         }
+
+        // **And this is where the settings a slider changed get written** — the placement save
+        // above writes the whole file, so anything held in memory during the session lands with
+        // it. Said here because 6.49 moved the board thickness off its property setter, and the
+        // question "then when is it written?" should be answerable from the code rather than by
+        // working out which other setting happens to save first.
     }
 
     /// <summary>

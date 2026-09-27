@@ -223,6 +223,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Milling = milling,
         });
 
+        // **A preview still building captured the old numbers and has to go.** It read the machine
+        // profile when its request was built, so left alone it finishes and publishes programs cut
+        // to the safe height, decimals and rapid rate that were just replaced — and writes its own
+        // status over the confirmation below. The branch further down does not cover it: a run in
+        // flight has `Gcode == null`, so the condition it tests is false exactly when a run is
+        // outstanding. Same fault as 6.33, in a path its sweep did not reach.
+        var interrupted = StopPreview();
+
         var confirmation = string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
             $"Settings saved. Safe height {machine.SafeZMm:F2} mm, dry run held at {dryRun.HeightMm:F2} mm.");
@@ -231,7 +239,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // returned — so the confirmation is said once the preview is done rather than into a line
         // the preview is about to overwrite. Saying it at all is the point: it repeats back the
         // numbers that were just changed.
-        if (Gcode is not null && !HasProgram)
+        if ((Gcode is not null || interrupted) && !HasProgram)
         {
             _ = ConfirmAfterPreview(confirmation);
             return;
@@ -260,8 +268,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         SaveSettings(Settings with { Framing = framing });
         OnPropertyChanged(nameof(Framing));
 
+        // Framing is read when a request is built, so a preview in flight is writing the old
+        // header and footer into every program — and a finished one is showing them. Both stop
+        // being true the moment this returns, so neither may stay on screen. 6.33 again.
+        var stopped = StopPreview();
+
+        if (_backplot.Count > 0 || stopped)
+        {
+            _backplot = [];
+            Gcode = null;
+            GcodeSummary = string.Empty;
+            Rebuild(TimeSpan.Zero);
+        }
+
         StatusMessage = framing.IsEmpty
-            ? "Start and end G-code cleared."
+            ? "Start and end G-code cleared. Preview again to see the programs without it."
             : "Start and end G-code saved. It goes into every program this machine writes.";
     }
 
@@ -537,6 +558,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Gcode = null;
         GcodeSummary = string.Empty;
         Warnings.Clear();
+
+        // `HasProgram` and `ShowingNothing` are computed from `_programPath` and the backplot, and
+        // both just changed. `CloseProgram` raised them itself; `Adopt` and `ApplyRefresh` did not,
+        // so a refresh left the close-program button enabled over a program that had gone and the
+        // empty-state panels showing the wrong thing. Raised here, where the fields are cleared,
+        // so a caller cannot forget.
+        OnPropertyChanged(nameof(HasProgram));
+        OnPropertyChanged(nameof(ShowingNothing));
 
         return stopped;
     }
@@ -1699,6 +1728,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Keeps a setting for this session without writing the file — 6.49.
+    ///
+    /// **For the settings a continuous control changes.** Every other caller of
+    /// <see cref="SaveSettings"/> is a discrete event: a theme picked, a file opened, a folder
+    /// chosen. The board thickness is a slider, snapping to 0.1 mm across 0.4–3.2 mm, so a
+    /// full-range drag called that twenty-eight times and wrote the JSON twenty-eight times — disk
+    /// I/O on the UI thread, in a loop, for a value nobody reads until the next board is imported,
+    /// with twenty-seven of the writes immediately superseded.
+    ///
+    /// **It still survives a restart**, because closing the window saves the placement, and that
+    /// goes through `SaveSettings` and writes the whole object — this value with it. So does any
+    /// other settings change made afterwards. What is lost is the value from a session that ended
+    /// in a crash, and for a default meaning *"where the next new board starts"* that is the right
+    /// trade against writing to disk twenty-eight times a drag.
+    /// </summary>
+    private void RememberSettings(AppSettings settings) => Settings = settings;
+
     // ------------------------------------------------------------------ presenting
 
     private void Adopt(MillBurnProject project, TimeSpan elapsed)
@@ -2334,8 +2381,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // Still remembered app-wide, but only as where the next new board starts.
-        SaveSettings(Settings with { BoardThicknessMm = value });
+        // Still remembered app-wide, but only as where the next new board starts — and held in
+        // memory rather than written, because this is a slider and the write was happening once
+        // per tick. See `RememberSettings`, and 6.49.
+        RememberSettings(Settings with { BoardThicknessMm = value });
         OnOutputChanged();
     }
 

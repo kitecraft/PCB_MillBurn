@@ -190,10 +190,13 @@ public static class IsolationOperation
             // "loop(s)" reaches the operator as "loop[s]": parentheses delimit a G-code comment,
             // so the writer rewrites them. Every other count in this file says "1 pass" or
             // "4 passes", and this is the one line of the new guard they actually read.
-            var loops = dropped == 1 ? "1 loop" : Invariant($"{dropped} loops");
+            // The singular has to agree with itself as well as be counted: "1 loop ... were not
+            // planned: each was" is what getting half of this right looks like.
+            var sentence = dropped == 1
+                ? "1 loop was too small to be a cut and was not planned: it was under a cut wide, or enclosed less than the plunge starting it would remove."
+                : Invariant($"{dropped} loops were too small to be a cut and were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove.");
 
-            notes.Add(Invariant(
-                $"{loops} too small to be a cut were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove."));
+            notes.Add(sentence);
         }
 
         if (options.WidthNm > 0)
