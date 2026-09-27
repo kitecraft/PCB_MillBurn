@@ -21,22 +21,29 @@
 </div>
 
 > [!NOTE]
-> **In progress — `release/0.3.0`.** You are looking at a sprint branch, not a release. Released
+> **Finished, not yet released — `release/0.3.0`.** You are looking at a sprint branch. Released
 > code is on [`main`](https://github.com/kitecraft/PCB_MillBurn/tree/main), and the newest build you
-> can download is [v0.2.0](https://github.com/kitecraft/PCB_MillBurn/releases/latest). Nothing in
-> this section has shipped yet.
+> can download is [v0.2.0](https://github.com/kitecraft/PCB_MillBurn/releases/latest). Everything
+> below has landed on this branch and none of it has shipped yet.
 >
 > **Sprint 2 — fix what is broken.** The first sprint defined by the defect list rather than by a
 > theme: six of the seven open defects, plus three requirements the product owner named. The seventh
-> waits for a board that can prove it.
+> waits for a board that can prove it. Nine stories, all closed.
 >
+> - **The dry run is the real program, raised.** Every Z lifted by a rise instead of held flat, so
+>   the plunges and lifts happen where they really happen and the run takes as long as the cut will.
+>   It refuses rather than guesses, by line number. This is now the default.
 > - **An isolation path no longer bows into an arc where the copper is straight.** Eight of them
 >   reached the Arduino Mega's programs, the worst 464 µm off a twelve-millimetre run — cutting into
->   copper that was supposed to stay. An arc replaces segments, not points, and the fitter only
->   checked its own vertices. Two extra moves on the whole board.
+>   copper that was supposed to stay. Two extra moves on the whole board.
+> - **The hole that was not a hole is gone**, at every isolation width from 0.1 mm to 1.0 mm.
+> - **A superseded preview stops** instead of running to the end of a plan nobody wants, and a
+>   full-range slider drag writes the settings file once rather than twenty-eight times.
+> - **A new guide: [corner stops](Help/guides/corner-stops.html)** — cut a locating corner once,
+>   then start every repeat job by pushing the stock into it.
 >
-> **[Read the sprint document →](Sprints/Sprint-02-Fix-What-Is-Broken.md)** — what is in it, what is
-> blocked before it can start, and the one large item deliberately left out.
+> **[Read the sprint document →](Sprints/Sprint-02-Fix-What-Is-Broken.md)** — every story, what each
+> measured, and the two items deliberately left out.
 
 ---
 
@@ -367,7 +374,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.2.0.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.3.0.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 <table>
