@@ -5501,3 +5501,66 @@ the six are now correct and the seventh is the one nobody has thought of yet.
 **Depends on nothing**, but is worth far more with [6.50](#): behind a seam, this method is the
 single most testable thing in the view model, and the six faults above would each have been a
 failing test rather than a bench report or a review.
+
+#### 6.52 A test cut that finds where the copper stops — **enhancement · open** — *asked for by the product owner*
+
+From the product owner, 2026-09-27: *"A new test for copper thickness. This test will cut a series
+of ladders. Each ladder is x number of step-over passes. The first rung is very shallow and each
+rung gets very small increment deeper. This test will help users determine the optimal cut depth
+for their piece. For this particular test, I think we should increase the granularity of the probe
+job (when used) to help ensure the best results."*
+
+**The geometry already exists; the resolution does not.** `TestCutKind.Depth` already cuts exactly
+this shape — a band per depth, each band `PassesPerLine` overlapping passes at a commanded
+stepover. What stops it answering this question is its own defaults, and deliberately so: they step
+**0.05 mm**, documented in `TestCutOptions.DepthStepMm` as *"Wide steps on purpose"*, because that
+series exists to fit a straight line through width-against-depth for a V-bit and a narrow spread
+sits inside a caliper's own error.
+
+**One of those steps is larger than the whole thickness of the copper.** One-ounce foil is about
+**0.035 mm**. The generator already knows this and says so unprompted — the default depth series
+prints *"The deepest line is 0.570 mm. Copper foil is about 0.035 mm, so anything past that is
+cutting fibreglass"*. So at 0.05 mm steps a single rung crosses from *not through the copper* to
+*well into the substrate*, and there is no rung at the depth the answer actually lives at.
+
+**Measured, with the existing generator driven at copper resolution** — `testcut depth --lines 12
+--from 0.01 --step 0.01 --rungs 0`:
+
+| | |
+|---|---|
+| Rungs | 12, from 0.010 mm to 0.120 mm |
+| Each rung | 20 passes stepping 0.079 mm |
+| Coupon | **19.0 x 47.5 mm** |
+| Cutting time | about 214 seconds |
+
+So the shape is right and it is cheap. What is missing is a kind that starts there by default,
+and a page that tells you what you are looking at.
+
+**It is read by eye, which is why it is a different test.** The depth series is measured with a
+caliper across a band and the number matters. This one is two transitions found with a loupe: the
+shallowest rung with **no copper left anywhere in the band**, and the first rung where the
+substrate is visibly cut. The usable depth is between them, and how far apart they are is itself
+the reading — a board where they are adjacent has nothing in hand.
+
+**The probe grid is the part that decides whether any of it means anything.** A coupon already gets
+its own spacing rather than the board's: both callers compute
+`Math.Max(4, Math.Min(StockWidthMm, StockHeightMm) / 3)`, which on the coupon above gives 6.3 mm
+and a **3 x 8 grid of 24 touches**. Three columns across 17 mm of probed width means the map
+interpolates over 8.5 mm between them — and an ordinary piece of clamped copper-clad is
+**0.1-0.2 mm** out of flat. Only a fraction of that falls across a coupon this small, but a few
+hundredths is several rungs' worth of a 0.010 mm step, which does not shift the reading so much as
+invent it.
+
+**And that expression is written out twice** — `Program.cs` for the CLI and `MainWindow.axaml.cs`
+for the window — so the rule that decides this has no single home and nothing keeps the two in
+step.
+
+**A risk worth naming before it is built.** The stepover is derived from the *predicted* width of
+the shallowest line, and the whole premise of this test is that the tool model is not trusted. If
+the real tip is blunter than the library believes, the shallow rungs leave ribs of copper between
+passes — which is still a reading, but it means *the stepover was too wide for this depth* and not
+*the copper is thicker than that*. The guide has to separate those two, or the test answers the
+wrong question convincingly.
+
+**Depends on nothing.** It reuses `TestCut`'s emitter, its setup file, its two-visit probe
+workflow and its guide generator.
