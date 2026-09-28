@@ -177,6 +177,17 @@ public sealed class CancellablePlanningTests(ITestOutputHelper output)
 
         var midway = whole.Reached / 2;
 
+        // **The same guard the test above has, and for a sharper reason here.** If this measuring
+        // run were ever answered from the memo it would make no lookups, `midway` would be zero,
+        // and `SignalsAtLayer` would signal on the very first one — which is the blank being
+        // resolved, not a layer. Every run would then be superseded before it entered the layer
+        // loop, the "reached the middle of the board" assertion below would pass on nothing, and
+        // this would quietly become the cancel-at-the-top test it was written to replace. It would
+        // still be green.
+        Assert.True(
+            whole.Reached > 8,
+            $"a run of {whole.Reached} lookups cannot put anything halfway into the board.");
+
         using var runs = new LatestRun();
         var started = new List<Task<bool>>();
         var wrappers = new List<SignalsAtLayer>();
