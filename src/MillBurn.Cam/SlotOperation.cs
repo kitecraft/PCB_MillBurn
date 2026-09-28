@@ -384,7 +384,7 @@ public static class SlotOperation
             return loop;
         }
 
-        var inflated = Clipper.InflatePaths(
+        var inflated = Polygons.Inflate(
             new Paths64 { new Path64 { new Point64(slot.From.X, slot.From.Y), new Point64(slot.To.X, slot.To.Y) } },
             clearance,
             JoinType.Round,

@@ -10,6 +10,81 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
+## [0.3.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.3.0) — 2026-09-27
+
+**Fix what is broken.** The first sprint defined by the defect list rather than by a theme, which is
+only possible because [the list](Documentation/11-Backlog.md) now exists. Six of the seven open
+defects, plus the three requirements the product owner asked to come with them.
+
+[Sprint 2 — Fix what is broken](Sprints/Sprint-02-Fix-What-Is-Broken.md). Nine stories: six closed
+by a fix, one by measuring it and deciding it was not worth fixing, one that turned out to be
+already satisfied, and one met by a guide instead of the feature it asked for.
+
+**The dry run is now the real program, raised — and that is a changed default.** It used to hold
+every Z at one height, which proved the extents and the work zero and nothing else: no plunges, no
+lifts, and a run time that was not the job's. It is now the real program with every Z lifted by a
+rise, spindle off, so every plunge and lift happens where it really happens and the run takes as
+long as the cut will. Checked move by move against the real program rather than at its low point —
+same moves, same X and Y, same kinds, every Z exactly the rise higher. The flat run is still there
+as a choice, in *Settings › Dry run* and as `--dry-run-height`; `--dry-run-rise` asks for the new
+one. **An existing settings file has no style in it, so the first dry run after upgrading will be
+the raised one.**
+
+It refuses rather than guesses. A cut deeper than the rise clears is refused with the rise that
+would do it; so are `G92`, `G10`, `G38`, `G43`/`G49` and their decimal variants, a machine-
+referenced Z (`G53`, `G28`, `G30`), and a program that commands no Z at all — each named with its
+line number, because a dry run that is wrong is worse than none.
+
+**A comment no longer hides the code after it.** Three places read a G-code line to decide what it
+does, and two of them stopped at the first `(` instead of stepping over the comment — so a line
+written `( touch off ) G1 Z-1.0 F50`, which is how people write headers, looked completely blank to
+them while the machine saw a real cutting move. Every dry-run refusal went silent on such a line,
+the rise skipped it, and the clearance check never measured it: the dry run handed back that plunge
+verbatim under a header promising every Z three millimetres higher. The start/end G-code check lost
+its errors the same way, on the real program — `(all done) M30` passed without a word. All three
+readers now share one implementation, the one that was already right.
+
+**Two faults that spoiled copper, both found at the bench and both on real boards.** An isolation
+path no longer bows into an arc where the copper is straight: all eight instances on the Arduino
+Mega come out straight, in a program the same size as before. And the hole that was not a hole is
+gone — at isolation widths from 0.1 mm to 1.0 mm the smallest loop that survives anywhere on that
+board is 0.165 mm across, against a 0.124 mm cut. Reproducing the second took a round trip: it needs
+the project's own 0.045 mm cut depth, not the 0.050 mm default, because the threshold it crosses is
+a pass count.
+
+**A superseded preview actually stops.** Planning takes a cancellation token now and reads it
+between layers, between programs and between toolpaths — the innermost is where simplification and
+route optimisation spend the seconds, so it is the one that decides how long a cancelled run keeps
+going. A plan that completed is still kept.
+
+**A full-range drag of the thickness slider wrote the settings file twenty-eight times.** It now
+writes nothing until the window closes. What it was saving was not the project's thickness but the
+app-wide default for the *next* board, so twenty-seven of the twenty-eight were superseded
+immediately. The cost of holding it in memory is that a session ending in a crash loses the value.
+
+**Measured, then left alone.** An even number of outline passes really does cost about twice the
+travel of an odd one — 337, 721, 326, 326 and 710 mm across five step-downs on a 66-up panel,
+exactly as reported. Turned into time it is **about twelve seconds** on a job the program estimates
+at over forty minutes, so it is recorded with the number and closed rather than fixed.
+
+**A new guide: [corner stops](Help/guides/corner-stops.html).** Cut a locating corner into a
+sacrificial plate once, then start every repeat job by pushing the stock into it. Three pads rather
+than two rails, the corner relief that decides whether it works at all, how tall the pads may be
+before the cutter finds them, and an honest error budget — the stock's sheared edge dominates at
+0.1–0.25 mm, and milling the two datum edges first collapses it to 0.05 mm. Six line drawings, no
+photographs. The fixture generator it was going to be was declined: the datum it would have stored
+is a work offset your controller already owns.
+
+**Under the hood, and the reason the next regression will be visible.** Every toolpath this program
+makes is built by an offset, and not one of them was counted — on the Arduino Mega, 8,024 offsets
+against 1,493 booleans, five times as many operations as the tally was watching. They are counted
+now, along with what the route search costs, and a build error keeps Clipper's boolean, offset,
+Minkowski and point-in-polygon entry points inside one file so there is one place to count from. A
+change that swapped a boolean for an offset would previously have reported that the work got
+cheaper.
+
+---
+
 ## [0.2.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.2.0) — 2026-09-24
 
 **Seamless usability.** The product owner's title for it, and a fair one: nothing here is a feature.

@@ -71,11 +71,10 @@ public static class VoidCentreline
         // the profile overhangs the real channel by. Measured against that, a centreline is
         // rejected for doing less damage. Whether the channel is cut through is the question, and
         // this is that question.
-        var byLine = Clipper.InflatePaths(
+        var byLine = Polygons.Inflate(
             axis, radius, JoinType.Round, EndType.Round, arcTolerance: sagittaNm);
 
-        Work.Boolean(Polygons.VertexCount(loop) + Polygons.VertexCount(byLine));
-        var missed = Clipper.Difference(loop, byLine, FillRule.NonZero);
+        var missed = Polygons.Difference(loop, byLine);
 
         // A hundredth of a square millimetre of slack, for the slivers an offset leaves along an
         // edge it has just reproduced. A real gap is thousands of times that.

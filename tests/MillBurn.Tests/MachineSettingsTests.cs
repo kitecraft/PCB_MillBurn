@@ -95,6 +95,12 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
         Assert.False(machine.CannedCycles);
         Assert.Equal(5, new DryRunSettings().HeightMm);
         Assert.True(new DryRunSettings().KeepFeeds);
+
+        // The two V31 added. The style default is load-bearing rather than cosmetic: it decides
+        // which kind of file every export writes, and several tests elsewhere now have to ask for
+        // the flat run by name precisely because it changed once already.
+        Assert.Equal(DryRunStyle.Raised, new DryRunSettings().Style);
+        Assert.Equal(3, new DryRunSettings().RiseMm);
         Assert.Equal(10, new ProbeSettings().SpacingMm);
         Assert.Equal(1, new LevelSettings().SegmentMm);
     }
@@ -128,7 +134,7 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
     {
         var found = SettingsCheck.Found(
             new MachineSettings { SafeZMm = 2, ApproachZMm = 3 },
-            new DryRunSettings { HeightMm = 1 },
+            new DryRunSettings { Style = DryRunStyle.Flat, HeightMm = 1 },
             new ProbeSettings { MaxPoints = 2 },
             new LevelSettings { Smoothing = 2 },
             new MillingDefaults { IsolationWidthMm = -1 });
@@ -146,7 +152,7 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
             found.Select(p => p.Text),
             SettingsCheck.Problems(
                 new MachineSettings { SafeZMm = 2, ApproachZMm = 3 },
-                new DryRunSettings { HeightMm = 1 },
+                new DryRunSettings { Style = DryRunStyle.Flat, HeightMm = 1 },
                 new ProbeSettings { MaxPoints = 2 },
                 new LevelSettings { Smoothing = 2 },
                 new MillingDefaults { IsolationWidthMm = -1 }));
@@ -155,17 +161,51 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
     /// <summary>
     /// A dry run held lower than the job's own travel height proves less than the job does, which
     /// is backwards for the thing you run to reassure yourself.
+    ///
+    /// The flat style, by name. The held height is the flat run's number and only the flat run's;
+    /// V31 made the raised style the default, and these problems disable Save, so flagging it
+    /// while the raised style is chosen would kill the Save button over a value that changes
+    /// nothing in the file — with the tab it points at showing nothing wrong.
+    ///
+    /// **One theory, not a pair of tests**, because the interesting half is a negative: on its own,
+    /// "the raised style is not flagged" passes just as well if the check has stopped reporting
+    /// anything at all. Asked as the same call with the style swapped, the flat row is what proves
+    /// the rule is still alive when the raised row says it stayed quiet.
     /// </summary>
-    [Fact]
-    public void ADryRunBelowTheSafeHeightIsRefused()
+    [Theory]
+    [InlineData(DryRunStyle.Flat, true)]
+    [InlineData(DryRunStyle.Raised, false)]
+    public void TheHeldHeightIsJudgedOnlyWhenTheRunIsHeldFlat(DryRunStyle style, bool flagged)
     {
         var problems = SettingsCheck.Problems(
             new MachineSettings { SafeZMm = 8 },
-            new DryRunSettings { HeightMm = 5 },
+            new DryRunSettings { Style = style, HeightMm = 5 },
             new ProbeSettings(),
             new LevelSettings());
 
-        Assert.Contains(problems, p => p.Contains("Dry-run height", StringComparison.Ordinal));
+        output.WriteLine($"{style}: {(problems.Count == 0 ? "no problems" : string.Join("; ", problems))}");
+
+        Assert.Equal(flagged, problems.Any(p => p.Contains("Dry-run height", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// A rise of zero is the real program with the spindle off, which is not a dry run.
+    ///
+    /// Caught here rather than at export, where the only sign of it is a clearance refusal per
+    /// file — one message per program, none of which names the setting that caused it.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-3.0)]
+    public void ARiseOfZeroOrLessIsRefused(double riseMm)
+    {
+        var problems = SettingsCheck.Problems(
+            new MachineSettings { SafeZMm = 8 },
+            new DryRunSettings { Style = DryRunStyle.Raised, RiseMm = riseMm },
+            new ProbeSettings(),
+            new LevelSettings());
+
+        Assert.Contains(problems, p => p.Contains("Dry-run rise", StringComparison.Ordinal));
     }
 
     [Theory]

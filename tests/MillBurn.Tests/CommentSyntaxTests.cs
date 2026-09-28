@@ -84,12 +84,60 @@ public sealed class CommentSyntaxTests
         AssertCommentsAreWellFormed(
             ProbeRoutine.Generate(Board(widthMm, heightMm)).Text, "probe routine");
 
-    [Fact]
-    public void TheDryRunHeaderIsWellFormed()
+    /// <summary>
+    /// Every dry-run header, named rather than defaulted.
+    ///
+    /// This was one call with no options, which meant it checked whichever header happened to be
+    /// the default — and when V31 made that the raised one, it stopped checking the flat one
+    /// without failing. There are now three: flat, raised, and raised with the feeds replaced,
+    /// which says something different about the time and so is a different block of text.
+    /// </summary>
+    [Theory]
+    [InlineData(DryRunStyle.Flat, true)]
+    [InlineData(DryRunStyle.Flat, false)]
+    [InlineData(DryRunStyle.Raised, true)]
+    [InlineData(DryRunStyle.Raised, false)]
+    public void TheDryRunHeaderIsWellFormed(DryRunStyle style, bool keepFeeds)
     {
-        var (text, _) = DryRun.Rewrite("G21 G90\nG1 Z-0.05 F60\nM30");
+        var (text, report) = DryRun.Rewrite(
+            "G21 G90\nG0 Z2.000\nG1 Z-0.05 F60\nM30",
+            new DryRunOptions { Style = style, KeepFeeds = keepFeeds });
 
-        AssertCommentsAreWellFormed(text, "dry run");
+        Assert.Null(report.Refusal);
+
+        AssertCommentsAreWellFormed(text, $"dry run ({style}, feeds {(keepFeeds ? "kept" : "replaced")})");
+    }
+
+    /// <summary>
+    /// The raised header claims the run takes the real program's time. That is only true while the
+    /// feeds are the real ones, and turning them off is an option — so the sentence has to go when
+    /// the feeds do. It is the one line the operator reads standing at the machine.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TheRaisedHeaderOnlyPromisesTheRealTimeWhenTheFeedsAreReal(bool keepFeeds)
+    {
+        var (text, report) = DryRun.Rewrite(
+            "G21 G90\nG0 Z2.000\nG1 Z-0.05 F60\nM30",
+            new DryRunOptions { Style = DryRunStyle.Raised, KeepFeeds = keepFeeds });
+
+        // Or a refusal hands back the input, which contains neither sentence, and the half of this
+        // test that asks for an absence passes without the header existing at all.
+        Assert.Null(report.Refusal);
+
+        // The comment block, taken as the comment block. Cutting at the first `M5` would mean that
+        // if the preamble ever stopped emitting one, "the header" became the whole program and a
+        // sentence anywhere in it would satisfy the search.
+        var header = string.Join(
+            "\n", text.Split('\n').TakeWhile(l => l.StartsWith('(')));
+
+        Assert.StartsWith("( ***", header, StringComparison.Ordinal);
+
+        Assert.Equal(keepFeeds, header.Contains("the time the real program takes", StringComparison.Ordinal));
+
+        // And with them off it says so, rather than simply going quiet on the question.
+        Assert.Equal(!keepFeeds, header.Contains("its time means", StringComparison.Ordinal));
     }
 
     [Fact]

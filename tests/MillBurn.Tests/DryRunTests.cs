@@ -14,6 +14,16 @@ namespace MillBurn.Tests;
 /// </summary>
 public sealed class DryRunTests(ITestOutputHelper output)
 {
+    /// <summary>
+    /// The flat run, asked for by name.
+    ///
+    /// Every test in this file was written before there was a choice, when holding every Z at one
+    /// height was the only thing a dry run did. V31 made the raised copy the default, so leaning on
+    /// the default here would quietly turn these into tests of something else — and they would
+    /// mostly still pass, which is worse. `RaisedDryRunTests` covers the new one.
+    /// </summary>
+    private static readonly DryRunOptions Flat = new() { Style = DryRunStyle.Flat };
+
     private static string Real(string board)
     {
         var loaded = BoardLoader.LoadFolder(RealBoards.Directory(board));
@@ -41,7 +51,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
     [InlineData(RealBoards.Panel)]
     public void NothingEverGoesBelowTheHeight(string board)
     {
-        var (text, report) = DryRun.Rewrite(Real(board));
+        var (text, report) = DryRun.Rewrite(Real(board), Flat);
 
         output.WriteLine($"{board}: lowest Z {report.LowestZMm:F3} mm, "
             + $"{report.LinesRewritten:N0} lines rewritten");
@@ -70,7 +80,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
     [Fact]
     public void TheSpindleNeverStarts()
     {
-        var (text, report) = DryRun.Rewrite(Real(RealBoards.PogoTest1));
+        var (text, report) = DryRun.Rewrite(Real(RealBoards.PogoTest1), Flat);
 
         Assert.True(report.SpindleCommandsRemoved > 0, "the real program should have started it");
 
@@ -79,8 +89,11 @@ public sealed class DryRunTests(ITestOutputHelper output)
         foreach (var line in text.Split('\n'))
         {
             var code = line.Split('(')[0].Trim();
-            Assert.DoesNotMatch("[Mm]3(?![0-9.])", code);
-            Assert.DoesNotMatch("[Mm]4(?![0-9.])", code);
+            // The zero-padded spellings too: a controller reads M03 and M3 alike, and the code
+            // under test parses the number rather than the text, so a pattern that only knows one
+            // of them is checking less than the program does.
+            Assert.DoesNotMatch("[Mm]0?3(?![0-9.])", code);
+            Assert.DoesNotMatch("[Mm]0?4(?![0-9.])", code);
         }
 
         Assert.Contains("M5", text, StringComparison.Ordinal);
@@ -96,7 +109,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
     public void TheHorizontalPathIsUnchanged(string board)
     {
         var original = Real(board);
-        var (dry, _) = DryRun.Rewrite(original);
+        var (dry, _) = DryRun.Rewrite(original, Flat);
 
         static List<Point2> Path(string text) =>
         [
@@ -130,7 +143,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
             G0 X50 Y50
             G1 X60 Y50 F200
             M30
-            """);
+            """, Flat);
 
         Assert.True(report.StaysClear);
 
@@ -155,7 +168,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
             G1 Z-0.075 F60
             G1 X1.0 F10
             M30
-            """, new DryRunOptions { HeightMm = 25.4 });
+            """, Flat with { HeightMm = 25.4 });
 
         Assert.True(report.StaysClear);
         Assert.Contains("G20 G90", text, StringComparison.Ordinal);
@@ -165,7 +178,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
     [Fact]
     public void ItSaysWhatItIsAtTheTop()
     {
-        var (text, _) = DryRun.Rewrite(Real(RealBoards.PogoTest1));
+        var (text, _) = DryRun.Rewrite(Real(RealBoards.PogoTest1), Flat);
         var head = text.Split('\n').Take(8);
 
         Assert.Contains(head, l => l.Contains("DRY RUN", StringComparison.Ordinal));
@@ -188,14 +201,18 @@ public sealed class DryRunTests(ITestOutputHelper output)
             G91
             G1 Z-1.0 F60
             M30
-            """);
+            """, Flat);
 
         Assert.NotNull(report.Refusal);
         Assert.Contains("G91", report.Refusal, StringComparison.Ordinal);
         Assert.False(report.StaysClear);
 
-        // And the original is handed back untouched, so nothing half-rewritten can be run.
-        Assert.Contains("Z-1.0", text, StringComparison.Ordinal);
+        // And the original is handed back untouched, so nothing half-rewritten can be run. The
+        // whole text, not one surviving token: a rewrite that stopped at the G91 would leave this
+        // Z alone and still hand back two lines it had already changed.
+        Assert.Equal(
+            "G21 G90\nG0 X0 Y0\nG91\nG1 Z-1.0 F60\nM30",
+            text.Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
     /// <summary>G91.1 sets arc-centre mode and has nothing to do with distance mode.</summary>
@@ -207,7 +224,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
             G0 X0 Y0
             G1 Z-1.0 F60
             M30
-            """);
+            """, Flat);
 
         Assert.Null(report.Refusal);
         Assert.True(report.StaysClear);
@@ -226,7 +243,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
             G1 X20.000 Y-3.250 F200
             G0 Z2.000
             M30
-            """, new DryRunOptions { HeightMm = 4 });
+            """, Flat with { HeightMm = 4 });
 
         Assert.Contains("G0 Z4.000", text, StringComparison.Ordinal);
         Assert.Contains("G21 G90", text, StringComparison.Ordinal);
@@ -234,6 +251,12 @@ public sealed class DryRunTests(ITestOutputHelper output)
 
         // X, Y and F are untouched.
         Assert.Contains("G0 X10.500 Y-3.250", text, StringComparison.Ordinal);
+
+        // And the depths are gone. Three matches on the new height do not say the old ones left —
+        // a rewrite that added Z lines rather than replacing them would satisfy every check above,
+        // and this test is named for the claim it was not making.
+        Assert.DoesNotContain("Z-1.900", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Z2.000", text, StringComparison.Ordinal);
         Assert.Contains("G1 X20.000 Y-3.250 F200", text, StringComparison.Ordinal);
     }
 
@@ -249,7 +272,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
             G21 G90
             G1 Z-1.900 F60
             M30
-            """);
+            """, Flat);
 
         Assert.Contains("( cuts to Z-1.900 through the back )", text, StringComparison.Ordinal);
         Assert.Contains("G1 Z5.000 F60", text, StringComparison.Ordinal);
@@ -264,7 +287,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
             M3 S12000
             G1 Z-1.0 F60
             M30
-            """);
+            """, Flat);
 
         Assert.Equal(1, report.SpindleCommandsRemoved);
         Assert.Contains("M30", text, StringComparison.Ordinal);
@@ -273,9 +296,9 @@ public sealed class DryRunTests(ITestOutputHelper output)
     [Fact]
     public void FeedsAreKeptSoTheTimeIsHonest()
     {
-        var (kept, _) = DryRun.Rewrite("G1 X10 F200", new DryRunOptions());
+        var (kept, _) = DryRun.Rewrite("G1 X10 F200", Flat);
         var (fast, _) = DryRun.Rewrite(
-            "G1 X10 F200", new DryRunOptions { KeepFeeds = false, RapidMmPerMin = 2000 });
+            "G1 X10 F200", Flat with { KeepFeeds = false, RapidMmPerMin = 2000 });
 
         Assert.Contains("F200", kept, StringComparison.Ordinal);
         Assert.Contains("F2000", fast, StringComparison.Ordinal);
@@ -284,7 +307,7 @@ public sealed class DryRunTests(ITestOutputHelper output)
     [Fact]
     public void AnEmptyProgramIsNotAnError()
     {
-        var (_, report) = DryRun.Rewrite(string.Empty);
+        var (_, report) = DryRun.Rewrite(string.Empty, Flat);
 
         Assert.Null(report.Refusal);
         Assert.True(report.StaysClear);

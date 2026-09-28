@@ -311,6 +311,12 @@ run in. Nothing about the fixture is ever measured with a rule.
 
 #### 4.1.1 The corner stop — the recommended default
 
+> **Shipped as a guide, not as a feature** — `Help/guides/corner-stops.html`, 2026-09-27. This
+> section is written as a specification for a fixture generator, and that generator was declined:
+> the datum it would have stored is a work offset the controller already owns, and the geometry is a
+> pocket with three islands that anyone can draw once. Read what follows for the **numbers and the
+> reasoning**, which the guide uses unchanged; ignore the parts that assign work to the app.
+
 Two stops on one edge of the stock, one on the adjacent edge, milled into a sacrificial plate that
 stays bolted to the table. Push the stock into them and it is located. No holes drilled in the
 stock, no pins, works with any stock at least as big as the board, and takes about four minutes to

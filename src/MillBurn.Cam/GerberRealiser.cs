@@ -431,7 +431,7 @@ public static class GerberRealiser
                 return null;
             }
 
-            return Clipper.InflatePaths(
+            return Polygons.Inflate(
                 Polygons.From(polyline),
                 radius,
                 JoinType.Round,
@@ -451,7 +451,7 @@ public static class GerberRealiser
         var swept = Polygons.Empty();
         foreach (var contour in pen)
         {
-            swept.AddRange(Clipper.MinkowskiSum(contour, polyline, closed));
+            swept.AddRange(Polygons.Sweep(contour, polyline, closed));
         }
 
         return Polygons.UnionSelf(swept);

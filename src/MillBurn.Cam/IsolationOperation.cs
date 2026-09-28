@@ -136,12 +136,13 @@ public static class IsolationOperation
 
         var step = options.StepNm;
         var count = options.PassCount;
+        var dropped = 0;
 
         for (var pass = 0; pass < count; pass++)
         {
             // Centreline of pass n: half a width clear of the copper, then one step per extra pass.
             var offset = (width / 2) + options.BiasNm + (pass * step);
-            var contours = Clipper.InflatePaths(
+            var contours = Polygons.Inflate(
                 copper, offset, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
 
             if (contours.Count == 0)
@@ -152,8 +153,17 @@ public static class IsolationOperation
 
             foreach (var contour in contours)
             {
+                // Not counted with the slivers below: a contour of one or two points is not a loop
+                // that anybody could see or argue with, and saying it was "under a cut wide" would
+                // be describing it wrongly in a note the operator is meant to be able to check.
                 if (contour.Count < 3)
                 {
+                    continue;
+                }
+
+                if (Sliver(contour, width))
+                {
+                    dropped++;
                     continue;
                 }
 
@@ -169,6 +179,25 @@ public static class IsolationOperation
         var depthMm = Nm.ToMillimetreString(options.DepthNm, 3);
         var widthMm = Nm.ToMillimetreString(width, 3);
         notes.Add(Invariant($"{options.Tool.Name} at {depthMm} mm deep cuts {widthMm} mm wide."));
+
+        if (dropped > 0)
+        {
+            // Said out loud because it is the operator's to disagree with. On a dense board this is
+            // a quarter of the plunges, and it is a rule applied without being asked for — the same
+            // reason the achieved width and the pass cap are reported rather than assumed. Somebody
+            // comparing a plan against the picture should be able to see that loops were refused,
+            // and go and look at what <see cref="Sliver"/> says about which.
+            // "loop(s)" reaches the operator as "loop[s]": parentheses delimit a G-code comment,
+            // so the writer rewrites them. Every other count in this file says "1 pass" or
+            // "4 passes", and this is the one line of the new guard they actually read.
+            // The singular has to agree with itself as well as be counted: "1 loop ... were not
+            // planned: each was" is what getting half of this right looks like.
+            var sentence = dropped == 1
+                ? "1 loop was too small to be a cut and was not planned: it was under a cut wide, or enclosed less than the plunge starting it would remove."
+                : Invariant($"{dropped} loops were too small to be a cut and were not planned: each was under a cut wide, or enclosed less than the plunge starting it would remove.");
+
+            notes.Add(sentence);
+        }
 
         if (options.WidthNm > 0)
         {
@@ -205,6 +234,89 @@ public static class IsolationOperation
     }
 
     /// <summary>
+    /// Whether a contour is too small to be a cut — an offsetting artefact rather than a path.
+    ///
+    /// **A real isolation contour is never narrower than the tool that cuts it.** It is the copper
+    /// offset outwards by at least half a cut width on every side, so even an island the size of a
+    /// point comes back as a circle one full width across, and anything with actual copper in it is
+    /// larger again. A contour that fits *inside* the cutter therefore cannot have come from copper:
+    /// it is a sliver where two offsets met, the kind Clipper leaves wherever boundaries touch.
+    ///
+    /// **That bound alone is not enough, and the bench proved it.** The fault this guard exists for
+    /// — reported as *"a misplaced hole"* at (15.47, 31.47) on the Arduino Mega, present at 0.45 mm
+    /// of isolation and absent at 0.40 — is a four-point loop measuring 126.4 µm across a 124.1 µm
+    /// cut. It clears the width test by two microns and is plainly not a path: a diagonal splinter
+    /// 175 µm long enclosing 4,971 µm², where the fifth pass's offsets closed on each other.
+    ///
+    /// So the second test is what the loop *encircles*, against what the plunge that starts it
+    /// already takes out — a disc one cut wide, <c>π(w/2)²</c>. A contour enclosing less than that
+    /// is not going around anything; the cut sweeping it covers the whole interior and a full width
+    /// beyond, so it is a plunge with extra steps.
+    ///
+    /// **The disc is the bound because offsetting a point gives exactly it**, which is the smallest
+    /// ring a copper island can have. Not quite exactly, and in both tests: Clipper tessellates that
+    /// circle as an inscribed polygon of about eighteen steps, so a point island comes back roughly
+    /// 2 % under the disc in area and 1.5 % under one cut width across. The width test has no area
+    /// escape, so an island narrower than about **two microns** loses its ring outright. No Gerber
+    /// carries one — the smallest feature these boards use is a 0.1 mm pad, whose ring encloses four
+    /// times the area threshold and spans nearly twice the cut, and a 0.01 mm island still clears
+    /// both by a fifth and an order of magnitude. On real copper it is not close:
+    /// across the Mega, the Uno, the test board, the connector and the pogo jig, at two depths and
+    /// two widths, the smallest positive-area contour is 360,000 µm² — thirty times the threshold —
+    /// and the rule drops not one of them.
+    ///
+    /// **The two-width cap is the guard that makes it safe**, and it is not cosmetic. A long thin
+    /// hole encloses very little too, and on the Mega one runs 2.03 mm; but a hole's worth is in the
+    /// run of moat it clears along its length, not in what it encircles, and dropping one would
+    /// leave a ridge of copper lying in the middle of the moat. Beyond two cut widths a loop has
+    /// stopped being a dot and started being a path, so only what encircles less than a plunge
+    /// *and* would fit in that dot is refused.
+    ///
+    /// **Nothing here can break a net.** A hole in the offset is enclosed by grown copper on every
+    /// side, so the copper around it is a chain whose gaps are all narrower than the tool: it could
+    /// not be separated there whatever was cut, and <see cref="UnreachableGaps"/> has already said
+    /// so. Islands are the contours that separate things, and no island on any board in the corpus
+    /// is dropped — with the two-micron floor above the only way one could be.
+    ///
+    /// **They are not free.** Each one is a plunge, two or three moves of a few microns, and a
+    /// retract — on the Mega's top copper at 0.45 mm, 374 of 1,373 contours, each costing the best
+    /// part of three seconds of Z motion to cut nothing. At any usable zoom they draw as a dot in
+    /// the plunged-hole style, which is why one of them was reported as a hole in the wrong place.
+    ///
+    /// Dropped rather than reduced to a single plunge, which was the product owner's call: the
+    /// plunge would take a disc a cut wide out of ground with no copper on it, which is a hole in
+    /// the pour rather than isolation — and it would still leave a mark in the viewer, where
+    /// *"we can't have random blue rings laying about"*.
+    /// </summary>
+    private static bool Sliver(Path64 contour, long cutNm)
+    {
+        long minX = long.MaxValue, minY = long.MaxValue, maxX = long.MinValue, maxY = long.MinValue;
+
+        foreach (var p in contour)
+        {
+            minX = Math.Min(minX, p.X);
+            maxX = Math.Max(maxX, p.X);
+            minY = Math.Min(minY, p.Y);
+            maxY = Math.Max(maxY, p.Y);
+        }
+
+        var span = Math.Max(maxX - minX, maxY - minY);
+
+        if (span < cutNm)
+        {
+            return true;
+        }
+
+        if (span > 2 * cutNm)
+        {
+            return false;
+        }
+
+        var plunge = Math.PI * (cutNm / 2.0) * (cutNm / 2.0);
+        return Math.Abs(Clipper.Area(contour)) < plunge;
+    }
+
+    /// <summary>
     /// Where the tool is too wide to fit: the copper, grown by half a cut width, that has merged
     /// with copper it should have stayed clear of.
     ///
@@ -220,7 +332,7 @@ public static class IsolationOperation
 
         var islandsBefore = OuterRingCount(Polygons.UnionSelf(copper));
 
-        var grown = Clipper.InflatePaths(
+        var grown = Polygons.Inflate(
             copper, options.EffectiveWidthNm / 2, JoinType.Round, EndType.Polygon,
             arcTolerance: options.SagittaNm);
 

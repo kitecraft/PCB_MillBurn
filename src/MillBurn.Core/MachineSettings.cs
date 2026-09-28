@@ -152,7 +152,30 @@ public enum SvgPlacingLayers
 public sealed record DryRunSettings
 {
     /// <summary>
-    /// How far above work zero to hold the tool.
+    /// Whether the dry run is the real program lifted, or the path traced flat. V31.
+    ///
+    /// **Raised by default**, because it is the one that answers more: it moves as the program
+    /// moves, so the Z travel is there to watch and the time it takes is the time the job takes.
+    /// The flat run stays a choice — it shows the path in plan and cannot plunge anything by
+    /// construction, which makes it the right tool for a file nobody trusts yet.
+    ///
+    /// Stored as the name rather than the number, so a settings file stays readable and a later
+    /// insertion into the enum cannot silently repoint somebody's choice.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+    public DryRunStyle Style { get; init; } = DryRunStyle.Raised;
+
+    /// <summary>
+    /// How far to lift the whole program when it is <see cref="DryRunStyle.Raised"/>.
+    ///
+    /// Three millimetres, which is what the workshop asked for and what a 1.6 mm board with 0.3 mm
+    /// of break-through can take — the deepest cut ends 1.1 mm clear. A deeper program is refused
+    /// with the rise it would need, rather than quietly lifted further.
+    /// </summary>
+    public double RiseMm { get; init; } = 3;
+
+    /// <summary>
+    /// How far above work zero to hold the tool, when it is <see cref="DryRunStyle.Flat"/>.
     ///
     /// High enough to see daylight under it from across a workshop, which is the whole point: a
     /// clearance you have to crouch to confirm is not one you will check.
@@ -166,6 +189,29 @@ public sealed record DryRunSettings
     /// runs everything at the rapid rate: quicker to watch, and no longer tells you the time.
     /// </summary>
     public bool KeepFeeds { get; init; } = true;
+}
+
+/// <summary>Which kind of dry run: the real program lifted, or the path traced flat.</summary>
+public enum DryRunStyle
+{
+    /// <summary>
+    /// The real program, every Z raised by the same amount. The default, and V31.
+    ///
+    /// It moves exactly as the program will: every plunge, lift, ramp and helix happens where and
+    /// when it really happens, only higher. So the Z travel is there to watch — a quarter of a real
+    /// program's time on the workshop's machine — and the run takes as long as the job will.
+    /// </summary>
+    Raised,
+
+    /// <summary>
+    /// Every Z held at one height. What this did before V31, kept because it still answers a
+    /// question.
+    ///
+    /// It shows the path in plan and nothing else, and it cannot plunge anything by construction —
+    /// which makes it the right tool for a file you do not trust at all, and the wrong one for
+    /// "how long am I committing to".
+    /// </summary>
+    Flat,
 }
 
 /// <summary>The probing grid, and how it is touched off.</summary>
@@ -330,15 +376,29 @@ public static class SettingsCheck
                 + "the tool rapids down to it before feeding."));
         }
 
-        // The dry run is meant to be visibly clear of everything the real job clears. Held lower
-        // than the job's own travel height it proves less than the job does, which is backwards.
-        if (dryRun.HeightMm < machine.SafeZMm)
+        // **Each style is checked against its own number, and only its own.** These problems
+        // disable Save, so flagging the held height while the chosen style is the raised one kills
+        // the Save button over a value that has no effect on the file that gets written — and the
+        // tab it points at shows nothing wrong.
+        if (dryRun.Style == DryRunStyle.Flat && dryRun.HeightMm < machine.SafeZMm)
         {
+            // The dry run is meant to be visibly clear of everything the real job clears. Held
+            // lower than the job's own travel height it proves less than the job does.
             var held = Invariant($"{dryRun.HeightMm:F2} mm");
             var safe = Invariant($"{machine.SafeZMm:F2} mm");
 
             problems.Add(new SettingsProblem(SettingsSection.DryRun, $"Dry-run height ({held}) is below the safe height ({safe}). A dry run "
                 + "should clear at least as much as the real job does."));
+        }
+
+        // A rise of zero or less is the real program, run for real. Nothing downstream would catch
+        // it as anything but a clearance refusal per file, at export time, one message per program.
+        if (dryRun.Style == DryRunStyle.Raised && dryRun.RiseMm <= 0)
+        {
+            var rise = Invariant($"{dryRun.RiseMm:F2} mm");
+
+            problems.Add(new SettingsProblem(SettingsSection.DryRun, $"Dry-run rise ({rise}) must be greater than zero, or the dry run is the "
+                + "real program with the spindle off."));
         }
 
         if (probe.MaxDepthMm <= 0)

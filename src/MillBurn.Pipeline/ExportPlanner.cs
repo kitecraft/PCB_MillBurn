@@ -350,7 +350,8 @@ public static class ExportPlanner
         ProgramFraming? framing = null,
         MachineSettings? machineSettings = null,
         JobOptions? job = null,
-        DrillAlignment? alignment = null)
+        DrillAlignment? alignment = null,
+        CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(settings);
@@ -378,8 +379,44 @@ public static class ExportPlanner
             },
             () => Build(
                 board, settings, library, boardThicknessNm, only, machine, effort, framing,
-                machineSettings, job, alignment));
+                machineSettings, job, alignment, token));
     }
+
+    /// <summary>
+    /// How many plans are being built right now, and the most there have ever been at once.
+    ///
+    /// **The failure this counts would not look like itself.** Nudging a setting on a board that
+    /// plans in sixteen seconds used to leave every superseded run going: five nudges, five full
+    /// plans on the pool, each holding its own intermediate geometry, while the operator watches a
+    /// sixth. What that looks like from the bench is the application becoming slow and hungry for
+    /// no reason, some minutes after they stopped doing anything unusual — which nobody would think
+    /// to report as a cancellation bug.
+    ///
+    /// **Diagnostic only, and no test asserts either of them.** An earlier draft of this comment
+    /// said `CancellableWorkTests` pinned the ceiling. It does not, and neither does anything else:
+    /// `CancellablePlanningTests.SupersededRunsDoNotRunToTheEnd` prints the peak and says in its
+    /// own doc that it is not asserted, because it counts how quickly this machine started four
+    /// tasks rather than anything about the fix. What is asserted there is the property — the run
+    /// nobody superseded produces a plan and at least one that was superseded does not. These two
+    /// are here to be read by somebody looking at a slow window, and a comment claiming a
+    /// guarantee no test holds is worse than no comment.
+    /// Nothing enforces it — a semaphore would serialise previews, which is the thing sprint 1
+    /// moved off the UI thread to avoid.
+    ///
+    /// **Read-only on purpose, and there is no way to reset the watermark.** One was written and
+    /// then taken out again: resetting it means reading the live count and writing it to the peak,
+    /// which is two steps against the compare-and-swap above, so a plan starting between them has
+    /// its contribution discarded and the figure reads lower than what actually ran. A number that
+    /// is wrong in the reassuring direction is worse than a number that only ever grows.
+    /// </summary>
+    public static int PlansInFlight => Volatile.Read(ref _inFlight);
+
+    /// <inheritdoc cref="PlansInFlight"/>
+    public static int PeakPlansInFlight => Volatile.Read(ref _peakInFlight);
+
+    private static int _inFlight;
+
+    private static int _peakInFlight;
 
     private static ExportPlan Build(
         Board board,
@@ -392,9 +429,47 @@ public static class ExportPlanner
         ProgramFraming? framing,
         MachineSettings? machineSettings,
         JobOptions? job,
-        DrillAlignment? alignment)
+        DrillAlignment? alignment,
+        CancellationToken token)
     {
+        var mine = Interlocked.Increment(ref _inFlight);
 
+        for (var peak = Volatile.Read(ref _peakInFlight);
+            mine > peak;
+            peak = Volatile.Read(ref _peakInFlight))
+        {
+            if (Interlocked.CompareExchange(ref _peakInFlight, mine, peak) == peak)
+            {
+                break;
+            }
+        }
+
+        try
+        {
+            return BuildCore(
+                board, settings, library, boardThicknessNm, only, machine, effort, framing,
+                machineSettings, job, alignment, token);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _inFlight);
+        }
+    }
+
+    private static ExportPlan BuildCore(
+        Board board,
+        IReadOnlyDictionary<string, LayerOutputSettings> settings,
+        ToolLibrary library,
+        long boardThicknessNm,
+        OutputKind? only,
+        MachineProfile? machine,
+        RouteEffort effort,
+        ProgramFraming? framing,
+        MachineSettings? machineSettings,
+        JobOptions? job,
+        DrillAlignment? alignment,
+        CancellationToken token)
+    {
         var items = new List<ExportItem>();
         var skipped = new List<string>();
 
@@ -432,6 +507,11 @@ public static class ExportPlanner
 
         foreach (var layer in board.InDrawOrder())
         {
+            // The outer of the three places a superseded run gets to leave. Six layers at seven
+            // seconds is a little over a second of granularity here on its own, which is why the
+            // two inside it exist as well.
+            token.ThrowIfCancellationRequested();
+
             if (!settings.TryGetValue(layer.FileName, out var setting) || setting.Output == OutputKind.None)
             {
                 continue;
@@ -454,7 +534,7 @@ public static class ExportPlanner
                 ? PlanSvg(board, frame, blank, layer, setting, operation, page,
                     (machineSettings ?? new MachineSettings()).SvgPlacingLayers) is { } svg ? [svg] : []
                 : PlanGcode(board, frame, layer, setting, operation, library, boardThicknessNm, machine,
-                    effort, framing, machineSettings ?? new MachineSettings(), options, alignment);
+                    effort, framing, machineSettings ?? new MachineSettings(), options, alignment, token);
 
             items.AddRange(made);
 
@@ -469,7 +549,7 @@ public static class ExportPlanner
             // wrong program.
             List<ExportItem> routed = operation == OperationKind.Drilling && setting.Output == OutputKind.Gcode
                 ? PlanSlots(board, frame, layer, setting, library, boardThicknessNm, machine, effort,
-                    framing, machineSettings ?? new MachineSettings(), options, alignment)
+                    framing, machineSettings ?? new MachineSettings(), options, alignment, token)
                 : [];
 
             items.AddRange(routed);
@@ -690,7 +770,8 @@ public static class ExportPlanner
         ProgramFraming? framing,
         MachineSettings machineSettings,
         JobOptions job,
-        DrillAlignment? alignment)
+        DrillAlignment? alignment,
+        CancellationToken token)
     {
         var tool = ResolveTool(setting, operation, library);
         var warnings = new List<string>();
@@ -733,7 +814,7 @@ public static class ExportPlanner
         var files = AssembleEach(
             board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
             target, LayerOperations.Label(operation),
-            boardThicknessNm, machine, effort, framing, machineSettings, aligned);
+            boardThicknessNm, machine, effort, framing, machineSettings, token, aligned);
 
         if (files.Count == 0 || operation != OperationKind.Drilling || !setting.WriteDrillGuide)
         {
@@ -779,6 +860,7 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
+        CancellationToken token,
         DrillAlignment? alignment = null)
     {
         var groups = toolpaths
@@ -791,7 +873,7 @@ public static class ExportPlanner
             return Assemble(
                 board, frame, layer, setting, operation, toolpaths, tool, summary, warnings,
                 Aligned(target, alignment), jobLabel,
-                boardThicknessNm, machine, effort, framing, machineSettings, null, alignment) is { } only
+                boardThicknessNm, machine, effort, framing, machineSettings, token, null, alignment) is { } only
                 ? [only]
                 : [];
         }
@@ -803,6 +885,10 @@ public static class ExportPlanner
 
         for (var g = 0; g < groups.Count; g++)
         {
+            // Between programs, which is the granularity the defect asked for: one file per bit,
+            // and a drill layer on a dense board is six or seven of them.
+            token.ThrowIfCancellationRequested();
+
             var bit = groups[g][0].Tool;
             var label = Invariant($"Bit {g + 1} of {groups.Count} · {bit.Name}");
 
@@ -817,7 +903,7 @@ public static class ExportPlanner
 
             if (Assemble(
                     board, frame, layer, setting, operation, groups[g], bit, fileSummary, fileWarnings, names[g],
-                    jobLabel, boardThicknessNm, machine, effort, framing, machineSettings, notes, alignment) is { } file)
+                    jobLabel, boardThicknessNm, machine, effort, framing, machineSettings, token, notes, alignment) is { } file)
             {
                 files.Add(file with { Bit = label });
             }
@@ -927,7 +1013,8 @@ public static class ExportPlanner
         ProgramFraming? framing,
         MachineSettings machineSettings,
         JobOptions job,
-        DrillAlignment? alignment)
+        DrillAlignment? alignment,
+        CancellationToken token)
     {
         if (layer.Drill is null)
         {
@@ -1039,7 +1126,7 @@ public static class ExportPlanner
             board, frame, layer, setting, OperationKind.Outline, plan.Toolpaths, tool, summary, warnings,
             stem + ".slots.nc",
             "Routed slots",
-            boardThicknessNm, machine, effort, framing, machineSettings, aligned);
+            boardThicknessNm, machine, effort, framing, machineSettings, token, aligned);
 
         if (files.Count == 0)
         {
@@ -1387,6 +1474,7 @@ public static class ExportPlanner
         RouteEffort effort,
         ProgramFraming? framing,
         MachineSettings machineSettings,
+        CancellationToken token,
         IReadOnlyList<string>? bitNotes = null,
         DrillAlignment? alignment = null)
     {
@@ -1472,6 +1560,11 @@ public static class ExportPlanner
 
         for (var i = 0; i < toolpaths.Count; i++)
         {
+            // The innermost, and the one that actually bounds how long a cancelled run keeps
+            // going: simplification and route optimisation are where a program's seconds are, and
+            // a single copper layer is one program with many toolpaths in it.
+            token.ThrowIfCancellationRequested();
+
             // Simplify first, before the flip and before ordering.
             //
             // It keeps every path's endpoints, so ordering is unaffected by going second. Doing it
@@ -2048,7 +2141,7 @@ public static class ExportPlanner
     private static Toolpath BuildEngrave(
         BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary)
     {
-        var contours = Clipper.InflatePaths(
+        var contours = Polygons.Inflate(
             layer.Area, -tool.WidthAtDepth(setting.DepthFor(OperationKind.Engrave)) / 2, JoinType.Round, EndType.Polygon);
 
         var passes = new List<ToolpathPass>();

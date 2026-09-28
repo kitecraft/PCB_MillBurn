@@ -260,7 +260,7 @@ public static class OutlineOperation
                 voids++;
             }
 
-            var grown = Clipper.InflatePaths(
+            var grown = Polygons.Inflate(
                 new Paths64 { outline[p] },
                 outward ? radius : -radius,
                 JoinType.Round,
@@ -597,7 +597,7 @@ public static class OutlineOperation
             return false;
         }
 
-        var inner = Clipper.InflatePaths(
+        var inner = Polygons.Inflate(
             new Paths64 { profile }, -Math.Max(1, reachNm), JoinType.Miter, EndType.Polygon);
 
         if (inner.Count == 0)
@@ -621,8 +621,8 @@ public static class OutlineOperation
             return false;
         }
 
-        Work.Boolean(Polygons.VertexCount(near) + Polygons.VertexCount(inner));
-        var shared = Math.Abs(Clipper.Area(Clipper.Intersect(near, inner, FillRule.NonZero)));
+
+        var shared = Math.Abs(Clipper.Area(Polygons.Intersect(near, inner)));
 
         // A hundredth of a square millimetre, to ignore the slivers an offset leaves behind. Both
         // real cases are orders of magnitude away from it, in opposite directions.

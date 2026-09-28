@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    Everything in the repository, plus the one rule that only applies to shipping code.
+
+    The ban list (../BannedSymbols.txt) keeps Clipper's counted operations behind
+    `MillBurn.Geometry.Polygons`, so that the work counters are a fact about the program rather
+    than about who remembered to use the wrapper — 6.39. It is scoped to `src/` deliberately:
+    tests call Clipper directly on purpose, because a test that checks geometry with the same
+    wrapper it is checking is testing itself.
+
+    RS0030 is a warning by default and the repository builds with TreatWarningsAsErrors, so a new
+    direct call fails the build rather than adding a line somebody scrolls past.
+  -->
+  <Import Project="../Directory.Build.props" />
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)../BannedSymbols.txt" />
+  </ItemGroup>
+
+</Project>

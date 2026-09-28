@@ -47,6 +47,18 @@ public sealed class SettingsWindow : Window
         HorizontalAlignment = HorizontalAlignment.Left,
     };
 
+    /// <summary>Which kind of dry run, in <see cref="DryRunStyle"/> order.</summary>
+    private readonly ComboBox _dryRunStyle = new()
+    {
+        ItemsSource = new[]
+        {
+            "A raised copy of the real run",
+            "Held flat at one height",
+        },
+        Width = 230,
+        HorizontalAlignment = HorizontalAlignment.Left,
+    };
+
     /// <summary>What a short last lap becomes, in <see cref="ShortLastLap"/> order.</summary>
     private readonly ComboBox _shortLap = new()
     {
@@ -196,11 +208,24 @@ public sealed class SettingsWindow : Window
         body = Tab(tabs, "Dry run", SettingsSection.DryRun);
         Section(body, "The job, with nothing cut");
         body.Children.Add(Muted(
-            "A dry run is a copy of the program held clear of the board: the same moves in the same "
+            "A dry run is a copy of the program that cuts nothing: the same moves in the same "
             + "order, to watch before anything touches copper.", 11, new Thickness(0, 0, 0, 8)));
-        Number(body, "dryHeight", "Held at", "mm", settings.DryRun.HeightMm, 1, 50, 0.5,
-            "How far above work zero the tool is held. High enough to see daylight under it from "
-            + "across the workshop, which is the point.");
+        Choice(
+            body,
+            _dryRunStyle,
+            "Dry run",
+            settings.DryRun.Style == DryRunStyle.Raised ? 0 : 1,
+            "A raised copy moves exactly as the job does, only higher — so the plunges and lifts "
+            + "are there to watch and it takes as long as the real thing. Held flat shows the path "
+            + "in plan and cannot plunge at all, which is the safer choice for a file you have not "
+            + "run before.");
+        Number(body, "dryRise", "Raised by", "mm", settings.DryRun.RiseMm, 0.5, 50, 0.5,
+            "How far the whole program is lifted. Three clears a 1.6 mm board cut 0.3 mm through by "
+            + "1.1 mm. A deeper program is refused, and told what rise it would need — never raised "
+            + "further without saying so.");
+        Number(body, "dryHeight", "Or held at", "mm", settings.DryRun.HeightMm, 1, 50, 0.5,
+            "How far above work zero the tool is held when the run is flat. High enough to see "
+            + "daylight under it from across the workshop, which is the point.");
         Flag(body, "keepFeeds", "Keep the programmed feeds", settings.DryRun.KeepFeeds,
             "So the dry run takes as long as the real job. Turning it off runs everything at the "
             + "rapid rate: quicker to watch, and it no longer tells you the time.");
@@ -605,6 +630,8 @@ public sealed class SettingsWindow : Window
         },
         new DryRunSettings
         {
+            Style = _dryRunStyle.SelectedIndex == 1 ? DryRunStyle.Flat : DryRunStyle.Raised,
+            RiseMm = Value("dryRise"),
             HeightMm = Value("dryHeight"),
             KeepFeeds = Flagged("keepFeeds"),
         },
@@ -710,6 +737,8 @@ public sealed class SettingsWindow : Window
         _flags["finishingLap"].IsChecked = machine.FinishingLapOnThroughCuts;
         _placing.SelectedIndex = (int)machine.SvgPlacingLayers;
 
+        _dryRunStyle.SelectedIndex = dryRun.Style == DryRunStyle.Raised ? 0 : 1;
+        _numbers["dryRise"].Value = (decimal)dryRun.RiseMm;
         _numbers["dryHeight"].Value = (decimal)dryRun.HeightMm;
         _flags["keepFeeds"].IsChecked = dryRun.KeepFeeds;
 

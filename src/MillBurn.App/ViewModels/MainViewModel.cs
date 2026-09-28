@@ -223,15 +223,23 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Milling = milling,
         });
 
+        // **A preview still building captured the old numbers and has to go.** It read the machine
+        // profile when its request was built, so left alone it finishes and publishes programs cut
+        // to the safe height, decimals and rapid rate that were just replaced — and writes its own
+        // status over the confirmation below. The branch further down does not cover it: a run in
+        // flight has `Gcode == null`, so the condition it tests is false exactly when a run is
+        // outstanding. Same fault as 6.33, in a path its sweep did not reach.
+        var interrupted = StopPreview();
+
         var confirmation = string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
-            $"Settings saved. Safe height {machine.SafeZMm:F2} mm, dry run held at {dryRun.HeightMm:F2} mm.");
+            $"Settings saved. Safe height {machine.SafeZMm:F2} mm, {DescribeDryRun(dryRun)}.");
 
         // The preview ends by writing its own status, and it now lands after this method has
         // returned — so the confirmation is said once the preview is done rather than into a line
         // the preview is about to overwrite. Saying it at all is the point: it repeats back the
         // numbers that were just changed.
-        if (Gcode is not null && !HasProgram)
+        if ((Gcode is not null || interrupted) && !HasProgram)
         {
             _ = ConfirmAfterPreview(confirmation);
             return;
@@ -239,6 +247,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         StatusMessage = confirmation;
     }
+
+    /// <summary>
+    /// What the dry run will be, in the words the operator chose it with.
+    ///
+    /// The confirmation repeats back the numbers that changed, so it has to say which kind of dry
+    /// run they now have: "held at 5.00 mm" and "raised 3.00 mm" are different promises, and the
+    /// one somebody is about to trust should not be inferred from a setting they cannot see.
+    /// </summary>
+    private static string DescribeDryRun(DryRunSettings dryRun) => dryRun.Style == DryRunStyle.Raised
+        ? string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"dry run raised {dryRun.RiseMm:F2} mm above the real program")
+        : string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"dry run held flat at {dryRun.HeightMm:F2} mm");
 
     /// <summary>Runs the preview, then says what was saved, so the confirmation is what is left up.</summary>
     /// <param name="confirmation">The message to leave on the status line.</param>
@@ -260,8 +283,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         SaveSettings(Settings with { Framing = framing });
         OnPropertyChanged(nameof(Framing));
 
+        // Framing is read when a request is built, so a preview in flight is writing the old
+        // header and footer into every program — and a finished one is showing them. Both stop
+        // being true the moment this returns, so neither may stay on screen. 6.33 again.
+        var stopped = StopPreview();
+
+        if (_backplot.Count > 0 || stopped)
+        {
+            _backplot = [];
+            Gcode = null;
+            GcodeSummary = string.Empty;
+            Rebuild(TimeSpan.Zero);
+        }
+
         StatusMessage = framing.IsEmpty
-            ? "Start and end G-code cleared."
+            ? "Start and end G-code cleared. Preview again to see the programs without it."
             : "Start and end G-code saved. It goes into every program this machine writes.";
     }
 
@@ -509,21 +545,44 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        ForgetProgram();
+        // A preview still building had to go with it — it would have drawn itself back over what
+        // this just cleared — so say so. Losing one silently is the same complaint as a preview
+        // that completes when it should not have: the operator is owed an account of what the
+        // window did, not just of what they asked for.
+        var stopped = ForgetProgram();
+
         Rebuild(TimeSpan.Zero);
         OnPropertyChanged(nameof(HasProgram));
         OnPropertyChanged(nameof(ShowingNothing));
-        StatusMessage = "Closed the program.";
+        StatusMessage = stopped
+            ? "Closed the program, and stopped the preview that was building. Preview again when you want it."
+            : "Closed the program.";
     }
 
-    private void ForgetProgram()
+    /// <returns>True if a preview was still building and has been stopped.</returns>
+    private bool ForgetProgram()
     {
+        // Opening another project is the same situation as editing this one, and worse: a preview
+        // of the board being replaced would finish and draw itself over the board that replaced it.
+        // `Adopt` calls this before it swaps the project, which is why the stop belongs here.
+        var stopped = StopPreview();
+
         _backplot = [];
         _programBounds = null;
         _programPath = null;
         Gcode = null;
         GcodeSummary = string.Empty;
         Warnings.Clear();
+
+        // `HasProgram` and `ShowingNothing` are computed from `_programPath` and the backplot, and
+        // both just changed. `CloseProgram` raised them itself; `Adopt` and `ApplyRefresh` did not,
+        // so a refresh left the close-program button enabled over a program that had gone and the
+        // empty-state panels showing the wrong thing. Raised here, where the fields are cleared,
+        // so a caller cannot forget.
+        OnPropertyChanged(nameof(HasProgram));
+        OnPropertyChanged(nameof(ShowingNothing));
+
+        return stopped;
     }
 
     // ------------------------------------------------------------------ height mapping
@@ -1035,7 +1094,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public ExportPlan? PlanExport(
         OutputKind? filter = null, string? onlyLayer = null, DrillAlignment? alignment = null) =>
-        ExportRequestFor(filter, onlyLayer, alignment)?.Plan();
+        ExportRequestFor(filter, onlyLayer, alignment)?.Plan(CancellationToken.None);
 
     /// <summary>
     /// Everything the planner will need, read off the view model in one go.
@@ -1081,11 +1140,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         DrillAlignment? Alignment,
         string? OnlyLayer)
     {
-        public ExportPlan Plan()
+        /// <summary>
+        /// Plans this request, stopping if <paramref name="token"/> is cancelled.
+        ///
+        /// **The token has no default, and that is the whole point.** Sprint 1 sold a cancellable
+        /// preview and delivered half of one: the token was read between programs in `PreviewBuild`,
+        /// which is only reached once planning has finished, so a superseded run planned to the end
+        /// on its pool thread. The planner takes a token now, but a token with a default is a token
+        /// somebody forgets — the same shape as the chord tolerance in 6.25, where a call site that
+        /// quietly stopped passing one would have shipped the bug with a green suite. Requiring it
+        /// makes both callers say out loud whether their work can be abandoned: the preview passes
+        /// its run's token, and <see cref="PlanExport"/> — which every synchronous caller goes
+        /// through, on the UI thread, where there is nobody to abandon it for — says none.
+        /// </summary>
+        public ExportPlan Plan(CancellationToken token)
         {
             var plan = ExportPlanner.Plan(
                 Board, Outputs, Library, ThicknessNm, Filter,
-                framing: Framing, machineSettings: Machine, job: Job, alignment: Alignment);
+                framing: Framing, machineSettings: Machine, job: Job, alignment: Alignment,
+                token: token);
 
             if (OnlyLayer is null)
             {
@@ -1195,6 +1268,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 {
                     var (text, report) = DryRun.Rewrite(item.Content, new DryRunOptions
                     {
+                        Style = Settings.DryRun.Style,
+                        RiseMm = Settings.DryRun.RiseMm,
                         HeightMm = Settings.DryRun.HeightMm,
                         KeepFeeds = Settings.DryRun.KeepFeeds,
                         RapidMmPerMin = Settings.Machine.RapidMmPerMin,
@@ -1311,12 +1386,20 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             result = await Task.Run(
-                () => PreviewBuild.From(request.Plan(), bounds, profile, token), token);
+                () => PreviewBuild.From(request.Plan(token), bounds, profile, token), token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Superseded. The run that replaced this one owns the status and the busy flag now, so
-            // this one says nothing and clears nothing on its way out.
+            // Superseded by another preview, or stopped by an edit that made it pointless. Either
+            // way whatever ended it owns the status and the busy flag — the next run sets both, and
+            // <see cref="StopPreview"/> clears them when there is no next run — so this one says
+            // nothing and clears nothing on its way out.
+            //
+            // **Filtered on this run's own token**, because planning can now throw one of these
+            // too and not every one of them means "the operator moved on". An inner token, or a
+            // future stage that uses one of its own, would otherwise take this branch: nothing
+            // cleared, nothing said, and the window busy over a run that is not coming back. The
+            // guard sends anything else to the failure path below, where it reaches somebody.
             return false;
         }
         catch (Exception ex)
@@ -1461,10 +1544,19 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // The worst of the three: this swaps the source bytes, so a preview still building is
+        // describing copper that no longer exists. Left running it publishes the old board's
+        // programs against the new geometry and takes the status line with them — and unlike a
+        // settings change, nothing here was clearing the backplot either.
+        var stopped = ForgetProgram();
+
         ProjectRefresh.Apply(_project, plan, taking);
         Rebuild(TimeSpan.Zero);
         CancelRefresh();
-        StatusMessage = $"Refreshed {taking.Count} file(s). Save to keep this.";
+
+        StatusMessage = stopped
+            ? $"Refreshed {taking.Count} file(s), and stopped the preview of the old ones. Save to keep this."
+            : $"Refreshed {taking.Count} file(s). Save to keep this.";
     }
 
     /// <summary>
@@ -1652,6 +1744,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             StatusMessage = $"Could not save settings: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Keeps a setting for this session without writing the file — 6.49.
+    ///
+    /// **For the settings a continuous control changes.** Every other caller of
+    /// <see cref="SaveSettings"/> is a discrete event: a theme picked, a file opened, a folder
+    /// chosen. The board thickness is a slider, snapping to 0.1 mm across 0.4–3.2 mm, so a
+    /// full-range drag called that twenty-eight times and wrote the JSON twenty-eight times — disk
+    /// I/O on the UI thread, in a loop, for a value nobody reads until the next board is imported,
+    /// with twenty-seven of the writes immediately superseded.
+    ///
+    /// **It still survives a restart**, because closing the window saves the placement, and that
+    /// goes through `SaveSettings` and writes the whole object — this value with it. So does any
+    /// other settings change made afterwards. What is lost is the value from a session that ended
+    /// in a crash, and for a default meaning *"where the next new board starts"* that is the right
+    /// trade against writing to disk twenty-eight times a drag.
+    /// </summary>
+    private void RememberSettings(AppSettings settings) => Settings = settings;
 
     // ------------------------------------------------------------------ presenting
 
@@ -2097,14 +2207,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _project.Touch();
 
         // The programs were made from the settings that just changed, so they are no longer a
-        // picture of anything. Cleared rather than left to look current.
+        // picture of anything. Cleared rather than left to look current — and a preview still
+        // building is making another one, which would publish itself over this the moment it
+        // finished and overwrite the message below with its own. This path clears the backplot by
+        // hand instead of going through <see cref="OnOutputChanged"/>, which is how it came to be
+        // missing the stop that one grew. See 6.33.
+        var stopped = StopPreview();
+
         _backplot = [];
         Gcode = null;
         GcodeSummary = string.Empty;
 
         Rebuild(TimeSpan.Zero);
 
-        StatusMessage = "Every layer is back to what a freshly imported board starts with.";
+        StatusMessage = stopped
+            ? "Every layer is back to what a freshly imported board starts with, and the preview that was building has stopped."
+            : "Every layer is back to what a freshly imported board starts with.";
     }
 
     private void RefreshFacts(Board board)
@@ -2167,7 +2285,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // reach it.
         DescribeBlank(_project.Settings.Job.Blank);
 
-        if (_backplot.Count == 0)
+        // A preview still building is building a picture of the settings that have just changed,
+        // and this has to happen *above* the guard below rather than after it. While one is
+        // building there is nothing drawn — the edit that started it cleared the last picture — so
+        // `_backplot.Count == 0` was true in exactly the case that needed the most doing, and the
+        // method returned before it could stop anything. From the bench: *"if I change a setting,
+        // click preview, then change the setting back, the preview completes instead of being
+        // interrupted on the setting change."*
+        var stopped = StopPreview();
+
+        if (_backplot.Count == 0 && !stopped)
         {
             return;
         }
@@ -2177,6 +2304,28 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         GcodeSummary = string.Empty;
         Rebuild(TimeSpan.Zero);
         StatusMessage = "Output changed. Preview again to see the new programs.";
+    }
+
+    /// <summary>
+    /// Stops a preview that is still building, and takes on what it would have cleared.
+    ///
+    /// **A cancelled run says nothing on its way out**, by design: `Finish` tells it that something
+    /// replaced it, so it publishes no result and clears no flag, because the run that replaced it
+    /// owns both. When the thing that cancelled it is an *edit* rather than another preview there
+    /// is no replacement, so the busy flag is this method's to clear — miss it and the window sits
+    /// spinning over nothing until the next preview finishes.
+    /// </summary>
+    /// <returns>True if there was a run to stop.</returns>
+    private bool StopPreview()
+    {
+        if (!_previewRun.IsRunning)
+        {
+            return false;
+        }
+
+        _previewRun.Cancel();
+        IsBusy = false;
+        return true;
     }
 
     /// <summary>
@@ -2249,8 +2398,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // Still remembered app-wide, but only as where the next new board starts.
-        SaveSettings(Settings with { BoardThicknessMm = value });
+        // Still remembered app-wide, but only as where the next new board starts — and held in
+        // memory rather than written, because this is a slider and the write was happening once
+        // per tick. See `RememberSettings`, and 6.49.
+        RememberSettings(Settings with { BoardThicknessMm = value });
         OnOutputChanged();
     }
 

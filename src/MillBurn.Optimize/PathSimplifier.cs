@@ -21,6 +21,90 @@ public sealed record SimplifyOptions
     public bool FitArcs { get; init; } = true;
 
     /// <summary>
+    /// How far a fitted arc may stray from the middle of a segment it replaces.
+    ///
+    /// **An arc replaces segments, not points**, and checked only at its vertices it is
+    /// unconstrained everywhere between them. On the Arduino Mega that let eight arcs bow across
+    /// straight runs — the worst of them 464 µm off a twelve-millimetre segment, cutting into copper
+    /// that was supposed to stay.
+    ///
+    /// Ten microns, and the number is measured rather than chosen. Across the 4,246 arcs fitted to
+    /// that board's top copper, the honest ones stray 1.1 µm at the median and 4.6 µm at the 99th
+    /// percentile; the eight bad ones stray 74 to 464 µm. **Nothing at all lies between 5 and
+    /// 74 µm**, so this sits in an empty gap: twice the worst honest arc, a seventh of the mildest
+    /// bad one.
+    ///
+    /// Looser than <see cref="ToleranceNm"/> on purpose. The points arrive already thinned, so a
+    /// retained chord spans several original samples and its middle sits below the true curve by
+    /// construction — judging it as strictly as a vertex rejects a third of the arcs on a real
+    /// board, which is not a fix but a trade: a wrong curve for a program half as large again.
+    ///
+    /// **So the end-to-end bound is not <see cref="ToleranceNm"/> alone**, and saying otherwise
+    /// would be the kind of stated guarantee nobody checks. A vertex stays within `ToleranceNm` of
+    /// the original; the middle of a chord may sit five times that away. At the default that is
+    /// 10 µm, which is about eight percent of a 0.127 mm cut rather than the two percent the vertex
+    /// bound buys — worth knowing before anyone tightens `ToleranceNm` expecting the whole error to
+    /// follow it down.
+    ///
+    /// **So it really is a multiple, not a constant that happens to equal one.** It was written as
+    /// the literal `0.002 mm × 5` and read as scaling, which is a trap rather than a bug: today only
+    /// the default is used, and the two numbers agree. A caller who loosens `ToleranceNm` to 0.05 mm
+    /// for a rough pass would get a 25 µm vertex bound against a 10 µm chord bound — the chord check
+    /// stricter than the vertex one, the documented order inverted, and honest arcs refused. One who
+    /// tightens it to 0.5 µm would leave the chord free to stray forty times further than the number
+    /// they set. Overriding it is still allowed, and then it is exactly what was asked for.
+    /// </summary>
+    public long ChordToleranceNm
+    {
+        // Floored, so that `None with { FitArcs = true }` — the one composition that reaches the
+        // fitter with no vertex tolerance to scale from — cannot hand it a bound of zero, which
+        // would refuse every candidate and quietly emit line moves instead. `Reduce` returns before
+        // that today, and this is so it does not have to be the only thing that does.
+        get => _chordToleranceNm ?? (ToleranceNm > long.MaxValue / ChordMultiple
+            ? long.MaxValue
+            : Math.Max(ToleranceNm * ChordMultiple, 1));
+
+        // Refused here rather than in `Simplify.FitArcs`, which would throw part-way through an
+        // export and name a parameter the caller never wrote.
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            _chordToleranceNm = value;
+        }
+    }
+
+    /// <summary>
+    /// How much looser the chord bound is than the vertex bound. See above for the five.
+    ///
+    /// **Derived from `Simplify`'s own default rather than written beside it.** The two have to
+    /// agree, and today they do — but only because `Reduce` splits the budget and hands the fitter
+    /// half of this tolerance, so ten times a half is five times the whole. Written as two
+    /// literals they would be equal by coincidence, and the first change to that split would part
+    /// them by a factor of two, in the loosening direction, with every test still green.
+    /// </summary>
+    public const int ChordMultiple = Simplify.DefaultChordMultiple / BudgetShare;
+
+    /// <summary>
+    /// The division above has to come out whole, or the derivation quietly lies.
+    ///
+    /// Integer division rounds: make `DefaultChordMultiple` 15 and this becomes 7 rather than 7.5,
+    /// a chord bound seven per cent tighter than the geometry layer's own — in the direction that
+    /// refuses honest arcs, and with nothing able to notice. Checked here rather than in a test
+    /// because it is a fact about two constants: dividing by zero in a constant expression is a
+    /// compile error, so it fails at the edit that breaks it rather than at the next full run.
+    /// </summary>
+    private const int WholeOrTheDerivationIsWrong =
+        1 / (Simplify.DefaultChordMultiple % BudgetShare == 0 ? 1 : 0);
+
+    /// <summary>
+    /// How the tolerance is split between thinning and fitting. `Reduce` gives each half, because
+    /// the two stages compose — see the comment there, which is where the number is spent.
+    /// </summary>
+    public const int BudgetShare = 2;
+
+    private readonly long? _chordToleranceNm;
+
+    /// <summary>
     /// How many points an arc must span to be worth making.
     ///
     /// Low values turn measurement noise into arcs of implausible radius; a controller that takes
@@ -135,7 +219,7 @@ public static class PathSimplifier
         // point that was itself within tolerance of the original sits at up to the sum of the two
         // from where the board actually needs the cutter. Splitting makes ToleranceNm the bound
         // that holds end to end rather than one that is quietly doubled.
-        var half = Math.Max(options.ToleranceNm / 2, 1);
+        var half = Math.Max(options.ToleranceNm / SimplifyOptions.BudgetShare, 1);
         var simplified = Simplify.DouglasPeucker(points, half);
 
         // A closed contour must still close. Douglas–Peucker keeps the first and last points, and
@@ -147,7 +231,7 @@ public static class PathSimplifier
         }
 
         var segments = options.FitArcs
-            ? Simplify.FitArcs(simplified, half, options.MinimumArcPoints)
+            ? Simplify.FitArcs(simplified, half, options.MinimumArcPoints, options.ChordToleranceNm)
             : Lines(simplified);
 
         return segments.Count == 0 ? path : segments;

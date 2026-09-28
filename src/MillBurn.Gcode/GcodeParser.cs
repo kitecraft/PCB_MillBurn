@@ -264,24 +264,12 @@ public static class GcodeParser
     /// Removes comments. G-code has two forms — parenthesised and semicolon-to-end-of-line — and
     /// both appear in files this app will be handed.
     /// </summary>
-    private static string StripComments(string line)
-    {
-        var semicolon = line.IndexOf(';', StringComparison.Ordinal);
-        if (semicolon >= 0)
-        {
-            line = line[..semicolon];
-        }
-
-        var open = line.IndexOf('(', StringComparison.Ordinal);
-        while (open >= 0)
-        {
-            var close = line.IndexOf(')', open);
-            line = close < 0 ? line[..open] : line.Remove(open, close - open + 1);
-            open = line.IndexOf('(', StringComparison.Ordinal);
-        }
-
-        return line.Trim();
-    }
+    /// <summary>
+    /// The code on a line, comments removed. This was the only correct copy of three; it now lives
+    /// in <see cref="GcodeText.WithoutComments"/> so there is nothing for the other two to drift
+    /// from.
+    /// </summary>
+    private static string StripComments(string line) => GcodeText.WithoutComments(line);
 
     private static IEnumerable<(char Letter, double Value)> Words(
         string line, int lineNumber, List<GcodeDiagnostic> diagnostics)

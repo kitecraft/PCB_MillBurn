@@ -3205,7 +3205,7 @@ takes the same options, as every export does.
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
 
-#### 6.19 A dry run that is the real run, raised — **enhancement · open**
+#### 6.19 A dry run that is the real run, raised — **enhancement · built**
 
 Requested from the workshop: *"The dry-run could be much better representative of a real run. The
 lack of z-moves lowers the usefulness of the current dry-run too much. What if the dry-run was just a
@@ -3243,6 +3243,59 @@ height. The export's dry-run tick is unchanged.
 
 **Done when** a raised dry run of the test board's isolation and routing programs runs on the machine
 with every plunge in the air, and its run time lands where the real program's does.
+
+**Built, and confirmed at the bench 2026-09-27**: the Z motion is there, the time lands where the
+real program's does, and nothing touched the board.
+
+**What it is, asserted move by move.** The raised run has the same number of moves as the real
+program, the same X and Y, the same kinds, and every Z exactly the rise higher —
+`ItIsTheRealProgramWithEveryZThreeMillimetresHigher` checks that against four programs across three
+boards rather than checking that the lowest point is clear, which is a much weaker claim. The Z
+travel is the real program's to three decimal places; the flat run's is **zero**. On the test board
+the deepest program comes out 1.10 mm above the stock, which is 6.19's own arithmetic for a 1.6 mm
+board cut 0.3 mm through, now measured instead of reasoned.
+
+**Two decisions that differ from what this entry specified**, both taken to keep that claim true:
+
+- **No opening lift.** The flat run adds `G0 Z<height>` at the top, on the argument that a dry run
+  should not trust the file to lift first. A raised run cannot: an extra move makes it no longer
+  the real program with a constant added, and the move-by-move check — the strongest thing here —
+  stops being possible. What keeps it safe instead is the clearance check on the way out, which
+  reads the finished program back and refuses it.
+- **A machine-coordinate Z is refused, not passed through.** This entry says `G53` moves are "left
+  exactly as written". Leaving them is right for a move in the plane and wrong for one carrying a
+  Z: the safety check reads the rewritten file back and has no way to know that one Z in it is in
+  another coordinate system, so the promise would have a hole in it. Refused with the line number.
+  `G53` without a Z still passes through untouched.
+
+**The choice is in three places.** *Settings › Dry run* offers a raised copy or held flat, each
+with its own number; the CLI takes `--dry-run-rise` or `--dry-run-height`, each implying its style,
+and refuses both together because they are different promises. The settings confirmation used to
+read *"dry run held at 5.00 mm"* unconditionally and would now be wrong half the time — it says
+which kind it is.
+
+**The existing tests now ask for the flat run by name.** They were written when flat was the only
+thing a dry run did, and V31 changed the default; leaning on it would have turned them into tests
+of something else, and most of them would still have passed.
+
+**Three things the review changed after it was first built**, all of them in the promise rather
+than the plumbing:
+
+- **Moves before the first commanded Z are not measured.** The parser's Z starts at zero because it
+  has to start somewhere, and counting that zero as a commanded position made `LowestZMm` read
+  0.00 mm for any program that travelled before it lifted — so `--start-gcode "G0 X0 Y0"`, which
+  framing warns about but permits, was refused whatever the rise, with advice to raise it further
+  that could never help. `DryRunReport.LowestZMm` already said it reports commanded positions only;
+  it now does. The flat run was never affected: its header commands a Z on the first line.
+- **The refusal list grew two families it had missed.** `G92.1/.2/.3` restore a saved work offset —
+  exactly what the `G92` refusal is for — and were invisible to a matcher that read the decimal
+  into the digit run and then failed to parse `92.3` as an integer. `G43`, `G43.1` and `G49` move
+  the Z datum the rise is measured from, and had never been considered; `G43.1` is what a tool
+  setter writes into start G-code, which reaches every program.
+- **The header no longer promises the real time when the feeds are not real.** With
+  *keep feeds* off, every F is replaced by the rapid rate — so the sentence *"the time this takes
+  is the time the real program takes"* was false, in the one place the operator reads at the
+  machine. It is now conditional, and says so when the time means nothing.
 
 #### 6.20 Which way up is this stock? — **enhancement · open**
 
@@ -3568,7 +3621,7 @@ calls a gouge without qualification and the window answers with "do not run this
 worth more than the 0.6 mm, so the tool comes up to zero — which clears any tab there can be, keeps
 the crossing a rapid, and adds nothing to the cut length.
 
-#### 6.25 An isolation path bows into an arc where the copper is straight — **defect · open** — *measured, not fixed*
+#### 6.25 An isolation path bows into an arc where the copper is straight — **defect · fixed**
 
 From the bench, on the Arduino Mega 2560: *"One cut line near the middle-bottom of the board is not
 straight. It's an arc."* Screenshot: `WorkingFolder/V0.1.6/Error_Screenshots/Bad_cut_line.png`.
@@ -3601,6 +3654,19 @@ straight — finds this:
 
 The first two are top copper, which is what the screenshots show; the rest are below what is visible
 at that zoom and are the same fault.
+
+**The cause, found in sprint 2.** An arc replaces segments, not points, and the fitter checked only
+its own vertices. An offset emits a rounded corner as three vertices about 18 µm apart and then one
+straight run of twelve millimetres; six such points fit a 39 mm circle to within 0.8 µm, and the arc
+through them bowed through the empty middle where nothing contradicted it. Fixed by checking the
+middle of every segment an arc replaces, against a threshold taken from the measured distribution —
+honest arcs stray 4.6 µm at the 99th percentile, these eight strayed 74 to 464 µm, and nothing lies
+between. Two extra moves on the whole board.
+
+**The reasoning below pointed the wrong way, and is kept because the wrong turn is instructive.**
+A constant angular extent does *not* mean something is quantising: `MinimumSweepRadians = 0.3` rad is
+17.19°, so every gentle curve the fitter emits comes out just over it. The constant angle was the
+acceptance threshold, not the fault.
 
 **Every one of them subtends about 17.6°.** The chords run from 0.3 mm to 12 mm — a factor of forty
 — and the radius scales with the chord to keep the angle fixed. That is the whole finding. A fitter
@@ -3636,7 +3702,7 @@ this fault for its opposite. The Arduino Mega 2560 is not
 in `tests/boards`, and both instances are on it, so reproducing this in a test most likely means
 committing it to the corpus — as 6.26 also needs.
 
-#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **defect · open** — *found in the workshop*
+#### 6.26 A hole that is not a hole, at isolation widths of 0.45 mm and over — **defect · fixed**
 
 From the bench, on the same board: *"There also seems to be a misplaced hole. IF top copper
 isolation >= 0.45 then the misplaced hole appears. But, if the isolation is <0.45 then the misplaced
@@ -3657,6 +3723,59 @@ cosmetic.
 **Done when** the board plans identically at 0.40 mm and 0.45 mm except for the width of the cut,
 the stray feature is gone, and a test pins whatever produced it — with the Arduino Mega added to the
 corpus if that is what it takes to reproduce.
+
+**The reproduction needed one more number than the report carried, and it cost a round trip.** Asked
+to try again on v0.1.6 and v0.2.0, the bench could not make it happen at all. The project cuts its
+top copper at **0.045 mm deep**, not the 0.05 default, and that is the whole difference: at 0.045 the
+V-bit takes 0.124 mm, four passes clear 0.441 and five clear 0.546, so 0.45 mm is the first width
+that asks for a fifth pass. At 0.05 mm deep the same board takes four passes at both 0.40 and 0.45
+and plans identically, which is why nothing appeared. The width threshold in the title is a pass
+count boundary, and a pass count boundary moves with the depth.
+
+**What it is.** Located by measuring `2_Errors_On_This_Board.png` against the board outline — the
+transform checked against 6.25's known bowed line, whose midpoint the second red box lands on —
+the stray sits at **(15.47, 31.47) mm** from the board's lower-left corner. In the emitted program
+at 0.045 mm / 0.45 mm it is a plunge, three moves and a retract: a four-point loop 175 µm long and
+28 µm wide, enclosing 4,971 µm², where the fifth pass's offsets closed on each other. Absent at
+0.40 mm. So the guess above was right about the mechanism and wrong about nothing.
+
+**Fixed**, and the first attempt at the fix was not enough, which is the part worth recording. A
+contour narrower than the cut cannot have come from copper — copper offset outward by half a width
+on every side comes back at least one full width across — so a bounding box under the cut width was
+refused. That cleared 122 slivers on this board and **left the reported one standing**: it measures
+126.4 µm across a 124.1 µm cut and clears the test by two microns. The bench's *"I'm unable to
+reproduce the original issue"* is what forced the check that found it; without going back to the
+screenshot the story would have shipped as fixed.
+
+The rule that works asks what the loop *encircles*, against what the plunge starting it already
+removes — a disc one cut wide, `π(w/2)²`. Nothing real comes near it: across five boards at two
+depths and two widths, the smallest positive-area contour is 360,000 µm², thirty times the
+threshold, and not one is refused. The cap at two cut widths is the guard that makes it safe, and it
+is not cosmetic — a long thin hole encloses very little too, and one on this board runs 2.03 mm; a
+hole's worth is in the run of moat it clears, and dropping one would leave a ridge of copper lying
+in the middle of the moat.
+
+**What it bought, on the Mega's top copper at 0.045 mm / 0.45 mm:**
+
+| | before | after |
+|---|---|---|
+| Isolation passes | 1,373 | **999** |
+| Plunges | 1,373 | **999** |
+| Cutting | 14,612.0 mm | 14,554.7 mm |
+| Travel | 1,664.4 mm | **1,433.8 mm** |
+
+374 plunge-and-retract cycles at about three seconds each, for four tenths of one per cent of the
+cutting. At the default 0.05 mm / 0.40 mm the same board loses 325 of 1,242.
+
+**Confirmed at the bench, 2026-09-25**, on a published build: *"Verified fixed."* That is the part
+no test here reaches — the product owner's condition was the picture, *"we can't have random blue
+rings laying about"*, and a picture is not an assertion.
+
+`IsolationSliverTests`
+pins the reported coordinate at both widths, the whole board on both sides, and the two directions
+the rule must not break in: the smallest island a board can carry still gets its ring, and a
+0.337 mm slot in a pour — where the second pass down it is under two microns wide and encloses
+8,800 µm², under the 12,100 a plunge takes — is still cut.
 
 #### 6.27 Preview silently unchecks the layers a freshly opened project had visible — **defect · fixed**
 
@@ -3951,7 +4070,7 @@ letting it push the panel wide.
 resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
 projects whose folders share a name can be told apart at a glance.
 
-#### 6.33 A superseded preview stops being watched, not stopped — **defect · open** — *found in the workshop*
+#### 6.33 A superseded preview stops being watched, not stopped — **defect · fixed**
 
 Found at the bench while testing story 2 on the six-layer i.MX8M board, where a preview takes seven
 to eight seconds and sixteen at 1 mm isolation: *"click preview on a new change that I know it has
@@ -3979,6 +4098,78 @@ end of the plan, the plan it had already completed is still kept if it completed
 plans in flight at once has a stated ceiling. Threading a token through `ExportPlanner.Plan` is the
 obvious half; deciding what to do with a half-built plan is the part worth thinking about.
 
+**Fixed.** `ExportPlanner.Plan` takes a token and reads it in three places: between layers, between
+programs — one file per bit, so a drill layer is six or seven of them — and between toolpaths, the
+innermost loop and the one where simplification and route optimisation actually spend the seconds.
+A run stopped five layers into the fifteen-layer test board hands Clipper 12,426 vertices against
+133,908 for the whole thing, which is the measurement that tells a run which stopped apart from one
+which finished and then threw. Of four overlapping previews, one produces a plan.
+
+**The half that was worth thinking about turned out to be a misreading, and the entry above is where
+it came from.** *"Half of that is a feature"* credited the abandoned run finishing with the
+*"remembered in 0.11 s"* the bench saw. It should not. The sequence was: change a setting, preview,
+change it **back**, preview again — so the plan that was remembered is the one for the setting
+returned *to*, built and cached before any of it started. The abandoned plan was for the setting
+*left*, and it only ever pays if the operator goes back to that. So a cancelled plan is no longer
+kept, and the journey that felt fast still is: `CancelledPlanningWorkTests` asserts both halves.
+
+What must never be kept instead is a **truncated** plan. A plan abandoned five layers into fifteen
+is a plan with most of the board missing, and stored under the settings that made it, the next
+preview would be served it instantly and looking entirely normal — an export with no bottom copper
+and no outline. `PlannedExports.Get` calls the builder outside its lock and stores only what the
+builder returns, so a throw stores nothing; that is pinned rather than left to hold by accident.
+
+**The ceiling is a property, not a number.** Four clicks start four plans however this is written.
+What changed is what they then do: before, all four ran the board to the end, so five nudges on a
+sixteen-second board meant eighty seconds of pool time nobody would read and the memory to go with
+it. Nothing is enforced — a semaphore would serialise previews, which is what sprint 1 moved off the
+UI thread to avoid — so `ExportPlanner.PlansInFlight` and `PeakPlansInFlight` are there to be read,
+and what is asserted is that the superseded runs do not run to the end.
+
+**A second fault, found at the bench while testing the first, and the worse of the two.** From the
+workshop: *"When the app is not busy but has a drawn preview, making a change to an option (top
+copper isolation) removes the preview as it's no longer valid for the current settings. But, if I
+change a setting, click preview, then change the setting back, the preview completes instead of
+being interrupted on the setting change."*
+
+`OnOutputChanged` returned early when nothing was drawn — and **while a preview is building nothing
+is drawn**, because the edit that started it cleared the last one. So the case that most needed
+handling was the one that returned before doing anything, and the method never cancelled a running
+preview in any case. It is not only wasted work: `Finish` still said the run was current, so the
+finished preview **drew itself** — programs for the setting just left, under a window showing the
+setting just returned to. That entry's own words for this are *"the most convincing kind of wrong"*.
+
+The stop now happens above the guard. It also happens in `ForgetProgram`, which `Adopt` calls before
+swapping projects — the same bug where it is worse, a preview of the board being replaced finishing
+and drawing itself over the board that replaced it. And because an edit cancels without starting a
+successor, there is no replacement run to own the status and the busy flag, so the thing that
+cancelled clears them; missing that would leave the window spinning over nothing.
+
+**And two more paths, found by review after the bench had signed it off.** `OnOutputChanged` and
+`ForgetProgram` were the two that had been looked at; `ResetLayerSettings` and `ApplyRefresh` clear
+the picture their own way and had been missed. Resetting every layer to its defaults while a
+preview builds would have published that preview over the settings it just reset, and taken the
+*"Every layer is back to…"* message with it. Accepting a source refresh is the worse of the two —
+it swaps the board's bytes, so the preview finishing afterwards describes copper that no longer
+exists, and nothing there was clearing the backplot at all. Both now stop the run and say they did.
+
+That three of the four needed the same line is the argument for a single place to express "this
+picture is no longer of anything", and there is not one: each path clears the backplot by hand.
+Worth an entry of its own if a fifth appears.
+
+**A fifth and a sixth appeared before the sprint ended**, both found by review rather than by use:
+`SaveMachineSettings` and `SaveFraming`. Saving machine settings tested `Gcode is not null` to
+decide whether to re-preview, and a run still building has `Gcode == null` — so the condition was
+false in exactly the case where a run was outstanding, and the preview finished and published
+programs cut to the safe height and rapid rate that had just been replaced. Framing was worse: it
+goes into the header and footer of every program, and nothing there stopped a run, cleared a
+drawn preview, or rebuilt. Both fixed, and both are why [6.51](#) now exists.
+
+**Confirmed at the bench, 2026-09-26**, on the i.MX8M board this was found on: *"Verified."* That is
+where it has to be confirmed — `MillBurn.Tests` does not reference `MillBurn.App`, so no test here
+reaches `OnOutputChanged` or `Adopt`, and what holds underneath them is
+`CancellableWorkTests.ARunCancelledWithoutASuccessorCannotPublish`.
+
 #### Not a defect: the circles in Universal Gcode Sender
 
 From the bench, with `Concerning_Circles.png`: *"I'm worried that the circles are not as good as
@@ -3994,7 +4185,7 @@ polygon there and a curve here. grbl interpolates the arc itself on the machine,
 Recorded so that it is not investigated twice. If a future change ever emits those circles as
 polylines instead, this entry is the evidence that they did not used to be.
 
-#### 6.34 An even number of outline passes costs twice the travel of an odd one — **defect · open** — *measured*
+#### 6.34 An even number of outline passes costs twice the travel of an odd one — **defect · accepted** — *measured, and worth twelve seconds*
 
 Found while measuring sprint 1 story 3, on `GridStripConnector_Panelized`, and it is a property of
 the geometry rather than of the ordering: the optimizer is already doing the best that can be done
@@ -4026,6 +4217,43 @@ the first thing to decide, and the product owner cuts at 0.500 mm, which is the 
 
 **Done when** the outline's travel on the panel is within sight of the odd-parity figure at an even
 pass count, the cut itself is unchanged, and a test pins the relationship rather than the number.
+
+**Accepted, 2026-09-26, after measuring what it is worth.** Everything above reproduces exactly —
+337, 721, 326, 326 and 710 mm for the five step-downs, on the same board. What the entry never did
+was convert the ratio into time, and that is the whole decision:
+
+| | |
+|---|---|
+| Extra rapid at the product owner's 0.500 mm | 395 mm |
+| At the profile's 2,000 mm/min rapid rate | **≈ 12 seconds** |
+| The job that rapid belongs to | 40m 49s – 42m 39s |
+
+**"More than twice the travel" is true and it is the wrong unit.** Travel is a small fraction of a
+job that spends forty minutes cutting, so doubling it costs under half a per cent of the run. The
+entry read as a large saving because it compared a number against itself rather than against the
+job — the same mistake `OptimizerBenchmarkTests` warns about in the other direction when it refuses
+to pin milliseconds. Kept here rather than deleted so that the 2× figure cannot re-open it on its
+own.
+
+**What the measuring established about the cause**, since it is now the record:
+
+- **It is not extra lifting.** Both cases emit 59 rapids and 59 plunges — the same hops, each one
+  longer. The even case has 38 hops over 5 mm totalling 643 mm against 11 totalling 211 mm.
+- **It is not the local search.** `Thorough` and `Balanced` produce identical routes. The even
+  case's *constructed* route is already 732 mm before any improvement and finishes at 701; the odd
+  case's construction lands near 326 and improves by under half a per cent, which is why no
+  `Ordering:` line appears in its program at all. So the entry's reading is right — the optimizer
+  is doing what can be done with what it is given, and a fix would have to change what construction
+  is handed rather than how it searches.
+- **The obvious levers are bad trades.** Forcing an odd pass count by shrinking the step-down adds
+  about a quarter to the cutting — thousands of millimetres at feed — to save hundreds at rapid.
+  Letting an even stack traverse costs one run-length inside the stack to save one outside it,
+  which is a wash.
+
+**What would re-open it.** A board where travel is a large share of the job rather than a small one
+— many short features and little cutting, which is the opposite of a panel — or a machine whose
+rapid rate is low enough that 395 mm is minutes rather than seconds. Both are measurable before any
+work starts, and the measurement above is the one to repeat.
 
 #### 6.35 A knife blade as a tool, for vinyl masking — **enhancement · open** — *asked for by the product owner*
 
@@ -4181,7 +4409,7 @@ one, and the operator is told about it: the file is condemned rather than silent
 which is why accepting it is defensible: the failure mode is a refused file and a confused operator,
 not a cut board.
 
-#### 6.39 Offsets are not counted — **defect · open** — *for the next sprint*
+#### 6.39 Offsets are not counted — **defect · fixed**
 
 `Work` counts Clipper booleans, point-in-polygon questions and the vertices handed to them, and each
 board's tally is recorded in `tests/MillBurn.GoldenTests/Snapshots/*-work.txt` so a change in what a
@@ -4210,6 +4438,48 @@ tally is a fact about the program instead of a fact about who remembered. Fourte
 five files plus the rule: mechanical, and worth doing on its own rather than inside a story about
 something else.
 
+**Fixed.** `Polygons.Inflate` and `Polygons.Sweep` count the offset and delegate; all fifteen
+offset sites go through them, and the four booleans that were counting themselves by hand beside
+the call go through the `Polygons` wrappers that already existed. Nothing outside
+`src/MillBurn.Geometry/Polygons.cs` calls Clipper's boolean, offset or point-in-polygon entry
+points, and `Microsoft.CodeAnalysis.BannedApiAnalyzers` with the ban list at the root of the
+repository makes a new one a build error. Verified by planting a direct call back into
+`IsolationOperation` and watching the build fail, rather than by trusting the rule was wired up.
+
+**How much had been invisible**, which is the answer to "what did leaving it cost":
+
+| Board | offsets realising | offsets planning | planning vertices before → after |
+|---|---:|---:|---|
+| Arduino Mega | 8,024 | 1,323 | 885,555 → **1,273,512** |
+| Panel | 10,622 | 359 | 290,968 → 431,953 |
+| Test board, wide moat | 6,237 | 1,451 | 478,595 → 739,613 |
+| PogoTest1 | 293 | 29 | — |
+
+Realising the Mega does **8,024 offsets against 1,493 booleans** — five times as many operations as
+the counters were watching — and a third of the geometry the planner hands to Clipper was going
+unrecorded. Worse than a blind spot: a change that replaced a boolean with an offset would have
+shown booleans down and vertices down, so the snapshot whose job is to notice would have reported
+that the work got cheaper.
+
+**The first ban list was incomplete, and the review proved it by compiling.** It named six methods
+and missed `Xor`, one of `BooleanOp`'s overloads, every double-precision overload, and — the one
+that mattered — the classes the static facade is built on. `Clipper.InflatePaths` is a few lines
+over `ClipperOffset`; banning the facade left the door beside it wide open, and
+`new ClipperOffset()` inside `MillBurn.Cam` built with no warnings. So the same fault the entry was
+written about would have come back the same way, through a door nobody had thought to close.
+
+The list is exhaustive now — enumerated off the type rather than recalled from what the code
+happens to call — and the fix was checked the way the hole was found: three ways round planted in
+`IsolationOperation` produce ten diagnostics where they produced none.
+
+**The hole that is left, deliberately.** `Polygons.cs` suppresses the rule for the whole file
+rather than per call site, because a pragma repeated fourteen times stops being read. A new method
+*inside that file* that calls Clipper without counting is not caught. That is one file to review
+rather than a source tree, and it is written at the top of it.
+
+Tests are not covered by the ban, also deliberately: a test that checks geometry with the same
+wrapper it is checking is testing itself.
+
 **The measured cost of not having had it**, so the value is on the record. The first baselines
 committed here were wrong, and a review found it by reading for uncounted calls rather than by any
 test failing. `ResolveEvenOdd` — the realiser's most-used boolean, and the one an aperture or region
@@ -4228,7 +4498,7 @@ would have left every baseline byte-identical. The counters were believed for a 
 whole argument for the rule: a tally nobody can bypass is worth more than a tally somebody has to
 remember to use.
 
-#### 6.40 What the work counters do not watch — **defect · open** — *for the next sprint*
+#### 6.40 What the work counters do not watch — **defect · fixed** — *one part refused, and why*
 
 `WorkSnapshotTests` records what a board costs to realise and to plan, and a change in either is now
 a diff somebody has to account for. Four things it does not cover, written down while they are known
@@ -4259,6 +4529,49 @@ levelled case exist, and the board list is either extended or the choice of four
 file. Not urgent, and deliberately not bundled into 6.39 — that one is about a tally that can be
 bypassed, this one is about a tally that is honest as far as it reaches and does not reach far
 enough.
+
+**Fixed, except for one part that was the wrong thing to ask for.**
+
+**The optimizer is counted.** `Work.Search` records one search and the steps it spent —
+`RoutePlan.Improvements` says what the search *achieved*, and this says what it *cost*, which is
+the gap the entry was worried about. The number was already there: the solver counts its own steps
+against the budget and was throwing them away on return. Added once per search rather than once
+per move, because the inner loop runs hundreds of thousands of times on a panel and an interlocked
+increment inside it would be a cost worth measuring rather than a measurement. The panel plans in
+2 searches over 575 steps.
+
+**Two corrections the review made to it.** A group of fewer than three nodes returns before the
+search runs, and was not counted at all — so a change that split routing into many tiny groups
+would have made these counters *fall* while the optimizer did more, which is the one direction a
+regression must never move a number in. And the field was called `SearchMoves` and documented as
+"the only honest measure of what the search costs", which overstates it: a step is one dequeue, it
+includes iterations the don't-look bits discard, and it excludes the candidates weighed inside a
+single step. It is budget spend, it is now called `SearchSteps`, and the documentation says what it
+does and does not see.
+
+**SVG is measured, and getting there corrected the premise.** Under the milling defaults nothing
+produces SVG — masks and silkscreen are off, because somebody milling copper has no use for them —
+so asking for `OutputKind.Svg` planned an empty job. The floor assertion caught it doing no work at
+all, which is what that assertion is for. The case uses `ImportDefaults.LaserEtching`, the workflow
+that actually emits SVG and the one the product owner runs, and its baseline is informative because
+of its zeroes: SVG planning does **no offsetting and no route search**.
+
+**Seven boards of ten, and the choice argued in the file** rather than left to be inferred — the
+Uno as an ordinary two-layer board, the unpanelised connector beside the panel so the pair says
+what panelising costs, and the all-layers pogo set because it carries every role at once.
+
+**`LoadSources` is no longer an open question, and the answer was reassuring.** The app's own load
+path costs exactly what the tested one costs — 144 booleans, 6,237 offsets, 229,341 vertices either
+way, to the digit — so the baselines were an account of the path the operator takes after all. It
+is asserted as a relationship rather than snapshotted as a number, because the claim is "whatever a
+board costs, it costs the same either way in".
+
+**The levelled case was refused, and the "done when" above is wrong to have asked for it.**
+Levelling is not in `MillBurn.Pipeline`: it is a post-process over emitted G-code, run from the CLI
+against a probe log. `WorkSnapshotTests` brackets loading and planning, so there is no point in
+that file where a levelled run exists to measure. Bolting one on would have measured something
+else and called it levelling. It wants its own harness, and that is a different piece of work than
+this one — the same judgement 6.39 made about not being bundled into a story about something else.
 
 #### 6.41 A trace is filed under the next net, not its own — **defect · fixed**
 
@@ -4509,6 +4822,60 @@ one of those turns up, this is work whose effect cannot be demonstrated on any b
 **Not a criticism of the idea.** The gap is real and the reasoning that raised it was sound; what was
 missing was the measurement. Half a day of survey against ten boards is what turned an obvious
 improvement into a parked one, and that is the cheaper order to find out in.
+
+#### 6.47 Isolation cuts inside a hole that is about to be drilled — **defect · open** — *found in the workshop, low priority, a later sprint*
+
+From the bench, on the Arduino Mega 2560, confirmed in v0.2.0: *"there are two non-plated holes that
+get cut lines inside the hole. Left edge, just above center, a very shot distance in from the
+edge."*
+
+**Both holes found and measured.** They are the only two entries in the NPTH file — 0.65 mm, at
+board (6.568, 41.130) and (6.568, 35.350), which is exactly where the bench said. The top copper
+program makes **17 cutting moves inside the first and 18 inside the second**, the nearest of them
+138 µm from a centre whose hole radius is 325 µm.
+
+**There is no copper in either hole.** Sixty-one samples across each disc, none of them on copper.
+So the cutter is not isolating anything in there.
+
+**And the isolation is still arithmetically right**, which is what makes this worth writing down
+rather than simply fixing:
+
+| | |
+|---|---|
+| Hole radius | 325 µm |
+| Nearest copper to the centre | 477 µm — so the copper edge stands 152 µm clear of the hole |
+| Moat asked for, and achieved | 0.400 mm, 0.415 mm |
+
+A 0.415 mm moat swept inward from copper 477 µm out reaches to 62 µm from the centre. The passes
+inside the hole are the last laps of a moat around copper that really is there. Nothing is
+miscomputed; the moat is simply wider than the gap between the copper and the hole, and the hole is
+not a thing the isolation knows about.
+
+**Why it is a defect anyway.** It cuts material that the next operation removes, so it is time spent
+for nothing — and worse, it is time spent *looking wrong*: an operator who sees the cutter tracking
+through a hole has no way to tell that from a fault, and the whole value of the backplot is that it
+can be trusted at a glance. The same reasoning as 6.30: a program that does something indefensible
+for a defensible reason still has to stop doing it.
+
+**What it is not.** Not dangerous. The run order is isolate, then drill, so at isolation time the
+hole is solid copper-clad and the cutter is cutting material, not air. A workflow that drilled first
+would be plunging a V-bit into an open hole, which is worth knowing if the order ever becomes a
+choice.
+
+**Likely shape of the fix.** Subtract the known hole footprints from the region the isolation is
+allowed to cut, so a pass stops at the hole's edge rather than crossing it. The drill layers are
+already loaded and their positions and diameters are already known — `BoardLayer.Drill` carries
+them — so this is a clip, not a new measurement. Worth checking what it does to a pass that would be
+cut in two by a hole in its middle: two passes and an extra lift, or one pass that dips through, and
+the second is what happens today.
+
+**Done when** no copper program cuts inside a hole the same export is going to drill, on the Mega
+and on the test board, and a test covers both holes by position.
+
+**Deferred by the product owner, 2026-09-24**, on the day it was reported and measured: low
+priority, a later sprint. It arrived after sprint 2 was agreed and is deliberately not being pulled
+in — the cutting is correct, the cost is time and a picture that reads wrong, and neither is worth
+reopening a sprint for.
 
 ### The next sprint — performance, then accuracy — **agreed 2026-09-20, not started**
 
@@ -4996,3 +5363,242 @@ reasoning is in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria).
    Candle's and bCNC's grid-matrix formats are still waiting on a real example — a parser written
    from a memory of a format is worse than none. (The app itself never talks to a machine —
    [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
+
+#### 6.48 Where the pointer is, in the board's own numbers — **enhancement · open** — *asked for in the workshop*
+
+From the bench, 2026-09-25: *"Put a small rectangular display in the top right corner of the UI and
+have it display the coordinates. Also, if possible turn the mouse into a crosshair."*
+
+**Asked for the day it would have saved an afternoon.** 6.26 was reported as *"a misplaced hole"*
+with no position, because there was no way to read one off the screen. Finding it again took a
+screenshot measured against the board outline in a script, with the transform checked by aiming it
+at 6.25's known bowed line. A number in the corner of the window would have turned that into one
+sentence of the original report.
+
+**What it is for, beyond bug reports.** Checking a fixture offset, measuring the gap between two
+traces before choosing a moat, confirming a hole is where the drill file says — all of these are
+questions the viewer can already answer geometrically and cannot answer out loud.
+
+**The awkward part is which origin.** The G-code is referenced to the board's lower-left corner, the
+Gerbers carry their own, and the stock and the laser jig have theirs. A readout that does not say
+which one it is quoting is worse than none — the same argument 6.36 makes about a check that does
+not say what it is about. The likely answer is the board's lower-left, which is what the emitted
+programs use and therefore what an operator at the machine is holding in their head, with the origin
+named beside the numbers rather than assumed.
+
+**Done when** the pointer's position shows continuously in board coordinates while it is over the
+canvas, the readout says which origin it is measured from, and the cursor is a crosshair over the
+canvas and an arrow everywhere else. A screenshot of a fault carries its own coordinate.
+
+#### 6.49 A slider drag writes the settings file on every tick — **defect · fixed**
+
+Found while mapping A6. `OnBoardThicknessMmChanged` calls `SaveSettings`, which calls
+`AppSettings.Save()` — a JSON file written to disk — and the thickness slider snaps to 0.1 mm
+ticks over a 0.4–3.2 mm range, so a full-range drag writes it **twenty-eight times**.
+
+**What it is saving is not even the project.** The project's own thickness is recorded separately;
+this is the app-wide default, remembered as *"where the next new board starts"*. So the writes are
+for a value nobody is going to read until the next time a board is imported, and twenty-seven of
+the twenty-eight are immediately superseded by the twenty-eighth.
+
+**Why it is a defect rather than untidiness.** Disk I/O inside a drag loop is on the UI thread, it
+is the one cost in that loop that does not scale with the board but with the file system, and it is
+the kind of thing that is fine on a warm SSD and horrible on a network share or a tired stick. It
+also multiplies whatever else the drag is doing: 6.49 and A6's rebuild both happen per tick.
+
+**Split out of A6 by the product owner**, and rightly: A6 is a debounce, and this is a write that
+should not be happening at that moment whether or not anything is debounced. Fixing the debounce
+would hide it — twenty-eight writes become one — without the write ever having been examined.
+
+**Done when** a drag writes the settings file no more than once, the value still survives a restart,
+and it is clear from the code when the write happens rather than it being a side effect of a
+property setter.
+
+**Fixed, and it needed no machinery.** The settings file is *already* written when the window
+closes — `Closing` saves the window placement, and that goes through the same `SaveSettings` and
+writes the whole object. So the fix is to stop writing from the setter and nothing else:
+`RememberSettings` holds the value for the session, and the close path persists it along with
+everything else. A full-range drag now writes the file **zero** times instead of twenty-eight, and
+the one write on close was happening anyway.
+
+**What it costs.** The thickness default from a session that ends in a crash. It is read only when
+the next board is imported, so the trade is twenty-eight disk writes per drag against losing a
+convenience default in a crash — and it is written down rather than left to be discovered.
+
+**Every other caller still writes immediately, which is right.** A theme picked, a file opened, a
+folder chosen: discrete events, one write each. The thickness slider was the only per-tick writer.
+Panel width looked like a second one and is not — it is guarded by a one-pixel threshold and only
+fires from the close handler.
+
+**Where the write happens is now stated at the close handler**, because "then when *is* it written?"
+should be answerable from the code rather than by working out which other setting happens to save
+first.
+
+**Confirmed at the bench, 2026-09-26**: *"verified."* There is no test — the change is four lines
+in a view model `MillBurn.Tests` cannot reach, which is the third time this sprint.
+
+#### 6.50 Nothing can test the view model — **enhancement · open** — *three times in one sprint*
+
+`MillBurn.Tests` does not reference `MillBurn.App`, so nothing in `MainViewModel` is reachable from
+a test. That is a deliberate boundary — the pipeline is testable precisely because it knows nothing
+about a window — but the view model has stopped being a thin shell over it, and sprint 2 paid for
+that three times:
+
+| | What was in the view model | How it was caught |
+|---|---|---|
+| [6.27](#) | `Adopt` passing `fresh: true` — one line | The bench |
+| [6.33](#) | `OnOutputChanged` returning before it could stop a preview | The bench, then a review for two more paths |
+| [6.49](#) | A settings write on a property setter | Reading the code while mapping something else |
+
+And a fourth that cuts the other way: sprint 2 story 6 wrote a debounce, tested it eight ways, and
+the tests all passed while the wiring in the view model was broken — because the wiring is the part
+they could not see. The bench checks passed too, for a different reason, so nothing caught it but a
+review tracing the code by hand.
+
+**What is actually untestable is small.** Most of `MainViewModel` is arithmetic and string building
+that would test fine; what needs a window is the dispatcher, the file dialogs and the rendering.
+The parts that keep going wrong — when a preview is cancelled, what an edit invalidates, when a
+setting is persisted — are decisions, not drawing.
+
+**Done when** the decisions are reachable. That is likely a seam rather than a test project that
+references the app: the rules pulled into something with no Avalonia in it, the way `LatestRun` and
+`PlannedExports` already are, leaving the view model to call them. Each of the three faults above
+would have been a unit test under that shape.
+
+**Not urgent, and not free.** It is a refactor of the largest file in the repository, and doing it
+badly would be worse than the gap. It belongs in a sprint that has room for it, and the argument
+for it is the table above rather than a principle.
+
+#### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · open** — *six paths and counting*
+
+Six methods in `MainViewModel` have to notice that an edit has made the drawn programs wrong, and
+each does it by hand:
+
+| | What it changes | What it has to do |
+|---|---|---|
+| `OnOutputChanged` | a layer's output or settings | stop a run, clear the backplot, rebuild |
+| `ResetLayerSettings` | every layer at once | the same, plus its own status |
+| `ApplyRefresh` | the board's source bytes | the same, and the program too |
+| `ForgetProgram` | the project, via `Adopt` | the same, and the property notifications |
+| `SaveMachineSettings` | safe height, rapid rate, decimals | the same |
+| `SaveFraming` | the header and footer of every program | the same |
+
+**Every one of them was wrong at some point, and each was found separately.** 6.33 came from the
+bench and fixed the first; a review found the next two; a later review found the last two and a
+missing pair of property notifications in the fourth. None of them was found by a test, because
+`MillBurn.Tests` cannot reach the view model ([6.50](#)).
+
+**The shape of the fault is always the same.** Each site decides for itself what "invalidate"
+means, and the decisions have drifted: some stop the run, some clear the backplot, some rebuild,
+some set a status, one raised property notifications and the rest did not. The bug is never in the
+clearing — it is in a path that forgot one of the five.
+
+**Done when** there is one method that means "the programs on screen are no longer of this job",
+every one of the six calls it, and what it does is stated once. It is a small refactor, and its
+value is that the seventh path cannot be written wrong — which matters more than the six, because
+the six are now correct and the seventh is the one nobody has thought of yet.
+
+**Depends on nothing**, but is worth far more with [6.50](#): behind a seam, this method is the
+single most testable thing in the view model, and the six faults above would each have been a
+failing test rather than a bench report or a review.
+
+#### 6.52 A test cut that finds where the copper stops — **enhancement · open** — *asked for by the product owner*
+
+From the product owner, 2026-09-27: *"A new test for copper thickness. This test will cut a series
+of ladders. Each ladder is x number of step-over passes. The first rung is very shallow and each
+rung gets very small increment deeper. This test will help users determine the optimal cut depth
+for their piece. For this particular test, I think we should increase the granularity of the probe
+job (when used) to help ensure the best results."*
+
+**The geometry already exists; the resolution does not.** `TestCutKind.Depth` already cuts exactly
+this shape — a band per depth, each band `PassesPerLine` overlapping passes at a commanded
+stepover. What stops it answering this question is its own defaults, and deliberately so: they step
+**0.05 mm**, documented in `TestCutOptions.DepthStepMm` as *"Wide steps on purpose"*, because that
+series exists to fit a straight line through width-against-depth for a V-bit and a narrow spread
+sits inside a caliper's own error.
+
+**One of those steps is larger than the whole thickness of the copper.** One-ounce foil is about
+**0.035 mm**, so at 0.05 mm steps a single rung crosses from *not through the copper* to *well into
+the substrate*, and there is no rung at the depth the answer actually lives at.
+
+The generator already knows the number. Run long enough to go deep — `testcut depth --lines 12`,
+which reaches 0.570 mm — and it says so unprompted: *"Copper foil is about 0.035 mm, so anything
+past that is cutting fibreglass — which is what you want for a depth series and hard on a fine
+tip."* The default six-line series stops at 0.270 mm and the note is gated above 0.3, so it never
+appears; what it tells you when it does appear is that the existing test is aimed past the question
+this one is asking.
+
+**Measured, with the existing generator driven at copper resolution** — `testcut depth --lines 12
+--from 0.01 --step 0.01 --rungs 0`:
+
+| | |
+|---|---|
+| Rungs | 12, from 0.010 mm to 0.120 mm |
+| Each rung | 20 passes stepping 0.079 mm |
+| Coupon | **19.0 x 47.5 mm** |
+| Cutting time | about 214 seconds |
+
+So the shape is right and it is cheap. What is missing is a kind that starts there by default,
+and a page that tells you what you are looking at.
+
+**It is read by eye, which is why it is a different test.** The depth series is measured with a
+caliper across a band and the number matters. This one is two transitions found with a loupe: the
+shallowest rung with **no copper left anywhere in the band**, and the first rung where the
+substrate is visibly cut. The usable depth is between them, and how far apart they are is itself
+the reading — a board where they are adjacent has nothing in hand.
+
+**The probe grid is the part that decides whether any of it means anything.** A coupon already gets
+its own spacing rather than the board's: both callers compute
+`Math.Max(4, Math.Min(StockWidthMm, StockHeightMm) / 3)`, which on the coupon above gives 6.3 mm
+and a **3 x 8 grid of 24 touches**. Three columns across 17 mm of probed width means the map
+interpolates over 8.5 mm between them — and an ordinary piece of clamped copper-clad is
+**0.1-0.2 mm** out of flat. Only a fraction of that falls across a coupon this small, but a few
+hundredths is several rungs' worth of a 0.010 mm step, which does not shift the reading so much as
+invent it.
+
+**And that expression is written out twice** — `Program.cs` for the CLI and `MainWindow.axaml.cs`
+for the window — so the rule that decides this has no single home and nothing keeps the two in
+step.
+
+**A risk worth naming before it is built.** The stepover is derived from the *predicted* width of
+the shallowest line, and the whole premise of this test is that the tool model is not trusted. If
+the real tip is blunter than the library believes, the shallow rungs leave ribs of copper between
+passes — which is still a reading, but it means *the stepover was too wide for this depth* and not
+*the copper is thicker than that*. The guide has to separate those two, or the test answers the
+wrong question convincingly.
+
+**Depends on nothing.** It reuses `TestCut`'s emitter, its setup file, its two-visit probe
+workflow and its guide generator.
+
+**Three design questions, put to the product owner and answered, 2026-09-27.** Recorded here rather
+than in a sprint document because the item was taken into sprint 2 and then held for the next one;
+whoever picks it up starts from decided ground rather than re-deriving it.
+
+*A new kind beside `Depth` and `Feed`, not a retune of either.* The two tests are read differently
+and want opposite defaults, and overloading the working one to avoid an enum member would wreck it:
+
+| | `Depth` | `Copper` |
+|---|---|---|
+| Asks | how wide does this bit cut, against depth | where does the copper stop |
+| Read with | a caliper, across the band | a loupe, rung by rung |
+| Starts at | 0.020 mm | 0.010 mm |
+| Steps | 0.050 mm | 0.010 mm |
+| Rungs | 6 | 12 |
+
+*One ladder, shallow to deep*, plus the repeat-the-first-rung check the coupon already puts at its
+far end — on a ladder read by eye a tilt moves the transition, so the repeat is worth as much here
+as it is on the depth series.
+
+*The test picks its own probe spacing*, finer than the coupon rule gives, with the guide saying
+what it chose and why. Not a dialog box and not a warning, and the global probing setting is left
+alone — real boards do not want this and would pay minutes for it.
+
+**Done when** `Copper` is a kind in the dialog and the CLI with defaults that start at 0.010 mm and
+step 0.010 mm, the coupon is one ladder with the repeat at its far end, its probing routine is finer
+than the board rule gives and says so on the guide page, the spacing rule lives in one place rather
+than two, the guide tells the operator what the two transitions mean and how to tell ribbing from
+thickness, and a test pins the emitted depths to the rungs they belong to.
+
+**Not part of it.** Reading the answer back into the isolation depth. The test writes a number on a
+page and the operator types it into Settings; closing that loop means a project knowing which coupon
+it was calibrated against, and that is its own argument.
