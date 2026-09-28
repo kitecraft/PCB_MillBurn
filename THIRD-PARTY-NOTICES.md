@@ -23,6 +23,16 @@ memory. Re-check them when a version is bumped; a licence change is a real, if r
 | [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) | MIT | MVVM source generators |
 | Microsoft.Extensions.{DependencyInjection, Logging, Logging.Console} | MIT | Hosting, DI, logging |
 
+## Build-only dependencies
+
+| Package | Licence |
+|---|---|
+| [Microsoft.CodeAnalysis.BannedApiAnalyzers](https://github.com/dotnet/roslyn-analyzers) | MIT |
+
+An analyser, referenced with `PrivateAssets="all"` and scoped to `src/`: it turns a direct call to
+Clipper's boolean, offset, Minkowski or point-in-polygon entry points into a build error, so the
+work counters have one place to count from. Nothing of it reaches a shipped build.
+
 ## Test-only dependencies
 
 | Package | Licence |

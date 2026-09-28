@@ -557,14 +557,19 @@ public static class DryRun
         return null;
     }
 
-    private static string StripComment(string line)
-    {
-        var at = line.IndexOf('(', StringComparison.Ordinal);
-        var code = at >= 0 ? line[..at] : line;
-
-        at = code.IndexOf(';', StringComparison.Ordinal);
-        return (at >= 0 ? code[..at] : code).Trim();
-    }
+    /// <summary>
+    /// The code on a line, comments removed.
+    ///
+    /// **This used to truncate the line at its first <c>(</c>**, so a line whose code sat behind a
+    /// comment read as blank — and every use of it in this file went blind at once. The refusals
+    /// saw no `G92`, the rewrite raised no Z, and the clearance check never measured the move. A
+    /// dry run of a program whose header says <c>( touch off ) G1 Z-1.0 F50</c> handed that line
+    /// back verbatim, unraised, under a preamble promising every Z three millimetres higher.
+    ///
+    /// <see cref="GcodeText.WithoutComments"/> is what the parser has always done, and is now the
+    /// only copy.
+    /// </summary>
+    private static string StripComment(string line) => GcodeText.WithoutComments(line);
 
     /// <summary>Whether a word appears with exactly this number, so M3 never matches M30.</summary>
     private static bool HasWord(string code, char letter, int number)
@@ -625,23 +630,32 @@ public static class DryRun
     /// </summary>
     private static string Offset(string line, char letter, double rise, int places)
     {
-        var limit = line.IndexOf('(', StringComparison.Ordinal);
-        if (limit < 0)
-        {
-            limit = line.IndexOf(';', StringComparison.Ordinal);
-        }
-
-        if (limit < 0)
-        {
-            limit = line.Length;
-        }
-
         var result = new System.Text.StringBuilder(line.Length + 8);
         var i = 0;
+        var inComment = false;
 
         while (i < line.Length)
         {
-            if (i >= limit || char.ToUpperInvariant(line[i]) != letter)
+            // **Step over comments rather than stopping at the first one.** This used to take
+            // everything from the opening bracket onwards as comment, so a Z sitting *after* a
+            // note — `( touch off ) G1 Z-1.0` — was copied through at its cutting depth into a
+            // file whose header promises every Z is higher. Same mistake the readers made, in the
+            // half that writes.
+            if (!inComment && line[i] == ';')
+            {
+                result.Append(line, i, line.Length - i);
+                break;
+            }
+
+            if (line[i] is '(' or ')')
+            {
+                inComment = line[i] == '(';
+                result.Append(line[i]);
+                i++;
+                continue;
+            }
+
+            if (inComment || char.ToUpperInvariant(line[i]) != letter)
             {
                 result.Append(line[i]);
                 i++;
@@ -691,23 +705,31 @@ public static class DryRun
     /// </summary>
     private static string Replace(string line, char letter, string value)
     {
-        var limit = line.IndexOf('(', StringComparison.Ordinal);
-        if (limit < 0)
-        {
-            limit = line.IndexOf(';', StringComparison.Ordinal);
-        }
-
-        if (limit < 0)
-        {
-            limit = line.Length;
-        }
-
         var result = new System.Text.StringBuilder(line.Length + value.Length);
         var i = 0;
+        var inComment = false;
 
         while (i < line.Length)
         {
-            if (i >= limit || char.ToUpperInvariant(line[i]) != letter)
+            // Steps over comments rather than stopping at the first — see Offset. The flat run is
+            // the worse of the two to get this wrong: it has no refusal path, so a Z it fails to
+            // replace is simply left at its cutting depth under a header saying every Z is held
+            // clear of the work.
+            if (!inComment && line[i] == ';')
+            {
+                result.Append(line, i, line.Length - i);
+                break;
+            }
+
+            if (line[i] is '(' or ')')
+            {
+                inComment = line[i] == '(';
+                result.Append(line[i]);
+                i++;
+                continue;
+            }
+
+            if (inComment || char.ToUpperInvariant(line[i]) != letter)
             {
                 result.Append(line[i]);
                 i++;

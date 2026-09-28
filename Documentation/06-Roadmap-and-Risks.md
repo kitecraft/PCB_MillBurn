@@ -5518,10 +5518,15 @@ series exists to fit a straight line through width-against-depth for a V-bit and
 sits inside a caliper's own error.
 
 **One of those steps is larger than the whole thickness of the copper.** One-ounce foil is about
-**0.035 mm**. The generator already knows this and says so unprompted — the default depth series
-prints *"The deepest line is 0.570 mm. Copper foil is about 0.035 mm, so anything past that is
-cutting fibreglass"*. So at 0.05 mm steps a single rung crosses from *not through the copper* to
-*well into the substrate*, and there is no rung at the depth the answer actually lives at.
+**0.035 mm**, so at 0.05 mm steps a single rung crosses from *not through the copper* to *well into
+the substrate*, and there is no rung at the depth the answer actually lives at.
+
+The generator already knows the number. Run long enough to go deep — `testcut depth --lines 12`,
+which reaches 0.570 mm — and it says so unprompted: *"Copper foil is about 0.035 mm, so anything
+past that is cutting fibreglass — which is what you want for a depth series and hard on a fine
+tip."* The default six-line series stops at 0.270 mm and the note is gated above 0.3, so it never
+appears; what it tells you when it does appear is that the existing test is aimed past the question
+this one is asking.
 
 **Measured, with the existing generator driven at copper resolution** — `testcut depth --lines 12
 --from 0.01 --step 0.01 --rungs 0`:

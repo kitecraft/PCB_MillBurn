@@ -35,6 +35,15 @@ would do it; so are `G92`, `G10`, `G38`, `G43`/`G49` and their decimal variants,
 referenced Z (`G53`, `G28`, `G30`), and a program that commands no Z at all — each named with its
 line number, because a dry run that is wrong is worse than none.
 
+**A comment no longer hides the code after it.** Three places read a G-code line to decide what it
+does, and two of them stopped at the first `(` instead of stepping over the comment — so a line
+written `( touch off ) G1 Z-1.0 F50`, which is how people write headers, looked completely blank to
+them while the machine saw a real cutting move. Every dry-run refusal went silent on such a line,
+the rise skipped it, and the clearance check never measured it: the dry run handed back that plunge
+verbatim under a header promising every Z three millimetres higher. The start/end G-code check lost
+its errors the same way, on the real program — `(all done) M30` passed without a word. All three
+readers now share one implementation, the one that was already right.
+
 **Two faults that spoiled copper, both found at the bench and both on real boards.** An isolation
 path no longer bows into an arc where the copper is straight: all eight instances on the Arduino
 Mega come out straight, in a program the same size as before. And the hole that was not a hole is
@@ -48,9 +57,10 @@ between layers, between programs and between toolpaths — the innermost is wher
 route optimisation spend the seconds, so it is the one that decides how long a cancelled run keeps
 going. A plan that completed is still kept.
 
-**A full-range drag of the thickness slider wrote the settings file twenty-eight times.** It writes
-once. What it was saving was not the project's thickness but the app-wide default for the *next*
-board, so twenty-seven of the twenty-eight were superseded immediately.
+**A full-range drag of the thickness slider wrote the settings file twenty-eight times.** It now
+writes nothing until the window closes. What it was saving was not the project's thickness but the
+app-wide default for the *next* board, so twenty-seven of the twenty-eight were superseded
+immediately. The cost of holding it in memory is that a session ending in a crash loses the value.
 
 **Measured, then left alone.** An even number of outline passes really does cost about twice the
 travel of an odd one — 337, 721, 326, 326 and 710 mm across five step-downs on a 66-up panel,

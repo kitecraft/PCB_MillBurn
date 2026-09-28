@@ -208,14 +208,15 @@ public sealed record ProgramFraming
             || code.Contains('Y', StringComparison.OrdinalIgnoreCase))
         && (Word(code, 'G', 0) || Word(code, 'G', 1) || Word(code, 'G', 2) || Word(code, 'G', 3));
 
-    private static string Strip(string line)
-    {
-        var at = line.IndexOf('(', StringComparison.Ordinal);
-        var code = at >= 0 ? line[..at] : line;
-
-        at = code.IndexOf(';', StringComparison.Ordinal);
-        return (at >= 0 ? code[..at] : code).Trim();
-    }
+    /// <summary>
+    /// The code on a line, comments removed.
+    ///
+    /// This used to truncate the line at its first <c>(</c>, which made every check below blind to
+    /// a line whose code sits behind a comment — <c>(all done) M30</c> passed silently, and the
+    /// export went on to write a program whose job is unreachable. See
+    /// <see cref="GcodeText.WithoutComments"/>.
+    /// </summary>
+    private static string Strip(string line) => GcodeText.WithoutComments(line);
 
     /// <summary>Whether a word appears with exactly this number, so M3 never matches M30.</summary>
     private static bool Word(string code, char letter, int number)

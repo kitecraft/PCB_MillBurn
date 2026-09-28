@@ -6,8 +6,9 @@ branching from the older release branch would have dropped it again at the next 
 
 **The product owner's direction:** fix all the known bugs, and take A6, M12 and V31 with them.
 
-So: six of the seven open defects and three requirements — eight stories, because the three
-requirements are three pieces of work rather than one grouped item. They were written as a single
+So: six of the seven open defects and three requirements — nine stories in the end, because the
+three requirements are three pieces of work rather than one grouped item, and because a tenth item
+found inside story 6 became story 9. They were written as a single
 story to begin with, on the grounds that none was a sprint's worth on its own; that is an argument
 about size and not about what they are. A6 is about the preview, M12 about a fixture and V31 about
 the dry run, and closing them together would have meant one closure trying to answer for three
