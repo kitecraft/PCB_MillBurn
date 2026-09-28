@@ -109,9 +109,14 @@ internal sealed class CancelsAfterLayers(
 /// <see cref="CancelsAfterLayers"/>: the first few are the blank being resolved, not layers.
 /// </summary>
 internal sealed class SignalsAtLayer(
-    IReadOnlyDictionary<string, LayerOutputSettings> inner, int at, TaskCompletionSource reached)
+    IReadOnlyDictionary<string, LayerOutputSettings> inner,
+    int at,
+    TaskCompletionSource reached,
+    ManualResetEventSlim? hold = null)
     : IReadOnlyDictionary<string, LayerOutputSettings>
 {
+    private bool _parked;
+
     /// <summary>How many settings lookups the planner has made.</summary>
     public int Reached { get; private set; }
 
@@ -122,6 +127,26 @@ internal sealed class SignalsAtLayer(
         if (Reached >= at)
         {
             reached.TrySetResult();
+
+            // **Parked here, once, until the caller lets it go.**
+            //
+            // Signalling and carrying on made the test that uses this a race, and it was the
+            // release build of 0.3.0 that found it: twice on CI every one of four runs reported
+            // all eighteen layers, so none was still going when the next superseded it, and a test
+            // about abandoning work in progress passed no work in progress to abandon. It had
+            // never failed locally — a slower machine delays the waiter's continuation rather than
+            // the run, so the run wins the race, which is the opposite of the intuition that a
+            // slow machine makes a run easier to catch mid-flight.
+            //
+            // Holding the run makes it a fact instead of a likelihood: it is provably inside the
+            // board when it is cancelled, because it is stopped there until told otherwise.
+            //
+            // Bounded, so a mistake here is a message rather than a hung suite.
+            if (hold is not null && !_parked)
+            {
+                _parked = true;
+                hold.Wait(TimeSpan.FromSeconds(60));
+            }
         }
 
         return inner.TryGetValue(key, out value!);
