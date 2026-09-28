@@ -181,6 +181,10 @@ public sealed class CancellablePlanningTests(ITestOutputHelper output)
         var started = new List<Task<bool>>();
         var wrappers = new List<SignalsAtLayer>();
 
+        // One gate per run, so each is held inside the board until its successor has taken its
+        // place. Without them this test is a race it loses on a slow machine — see SignalsAtLayer.
+        var holds = new List<ManualResetEventSlim>();
+
         // Four settings distinct from each other and from every other test's, so none can be
         // answered from the memo — the case where the work is real and abandoning it is worth
         // something, and the only case where the wait below can complete.
@@ -188,9 +192,11 @@ public sealed class CancellablePlanningTests(ITestOutputHelper output)
         {
             var thickness = Nm.FromMillimetres(6.0 + (0.1 * i));
             var underWay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var settings = new SignalsAtLayer(outputs, midway, underWay);
+            var hold = new ManualResetEventSlim(false);
+            var settings = new SignalsAtLayer(outputs, midway, underWay, hold);
             var token = runs.Begin();
 
+            holds.Add(hold);
             wrappers.Add(settings);
 
             started.Add(Task.Run(
@@ -221,9 +227,25 @@ public sealed class CancellablePlanningTests(ITestOutputHelper output)
             // and this would wait for the harness to give up. Generous enough that a loaded
             // machine is slow here rather than red.
             await underWay.Task.WaitAsync(TimeSpan.FromSeconds(60));
+
+            // This run is now stopped inside the board, and `Begin` above has already cancelled
+            // its predecessor — which is also stopped inside the board. Let that one go: it
+            // resumes, reaches its next check, and finds a token that is already cancelled.
+            if (i > 0)
+            {
+                holds[i - 1].Set();
+            }
         }
 
+        // And the last, which nobody superseded, so it runs to a plan.
+        holds[^1].Set();
+
         var finished = await Task.WhenAll(started);
+
+        foreach (var hold in holds)
+        {
+            hold.Dispose();
+        }
 
         output.WriteLine(
             $"{finished.Count(f => f)} of {finished.Length} ran to a plan; reached "
