@@ -104,23 +104,31 @@ public sealed class PlanningPathsAgreeTests(ITestOutputHelper output)
             .Select(c => c.Line)
             .ToList();
 
-        var fromMill = job.Notes
-            .Where(n => n.Contains("left connected", StringComparison.Ordinal)
-                || n.Contains("stay connected", StringComparison.Ordinal)
-                || n.Contains("cannot separate", StringComparison.Ordinal)
-                || n.Contains("not checked", StringComparison.Ordinal))
-            .ToList();
+        output.WriteLine($"export: {fromExport.Count} electrical line(s)");
+        output.WriteLine(string.Join(Environment.NewLine, fromExport));
 
-        output.WriteLine($"export: {fromExport.Count} line(s)");
-        output.WriteLine(string.Join("\n", fromExport));
-        output.WriteLine($"mill: {fromMill.Count} line(s)");
-        output.WriteLine(string.Join("\n", fromMill));
-
-        // The guard. Both sides being empty would satisfy an equality check perfectly, and this
+        // The guard. Both sides being empty would satisfy any containment check perfectly, and this
         // board is here precisely because it has a real short on it.
         Assert.NotEmpty(fromExport);
 
-        Assert.Equal(fromExport, fromMill);
+        // **Every line the export reports, `mill` reports too, word for word.**
+        //
+        // The mill side used to be picked out of `job.Notes` with a whitelist of four substrings —
+        // "left connected", "stay connected", "cannot separate", "not checked" — and compared for
+        // equality. That fails for the wrong reason the moment a finding is worded outside the
+        // list, and two of them already are: the same-net advice ("…between two pieces of the same
+        // net. Nothing is shorted by those…") and the unplaced-copper advice. Neither fires on this
+        // board at this cut, so the whitelist held by luck; the Arduino Uno produces the first at
+        // its default cut.
+        //
+        // Both sides now come from one `ElectricalFindings.For`, so the property worth asserting is
+        // that the findings survive the journey — not that a test can classify prose. Containment
+        // rather than equality because `job.Notes` legitimately carries lines the export's
+        // per-layer warnings do not, which is what the whitelist was approximating around.
+        foreach (var line in fromExport)
+        {
+            Assert.Contains(line, job.Notes, StringComparer.Ordinal);
+        }
     }
 
     /// <summary>

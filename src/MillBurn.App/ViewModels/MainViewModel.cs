@@ -1405,28 +1405,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Builds every G-code layer and draws the result back over the board.
-    ///
-    /// The drawing comes from **parsing the emitted programs**, not from the toolpaths that produced
-    /// them. Those two agree right up until the emitter has a bug, and only one of them is what the
-    /// machine will run (Documentation/05, section 2.1).
-    /// </summary>
-    /// <summary>
-    /// Builds the preview off the UI thread, and abandons a run that a later edit has already made
-    /// pointless.
-    ///
-    /// The window stays live throughout: the snapshot is taken here, the planning and the backplot
-    /// happen on the thread pool, and only the applying of the result comes back. A second call
-    /// cancels the first rather than queueing behind it, because the answer being computed
-    /// describes a board the operator has already changed.
-    /// </summary>
-    /// <returns>
-    /// True when a preview was built, published, and had nothing to warn about. False when it
-    /// failed, was superseded, had nothing to show, or found rapid moves at cutting depth — in
-    /// every one of which the status line already carries something the operator needs more than
-    /// a caller's own message.
-    /// </returns>
-    /// <summary>
     /// Check the board as its own job, without exporting or previewing anything.
     ///
     /// **Why the button exists.** The board-level checks run on load; the electrical ones — the
@@ -1462,14 +1440,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 () => BoardCheck.For(request.Board, request.Outputs, request.Library, token), token)
                 .ConfigureAwait(true);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             // Superseded by a later press, or the window is closing. The older answer is not worth
             // showing and its status line is not worth writing over the newer one's.
+            //
+            // **Filtered on this run's own token**, for the reason `PreviewAsync` spells out: not
+            // every cancellation means the operator moved on. An inner token, or a later stage
+            // using one of its own, would otherwise land here with nothing cleared and nothing
+            // said — `Finish` never called, so the run stays installed and the status line reads
+            // "Checking the board…" for the rest of the session.
             return;
         }
-        catch (Exception ex) when (IsExpected(ex))
+        catch (Exception ex)
         {
+            // **Everything else, not only the expected kinds.** This is reached from an `async
+            // void` click handler, so anything that escapes is an unhandled exception on the UI
+            // thread and the window closes with the operator's board unsaved. `PreviewAsync`
+            // already catches broadly for exactly that reason; these two were narrower.
             if (_checkRun.Finish(token))
             {
                 StatusMessage = $"Check failed: {ex.Message}";
@@ -1520,13 +1508,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void ReplaceElectricalChecks(BoardCheck.Result result)
     {
-        // **Every layer that was looked at, not every layer that said something.** A layer whose
-        // short has since been fixed contributes no check to announce itself, so taking the
-        // refreshed set from the findings would leave its old line on screen permanently — right
-        // when the operator most wants to see it gone.
         // **Every electrical line goes, not only the ones about layers this run looked at.**
         //
-        // Keying the removal on `result.Layers` was nearly right and left one hole: a layer that
+        // Two earlier rules are worth keeping in view, because each was wrong in its own direction
+        // and the comment describing the first outlived it. Taking the refreshed set from the
+        // *findings* leaves a fixed layer's line on screen for ever, since a layer that has come
+        // clean contributes no check to announce itself — exactly when the operator most wants to
+        // watch it go. Keying on `result.Layers` fixes that and leaves one hole: a layer that
         // has been switched *off* since the last press is not in that list either, so its old
         // "3 finding(s) this cut cannot separate" row survived every subsequent check, for ever,
         // about copper nobody is cutting any more.
@@ -1585,12 +1573,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 () => BoardFindings.For(request.Board, request.Outputs, request.Library, token), token)
                 .ConfigureAwait(true);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
+            // This run's own token only. See `CheckBoardAsync` and `PreviewAsync`: an unfiltered
+            // catch here leaves the run installed and the window saying it is still looking.
             return null;
         }
-        catch (Exception ex) when (IsExpected(ex))
+        catch (Exception ex)
         {
+            // Broad on purpose — this is awaited from an `async void` handler, so anything that
+            // escapes closes the window. The gap search is the newest and least travelled geometry
+            // in the application, which is the worst place to be narrow about it.
             if (_findingsRun.Finish(token))
             {
                 StatusMessage = $"Could not work out the findings: {ex.Message}";
@@ -1633,6 +1626,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Builds every G-code layer and draws the result back over the board, off the UI thread, and
+    /// abandons a run that a later edit has already made pointless.
+    ///
+    /// The drawing comes from **parsing the emitted programs**, not from the toolpaths that produced
+    /// them. Those two agree right up until the emitter has a bug, and only one of them is what the
+    /// machine will run (Documentation/05, section 2.1).
+    ///
+    /// The window stays live throughout: the snapshot is taken here, the planning and the backplot
+    /// happen on the thread pool, and only the applying of the result comes back. A second call
+    /// cancels the first rather than queueing behind it, because the answer being computed
+    /// describes a board the operator has already changed.
+    ///
+    /// **This was detached from its method and had to be put back.** Two summaries and the returns
+    /// tag below ended up stacked above `CheckBoardAsync`, which returns a plain `Task` — so this
+    /// method had no documentation at all, and the contract about the status line was published
+    /// against the wrong one. The compiler does not object to a second `&lt;summary&gt;`, so nothing
+    /// caught it; an `xhigh` review did.
+    /// </summary>
+    /// <returns>
+    /// True when a preview was built, published, and had nothing to warn about. False when it
+    /// failed, was superseded, had nothing to show, or found rapid moves at cutting depth — in
+    /// every one of which the status line already carries something the operator needs more than
+    /// a caller's own message.
+    /// </returns>
     public async Task<bool> PreviewAsync()
     {
         if (ExportRequestFor(OutputKind.Gcode, onlyLayer: null, alignment: null) is not { } request
@@ -3161,15 +3179,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         CheckSource.Layer(layer.Role, layer.Label, layer.FileName);
 
     /// <summary>
-    /// Puts a check in the panel, dressed for it.
-    ///
-    /// **One door, so that a check cannot reach the panel without its colour.** Twelve places in
-    /// this file produce checks and every one of them used to call `Warnings.Add` directly; with a
-    /// row to build, that would be twelve chances to forget the brush and get a label in the
-    /// default text colour that reads as though the layer has no colour rather than as though this
-    /// line was built wrongly.
-    /// </summary>
-    /// <summary>
     /// Puts a set of checks in the panel, with the electrical ones collapsed to a line a layer.
     ///
     /// **This is the dilution 6.44 is about, fixed at the one place it can be.** Seventeen items
@@ -3235,6 +3244,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             : Check.Advice(source, CheckKind.Electrical, message);
     }
 
+    /// <summary>
+    /// Puts a check in the panel, dressed for it.
+    ///
+    /// **One door, so that a check cannot reach the panel without its colour.** Twelve places in
+    /// this file produce checks and every one of them used to call `Warnings.Add` directly; with a
+    /// row to build, that would be twelve chances to forget the brush and get a label in the
+    /// default text colour that reads as though the layer has no colour rather than as though this
+    /// line was built wrongly.
+    /// </summary>
     private CheckRow Warn(Check check)
     {
         var row = new CheckRow(check, LabelBrushFor(check.Source));
@@ -3263,7 +3281,20 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// the real one — which is precisely the disagreement this project's rules put first.
     /// </summary>
     private SolidColorBrush? LabelBrushFor(CheckSource source) =>
-        source.Role is { } role ? LayerRow.ToBrush(Readable(Palette(role).Fill)) : null;
+        source.Role is { } role ? LayerLabelBrush(role) : null;
+
+    /// <summary>
+    /// The colour a layer's name is written in, wherever it is written.
+    ///
+    /// **Public because a second window needed it and reached past it instead.** The findings view
+    /// coloured its headings from <see cref="BoardPalette"/> directly, so an operator who had set
+    /// top copper to green saw green in the layer list and in the CHECK panel and the built-in
+    /// orange in the window those two point at — with a comment beside it claiming it matched. Two
+    /// controls disagreeing about one layer is the first thing this project's style rules name, and
+    /// the override and the legibility clamp both live on this side of the line.
+    /// </summary>
+    public SolidColorBrush LayerLabelBrush(LayerRole role) =>
+        LayerRow.ToBrush(Readable(Palette(role).Fill));
 
     /// <summary>
     /// The same colour, brought into a range that can be read as text on either theme.

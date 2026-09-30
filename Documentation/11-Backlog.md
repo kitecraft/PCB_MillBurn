@@ -14,7 +14,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 | [6.53](06-Roadmap-and-Risks.md#653-copper-with-no-net-name-is-reported-as-safe-when-one-named-net-shares-its-region--defect--open--found-by-code-review-2026-09-29) | Copper with no net name is reported as safe when one named net shares its region | found by `/code-review`, 2026-09-29 |
 
-## Enhancements (18)
+## Enhancements (19)
 
 Something new or better, which is not the same as something broken.
 
@@ -38,6 +38,7 @@ Something new or better, which is not the same as something broken.
 | [6.51](06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--open--six-paths-and-counting) | There is no single place that says "this picture is no longer true" | six paths and counting |
 | [6.52](06-Roadmap-and-Risks.md#652-a-test-cut-that-finds-where-the-copper-stops--enhancement--open--asked-for-by-the-product-owner) | A test cut that finds where the copper stops | asked for by the product owner |
 | [6.54](06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | The checks panel cannot show a cancelled run | found by `/code-review`, 2026-09-29 |
+| [6.55](06-Roadmap-and-Risks.md#655-the-findings-view-costs-about-twice-what-it-needs-to-and-cannot-be-interrupted--enhancement--open--found-by-code-review-at-xhigh-2026-09-30) | The findings view costs about twice what it needs to, and cannot be interrupted | found by `/code-review` at xhigh, 2026-09-30 |
 
 ## Part-built (3)
 
@@ -66,4 +67,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**24 open**, of 54 entries in the roadmap.
+**25 open**, of 55 entries in the roadmap.

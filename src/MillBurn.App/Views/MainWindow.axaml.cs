@@ -662,7 +662,7 @@ public partial class MainWindow : Window
         if (args.Contains("--findings", StringComparer.OrdinalIgnoreCase)
             && await vm.FindingsAsync().ConfigureAwait(true) is { } findings)
         {
-            var window = new FindingsWindow(findings, vm.BoardTitle)
+            var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -1207,7 +1207,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var window = new FindingsWindow(findings, vm.BoardTitle)
+        var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
         {
             RequestedThemeVariant = ActualThemeVariant,
         };

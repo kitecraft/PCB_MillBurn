@@ -6,7 +6,7 @@ using Avalonia.Media;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Pipeline;
-using MillBurn.Viewer;
+
 using static System.FormattableString;
 
 namespace MillBurn.App.Views;
@@ -41,9 +41,10 @@ public sealed class FindingsWindow : Window
     /// </summary>
     private const int MostPlaces = 40;
 
-    public FindingsWindow(BoardFindings.Result findings, string board)
+    public FindingsWindow(BoardFindings.Result findings, string board, Func<LayerRole, IBrush> colourOf)
     {
         ArgumentNullException.ThrowIfNull(findings);
+        ArgumentNullException.ThrowIfNull(colourOf);
 
         Title = "Findings — " + board;
         AppIcon.Apply(this);
@@ -92,7 +93,7 @@ public sealed class FindingsWindow : Window
 
         foreach (var layer in findings.Layers)
         {
-            body.Children.Add(ForLayer(layer));
+            body.Children.Add(ForLayer(layer, colourOf));
         }
 
         Content = new ScrollViewer
@@ -105,22 +106,35 @@ public sealed class FindingsWindow : Window
     private static string Summary(BoardFindings.Result findings)
     {
         var shorts = findings.Layers.Sum(l => l.Shorts.Count);
+        var groups = findings.Layers.Sum(l => l.Joins.Count);
         var layers = findings.Layers.Count == 1 ? "1 layer" : Invariant($"{findings.Layers.Count} layers");
         var took = Invariant($"{findings.Elapsed.TotalSeconds:F2} s");
 
-        return shorts == 0
-            ? Invariant($"{layers} · nothing shorted · {took}")
-            : Invariant($"{layers} · {shorts} place(s) where copper stays joined · {took}");
+        // **"Nothing shorted" has to mean it**, so the groups are consulted as well as the places.
+        // A join whose bridge could not be located contributes no place, and a headline counting
+        // only places would have said "nothing shorted" over a board with a group on it — the same
+        // fault as the per-layer line below, one level up and read first.
+        if (groups == 0 && shorts == 0)
+        {
+            return Invariant($"{layers} · nothing shorted · {took}");
+        }
+
+        // Places when there are any, groups when the bridges could not be found. Counting both into
+        // one number would add two different units together.
+        return shorts > 0
+            ? Invariant($"{layers} · {shorts} place(s) where copper stays joined · {took}")
+            : Invariant($"{layers} · {groups} group(s) left connected · {took}");
     }
 
-    private static StackPanel ForLayer(BoardFindings.Layer layer)
+    private static StackPanel ForLayer(BoardFindings.Layer layer, Func<LayerRole, IBrush> colourOf)
     {
         var panel = new StackPanel { Spacing = 0, Margin = new Thickness(0, 0, 0, 18) };
 
-        // The layer's own colour, as the CHECK panel does it, so a reader moving between the two
-        // is looking at one thing named one way.
-        var style = BoardPalette.For(layer.Role);
-
+        // **The layer's own colour from the same place the CHECK panel gets it**, which is the
+        // view model — where the operator's override is applied and where a colour too dark or too
+        // pale to read as text is brought into range. Asking `BoardPalette` directly, as this did,
+        // skips both: an operator who had set top copper to green saw green in the layer list, green
+        // in the panel, and the built-in orange in the window those two point at.
         var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
 
         heading.Children.Add(new TextBlock
@@ -128,7 +142,7 @@ public sealed class FindingsWindow : Window
             Text = layer.Label,
             FontSize = 14,
             FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromArgb(0xFF, style.Fill.Red, style.Fill.Green, style.Fill.Blue)),
+            Foreground = colourOf(layer.Role),
         });
 
         heading.Children.Add(Token(new TextBlock
@@ -156,7 +170,19 @@ public sealed class FindingsWindow : Window
             return panel;
         }
 
-        if (layer.Shorts.Count == 0 && layer.SameNet.Count == 0 && layer.Nameless.Count == 0)
+        // **The groups decide whether a layer is clear, not the places.** Tested on the located
+        // gaps alone, this said "everything comes apart" in green on a layer the check had just
+        // reported shorted — two lines under a verdict reading "N left connected in M group(s)".
+        //
+        // They can disagree, and the case is ordinary rather than exotic: `Gaps` skips a region
+        // holding a single piece of artwork, because a bridge is something between two pieces. Two
+        // nets attributed to *one* island — a net tie, a zero-ohm link, a pour the exporter
+        // flattened — is a join with no bridge to find, so `Shorts` is empty while `Joins` is not.
+        // This is the one window whose job is to let somebody satisfy themselves a board is sound.
+        if (layer.Joins.Count == 0
+            && layer.Shorts.Count == 0
+            && layer.SameNet.Count == 0
+            && layer.Nameless.Count == 0)
         {
             panel.Children.Add(Token(new TextBlock
             {

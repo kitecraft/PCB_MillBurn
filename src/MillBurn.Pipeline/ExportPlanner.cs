@@ -471,7 +471,7 @@ public static class ExportPlanner
             if (operation == OperationKind.None)
             {
                 skipped.Add(Invariant(
-                    $"{layer.FileName}: {LayerOperations.WhyNot(layer.Role, setting.Output)}"));
+                    $"{layer.FileName} — {LayerOperations.WhyNot(layer.Role, setting.Output)}"));
                 continue;
             }
 
@@ -501,7 +501,7 @@ public static class ExportPlanner
 
             if (made.Count == 0 && routed.Count == 0)
             {
-                skipped.Add(Invariant($"{layer.FileName}: nothing to cut."));
+                skipped.Add(Invariant($"{layer.FileName} — nothing to cut."));
             }
         }
 
@@ -522,6 +522,11 @@ public static class ExportPlanner
             // same list as the checks and those now render as "source — message". Two separators
             // in one list reads as two kinds of thing, and these are not: a skipped program is a
             // refusal that happens to have no `Check` behind it yet.
+            //
+            // **All three sites, not just this one.** Only the stock line was changed at first,
+            // which produced exactly the list the paragraph above forbids: a board with a layer set
+            // to None rendered "F_Mask.gbr: this role cannot…" beside "Stock — …" and
+            // "Top copper — …" on one page.
             skipped.Add("Stock — " + refusal);
         }
 

@@ -5913,6 +5913,17 @@ sprint.
 one board and `Nameless == 0` on a fully-named one. Neither shape can distinguish a same-net merge
 from an unnamed one that has been charged to same-net.
 
+**And a third way a name goes missing, found by the `xhigh` review.** The two halves do not even
+place net points against the same geometry: `Isolation` locates them in the copper *grown by the
+cut*, while `Gaps` locates them in the *raw* artwork. A point sitting on a copper boundary — a pad
+centre the realiser put a nanometre outside its island — is inside the grown region and outside the
+raw piece. `Isolation` therefore names the region with it while `Gaps` silently drops it, the piece
+loses its name, and a real short is filed as same-net or nameless. Whole pieces can be dropped the
+same way. `Isolation` counts its own misses into `Unplaced`/`UnplacedCopper` and reports them;
+`Gaps` says in a comment that they are "counted by `Isolation`… not counted twice", which is true
+of the count and not of the consequence. A fix for this entry should place both halves against one
+set of regions rather than two.
+
 **Done when** a merge with unnamed copper on either side is reported as nameless wherever it is
 reported — the panel, the companion page, the CLI and the findings view — and a test covers a region
 holding one named net beside unnamed copper.
@@ -5938,3 +5949,39 @@ proved by a test on that day rather than assumed to have worked all along.
 
 **Done when** a run an operator stops is shown as stopped rather than as clean, with a test that
 fails if the banner stops appearing.
+
+#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · open** — *found by `/code-review` at xhigh, 2026-09-30*
+
+*Job ▸ Findings* takes about 1.5 s on a two-sided Arduino Mega. Roughly half of that is work already
+done, and almost none of it can be cancelled.
+
+**The whole layer is offset and separated twice.** `ElectricalCheck.Isolation` computes
+`Separate(copper)` and `Separate(Inflate(copper, reach))`; `Gaps`, called on the next line with the
+same copper and the same options, computes both again. Byte-identical inputs, identical results, and
+the round offset of a dense layer is the dominant cost. Sprint 3 added an `already` parameter to
+`ElectricalFindings.For` to avoid re-running the *cheaper* half of this and left the expensive half
+duplicated.
+
+**The token is read in the wrong place.** `Gaps` documents itself as "checked per candidate pair; a
+cancelled run returns what it has", and `BoardFindings` sells the view as cancellable. But the two
+whole-layer Clipper operations, the two box passes and the attribution loops all run before the
+first token read. On a board that is mostly fine most regions hold one piece, the pair loop is
+skipped entirely, and the token is effectively never read — so pressing F7 twice means waiting out
+the first run in full.
+
+**And the window builds itself synchronously.** `FindingsWindow` adds up to `Joins × 40` TextBlocks
+to a plain `StackPanel` in its constructor, before `Show` is called, with no virtualisation. Groups
+are deliberately uncapped — that is what the window is for — and `ElectricalFindings`' own notes
+record 110 groups on the Mega's top copper before the net attribution was fixed. At that size the
+window appears to hang after an already slow search, with nothing saying why. `Group` also rescans
+`layer.Shorts` per join, and `Shorts`/`SameNet`/`Nameless` re-filter and re-allocate the whole gap
+list on every get.
+
+**Why it is an enhancement and not a defect.** Every answer it gives is correct; it is slower than it
+should be and less interruptible than it claims. The claim is the part that grates — a comment saying
+a run can be abandoned when in practice it cannot is the shape this repository treats as a fault
+elsewhere.
+
+**Done when** the grown regions are computed once per layer and shared, the token is read before each
+whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
+window opens without a visible stall.

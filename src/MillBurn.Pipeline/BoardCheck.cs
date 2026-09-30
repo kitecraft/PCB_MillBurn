@@ -30,9 +30,14 @@ public static class BoardCheck
     /// <param name="Checks">Every finding, in layer order.</param>
     /// <param name="Layers">
     /// The file name of every layer that was looked at — **including the ones with nothing to
-    /// say**, which is the part a count cannot carry. A caller replacing what it said last time
-    /// has to know that a layer was examined and came back clean, or a short that has since been
-    /// fixed keeps its line on screen for ever.
+    /// say**, which is the part a count cannot carry.
+    ///
+    /// **It is evidence that the run really looked, and the panel no longer keys on it.** It was
+    /// written for a caller replacing what it said last time, so that a layer which had come clean
+    /// did not keep its old line for ever; that caller now clears every electrical line instead,
+    /// because a layer switched off since the last press is absent from this list too. What
+    /// survives is the guarantee: a name here means that layer was examined, which is what makes
+    /// "nothing to report" safe to say, and what `LayersChecked` counts.
     /// </param>
     /// <param name="Elapsed">How long it took, for the caller to say out loud.</param>
     /// <param name="Cancelled">

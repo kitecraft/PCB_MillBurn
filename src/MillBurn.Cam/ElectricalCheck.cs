@@ -663,10 +663,15 @@ public static class ElectricalCheck
                         between.UnionWith(other);
                     }
 
+                    if (Somewhere(overlap) is not { } at)
+                    {
+                        continue;
+                    }
+
                     gaps.Add(new NetGap
                     {
                         Between = [.. between],
-                        At = Somewhere(overlap),
+                        At = at,
                         RegionNets = inRegionNets,
                     });
                 }
@@ -703,13 +708,24 @@ public static class ElectricalCheck
     /// which is a fraction of a cut width away from the answer and still points at the right place
     /// on the board. Refusing to name a location at all would be worse than naming one a hair off.
     /// </summary>
-    private static Point2 Somewhere(Paths64 overlap)
+    private static Point2? Somewhere(Paths64 overlap)
     {
-        var best = overlap[0];
-        var most = Math.Abs(Clipper.Area(best));
+        Path64? best = null;
+        var most = -1.0;
 
         foreach (var ring in overlap)
         {
+            // **An empty ring is skipped rather than measured.** Clipper can return one from a
+            // collinear or zero-area intersection, and the previous shape took `overlap[0]`
+            // unconditionally: an all-degenerate result then divided by a count of nought, made a
+            // coordinate out of NaN, failed the containment test and fell back to `best[0]` — an
+            // index into an empty ring. That throws out of `BoardFindings`, through `Task.Run`, to
+            // an `async void` handler, and takes the window down with the operator's board in it.
+            if (ring.Count == 0)
+            {
+                continue;
+            }
+
             var area = Math.Abs(Clipper.Area(ring));
 
             if (area > most)
@@ -717,6 +733,13 @@ public static class ElectricalCheck
                 most = area;
                 best = ring;
             }
+        }
+
+        if (best is null)
+        {
+            // Every ring was degenerate. There is an overlap by Clipper's reckoning and no point in
+            // it worth naming, so the pair contributes no place rather than a made-up one.
+            return null;
         }
 
         double x = 0, y = 0;
