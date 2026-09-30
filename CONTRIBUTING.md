@@ -14,7 +14,7 @@ route, and a bug report with the Gerbers and the emitted file attached is worth 
 **Sprints.** Each one starts from a written direction by the product owner, and its stories live in
 [`Sprints/`](Sprints) — one document per sprint, each story saying what problem it solves and why,
 with links into the requirement rows it moves. The current one is
-[Sprint 2 — Fix what is broken](Sprints/Sprint-02-Fix-What-Is-Broken.md).
+[Sprint 4 — Enhancements that explain things](Sprints/Sprint-04-Enhancements-That-Explain-Things.md).
 
 **A sprint opens by reading the defect list, not the feature list.** Every open bug and known issue
 is reviewed for inclusion before the sprint is fixed: the roadmap's *not started* and *found in the

@@ -2303,14 +2303,19 @@ which vertices happen to exist.
 
 ##### Found since, and waiting for this
 
-- **The tab height in the program's comment can be false.** A pass counts as "tabbed" once it is
-  deeper than `total − TabHeightNm − BreakThroughNm`, and a tabbed pass jumps the tab entirely.
-  Nothing ever cuts the tab region down to the tab's top. So when *every* pass is tabbed — a thin
-  board, a big stepdown — the tab is left the full board thickness. Measured on the test board: 0.8 mm
-  board, 0.5 mm stepdown, 0.1 mm through, so the threshold is 0.3 mm and both passes (0.5 and 0.9 mm)
-  jump the tab. The program says `0.50 mm of material left under each`; 0.8 mm is left. It is the
-  same rule in the blank (`BlankOperation`) and the board outline (`OutlineOperation`). The fix is a
-  pass over each tab at exactly the tab's top, and a comment built from what was emitted.
+- **The tab height in the program's comment was false, and has not been since v0.1.2.** A pass
+  counts as "tabbed" once it is deeper than `total − TabHeightNm − BreakThroughNm`, and a tabbed pass
+  jumps the tab entirely — so where no pass landed on the tab's top, nothing ever cut the tab region
+  down to it and the tab held the full thickness of the board. A 1.6 mm board in 0.4 mm steps left
+  1.10 mm under a tab whose header promised `0.50 mm of material left`, and a 0.8 mm board with a
+  1.00 mm stepdown would not come free at all. **Fixed 2026-09-18** in `61a47b3`: `OutlineOperation`
+  and `BlankOperation` both add a pass at exactly the tab's top whenever the stepdown does not land
+  there, both say in the program that they did, and both state plainly when a tab is taller than the
+  whole cut instead of emitting a board that will not come out.
+  > **This bullet read as open until sprint 4 was planned**, eleven days and three releases after it
+  > was fixed, and it was quoted as a reason to put tabs first. Corrected on 2026-09-30 against the
+  > code rather than against the entry. It stays here because the placement work below has to keep
+  > that pass: whatever chooses where a tab goes, the depth its top sits at is still always cut.
 - **The blank's tabs are on the top and right edges only**, two per edge, by design: the bottom and
   left are the datum and must be cut clean. Workshop, on seeing them: *"We can deal with that when
   we get to the tabs upgrades."* Whatever placement this phase adds has to keep that rule for the
