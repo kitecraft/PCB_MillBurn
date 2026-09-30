@@ -10,7 +10,15 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
-## Unreleased — sprint 3, `release/0.4.0`
+## [0.4.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.4.0) — 2026-09-30
+
+**Checks you can read.** One sprint on one item, because five separate requests turned out to be
+asking for the same thing. A check was a bare string, so there was nothing to colour, nothing to
+fold a count by, nothing to sort on, and nothing for a status message to point at. Giving it a
+source, a kind and a severity is what made all five possible.
+
+[Sprint 3 — Checks you can read](Sprints/Sprint-03-Checks-You-Can-Read.md). Six stories, all closed,
+plus one that was built and taken back out.
 
 **Breaking: `millburn-cli mill` now takes its cutters from your tool library.** It synthesised them
 from its own defaults — a 30° V-bit with a 0.1 mm tip, and a 1.0 mm end mill — and ignored the
@@ -53,7 +61,41 @@ and bury the layer that would not parse; it now adds one line per copper layer, 
 findings there are and pointing at F7. The companion pages and the CLI still carry the full set,
 because a page read away from the app has no window to open.
 
-This section is a placeholder for the sprint's notes and will be folded into the 0.4.0 entry.
+**You can check a board without exporting it — *Job ▸ Check this board*, F6.** The board-level
+checks always ran on load, but the electrical ones arrived with the export plan, so a board with a
+short on it showed nothing in the CHECK panel until you pressed Preview or Export. If you opened a
+board, looked at an empty panel and believed it, the app had told you nothing while looking like it
+had. It answers about the cut your export would actually make, using the same tool and the same
+settings, and takes about half a second on an Arduino Mega. The automatic check is unchanged — a
+button only protects somebody who thinks to press it.
+
+**Both commands now answer the same question the same way.** `export` named the nets that would be
+left connected while `mill` printed a bare count, and the two were not even in the same units: on
+the Mega at a matched 0.154 mm cut, `mill` said *"19 gap(s) are narrower than the cut"* where
+`export` named eleven groups and said three more were unnamed. Nineteen gaps against fourteen
+groups, both true, with nothing on either screen to reconcile them. There is now one answer and both
+commands read it.
+
+**An uncut gap says which kind of uncut it is.** The count used to cover two things that mean
+opposite amounts of trouble: copper carrying no net name, which might be a short and which nothing
+here can decide about, and two pieces of the *same* net meeting, which the cutter equally cannot
+divide and which shorts nothing. Told "25 gaps", you had no way to know how many mattered. They are
+reported separately now, and the harmless kind is advice rather than a refusal.
+
+**And the labels are legible.** A colour chosen to look like a hole on copper is not a colour you
+can read a word in: "Plated holes" and "Non-plated holes" appear in every export and both were
+invisible on the dark theme. A label's colour is now brought into a range both themes can carry,
+keeping its hue.
+
+**Known limitation, and it was a deliberate decision.** Isolation still cuts inside holes the same
+export is about to drill — on the Mega, 44 cutting moves through two 0.65 mm holes, nearest 138 µm
+from a centre whose radius is 325 µm. Nothing is being isolated in there and the cut is arithmetically
+correct; it costs a fraction of a second and it looks wrong. A fix was built and withdrawn, because
+stopping the moat at the hole makes the copper's separation depend on the drill finishing what the
+isolation started — and a hole slightly out of position, an undersized bit, or stopping after
+isolation to look at the board would then leave a short under a program that reads as complete. The
+measurements and the shape a replacement needs are in
+[06 §6.47](Documentation/06-Roadmap-and-Risks.md).
 
 ---
 
