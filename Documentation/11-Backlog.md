@@ -4,7 +4,7 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (2)
+## Defects (3)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
@@ -12,8 +12,9 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 |---|---|---|
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
+| [6.53](06-Roadmap-and-Risks.md#653-copper-with-no-net-name-is-reported-as-safe-when-one-named-net-shares-its-region--defect--open--found-by-code-review-2026-09-29) | Copper with no net name is reported as safe when one named net shares its region | found by `/code-review`, 2026-09-29 |
 
-## Enhancements (18)
+## Enhancements (20)
 
 Something new or better, which is not the same as something broken.
 
@@ -32,11 +33,13 @@ Something new or better, which is not the same as something broken.
 | [6.31](06-Roadmap-and-Risks.md#631-let-the-operator-say-what-a-layer-is--enhancement--open--asked-for-by-the-product-owner) | Let the operator say what a layer is | asked for by the product owner |
 | [6.32](06-Roadmap-and-Risks.md#632-say-where-the-project-came-from--enhancement--open--asked-for-by-the-product-owner) | Say where the project came from | asked for by the product owner |
 | [6.35](06-Roadmap-and-Risks.md#635-a-knife-blade-as-a-tool-for-vinyl-masking--enhancement--open--asked-for-by-the-product-owner) | A knife blade as a tool, for vinyl masking | asked for by the product owner |
-| [6.44](06-Roadmap-and-Risks.md#644-the-checks-become-something-you-can-read--enhancement--open--agreed-by-the-product-owner-2026-09-23) | The checks become something you can read | agreed by the product owner 2026-09-23 |
 | [6.48](06-Roadmap-and-Risks.md#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--open--asked-for-in-the-workshop) | Where the pointer is, in the board's own numbers | asked for in the workshop |
 | [6.50](06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | Nothing can test the view model | three times in one sprint |
 | [6.51](06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--open--six-paths-and-counting) | There is no single place that says "this picture is no longer true" | six paths and counting |
 | [6.52](06-Roadmap-and-Risks.md#652-a-test-cut-that-finds-where-the-copper-stops--enhancement--open--asked-for-by-the-product-owner) | A test cut that finds where the copper stops | asked for by the product owner |
+| [6.54](06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | The checks panel cannot show a cancelled run | found by `/code-review`, 2026-09-29 |
+| [6.55](06-Roadmap-and-Risks.md#655-the-findings-view-costs-about-twice-what-it-needs-to-and-cannot-be-interrupted--enhancement--open--found-by-code-review-at-xhigh-2026-09-30) | The findings view costs about twice what it needs to, and cannot be interrupted | found by `/code-review` at xhigh, 2026-09-30 |
+| [6.56](06-Roadmap-and-Risks.md#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30) | A finding takes you to the copper it is about | asked for by the product owner, 2026-09-30 |
 
 ## Part-built (3)
 
@@ -65,4 +68,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**23 open**, of 52 entries in the roadmap.
+**26 open**, of 56 entries in the roadmap.

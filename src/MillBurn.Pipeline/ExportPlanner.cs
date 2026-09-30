@@ -42,7 +42,7 @@ public sealed record ExportItem
     public IReadOnlyList<string> Summary { get; init; } = [];
 
     /// <summary>Things that would spoil the result. Never a reason to refuse, always to show.</summary>
-    public IReadOnlyList<string> Warnings { get; init; } = [];
+    public IReadOnlyList<Check> Warnings { get; init; } = [];
 
     /// <summary>A page written beside this file to explain it, or null.</summary>
     public ExportCompanion? Companion { get; init; }
@@ -284,61 +284,6 @@ public sealed record ExportPlan
 /// </summary>
 public static class ExportPlanner
 {
-    /// <summary>
-    /// How many shorted pairs to name before falling back to a count.
-    ///
-    /// A board that cannot be isolated at this width usually cannot be isolated in many places at
-    /// once, and a hundred lines of them buries every other warning in the list. The Arduino Mega
-    /// at 0.05 mm deep is the case that set this: six pairs on the top copper, which is a list
-    /// worth reading, against a hundred and ten before the net attribution was fixed, which was
-    /// not.
-    /// </summary>
-    private const int MaxNamedJoins = 8;
-
-    /// <summary>
-    /// The one-line verdict beside an isolation program.
-    ///
-    /// "All separated" has to mean it. Saying it whenever no *named* join was found puts a clean
-    /// summary directly above a warning that copper stays connected — the operator reads the line
-    /// that agrees with them, and the contradiction is exactly what <see cref="NetCheck.Silent"/>
-    /// exists elsewhere to prevent.
-    /// </summary>
-    private static string Verdict(NetCheck check, int unnamed)
-    {
-        var parts = new List<string>();
-
-        if (check.Joins.Count > 0)
-        {
-            // Distinct nets, not the sum of each group's count: a ground pour shorted in three
-            // places appears in three groups and would be counted three times, inflating the
-            // headline number an operator reads first.
-            var caught = check.Joins
-                .SelectMany(j => j.Nets)
-                .Distinct(StringComparer.Ordinal)
-                .Count();
-
-            parts.Add(Invariant($"{caught} left connected in {check.Joins.Count} group(s)"));
-        }
-
-        // Carried whether or not something was named. Dropping it as soon as a join exists is the
-        // same suppression that was fixed in the warning list, re-done on the line that is read
-        // first — and a summary that stops short of the warnings beneath it is worse than no
-        // summary, because it is the one the operator takes away.
-        if (unnamed > 0)
-        {
-            parts.Add(Invariant($"{unnamed} gap(s) uncut"));
-        }
-
-        // Nets the check could not place are nets it did not look at, and "all separated" must
-        // never be said over them.
-        if (check.Unplaced > 0)
-        {
-            parts.Add(Invariant($"{check.Unplaced} net point(s) not placed"));
-        }
-
-        return parts.Count == 0 ? "all separated" : string.Join(" · ", parts);
-    }
-
     public static ExportPlan Plan(
         Board board,
         IReadOnlyDictionary<string, LayerOutputSettings> settings,
@@ -526,7 +471,7 @@ public static class ExportPlanner
             if (operation == OperationKind.None)
             {
                 skipped.Add(Invariant(
-                    $"{layer.FileName}: {LayerOperations.WhyNot(layer.Role, setting.Output)}"));
+                    $"{layer.FileName} — {LayerOperations.WhyNot(layer.Role, setting.Output)}"));
                 continue;
             }
 
@@ -556,7 +501,7 @@ public static class ExportPlanner
 
             if (made.Count == 0 && routed.Count == 0)
             {
-                skipped.Add(Invariant($"{layer.FileName}: nothing to cut."));
+                skipped.Add(Invariant($"{layer.FileName} — nothing to cut."));
             }
         }
 
@@ -573,7 +518,16 @@ public static class ExportPlanner
 
         foreach (var refusal in blank.Refusals)
         {
-            skipped.Add("Stock: " + refusal);
+            // The dash rather than a colon, because these are shown on the companion page in the
+            // same list as the checks and those now render as "source — message". Two separators
+            // in one list reads as two kinds of thing, and these are not: a skipped program is a
+            // refusal that happens to have no `Check` behind it yet.
+            //
+            // **All three sites, not just this one.** Only the stock line was changed at first,
+            // which produced exactly the list the paragraph above forbids: a board with a layer set
+            // to None rendered "F_Mask.gbr: this role cannot…" beside "Stock — …" and
+            // "Top copper — …" on one page.
+            skipped.Add("Stock — " + refusal);
         }
 
         var plan = new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
@@ -726,18 +680,19 @@ public static class ExportPlanner
                 : "Inverted · everything inside the board edge except this layer");
         }
 
-        var warnings = new List<string>();
+        var warnings = new List<Check>();
 
         // Only while it is still true. Inverting a negative layer against the board outline
         // resolves the polarity, so carrying the warning past that point contradicts the summary
         // line directly above it.
         if (layer.DeclaredNegative && !setting.Invert)
         {
-            warnings.Add("This layer is negative: the shapes are its openings, not its material. "
-                + "Inverting gives the material instead.");
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Layer,
+                "This layer is negative: the shapes are its openings, not its material. "
+                + "Inverting gives the material instead."));
         }
 
-        warnings.AddRange(MirrorWarnings(layer.Role, setting));
+        warnings.AddRange(MirrorWarnings(layer, setting));
 
         return new ExportItem
         {
@@ -774,13 +729,13 @@ public static class ExportPlanner
         CancellationToken token)
     {
         var tool = ResolveTool(setting, operation, library);
-        var warnings = new List<string>();
+        var warnings = new List<Check>();
         var summary = new List<string>();
 
         // What the tool's own numbers say about how it will behave. Shown against the operation
         // rather than only in the tool editor, because this is the moment somebody is deciding to
         // press go, and the feed that suited the last bit may not suit this one.
-        warnings.AddRange(ToolAdvice.For(tool));
+        warnings.AddRange(ToolChecks(SourceFor(layer), tool));
 
         // A list, because drilling is genuinely several toolpaths: one per hole size, each with its
         // own bit. Every other operation is one. Collapsing them into a single toolpath -- which is
@@ -852,7 +807,7 @@ public static class ExportPlanner
         IReadOnlyList<Toolpath> toolpaths,
         Tool tool,
         List<string> summary,
-        List<string> warnings,
+        List<Check> warnings,
         string target,
         string jobLabel,
         long boardThicknessNm,
@@ -893,7 +848,7 @@ public static class ExportPlanner
             var label = Invariant($"Bit {g + 1} of {groups.Count} · {bit.Name}");
 
             List<string> fileSummary = g == 0 ? [label, .. summary] : [label];
-            List<string> fileWarnings = g == 0 ? [.. warnings] : [];
+            List<Check> fileWarnings = g == 0 ? [.. warnings] : [];
 
             List<string> notes =
             [
@@ -1073,14 +1028,19 @@ public static class ExportPlanner
         };
 
         var summary = new List<string>();
-        var warnings = new List<string>();
+        var warnings = new List<Check>();
 
         // Said on this item and on the drilling item both, because the two are read in different
         // moods: here by somebody deciding whether to run this file, there by somebody who thinks
         // the holes are all accounted for.
+        //
+        // A refusal, and the clearest example of what that severity is for: the slot was asked for,
+        // no cutter in the library fits it, and the file being written does not contain it. The
+        // program is correct; what is missing is only discoverable by reading this.
         foreach (var refusal in plan.Refusals)
         {
-            warnings.Add(Worded(refusal) + " Cut them yourself, or the parts that need them will not fit.");
+            warnings.Add(Check.Refusal(SourceFor(layer), CheckKind.Program,
+                Worded(refusal) + " Cut them yourself, or the parts that need them will not fit."));
         }
 
         if (plan.Toolpaths.Count == 0)
@@ -1108,7 +1068,7 @@ public static class ExportPlanner
 
         // The tool on the item is only for the advice line; each toolpath carries its own.
         var tool = plan.Toolpaths[0].Tool;
-        warnings.AddRange(ToolAdvice.For(tool));
+        warnings.AddRange(ToolChecks(SourceFor(layer), tool));
 
         // One stem, two files: `Board-PTH-drl.slots.nc` and `Board-PTH-drl.slots.html`. The page
         // shares the program's name so the two sort together and nobody has to guess which page
@@ -1147,7 +1107,16 @@ public static class ExportPlanner
                 BreakThroughNm = setting.BreakThroughNm,
                 Refusals = [.. plan.Refusals.Select(Worded)],
                 RefusedCount = plan.RefusedCount,
-                Warnings = [.. files[0].Warnings.Where(w => !w.Contains("are NOT cut", StringComparison.Ordinal))],
+                // Still matched on the sentence, and left that way on purpose. The page lists the
+                // refusals itself in `Refusals` directly above, so these would appear twice; what
+                // is being excluded is that one wording and not refusals in general, which a
+                // severity test would catch far more of. A check with a source and a kind could
+                // express this properly — the refusals could carry the identity of the plan they
+                // came from — and doing it here would change which lines reach the page, so it
+                // belongs with the story that is allowed to move these bytes.
+                Warnings = [.. files[0].Warnings
+                    .Where(w => !w.Message.Contains("are NOT cut", StringComparison.Ordinal))
+                    .Select(w => w.Line)],
                 OnBlank = frame != board.Bounds,
             });
 
@@ -1304,7 +1273,7 @@ public static class ExportPlanner
         // because nothing in the window points at the outline row when the blank is being set up.
         var tool = OutlineCutter(board, settings, library);
         var summary = new List<string>();
-        var warnings = new List<string>();
+        var warnings = new List<Check>();
 
         // The outline's own cut, not just its bit: the bit's stepdown and the outline row's distance
         // through, so the blank and the board it frames come out of one set of numbers. The blank
@@ -1396,10 +1365,14 @@ public static class ExportPlanner
         summary.AddRange(blank.Notes);
 
         // Named, not "this": the warning is shown in the checks and on the pages with no file beside it.
-        warnings.Add(blank.HolesOnly
+        //
+        // Advice, though it reads like an instruction and is one. Nothing has been declined: this
+        // is the order the files have to be run in, and it is on the list because getting it wrong
+        // ruins the registration for everything after it.
+        warnings.Add(Check.Advice(CheckSource.Stock, CheckKind.Stock, blank.HolesOnly
             ? "Drill the stock's alignment holes before anything else, with the stock in the corner stop the right way up — its lower-left corner is work zero for every other file in this export."
-            : "Cut the stock before anything else, and keep it the right way up — its lower-left corner is work zero for every other file in this export.");
-        warnings.AddRange(ToolAdvice.For(tool));
+            : "Cut the stock before anything else, and keep it the right way up — its lower-left corner is work zero for every other file in this export."));
+        warnings.AddRange(ToolChecks(CheckSource.Stock, tool));
 
         return new ExportItem
         {
@@ -1466,7 +1439,7 @@ public static class ExportPlanner
         IReadOnlyList<Toolpath> toolpaths,
         Tool tool,
         List<string> summary,
-        List<string> warnings,
+        List<Check> warnings,
         string target,
         string jobLabel,
         long boardThicknessNm,
@@ -1534,12 +1507,12 @@ public static class ExportPlanner
         {
             notes.Add(FlipNote());
             summary.Add("Mirrored · flip the stock left-to-right");
-            warnings.Add(
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Layer,
                 "Mirrored: the stock must be flipped left-to-right about its vertical centreline, "
-                + "and re-registered. Flipping it the other way cuts a mirror image.");
+                + "and re-registered. Flipping it the other way cuts a mirror image."));
         }
 
-        warnings.AddRange(MirrorWarnings(layer.Role, setting));
+        warnings.AddRange(MirrorWarnings(layer, setting));
 
         // Ordering runs in board coordinates, before the shift to the corner: a translation cannot
         // change which order is shortest.
@@ -1631,9 +1604,13 @@ public static class ExportPlanner
         // because this is the last point before something gets written to disk.
         foreach (var issue in Framing(framing))
         {
+            // The only site where the severity was already decided and recorded -- IsError on
+            // the issue -- and it was being flattened into a sentence. It is carried now.
             warnings.Add(issue.IsError
-                ? $"Start/end G-code, line {issue.Line}: {issue.Message} This file should not be run."
-                : $"Start/end G-code, line {issue.Line}: {issue.Message}");
+                ? Check.Error(SourceFor(layer), CheckKind.Program,
+                    $"Start/end G-code, line {issue.Line}: {issue.Message} This file should not be run.")
+                : Check.Advice(SourceFor(layer), CheckKind.Program,
+                    $"Start/end G-code, line {issue.Line}: {issue.Message}"));
         }
         var emitted = GcodeParser.Parse(text);
         var measured = GcodeBackplot.Measure(GcodeBackplot.Classify(emitted), machine);
@@ -1689,7 +1666,8 @@ public static class ExportPlanner
 
         if (measured.GougeCount > 0)
         {
-            warnings.Add(Invariant($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this."));
+            warnings.Add(Check.Error(SourceFor(layer), CheckKind.Program,
+                Invariant($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this.")));
         }
 
         return new ExportItem
@@ -1721,7 +1699,7 @@ public static class ExportPlanner
         string target,
         List<ExportItem> files,
         long thicknessNm,
-        IReadOnlyList<string> warnings,
+        IReadOnlyList<Check> warnings,
         int repeats,
         bool onBlank,
         DrillAlignment? alignment)
@@ -1736,7 +1714,7 @@ public static class ExportPlanner
                 BoardThicknessNm = thicknessNm,
                 BreakThroughNm = setting.BreakThroughNm,
                 RepeatedPositions = repeats,
-                Warnings = warnings,
+                Warnings = [.. warnings.Select(w => w.Line)],
                 OnBlank = onBlank,
             });
 
@@ -1756,16 +1734,45 @@ public static class ExportPlanner
             $"{bits}{where}, {holes}");
     }
 
-    private static Toolpath BuildIsolation(
-        BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary, List<string> warnings)
+    /// <summary>
+    /// The isolation a layer's settings ask for, with a tool already chosen.
+    ///
+    /// Public and separate because checking a board without exporting it has to arrive at exactly
+    /// the cut the export would make — a check run against a different width answers a question
+    /// nobody asked. Two places building these options from the same fields is the shape that let
+    /// the `mill` path drift, so there is one.
+    /// </summary>
+    public static IsolationOptions IsolationFor(LayerOutputSettings setting, Tool tool)
     {
-        var options = new IsolationOptions
+        ArgumentNullException.ThrowIfNull(setting);
+
+        return new IsolationOptions
         {
             Tool = tool,
             DepthNm = setting.DepthFor(OperationKind.Isolation),
             Passes = setting.Passes,
             WidthNm = setting.IsolationWidthNm,
         };
+    }
+
+    /// <summary>
+    /// The tool a layer's settings name for an operation, or the one the rules would pick.
+    ///
+    /// Public for the same reason as <see cref="IsolationFor"/>: a check has to use the bit the
+    /// export would use.
+    /// </summary>
+    public static Tool ToolFor(LayerOutputSettings setting, OperationKind operation, ToolLibrary library)
+    {
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(library);
+
+        return ResolveTool(setting, operation, library);
+    }
+
+    private static Toolpath BuildIsolation(
+        BoardLayer layer, LayerOutputSettings setting, Tool tool, List<string> summary, List<Check> warnings)
+    {
+        var options = IsolationFor(setting, tool);
 
         var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
         var depth = Nm.ToMillimetreString(options.DepthNm, 3);
@@ -1781,91 +1788,22 @@ public static class ExportPlanner
 
         if (options.WidthNm > 0 && count >= IsolationOptions.MaxPasses)
         {
-            warnings.Add(Invariant(
-                $"Isolation is capped at {IsolationOptions.MaxPasses} passes and reaches only {Nm.ToMillimetreString(options.AchievedWidthNm, 3)} mm of the {Nm.ToMillimetreString(options.WidthNm, 3)} mm asked for. Use a wider tool, or cut deeper."));
+            warnings.Add(Check.Refusal(SourceFor(layer), CheckKind.Layer, Invariant(
+                $"Isolation is capped at {IsolationOptions.MaxPasses} passes and reaches only {Nm.ToMillimetreString(options.AchievedWidthNm, 3)} mm of the {Nm.ToMillimetreString(options.WidthNm, 3)} mm asked for. Use a wider tool, or cut deeper.")));
         }
 
-        var electrical = ElectricalCheck.Isolation(layer.Area, layer.Nets, options);
+        // One place builds these, because two callers that each ask the checker and then word the
+        // answer themselves are two wordings waiting to drift -- which is exactly how the `mill`
+        // path came to print a bare count while this one named the nets. See ElectricalFindings.
+        var findings = ElectricalFindings.For(layer, options, SourceFor(layer));
 
-        // Named first, because a net name is something the operator can find in the schematic and
-        // "two gaps are too narrow" is something they have to go hunting for on the board.
-        foreach (var join in electrical.Joins.Take(MaxNamedJoins))
-        {
-            warnings.Add(Invariant(
-                $"{join.Describe()} are left connected: the gap between them is narrower than the {width} mm this cut is wide."));
-        }
-
-        if (electrical.Joins.Count > MaxNamedJoins)
-        {
-            // Groups, not pairs. One group is a single piece of copper holding two nets or twenty,
-            // so counting pairs here would understate a bad board by an order of magnitude and
-            // overstate nothing — the test board at 0.75 mm deep is one group holding 23 nets.
-            var rest = electrical.Joins.Skip(MaxNamedJoins).ToList();
-
-            // Nets not already printed above, counted once each. Summing the groups would count a
-            // net per group it appears in, and a net named in one of the printed groups is not a
-            // "further" net at all.
-            var shown = electrical.Joins
-                .Take(MaxNamedJoins)
-                .SelectMany(j => j.Nets)
-                .ToHashSet(StringComparer.Ordinal);
-
-            var more = rest.SelectMany(j => j.Nets).Where(n => !shown.Contains(n))
-                .Distinct(StringComparer.Ordinal).Count();
-
-            warnings.Add(Invariant(
-                $"…and {rest.Count} more group(s) this cut cannot separate, naming {more} further net(s)."));
-        }
-
-        // What the named check could not speak for. Copper carrying no net attribute merges with
-        // its neighbours just as physically and has no name to report it under, so the count is
-        // what is left. Reported alongside the names rather than instead of them: before this the
-        // count was suppressed the moment anything was named, which told an operator about six
-        // shorts on a board where forty gaps could not be cut.
-        var unnamed = electrical.Ran
-            ? electrical.Unnamed
-            : IsolationOperation.UnreachableGaps(layer.Area, options);
-
-        if (unnamed > 0 && electrical.Ran)
-        {
-            // Carefully worded, because the number cannot tell two cases apart. Copper with no net
-            // attribute is a short nobody can name; two pieces of the *same* net is a gap the tool
-            // equally cannot cut and electrically nothing, since they were one conductor already.
-            // Saying "no net named either side" of both — which this did — is false for the second.
-            //
-            // "Further" is honest only because named groups were reported above it.
-            warnings.Add(Invariant(
-                $"{unnamed} further gap(s) are narrower than the cut and stay connected. No pair of nets could be named across them: the copper either side carries no net, or carries the same one, in which case nothing is shorted."));
-        }
-        else if (unnamed > 0)
-        {
-            // The check never ran, so nothing was named, nothing was compared, and there is no
-            // "further" to be further than. The reassuring half of the sentence above — that it may
-            // be the same net and so harmless — is a conclusion drawn from a comparison that did
-            // not happen, and offering it here invites the operator to dismiss gaps nobody checked.
-            warnings.Add(Invariant(
-                $"{unnamed} gap(s) are narrower than the cut: those copper regions stay connected. This layer names no nets, so which of them matters was not determined."));
-        }
-
-        if (electrical.Unplaced > 0)
-        {
-            warnings.Add(Invariant(
-                $"{electrical.Unplaced} net point(s) could not be placed on this layer's copper, so those nets were not checked. The rest of the layer was."));
-        }
-
-        if (electrical.UnplacedCopper > 0)
-        {
-            warnings.Add(Invariant(
-                $"{electrical.UnplacedCopper} piece(s) of copper could not be placed, so the count of gaps above may be low."));
-        }
-
-        summary.Add(electrical.Ran
-            ? Invariant($"{electrical.NetsSeen} nets · {Verdict(electrical, unnamed)}")
-            : Invariant($"not checked electrically · {electrical.Silent}"));
+        warnings.AddRange(findings.Checks);
+        summary.Add(findings.Verdict);
 
         if (tool.Kind == ToolKind.EndMill)
         {
-            warnings.Add("An end mill cuts one width everywhere and cannot separate anything closer than itself.");
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Tool,
+                "An end mill cuts one width everywhere and cannot separate anything closer than itself."));
         }
 
         return IsolationOperation.Build(layer.Area, options, layer.Label);
@@ -1879,7 +1817,7 @@ public static class ExportPlanner
         ToolLibrary library,
         JobOptions job,
         List<string> summary,
-        List<string> warnings,
+        List<Check> warnings,
         out int repeated)
     {
         repeated = 0;
@@ -1946,8 +1884,8 @@ public static class ExportPlanner
 
         if (missing.Count > 0)
         {
-            warnings.Add(Invariant(
-                $"The tool library has no drill of {string.Join(", ", missing.Select(m => Nm.ToMillimetreString(m, 2) + " mm"))}. The program still asks for {(missing.Count == 1 ? "it" : "them")} — check you have {(missing.Count == 1 ? "that bit" : "those bits")} before you start."));
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Tool, Invariant(
+                $"The tool library has no drill of {string.Join(", ", missing.Select(m => Nm.ToMillimetreString(m, 2) + " mm"))}. The program still asks for {(missing.Count == 1 ? "it" : "them")} — check you have {(missing.Count == 1 ? "that bit" : "those bits")} before you start.")));
         }
 
         // One toolpath per size, and one file per bit when they are written (see AssembleEach).
@@ -2003,7 +1941,7 @@ public static class ExportPlanner
         Tool tool,
         long thicknessNm,
         List<string> summary,
-        List<string> warnings)
+        List<Check> warnings)
     {
         // Everything on the board except the outline itself, so the cut knows a piece from a void.
         //
@@ -2038,20 +1976,22 @@ public static class ExportPlanner
 
         if (setting.TabCount == 0)
         {
-            warnings.Add("No tabs: the board comes free on the last pass and will be thrown by the cutter.");
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program,
+                "No tabs: the board comes free on the last pass and will be thrown by the cutter."));
         }
         else if (options.TotalDepthNm - options.TabHeightNm - setting.BreakThroughNm <= 0)
         {
             // Nothing can be cut away at the tab, so the piece stays attached by its full thickness.
             // Worth a line in the report as well as in the program: at the machine it looks like a
             // cut that simply did not work.
-            warnings.Add(Invariant(
-                $"The tabs are {Nm.ToMillimetreString(options.TabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board."));
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"The tabs are {Nm.ToMillimetreString(options.TabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board.")));
         }
 
         if (tool.Kind == ToolKind.VBit)
         {
-            warnings.Add("A V-bit at full depth is enormously wide at the surface. Use a flat end mill.");
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Tool,
+                "A V-bit at full depth is enormously wide at the surface. Use a flat end mill."));
         }
 
         // Every profile, not just the biggest one.
@@ -2066,7 +2006,8 @@ public static class ExportPlanner
 
         if (profiles.Count == 0)
         {
-            warnings.Add("The outline layer has no closed profile to cut.");
+            warnings.Add(Check.Refusal(SourceFor(layer), CheckKind.Program,
+                "The outline layer has no closed profile to cut."));
             return OutlineOperation.Build(profiles, options, layer.Label);
         }
 
@@ -2108,7 +2049,7 @@ public static class ExportPlanner
         LayerOutputSettings setting,
         Tool tool,
         List<string> summary,
-        List<string> warnings)
+        List<Check> warnings)
     {
         var options = new PocketOptions { Tool = tool, DepthNm = setting.DepthFor(OperationKind.Pocket) };
 
@@ -2116,17 +2057,17 @@ public static class ExportPlanner
         var width = Nm.ToMillimetreString(options.EffectiveWidthNm, 3);
         summary.Add(Invariant($"{layer.RingCount} openings cleared {width} mm per pass at {depth} mm deep"));
 
-        warnings.Add(
+        warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program,
             Invariant($"Mask relief cuts {depth} mm deep. ")
             + "Cured soldermask is about 0.02-0.04 mm, so the board's own flatness is the whole "
             + "depth of this cut: level the stock and probe a height map, or expect bare copper in "
-            + "one place and mask left in another.");
+            + "one place and mask left in another."));
 
         var unreachable = PocketOperation.UnreachableOpenings(layer.Area, options);
         if (unreachable > 0)
         {
-            warnings.Add(Invariant(
-                $"{unreachable} opening(s) are smaller than the tool cuts and will keep their mask."));
+            warnings.Add(Check.Refusal(SourceFor(layer), CheckKind.Program, Invariant(
+                $"{unreachable} opening(s) are smaller than the tool cuts and will keep their mask.")));
         }
 
         return PocketOperation.Build(layer.Area, options, layer.Label);
@@ -2205,20 +2146,45 @@ public static class ExportPlanner
     /// resulting file — so the warning appears exactly when someone has departed from the default,
     /// and stays silent the rest of the time.
     /// </summary>
-    private static IEnumerable<string> MirrorWarnings(LayerRole role, LayerOutputSettings setting)
+    private static IEnumerable<Check> MirrorWarnings(BoardLayer layer, LayerOutputSettings setting)
     {
+        var role = layer.Role;
         var chosen = setting.MirrorFor(role);
         if (chosen == LayerOperations.MirrorByDefault(role))
         {
             yield break;
         }
 
-        yield return chosen
+        // Advice rather than a refusal: the mirror is doing exactly what it was set to do, and an
+        // operator working from the other face is entitled to every one of these.
+        yield return Check.Advice(SourceFor(layer), CheckKind.Layer, chosen
             ? $"{LayerRoleInfo.Label(role)} is a top-side layer but is set to mirror. It will only "
                 + "fit if the stock is flipped."
             : $"{LayerRoleInfo.Label(role)} is a bottom-side layer but is set not to mirror. It "
-                + "will come out reversed unless you are working from the other face.";
+                + "will come out reversed unless you are working from the other face.");
     }
+
+    /// <summary>
+    /// The layer a check is about, keyed by its file.
+    ///
+    /// One place, because a source assembled at each of twenty call sites is a source that will
+    /// disagree with itself: the window matches a check to the row it colours by
+    /// <see cref="CheckSource.FileName"/>, and a site that passed the label instead would silently
+    /// lose its colour rather than fail.
+    /// </summary>
+    private static CheckSource SourceFor(BoardLayer layer) =>
+        CheckSource.Layer(layer.Role, layer.Label, layer.FileName);
+
+    /// <summary>
+    /// What the tool's own numbers say, as checks.
+    ///
+    /// <see cref="ToolAdvice"/> is advice by its own declaration — *"Advice, never refusal. Every
+    /// threshold here is a rule of thumb for FR4 on a hobby machine, and somebody who knows their
+    /// setup better than we do is entitled to ignore all of it."* So the severity of all three call
+    /// sites is decided by the class that produces them rather than guessed at here.
+    /// </summary>
+    private static IEnumerable<Check> ToolChecks(CheckSource source, Tool tool) =>
+        ToolAdvice.For(tool).Select(a => Check.Advice(source, CheckKind.Tool, a));
 
     /// <summary>
     /// The board itself, as a filled region, for bounding an inverted layer.

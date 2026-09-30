@@ -349,7 +349,7 @@ Deliberate, all of it.
 
 ## Status
 
-**Version 0.3.0.** Solid enough that its author makes boards with it; young enough that you should
+**Version 0.4.0.** Solid enough that its author makes boards with it; young enough that you should
 run the dry run first and read the pages beside the files.
 
 <table>

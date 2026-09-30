@@ -14,7 +14,7 @@ PogoTest1-B_Cu.nc
   summary   Simplified: 9,626 → 1,323 moves, 252 arcs (86 % fewer)
   summary   Ordering: 131 mm rapid → 127 mm (3 % less)
   summary   Stayed down for 26 of 40 pass links (3.1 mm), saving that many plunges
-  warning   Mirrored: the stock must be flipped left-to-right about its vertical centreline, and re-registered. Flipping it the other way cuts a mirror image.
+  warning   Bottom copper — Mirrored: the stock must be flipped left-to-right about its vertical centreline, and re-registered. Flipping it the other way cuts a mirror image.
   comment   ( PCB_MillBurn - PogoTest1-B_Cu — Isolation routing )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( BOTTOM SIDE. Flip the stock left-to-right about its vertical centreline, then re-register. Coordinates below are already mirrored for that flip. )
@@ -86,7 +86,7 @@ PogoTest1-NPTH.nc
   summary   2 holes in 1 size · 1.90 mm deep (0.30 mm through the back)
   summary   2 holes drilled, 60 mm travel
   summary   0m 18s – 0m 19s · 29 lines
-  warning   The tool library has no drill of 2.20 mm. The program still asks for it — check you have that bit before you start.
+  warning   Non-plated holes — The tool library has no drill of 2.20 mm. The program still asks for it — check you have that bit before you start.
   comment   ( PCB_MillBurn - PogoTest1-NPTH — Drilling )
   comment   ( Work zero is the board's lower-left corner; the Gerber origin was at 149.835, -107.975 mm. )
   comment   ( Drill 2.20 mm [2 holes] )
@@ -108,7 +108,7 @@ PogoTest1-PTH.bit1-1.70mm.nc
   summary   8 holes drilled, 92 mm travel
   summary   1m 12s – 1m 14s · 79 lines
   summary   Ordering: 97 mm rapid → 92 mm (6 % less)
-  warning   The tool library has no drill of 1.70 mm. The program still asks for it — check you have that bit before you start.
+  warning   Plated holes — The tool library has no drill of 1.70 mm. The program still asks for it — check you have that bit before you start.
   comment   ( PCB_MillBurn - PogoTest1-PTH — Drilling )
   comment   ( Bit 1 of 2: fit the 1.70 mm drill, touch off Z on the same spot each time, then run this file. )
   comment   ( Next: PogoTest1-PTH.bit2-1.00mm.nc )

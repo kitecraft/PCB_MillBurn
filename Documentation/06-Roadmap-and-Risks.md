@@ -2114,6 +2114,33 @@ Left for later: a ruler in inches (the app is millimetres throughout and mixing 
 how a wrong number gets read confidently), and printable dimensioned output, which is a drawing
 feature rather than a viewer one.
 
+**It has a reader now, which it did not have when it was written.** From the product owner,
+2026-09-30, after the findings view shipped: *"Having the rulers in the viewer so the user can find
+and zoom into the problem areas based on the findings x and y mm values would be awesome."*
+
+6.44's findings view prints a coordinate for every place the copper stays joined — *"44.05,
+30.31 mm"* — measured from the board's lower-left corner, which is what a ruler reading from the
+same corner would let somebody find. The window is non-modal, so it can sit open beside the board
+while the view moves, which is what makes the pairing work at all.
+
+**And the coordinate has to be reachable, not only readable.** A ruler tells you where you are; it
+does not take you anywhere, and panning to 44.05, 30.31 by eye at a tenth of a millimetre is not the
+gesture anybody wants twice. That half is [6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30),
+written up separately because it is a different thing: this entry is about reading the board, that
+one about moving to a place on it.
+
+**Drawn as an overlay, decided from mockups on 2026-09-30.** Five were rendered over a real Mega at
+true scale — `WorkingFolder/mockups/rulers/` — and the product owner chose **B**: a translucent strip
+along the top and left edges, floating over the viewport rather than insetting it. The board is the
+thing being looked at and a gutter takes a strip out of it on two sides; an overlay costs only the
+outermost millimetre or so, and only where the board is panned right to the edge. The alternative
+worth keeping in mind is A, the opaque gutter, which never puts a tick over copper.
+
+**The ladder has to follow the zoom, and the mockups are what showed it.** At whole-board zoom the
+grid's step ladder gives 5 mm majors with 1 mm minors; zoomed to a single bridge it gives 0.5 mm
+majors with 0.1 mm minors. Both read well, and both come out of the existing ladder rather than a
+second rule — which is the point of reusing it.
+
 #### 6.2 Climb or conventional — **enhancement · open** — *low priority*
 
 Asked from the workshop: *"is the default cut direction making a climb cut or a conventional cut?"*
@@ -4360,6 +4387,48 @@ than as advice, or the check itself highlighted when the message is about it.
 layer's colour, a reader can tell a refusal from advice without reading to the end of the sentence,
 and a status message that points at the checks points at one a reader can find without hunting.
 
+**Fixed** in sprint 3 story 5. `Check.Line` renders `"{Source.Label} — {Message}"`, so every surface
+that shows one string — the panel, the companion page, the CLI, the export window — names the thing
+first. The panel binds the two halves separately, because it colours one of them and not the other.
+
+The colour comes through the view model's own `Palette(role)`, **not** from `BoardPalette` directly,
+so a label follows the operator's colour override. A check naming "Top copper" in the palette's
+orange while the layer row two inches above it showed a chosen green would be two controls
+disagreeing about one layer.
+
+**A layer's colour is clamped into a readable band before it becomes text.** The drill roles are
+near-black by design — `PlatedDrill` is #141A1F, `NonPlatedDrill` #0A0D10 — because that is what a
+hole looks like on copper, and it is right in the viewport. As a word on the dark theme's panel it is
+invisible, and every export lists both. Found by looking at the panel on the workshop's own Mega
+project after the sprint's review: the two drill rows were unreadable while the copper rows beside
+them were fine. The colour is now mixed toward white or black until its Rec. 709 luma sits in a band
+both themes can carry, which keeps the hue — a drill label reads as a muted blue-grey rather than as
+ordinary text — and leaves the copper roles untouched. Story 5 asked for the colour so that a check
+would be *findable*; a colour that hides the label defeats the thing it was for.
+
+**Severity is a mark rather than a word**: `·` for advice in the disabled text colour, `!` for a
+refusal in amber, `▲` for an error in red, in a column of its own so the marks line up down the list.
+Advice stays secondary text; a refusal is promoted to body text. Colour was not used on the message
+itself because the label already carries a colour there and two would compete.
+
+**The status-to-check link is the third of the three shapes offered above** — the check itself
+highlighted — which became cheap once a check had identity, and is the only one of the three that two
+similarly-worded checks cannot defeat. `ReplaceExportWarnings` marks the lines it has just produced,
+so the mark is exact rather than inferred from a severity; a refusal left over from a previous export
+is not what the new message is about. The highlight is cleared whenever the status message that
+justified it is replaced, because a mark that outlives its sentence reads as a property of the check.
+
+**Three duplicated sources were removed**, all found by reading a screenshot rather than by any test:
+a role-guessed layer read *"Top copper — F_Cu.gbr declares no file function; role guessed as Top
+copper"*, an unreadable file read *"F_Cu.gbr — Could not read F_Cu.gbr: unexpected token…"*, and the
+stock's skipped lines used a colon where every check beside them on the page now uses a dash. A test
+sweeps four boards asserting no message contains its own label, so the planner's half cannot regress.
+
+**And one readability defect this exposed rather than introduced.** An export refusing a dry run for
+seventeen programs named all seventeen files in one check, which filled the whole panel with a list
+that had to be read to the end to learn that it was all of them. Capped at three and a count, on the
+same argument `ElectricalFindings` caps its named joins.
+
 #### 6.37 The check list should fold away — **enhancement · folded into 6.44**
 
 From the product owner, 2026-09-22: *"The CHECK section should be minimizable (downwards) leaving
@@ -4376,6 +4445,31 @@ is the opposite failure. The count in the title is what makes leaving it folded 
 
 **Done when** the check section folds to its title and count, the board gets the space, and the
 count is legible folded.
+
+**Fixed** in sprint 3 story 5. The whole heading is the target rather than a chevron beside it — a
+four-pixel target on a panel read while a spindle is running is not "minimizable". Folded, the Mega
+gives five more layer rows back to the list above it.
+
+**The count is legible folded, and it says more than a count.** It used to fall silent at one, which
+was fine while the list was always open and is not fine once the heading is all that is left; it now
+always states the number, and adds how many of them want looking at, because folding otherwise takes
+the severity marks away entirely. Three cases rather than two: a second reading on a real board
+produced *"· 11, 11 to look at"*, a number repeated being a number a reader compares against itself
+to learn nothing, so an all-refusals list reads *"· 11 to look at"*.
+
+**The two open decisions, both made with the count in front of us, as this entry asked:**
+
+- **The fold is not remembered across sessions.** A fold set on one board days earlier would hide the
+  checks on the next board opened — one whose checks nobody has read. Within a session it stays
+  exactly where it was put.
+- **A new check does not unfold it, with two exceptions.** The count changing is enough for a note,
+  and a reader who folded the panel is not overruled for one. An **error** reopens it, because "do
+  not run this" is not a note. So does an **export refusal**, and that is a different rule rather
+  than the same one: the status line is about to say *go and look at these*, and a message pointing
+  into a folded list is an instruction nobody can follow.
+
+`--fold-checks` folds the section headlessly, last of all the flags, so both states are photographable
+and so the export-unfolds rule is visible rather than merely described.
 
 #### 6.38 A tab hop assumes the board does not fall half a millimetre — **defect · accepted** — *known limitation*
 
@@ -4630,10 +4724,81 @@ Two things left undone by story 4, both found by review rather than by a board, 
 rather than bundled into a story that was about something else.
 
 **Only `ExportPlanner` runs it.** `JobBuilder` — the other planning path, and the one behind the
-CLI's own job command — still emits the old `UnreachableGaps` count and never calls
+CLI's `mill` command — still emits the old `UnreachableGaps` count and never calls
 `ElectricalCheck`, so an operator verifying from there gets "2 gap(s) are narrower than the cut"
 where the export path names the nets. The same board, checked two ways, answers differently. Done
 when both paths run the same check or there is one path.
+
+> **`mill`, not `job`.** This entry said "the CLI's own job command" from the day it was written
+> and there has never been one; `JobBuilder` is behind `millburn-cli mill`. Corrected 2026-09-28
+> when sprint 3 story 2 went looking for it, because this entry is what the next person greps.
+
+##### Measured on the Arduino Mega, 2026-09-28, before story 2 wrote any code
+
+The entry above understates it. Run both commands at a **matched** cut width of 0.154 mm:
+
+| | What it says |
+|---|---|
+| `millburn-cli mill --depth 0.1` | *"19 gap(s) are narrower than the 0.154 mm cut: those copper regions stay connected."* |
+| `millburn-cli export` | eleven groups named by net — *"+5V and GND are left connected…"*, *"AREF and AVCC…"*, *"CC1 and GND and USHIELD…"* — then *"…and 3 more group(s) this cut cannot separate, naming 7 further net(s)."* |
+
+**Three divergences, where the entry describes one.**
+
+1. **Different checks**, as recorded above: `UnreachableGaps` against `ElectricalCheck.Isolation`.
+2. **Different units, so the two numbers cannot be reconciled even in principle.** 19 *gaps*
+   against 14 *merged groups*. A group is one piece of copper holding two nets or twenty — the
+   distinction this entry's own second half is about — so there is no arithmetic that takes an
+   operator from one number to the other, and nothing on either screen says so.
+3. **Different cutters, which is new here.** Left alone, `mill` cuts **0.127 mm** and `export` cuts
+   **0.154 mm** — at the *same* 0.05 mm depth. `Mill()` in the CLI holds its own local defaults,
+   `angle = 30.0` and `tipMm = 0.1`, and **synthesises** a V-bit from them; `export` resolves the
+   tool from the operator's saved library, which on this machine holds a 30° V-bit with a
+   **0.127 mm** tip. `0.127 + 2 × 0.05 × tan 15° = 0.154`; `0.1 + 2 × 0.05 × tan 15° = 0.127`. So
+   the two commands do not merely answer differently — they answer about a different bit, and
+   `mill` plans with one the operator may not own. At its own cutter `mill` reports 8 gaps; at
+   export's, 19.
+
+   **This made G16 not done for the `mill` path.** The matrix records *"a cutter chosen from the
+   library rather than synthesised"* as **Done**, on the evidence of `ToolChooser` — which was true
+   of the export path and was exactly what `mill` did not do.
+
+   **Fixed 2026-09-28, on the product owner's word, and it is Breaking.** `mill` now resolves both
+   its isolation and outline tools through `LayerOperations.DefaultToolFor` — the same rule the
+   export planner and the board pane use — so all three agree by construction rather than by being
+   written alike. `--angle`, `--tip` and `--tool` still synthesise, and are now tracked as *given*
+   rather than compared against their defaults, because "30° typed out loud" and "30° never
+   mentioned" are different requests. A script relying on the old synthesised 30°/0.1 mm default
+   gets the library's bit instead.
+
+   **Measured after, on the Mega, neither command given a tool:** both now cut 0.154 mm at
+   0.050 mm deep and name the same eight groups plus the same three unnamed. Before, `mill` cut
+   0.127 mm and `export` 0.154 mm.
+
+   The case that made it visible is worth keeping: the author's library holds the built-in 30°
+   V-bit **with its tip corrected** to the 0.127 mm they own. `export` honoured that edit and
+   `mill` threw it away, so the fault only appears for somebody who has bothered to measure their
+   own cutter — which is the operator this application is for.
+
+> **A wrong version of point 3 stood here for about an hour on 2026-09-28, and is recorded rather
+> than quietly replaced.** It said the two paths defaulted to different *depths*, "because
+> `IsolationOptions.DepthNm` defaults to 0.05 mm while the export path resolves depth through the
+> app's settings". Both default to 0.05 mm — `IsolationOptions.DepthNm` and
+> `LayerOperations.DefaultDepthNm(Isolation)` are the same number. The claim was written from two
+> measurements and a plausible explanation that was never checked against the code, which is the
+> failure this document exists to stop: the export summary says *"3 passes of 0.154 mm at 0.050 mm
+> deep"* in as many words, and reading it would have settled the question immediately.
+
+**What this changes about the fix.** Nothing about the direction, and something about the scope:
+building the findings in one place both call fixes (1) and (2) and leaves (3) untouched, so a story
+that stops there still leaves the two commands disagreeing on a real board — not because they check
+differently any more, but because they are checking different cuts. Point (3) is a separate defect
+about which cutter `mill` picks, it belongs with G16 rather than here, and it wants the product
+owner's word because defaulting `mill` to the saved library changes a CLI workflow.
+
+**`JobBuilder` can call it.** It already holds the `BoardLayer`, so `layer.Nets` is in scope
+exactly as it is in `ExportPlanner`; the two have not diverged far enough to need one path rather
+than one check. What stops them drifting again is that the findings are built in one place both
+call, rather than each calling `ElectricalCheck` and wording the result itself.
 
 **And the residual cannot say which kind it is.** `NetCheck.Unnamed` counts merges no pair of names
 could be put to, and two quite different things land in it: copper carrying no net attribute, which
@@ -4649,6 +4814,43 @@ had no unnamed merges at all and it does: the test board carries copper with no 
 lettering, and the 0.5/0.8/1.0 test patterns — which fuses at a wide cut and has no name to be
 reported under. The 62 that the first arithmetic reported were wrong; the 25 that replaced them are
 real, and how many of them are *interesting* is exactly what this entry is about.
+
+##### Split, 2026-09-28 — and on this board all twenty-five are the interesting kind
+
+`NetCheck` now carries `Nameless` and `SameNet` beside `Unnamed`, attributed per region exactly as
+the joins already were: two or more names in a region is a join and is reported by name, exactly
+one is the same net meeting itself, none is copper nothing can speak for. `Unnamed` is summed from
+the two rather than left as `merged − explained` — two routes to one number is two routes waiting
+to disagree, and the subtraction is the one that has already been wrong once.
+
+| Board, top copper | Cut | Merged | Named groups | Nameless | Same-net |
+|---|---|---|---|---|---|
+| Millburn test board | 0.75 mm deep | 63 | 1 | **25** | 0 |
+| Arduino Mega | 0.75 mm deep | 240 | 1 | 0 | 0 |
+| Arduino Uno | **0.05 mm deep — the default** | 1 | 0 | 0 | **1** |
+
+**The test board's twenty-five are all nameless**, which confirms this entry's own explanation from
+the other end: the lettering and the test patterns are what fuses, and none of it is on a net. So
+the answer to *how many of them are interesting* is "all of them", and an operator now reads that
+instead of a sentence offering them two possibilities.
+
+**The same-net half had to be proved to fire at all.** It is zero on both boards above at every
+depth tried, because on dense copper a region that fuses pulls in a second net almost immediately
+and becomes a named join instead — so the field was at risk of being one that can never happen,
+which this repository has been bitten by twice. Every committed board was swept across seven
+depths: the Arduino Uno reports exactly one, on both copper layers, at 0.02, 0.05, 0.1 and 0.2 mm.
+**0.05 mm is the default isolation depth**, so it is not a contrived cut — it is what an operator
+gets without touching anything.
+
+**What the operator reads now**, on the Uno at its defaults, where before there was one sentence
+offering both possibilities at once:
+
+> 1 further gap(s) are narrower than the cut, between two pieces of the same net. Nothing is
+> shorted by those: they were one conductor before the cut.
+
+Advice rather than a refusal, because nothing is shorted that was not already joined — and still
+said, because copper left where the design wanted none matters for soldering and for probing.
+Nameless copper keeps its refusal and says plainly that nothing here can decide whether it matters.
 
 #### 6.43 Check the board as its own job, not only as a line in a list — **enhancement · folded into 6.44**
 
@@ -4700,7 +4902,7 @@ place rather than per program, and the warnings that remain in the CHECK list ar
 to crowd out everything else in it. Sits with 6.36 and 6.37: all three are the same observation,
 that the CHECK list is being asked to carry more than a flat list of strings can.
 
-#### 6.44 The checks become something you can read — **enhancement · open** — *agreed by the product owner 2026-09-23*
+#### 6.44 The checks become something you can read — **enhancement · fixed** — *agreed by the product owner 2026-09-23, delivered in sprint 3*
 
 Five entries were saying the same thing from different directions, and story 4 pushed the list past
 what it can carry. Agreed to work as one piece rather than five: **6.36** (a check should say what it
@@ -4727,9 +4929,14 @@ not a longer sentence.
   and covers board-level things only; the isolation warnings arrive through `PreviewResult.Warnings`.
   Open a board with a short on it, look at the CHECK panel, and it is not there. That is the
   strongest argument for 6.43's button, and it is closer to a bug than to an enhancement.
+  **Fixed 2026-09-28**, sprint 3 story 4: `BoardCheck` runs the same check over the layers the
+  export would isolate, using the same tool and the same options, and *Job ▸ Check this board*
+  (F6) asks it. Half a second on the Mega, cancellable, and the automatic check is untouched.
 - **Two planning paths disagree.** `ExportPlanner` runs the check; `JobBuilder` — behind the CLI's
-  job command — still emits the old anonymous count. The same board, the same settings, two commands,
-  two different answers. Confirmed by running both.
+  `mill` command — still emits the old anonymous count. The same board, the same settings, two
+  commands, two different answers. Confirmed by running both. **Fixed 2026-09-28**, sprint 3
+  story 2: both take their findings from `ElectricalFindings`, so there is one wording rather than
+  two that must be kept in step. The measurement is above.
 
 **The shape agreed.** A check stops being a string and becomes a thing with a source, a kind and a
 severity. The automatic check stays — the Mega's short was found because the app spoke without being
@@ -4749,6 +4956,50 @@ findings are collected in one place rather than scattered one per program.
 **Not in it.** The severed-net family stays out until the operation that can sever is the one being
 checked — isolation cuts outside the copper edge and cannot, and a check that can never fire is the
 failure this repository has been bitten by twice.
+
+**Fixed 2026-09-28**, across six stories of sprint 3 — all six clauses above, in order: story 1 gave
+a check a source, a kind and a severity; story 2 put both planning paths on one set of findings;
+story 3 split the unnamed residual into the two things it was covering; story 4 added *Job ▸ Check
+this board*; story 5 made the list readable, foldable and linked to the status line; and story 6
+gave the findings a place of their own.
+
+**The findings view** (*Job ▸ Findings*, F7) collects every isolated layer in one window — the
+"scattered" half, which per-program warnings could not fix because no program sees another. It has
+room for what a warning line cannot carry: every net in a group rather than six, and **where each
+gap actually is** rather than which copper it is in.
+
+That last one is a real computation and not a rewording. `NetJoin.Near` is one of a net's own points
+in the shared copper and its own doc comment says it can be tens of millimetres from the narrow
+place. `ElectricalCheck.Gaps` grows each piece of artwork on its own and intersects the results: the
+overlap is exactly where a cut of that width cannot fit between two pieces. **It is deliberately not
+on the export path** — it is an offset per piece against a check that runs on every preview — so it
+is computed only when somebody opens the view and has therefore asked for the expensive answer.
+
+**Measured, because the measurement shaped it.** The first version paired every piece against every
+other and rejected the far ones by their bounding boxes, which is useless against a ground pour whose
+box is the whole board: **1,205 ms** on the Mega's top copper. Restricting pairs to pieces that
+merged into the same grown region — pieces in different regions are provably further apart than the
+cut — gave the same eight gaps in **266 ms**. A whole board is 1.59 s on the Mega and 0.26 s on the
+test board, off the UI thread and cancellable.
+
+**And the CHECK list got shorter, as agreed.** The Mega's eleven electrical lines became two, one a
+layer, each naming its count and pointing at F7. Collapsed in the view model rather than in
+`ElectricalFindings`, because the companion page and the CLI have no window to point at: a summary
+ending "see the findings view" would be a dead end on a page read away from the app, so they keep the
+full set.
+
+**Two faults found by looking at the first screenshot of the view**, neither reachable by a test that
+existed at the time:
+
+- **Coordinates were in the frame the Gerbers were drawn in.** Shorts were reported at places like
+  "107.35, -92.13 mm" on a board whose own coordinates run from zero. Every emitted program puts work
+  zero at the board's lower-left corner; a negative coordinate on a board with no negative corner is
+  worse than none, because somebody will try to go there.
+- **One bridge was listed under two groups.** The view matched a place to a group by the two nets
+  either side of it, and a ground pour reaches many separate regions — so a GND–USHIELD bridge was
+  filed under every group holding both names, making the board look worse than it is. Matching on the
+  whole region's net names files it once. The names are carried rather than a region index, because
+  numbering the regions in two methods couples them through a traversal order computed twice.
 
 #### 6.45 Block apertures and the aperture transforms — **defect · open** — *no fixture exists yet*
 
@@ -4871,6 +5122,50 @@ the second is what happens today.
 
 **Done when** no copper program cuts inside a hole the same export is going to drill, on the Mega
 and on the test board, and a test covers both holes by position.
+
+**Attempted in sprint 3 and withdrawn by the product owner, 2026-09-29.** The work is kept as a
+patch in `WorkingFolder/held/` — it is not lost, and it should not be re-attempted in that shape
+without answering the objection below first.
+
+**The objection, and it is the important part of this entry now:** *"I worry this is actually
+creating a problem and the copper is not getting separated."*
+
+Clipping the moat at a hole makes the separation of two nets depend on the **drill** finishing what
+the isolation started. That is a different operation, run afterwards, with its own registration —
+so a hole a little out of position, an undersized bit, or an operator who stops after isolation to
+look at the board leaves copper joined *and a program that reads as complete*. The existing
+behaviour wastes a fraction of a second and looks wrong; the fix risks a short. This project's first
+rule is to refuse rather than guess, and a cut that has to be completed by a later operation to be
+correct is a guess about that operation.
+
+**Anything that replaces it has to keep the separation inside one program.** Stopping the moat
+short of the hole while still closing the loop around the copper is the shape to look for — the
+copper stays fully isolated by the isolation pass alone, and the hole merely is not cut into. That
+is a different geometry problem from the one that was solved here, which simply deleted the part of
+the loop that crossed the hole.
+
+**What was measured while it was attempted**, so the next attempt starts from arithmetic:
+
+- The two reported holes are the only entries in the Mega's NPTH file — 0.65 mm, at board (6.568,
+  41.130) and (6.568, 35.350). The top copper makes **44 cutting moves through them**, the nearest
+  138 µm from a centre whose radius is 325 µm.
+- **Nothing is being isolated in there**: sixty-one samples across each disc found no copper.
+- Clipping removed all 44 and cost **16 extra plunges ≈ 43 s** on a 33-minute program, against
+  **0.2 s** of cutting saved. The lift is about eighty times dearer than the cut it avoids, so the
+  case for it was never time — it was the picture.
+- A keepout of hole radius **plus half a cut width** is the right band: what must stay out of a hole
+  is the material the cutter removes, not the line its centre walks.
+- Interior cutouts routed by the outline are *not* a second instance of this defect on the Mega —
+  the copper enters none of its six routed features. A measurement that said otherwise was wrong by
+  a factor of 1.6 in radius.
+- Clipping sheds **crumbs**: a loop cut at a hole can leave arcs too short to be worth a plunge.
+  `Sliver` already refuses that shape but runs before any clipping, so its span test has to be
+  applied to whatever the clip produces.
+- Four of the five faults found during the attempt were mistakes in *measuring* it, not in the code:
+  measuring a move by its endpoints hides a chord straight across a hole; measuring an arc by its
+  chord invents crossings that are not there; a mirrored bottom-copper program cannot be compared
+  with an unmirrored drill file at all. **Plot the toolpath from the emitted G-code** — screen
+  coordinates and eyeballed radii were wrong every time they were used.
 
 **Deferred by the product owner, 2026-09-24**, on the day it was reported and measured: low
 priority, a later sprint. It arrived after sprint 2 was agreed and is deliberately not being pulled
@@ -5602,3 +5897,166 @@ thickness, and a test pins the emitted depths to the rungs they belong to.
 **Not part of it.** Reading the answer back into the isolation depth. The test writes a number on a
 page and the operator types it into Settings; closing that loop means a project knowing which coupon
 it was calibrated against, and that is its own argument.
+
+#### 6.53 Copper with no net name is reported as safe when one named net shares its region — **defect · open** — *found by `/code-review`, 2026-09-29*
+
+Story 3 of sprint 3 split the residual gaps into the two things it had been covering: copper carrying
+**no net name**, which might be a short and which nothing can decide about, and two pieces of the
+**same net** meeting, which is electrically nothing. The split is the right one. Its attribution is
+not, in one case.
+
+`ElectricalCheck.Isolation` charges a region's merges by counting the *named nets* it holds:
+
+```
+names >= 2  ->  explained by a reported group
+names == 1  ->  sameNet
+names == 0  ->  nameless
+```
+
+A region holding one named net **and one or more unnamed pieces** has `names == 1`, so every merge
+in it is charged to `sameNet` — and `ElectricalFindings` reports those as advice: *"between two
+pieces of the same net. Nothing is shorted by those: they were one conductor before the cut."* One
+side of such a merge carries no net at all. That is precisely the `nameless` case — the one the
+split exists to isolate because nobody can say whether it matters — being reported as safe by
+construction.
+
+**The same fault reaches the findings view by its own route.** `NetGap.Between` is the union of both
+pieces' names, and `IsSameNet` is `Between.Count == 1`, so a bridge between unnamed copper and one
+named net is filed under *"One net meeting itself"* and the window prints *"Nothing is shorted by
+these"* over its coordinates. That is the window an operator opens to decide a board is sound.
+
+**Wrong in the dangerous direction**, which is why it is a defect rather than a tidy-up: it can only
+ever turn a possible short into a note, never the other way round.
+
+**What it costs to fix.** Both places need to know whether each *piece* carried a name, not just how
+many names the region holds. `ElectricalCheck.Gaps` already computes exactly that in its `namesOf`
+array and discards it, so the view's half is cheap. `Isolation` does not: it attributes net points to
+regions, and attributing them to pieces is another point-in-polygon pass over the artwork — on the
+path that runs during every preview and every export, which is the path story 6 was careful to keep
+cheap. That is the trade, and it is why this is written down rather than fixed at the end of a
+sprint.
+
+**Not caught by the tests, and worth saying why.** `UnnamedKindTests` asserts `Nameless > SameNet` on
+one board and `Nameless == 0` on a fully-named one. Neither shape can distinguish a same-net merge
+from an unnamed one that has been charged to same-net.
+
+**And a third way a name goes missing, found by the `xhigh` review.** The two halves do not even
+place net points against the same geometry: `Isolation` locates them in the copper *grown by the
+cut*, while `Gaps` locates them in the *raw* artwork. A point sitting on a copper boundary — a pad
+centre the realiser put a nanometre outside its island — is inside the grown region and outside the
+raw piece. `Isolation` therefore names the region with it while `Gaps` silently drops it, the piece
+loses its name, and a real short is filed as same-net or nameless. Whole pieces can be dropped the
+same way. `Isolation` counts its own misses into `Unplaced`/`UnplacedCopper` and reports them;
+`Gaps` says in a comment that they are "counted by `Isolation`… not counted twice", which is true
+of the count and not of the consequence. A fix for this entry should place both halves against one
+set of regions rather than two.
+
+**Done when** a merge with unnamed copper on either side is reported as nameless wherever it is
+reported — the panel, the companion page, the CLI and the findings view — and a test covers a region
+holding one named net beside unnamed copper.
+
+#### 6.54 The checks panel cannot show a cancelled run — **enhancement · open** — *found by `/code-review`, 2026-09-29*
+
+`BoardCheck.Result` and `BoardFindings.Result` both carry a `Cancelled` flag, `MainViewModel` has a
+status line for it — *"Check stopped; the board was not fully checked."* — and `FindingsWindow` has a
+banner saying what is below is part of the answer and not all of it. **None of the three can be
+reached today.**
+
+`LatestRun.Finish(token)` returns false for any run whose token was cancelled, because `Begin`,
+`Cancel` and `Dispose` all clear the current run; both `CheckBoardAsync` and `FindingsAsync` return
+at that point, before they look at `Cancelled`. And nothing calls `Cancel` on either run: the only
+cancellation is supersession by a later press, where returning early is *correct* — the newer run
+owns the status line, and an older run announcing that it stopped would write over it.
+
+So the code is right and the guard is unreachable, which is the shape
+[CLAUDE.md](../CLAUDE.md) warns about from the other side: a check that can never fire is a check
+nobody can trust the absence of. The flags and the banner become worth having the moment there is a
+way for an operator to stop a run — a button, or the window closing mid-check — and they should be
+proved by a test on that day rather than assumed to have worked all along.
+
+**Done when** a run an operator stops is shown as stopped rather than as clean, with a test that
+fails if the banner stops appearing.
+
+#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · open** — *found by `/code-review` at xhigh, 2026-09-30*
+
+*Job ▸ Findings* takes about 1.5 s on a two-sided Arduino Mega. Roughly half of that is work already
+done, and almost none of it can be cancelled.
+
+**The whole layer is offset and separated twice.** `ElectricalCheck.Isolation` computes
+`Separate(copper)` and `Separate(Inflate(copper, reach))`; `Gaps`, called on the next line with the
+same copper and the same options, computes both again. Byte-identical inputs, identical results, and
+the round offset of a dense layer is the dominant cost. Sprint 3 added an `already` parameter to
+`ElectricalFindings.For` to avoid re-running the *cheaper* half of this and left the expensive half
+duplicated.
+
+**The token is read in the wrong place.** `Gaps` documents itself as "checked per candidate pair; a
+cancelled run returns what it has", and `BoardFindings` sells the view as cancellable. But the two
+whole-layer Clipper operations, the two box passes and the attribution loops all run before the
+first token read. On a board that is mostly fine most regions hold one piece, the pair loop is
+skipped entirely, and the token is effectively never read — so pressing F7 twice means waiting out
+the first run in full.
+
+**And the window builds itself synchronously.** `FindingsWindow` adds up to `Joins × 40` TextBlocks
+to a plain `StackPanel` in its constructor, before `Show` is called, with no virtualisation. Groups
+are deliberately uncapped — that is what the window is for — and `ElectricalFindings`' own notes
+record 110 groups on the Mega's top copper before the net attribution was fixed. At that size the
+window appears to hang after an already slow search, with nothing saying why. `Group` also rescans
+`layer.Shorts` per join, and `Shorts`/`SameNet`/`Nameless` re-filter and re-allocate the whole gap
+list on every get.
+
+**Why it is an enhancement and not a defect.** Every answer it gives is correct; it is slower than it
+should be and less interruptible than it claims. The claim is the part that grates — a comment saying
+a run can be abandoned when in practice it cannot is the shape this repository treats as a fault
+elsewhere.
+
+**Done when** the grown regions are computed once per layer and shared, the token is read before each
+whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
+window opens without a visible stall.
+
+#### 6.56 A finding takes you to the copper it is about — **enhancement · open** — *asked for by the product owner, 2026-09-30*
+
+From the product owner, the day after 6.44's findings view shipped: *"The Findings box is great,
+especially being non-modal. Having the rulers in the viewer so the user can find and zoom into the
+problem areas based on the findings x and y mm values would be awesome."*
+
+6.44 gives every place the copper stays joined a coordinate — *"44.05, 30.31 mm"*, measured from the
+board's lower-left corner, which is where work zero is. Reading it is one thing; getting there is
+another, and at the moment the only route is to pan and zoom by eye to a tenth of a millimetre.
+
+**Click a place in the findings, and the viewport goes to it.**
+
+**It has to zoom, not only centre**, and the mockups are what settled that. A bridge is a fraction of
+a millimetre across; at whole-board zoom it is smaller than a pixel, so a view that merely centres on
+one leaves the operator looking at the same board with a marker they cannot see. The mockup of it —
+`WorkingFolder/mockups/rulers/D-crosshair-and-finding.png` — makes that plain, and
+`E-zoomed-to-finding.png` is the same finding at a zoom where the copper it is about is legible.
+
+**The window is non-modal and must stay that way.** That is what lets the list sit open beside the
+board while the view moves, and it is the property the request named first.
+
+**How the marker clears, which is the part worth designing rather than discovering:**
+
+- **Picking another place moves it.** One marker at a time. A view that accumulates rings becomes a
+  second findings list, drawn worse.
+- **Escape clears it**, with the viewport focused.
+- **A new check, preview or export clears it**, because the findings it came from are gone. This is
+  the rule story 5 already applies to the panel's highlight — *"a mark that outlives the thing it
+  explains is worse than none, because it looks like a property of the check"* — and the argument is
+  the same one: the marker means "this is the finding you asked about", and after a fresh run there
+  is no such finding.
+- **Panning and zooming do not clear it.** Exploring around the place is the entire point; a marker
+  that vanished on the first scroll would be worse than none.
+- **Closing the findings window does not clear it**, which is why the marker carries its own short
+  label — the coordinate and the nets. A bare ring left on the board after the list is gone is a
+  mark nobody can interpret.
+
+**Not in it.** Selection semantics. This is a marker, not a selected object: nothing acts on it,
+nothing is measured from it, and calling it a selection would invite both. Measuring belongs to
+6.1's tape-measure drag.
+
+**Done when** clicking a place in the findings view moves the viewport to it at a zoom where the
+copper is legible, the marker names what it is, and it clears by each of the routes above — with a
+`--shot` of the before and after.
+
+**Requires:** [6.1](#61-rulers--enhancement--open) is not a prerequisite, but the two were asked for
+together and the ruler is what lets an operator confirm the view went where it said it would.

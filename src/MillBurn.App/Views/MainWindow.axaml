@@ -3,6 +3,7 @@
         xmlns:vm="using:MillBurn.App.ViewModels"
         xmlns:ctl="using:MillBurn.App.Controls"
         xmlns:core="using:MillBurn.Core"
+        xmlns:conv="using:MillBurn.App.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
@@ -24,6 +25,74 @@
         <Style Selector="TextBlock.caption">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <!--
+            The checks panel.
+
+            Every colour here is set by a style rather than on the element, and that is load-bearing:
+            a local value beats a style in Avalonia, so a Foreground written on the TextBlock could
+            never be overridden by the severity classes below it. The one local value in the template
+            is the label's brush, which nothing here competes for.
+        -->
+        <Style Selector="ToggleButton.checkfold">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <!-- Fluent paints a checked toggle in the accent colour. A folded section is not a pressed
+             button and must not look like one, so all four states are flattened by hand. -->
+        <Style Selector="ToggleButton.checkfold /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="ToggleButton.checkfold:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ToggleButton.checkfold:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceVariant}" />
+        </Style>
+        <Style Selector="ToggleButton.checkfold:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceVariant}" />
+        </Style>
+
+        <!-- A row, and the tint that says the status message is about this one. -->
+        <Style Selector="Border.check">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2,0,0,0" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+        <Style Selector="Border.check.pointed">
+            <Setter Property="Background" Value="{DynamicResource CheckPointedFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CheckPointedEdge}" />
+        </Style>
+
+        <!--
+            The mark, which is the whole of "tell a refusal from advice without reading to the end of
+            the sentence". Advice recedes; the other two do not.
+        -->
+        <Style Selector="TextBlock.mark">
+            <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+        </Style>
+        <Style Selector="TextBlock.mark.refusal">
+            <Setter Property="Foreground" Value="{DynamicResource StatusWarning}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="TextBlock.mark.error">
+            <Setter Property="Foreground" Value="{DynamicResource DrcViolation}" />
+        </Style>
+
+        <!-- Advice is secondary text; a refusal is body text, so it carries weight without colour
+             competing with the label's. -->
+        <Style Selector="TextBlock.checktext">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+        <Style Selector="TextBlock.checktext.refusal">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
         </Style>
         <!--
             The swatch carries its colour on an inner Border rather than on the Button's own
@@ -200,6 +269,16 @@
                     </MenuItem>
 
                     <MenuItem Header="_Job">
+                        <!--
+                            Above Preview on purpose. It is the cheaper question and the one that
+                            wants asking first: whether the copper will come apart at all, before
+                            anything is planned, written, or fitted to a machine.
+                        -->
+                        <MenuItem Header="_Check this board" Click="OnCheckBoardClicked" InputGesture="F6"
+                                  IsEnabled="{Binding HasBoard}" />
+                        <MenuItem Header="_Findings…" Click="OnFindingsClicked" InputGesture="F7"
+                                  IsEnabled="{Binding HasBoard}" />
+                        <Separator />
                         <MenuItem Header="_Preview programs" Click="OnPreviewClicked" InputGesture="F5"
                                   IsEnabled="{Binding HasBoard}" />
                         <MenuItem Header="_Export…" Click="OnExportClicked"
@@ -863,25 +942,70 @@
                             Margin="0,10,0,0"
                             Padding="12,8">
                         <StackPanel>
-                            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,4">
-                                <TextBlock Grid.Column="0" Text="CHECK"
-                                           FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource DrcViolation}" />
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding WarningCount}"
-                                           FontSize="11"
-                                           Margin="6,0,0,0"
-                                           Foreground="{DynamicResource TextDisabled}" />
-                            </Grid>
-                            <ScrollViewer MaxHeight="170" HorizontalScrollBarVisibility="Disabled">
+                            <!--
+                                The whole heading folds the section, not a chevron beside it: the
+                                request was for the section to be minimizable, and a four-pixel
+                                target on a panel read while a spindle is running is not that.
+                            -->
+                            <ToggleButton Classes="checkfold"
+                                          IsChecked="{Binding ChecksFolded, Mode=TwoWay}"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch">
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <TextBlock Grid.Column="0" Text="CHECK"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource DrcViolation}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ChecksSummary}"
+                                               FontSize="11"
+                                               Margin="6,0,0,0"
+                                               Foreground="{DynamicResource TextDisabled}" />
+                                    <!-- Points the way it will move, which is downwards when open. -->
+                                    <TextBlock Grid.Column="2" Text="⌄"
+                                               IsVisible="{Binding !ChecksFolded}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextDisabled}" />
+                                    <TextBlock Grid.Column="2" Text="›"
+                                               IsVisible="{Binding ChecksFolded}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextDisabled}" />
+                                </Grid>
+                            </ToggleButton>
+                            <ScrollViewer MaxHeight="170" HorizontalScrollBarVisibility="Disabled"
+                                          Margin="0,4,0,0"
+                                          IsVisible="{Binding !ChecksFolded}">
                                 <ItemsControl ItemsSource="{Binding Warnings}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="x:String">
-                                            <TextBlock Text="{Binding}"
-                                                       FontSize="11"
-                                                       TextWrapping="Wrap"
-                                                       Margin="0,1,6,3"
-                                                       Foreground="{DynamicResource TextSecondary}" />
+                                        <!--
+                                            Three things at once, and they are one request: the mark
+                                            says how much it matters, the label says what it is
+                                            about in that thing's own colour, and the tint says this
+                                            is the one the status message means.
+
+                                            The mark is its own column so the marks line up down the
+                                            list; the label and the message are Runs in one TextBlock
+                                            so a long check wraps as a paragraph rather than into a
+                                            column whose width changes from row to row.
+                                        -->
+                                        <DataTemplate x:DataType="vm:CheckRow">
+                                            <Border Classes="check"
+                                                    Classes.pointed="{Binding IsHighlighted}"
+                                                    Margin="0,1,6,1"
+                                                    Padding="4,1,3,2">
+                                                <Grid ColumnDefinitions="13,*">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Mark}"
+                                                               Classes="mark"
+                                                               Classes.refusal="{Binding IsRefusal}"
+                                                               Classes.error="{Binding IsError}"
+                                                               FontSize="11" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Classes="checktext"
+                                                               Classes.refusal="{Binding IsRefusal}"
+                                                               FontSize="11"
+                                                               TextWrapping="Wrap"><Run Text="{Binding Label}" Foreground="{Binding LabelBrush, Converter={x:Static conv:BrushOrInherited.Instance}}" FontWeight="SemiBold" /><Run Text=" — " /><Run Text="{Binding Message}" /></TextBlock>
+                                                </Grid>
+                                            </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

@@ -18,7 +18,7 @@ public sealed record PreviewResult(
     string Summary,
     int ProgramCount,
     int GougeCount,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<Check> Warnings);
 
 /// <summary>
 /// The arithmetic behind a preview: parse each emitted program, classify its moves, measure them,
@@ -95,6 +95,21 @@ public static class PreviewBuild
             summary,
             plan.Count,
             gouges,
-            [.. plan.Items.SelectMany(i => i.Warnings).Distinct(StringComparer.Ordinal)]);
+            // **The key is what the reader can see, and that is the whole rule.**
+            //
+            // It reads the same as it did before the panel rendered the source, and it no longer
+            // means the same thing: `Line` now begins with the label, so tool advice for the same
+            // bit on the top and the bottom copper is two lines and both survive — which is what
+            // story 1 predicted would have to change here, and it changed by the key's definition
+            // moving underneath it rather than by the key moving.
+            //
+            // **Record equality is still wrong, for a reason that outlasts the label.** It would
+            // also separate checks that differ only in a field the panel does not print — two
+            // files claiming to be the top copper, which is a real board this project reads and
+            // warns about, produce the same sentence under the same label from different files.
+            // Those are one line to anybody reading the panel, and showing them twice is the
+            // duplicate-line defect a review already caught here once. A reader cannot act on a
+            // distinction they cannot see.
+            [.. plan.Items.SelectMany(i => i.Warnings).DistinctBy(w => w.Line, StringComparer.Ordinal)]);
     }
 }

@@ -126,16 +126,20 @@ public static class JobBuilder
                 var isolation = IsolationOperation.Build(
                     copper.Area, isolationOptions, $"Isolation — {copper.Label}");
 
-                var unreachable = IsolationOperation.UnreachableGaps(copper.Area, isolationOptions);
-                if (unreachable > 0)
-                {
-                    // Not a warning to bury in a log. A gap the tool cannot enter leaves the two
-                    // sides connected, and the toolpath shows nothing at all there — the picture
-                    // looks fine and the board is shorted.
-                    var width = Nm.ToMillimetreString(isolationOptions.EffectiveWidthNm, 3);
-                    notes.Add(Invariant(
-                        $"{unreachable} gap(s) are narrower than the {width} mm cut: those copper regions stay connected."));
-                }
+                // **The same check the export path runs, from the same place.** This used to call
+                // IsolationOperation.UnreachableGaps and print a bare count while the export
+                // named the nets — the same board, two commands, two answers, and in different
+                // units: 19 gaps here against 14 named groups there, on the Mega at a matched
+                // 0.154 mm cut. Nothing on either screen said they were counting different
+                // things. 06 §6.42 has the measurement.
+                //
+                // Not a warning to bury in a log. A gap the tool cannot enter leaves the two sides
+                // connected, and the toolpath shows nothing at all there — the picture looks fine
+                // and the board is shorted.
+                var findings = ElectricalFindings.For(
+                    copper, isolationOptions, CheckSource.Layer(copper.Role, copper.Label, copper.FileName));
+
+                notes.AddRange(findings.Checks.Select(c => c.Line));
 
                 toolpaths.Add(Sequence(isolation));
             }

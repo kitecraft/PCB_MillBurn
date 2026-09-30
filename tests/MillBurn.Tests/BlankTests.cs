@@ -312,7 +312,7 @@ public sealed class BlankTests(ITestOutputHelper output)
 
         Assert.StartsWith("PogoTest1", plan.Items[0].TargetName, StringComparison.Ordinal);
         Assert.EndsWith(".stock.nc", plan.Items[0].TargetName, StringComparison.Ordinal);
-        Assert.Contains(plan.Items[0].Warnings, w => w.Contains("before anything else", StringComparison.Ordinal));
+        Assert.Contains(plan.Items[0].Warnings, w => w.Message.Contains("before anything else", StringComparison.Ordinal));
     }
 
     /// <summary>

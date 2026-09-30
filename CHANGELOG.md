@@ -10,6 +10,95 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
+## [0.4.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.4.0) — 2026-09-30
+
+**Checks you can read.** One sprint on one item, because five separate requests turned out to be
+asking for the same thing. A check was a bare string, so there was nothing to colour, nothing to
+fold a count by, nothing to sort on, and nothing for a status message to point at. Giving it a
+source, a kind and a severity is what made all five possible.
+
+[Sprint 3 — Checks you can read](Sprints/Sprint-03-Checks-You-Can-Read.md). Six stories, all closed,
+plus one that was built and taken back out.
+
+**Breaking: `millburn-cli mill` now takes its cutters from your tool library.** It synthesised them
+from its own defaults — a 30° V-bit with a 0.1 mm tip, and a 1.0 mm end mill — and ignored the
+library entirely unless you named a tool. So `mill` and `export` planned different cuts on the same
+board: on a library holding the built-in V-bit with its tip corrected to a measured 0.127 mm, one
+command cut 0.154 mm and the other 0.127 mm at the same depth, and they disagreed about which nets
+the cut would leave connected. `--angle`, `--tip` and `--tool` still synthesise a bit exactly as
+before; what changes is what happens when you say nothing. A script relying on the old default gets
+your library's isolation bit instead.
+
+**The checks now read as a list rather than a wall of sentences.** Every line begins with the thing
+it is about — `Top copper — …`, `Stock — …`, `Export — …` — and a layer's own checks carry that
+layer's colour, the one you chose if you have overridden it. A mark in front of each says how much it
+matters without your reading to the end of the sentence: a faint dot for advice, an amber `!` for
+something refused, a red `▲` for do-not-run-this.
+
+**The section folds away**, leaving the heading, the count, and how many of them want looking at, so
+a board you have already read the checks on gives the room back to the layer list. It is not
+remembered between sessions — a fold set on one board should not hide the checks on the next one you
+open — and a new check does not reopen it, except an error or an export refusal, which are the two
+cases where leaving it folded would hide something you are being told to go and look at.
+
+**And the export's status line now points at a line you can see.** *"17 refused — No dry run — see
+the checks"* used to send you to a list where nothing said which one it meant; the checks it is
+about are now tinted in the panel. A refusal naming seventeen files also stops after three and counts
+the rest, instead of filling the whole panel with a list you had to read to the end to learn it was
+all of them.
+
+**The findings have a place of their own — *Job ▸ Findings*, F7.** Every copper layer in one window
+instead of one report per program, with room for what a warning line could never carry: every net in
+a shorted group rather than the first six, and **where each gap actually is**. Not which copper it is
+in — the actual coordinate, in the same frame the G-code uses, so you can go to it.
+
+Finding those places means growing each piece of copper on its own and intersecting the results,
+which costs about a second and a half for a two-sided board. That is why it lives behind a menu item
+rather than running on every preview, and why it can be cancelled while it works.
+
+**And the CHECK list gets out of the way.** A dense board used to add eleven lines of net names to it
+and bury the layer that would not parse; it now adds one line per copper layer, saying how many
+findings there are and pointing at F7. The companion pages and the CLI still carry the full set,
+because a page read away from the app has no window to open.
+
+**You can check a board without exporting it — *Job ▸ Check this board*, F6.** The board-level
+checks always ran on load, but the electrical ones arrived with the export plan, so a board with a
+short on it showed nothing in the CHECK panel until you pressed Preview or Export. If you opened a
+board, looked at an empty panel and believed it, the app had told you nothing while looking like it
+had. It answers about the cut your export would actually make, using the same tool and the same
+settings, and takes about half a second on an Arduino Mega. The automatic check is unchanged — a
+button only protects somebody who thinks to press it.
+
+**Both commands now answer the same question the same way.** `export` named the nets that would be
+left connected while `mill` printed a bare count, and the two were not even in the same units: on
+the Mega at a matched 0.154 mm cut, `mill` said *"19 gap(s) are narrower than the cut"* where
+`export` named eleven groups and said three more were unnamed. Nineteen gaps against fourteen
+groups, both true, with nothing on either screen to reconcile them. There is now one answer and both
+commands read it.
+
+**An uncut gap says which kind of uncut it is.** The count used to cover two things that mean
+opposite amounts of trouble: copper carrying no net name, which might be a short and which nothing
+here can decide about, and two pieces of the *same* net meeting, which the cutter equally cannot
+divide and which shorts nothing. Told "25 gaps", you had no way to know how many mattered. They are
+reported separately now, and the harmless kind is advice rather than a refusal.
+
+**And the labels are legible.** A colour chosen to look like a hole on copper is not a colour you
+can read a word in: "Plated holes" and "Non-plated holes" appear in every export and both were
+invisible on the dark theme. A label's colour is now brought into a range both themes can carry,
+keeping its hue.
+
+**Known limitation, and it was a deliberate decision.** Isolation still cuts inside holes the same
+export is about to drill — on the Mega, 44 cutting moves through two 0.65 mm holes, nearest 138 µm
+from a centre whose radius is 325 µm. Nothing is being isolated in there and the cut is arithmetically
+correct; it costs a fraction of a second and it looks wrong. A fix was built and withdrawn, because
+stopping the moat at the hole makes the copper's separation depend on the drill finishing what the
+isolation started — and a hole slightly out of position, an undersized bit, or stopping after
+isolation to look at the board would then leave a short under a program that reads as complete. The
+measurements and the shape a replacement needs are in
+[06 §6.47](Documentation/06-Roadmap-and-Risks.md).
+
+---
+
 ## [0.3.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.3.0) — 2026-09-27
 
 **Fix what is broken.** The first sprint defined by the defect list rather than by a theme, which is

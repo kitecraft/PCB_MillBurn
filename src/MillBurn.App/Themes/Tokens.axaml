@@ -80,6 +80,15 @@
             <SolidColorBrush x:Key="CopperUnderlay" Color="#B87333" />
 
             <!--
+                The check a status message is pointing at. Tinted and edged rather than filled: the
+                panel is a list somebody reads while the mill is running, and a saturated row would
+                make the pointed-at check the loudest thing on screen when it is not necessarily the
+                worst one in the list.
+            -->
+            <SolidColorBrush x:Key="CheckPointedFill" Color="#FFF6E0" />
+            <SolidColorBrush x:Key="CheckPointedEdge" Color="#D99A00" />
+
+            <!--
                 The "what this becomes" pill on a collapsed layer row. Tinted rather than filled:
                 it appears once per exporting layer, so a saturated chip would be the loudest thing
                 in a panel whose loudest thing should be the board.
@@ -136,6 +145,11 @@
             <SolidColorBrush x:Key="PathPending" Color="#2E343A" />
             <SolidColorBrush x:Key="DrcViolation" Color="#FF5252" />
             <SolidColorBrush x:Key="CopperUnderlay" Color="#8A5A2B" />
+
+            <!-- See the light variant. Darkened rather than lightened, so the tint stays behind
+                 the text instead of competing with it. -->
+            <SolidColorBrush x:Key="CheckPointedFill" Color="#3A2F14" />
+            <SolidColorBrush x:Key="CheckPointedEdge" Color="#E3B341" />
 
             <SolidColorBrush x:Key="BadgeGcodeFill" Color="#3A2C12" />
             <SolidColorBrush x:Key="BadgeGcodeEdge" Color="#6B5326" />

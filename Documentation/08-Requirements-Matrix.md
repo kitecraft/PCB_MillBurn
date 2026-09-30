@@ -101,7 +101,7 @@ board being cut rather than from a document.
 | G13 | Board outline: every closed profile, inner pieces before the frame | §7 | **Done** | `PanelOrderTests`, `OutlineSideTests` |
 | G14 | Tolerance-driven flattening, never a fixed segment count | §4 | **Done** | `Tessellate`, 1 µm sagitta |
 | G15 | Panelisation / array generation | 06 §4 Q5 | **Superseded** | reasoned decision; recorded in the user FAQ |
-| G16 | A cutter chosen from the library rather than synthesised | 06 §5.5.1 | **Done** | `ToolChooser`; widest that fits and reaches |
+| G16 | A cutter chosen from the library rather than synthesised | 06 §5.5.1 | **Done** | `ToolChooser`; widest that fits and reaches. Was Done on the export path only — `mill` synthesised from its own 30°/0.1 mm defaults and ignored an edited library bit until 2026-09-28 (06 §6.42); all three callers now share `LayerOperations.DefaultToolFor` |
 | G17 | Mill-drill: a hole too big for any drill, spiralled out | 06 §5.5.3 | **Done** | `SlotOperation.Holes`; off unless the project asks |
 | G18 | Job-level options, carried in the project | 06 §5.5.3 | **Done** | `JobOptions`; Project info, and `--mill-holes` on the CLI |
 | G19 | A companion page for the routing program | workshop | **Done** | `RoutingGuide`; names the cutter, and what will not be cut |

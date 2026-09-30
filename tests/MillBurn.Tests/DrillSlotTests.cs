@@ -227,7 +227,7 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
         output.WriteLine(string.Join("\n", slots.Warnings));
 
         Assert.Contains(slots.Summary, s => s.Contains("3 of 7 slots", StringComparison.Ordinal));
-        Assert.Contains(slots.Warnings, w => w.Contains("are NOT cut", StringComparison.Ordinal));
+        Assert.Contains(slots.Warnings, w => w.Message.Contains("are NOT cut", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -252,7 +252,7 @@ public sealed class DrillSlotTests(ITestOutputHelper output) : IDisposable
             loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode);
 
         Assert.DoesNotContain(
-            plan.Items.SelectMany(i => i.Warnings.Concat(i.Summary)),
+            plan.Items.SelectMany(i => i.Warnings.Select(w => w.Message).Concat(i.Summary)),
             s => s.Contains("slot", StringComparison.OrdinalIgnoreCase));
     }
 }

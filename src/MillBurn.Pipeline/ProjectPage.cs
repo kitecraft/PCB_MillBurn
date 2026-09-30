@@ -382,8 +382,17 @@ public static class ProjectPage
 
     private static void Watch(StringBuilder page, ExportPlan plan, ProjectPageContext context)
     {
+        // Rendered to their sentences here rather than carried as checks, because this page shows
+        // them as a flat list. `Line` now names each one's source first, which is most of what the
+        // page needed and costs it nothing.
+        //
+        // **Severity is still flattened, and the page is the surface where that is worst**: it is
+        // read away from the app, so a refusal and a note look identical to somebody with no panel
+        // in front of them to compare against. Not fixed here because the fix is a section of its
+        // own rather than a mark on a list item, and that section is the findings view.
         var warnings = plan.Items
             .SelectMany(i => i.Warnings)
+            .Select(w => w.Line)
             .Concat(context.Skipped)
             .Distinct(StringComparer.Ordinal)
             .ToList();
