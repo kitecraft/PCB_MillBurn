@@ -2114,6 +2114,33 @@ Left for later: a ruler in inches (the app is millimetres throughout and mixing 
 how a wrong number gets read confidently), and printable dimensioned output, which is a drawing
 feature rather than a viewer one.
 
+**It has a reader now, which it did not have when it was written.** From the product owner,
+2026-09-30, after the findings view shipped: *"Having the rulers in the viewer so the user can find
+and zoom into the problem areas based on the findings x and y mm values would be awesome."*
+
+6.44's findings view prints a coordinate for every place the copper stays joined — *"44.05,
+30.31 mm"* — measured from the board's lower-left corner, which is what a ruler reading from the
+same corner would let somebody find. The window is non-modal, so it can sit open beside the board
+while the view moves, which is what makes the pairing work at all.
+
+**And the coordinate has to be reachable, not only readable.** A ruler tells you where you are; it
+does not take you anywhere, and panning to 44.05, 30.31 by eye at a tenth of a millimetre is not the
+gesture anybody wants twice. That half is [6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30),
+written up separately because it is a different thing: this entry is about reading the board, that
+one about moving to a place on it.
+
+**Drawn as an overlay, decided from mockups on 2026-09-30.** Five were rendered over a real Mega at
+true scale — `WorkingFolder/mockups/rulers/` — and the product owner chose **B**: a translucent strip
+along the top and left edges, floating over the viewport rather than insetting it. The board is the
+thing being looked at and a gutter takes a strip out of it on two sides; an overlay costs only the
+outermost millimetre or so, and only where the board is panned right to the edge. The alternative
+worth keeping in mind is A, the opaque gutter, which never puts a tick over copper.
+
+**The ladder has to follow the zoom, and the mockups are what showed it.** At whole-board zoom the
+grid's step ladder gives 5 mm majors with 1 mm minors; zoomed to a single bridge it gives 0.5 mm
+majors with 0.1 mm minors. Both read well, and both come out of the existing ladder rather than a
+second rule — which is the point of reusing it.
+
 #### 6.2 Climb or conventional — **enhancement · open** — *low priority*
 
 Asked from the workshop: *"is the default cut direction making a climb cut or a conventional cut?"*
@@ -5985,3 +6012,51 @@ elsewhere.
 **Done when** the grown regions are computed once per layer and shared, the token is read before each
 whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
 window opens without a visible stall.
+
+#### 6.56 A finding takes you to the copper it is about — **enhancement · open** — *asked for by the product owner, 2026-09-30*
+
+From the product owner, the day after 6.44's findings view shipped: *"The Findings box is great,
+especially being non-modal. Having the rulers in the viewer so the user can find and zoom into the
+problem areas based on the findings x and y mm values would be awesome."*
+
+6.44 gives every place the copper stays joined a coordinate — *"44.05, 30.31 mm"*, measured from the
+board's lower-left corner, which is where work zero is. Reading it is one thing; getting there is
+another, and at the moment the only route is to pan and zoom by eye to a tenth of a millimetre.
+
+**Click a place in the findings, and the viewport goes to it.**
+
+**It has to zoom, not only centre**, and the mockups are what settled that. A bridge is a fraction of
+a millimetre across; at whole-board zoom it is smaller than a pixel, so a view that merely centres on
+one leaves the operator looking at the same board with a marker they cannot see. The mockup of it —
+`WorkingFolder/mockups/rulers/D-crosshair-and-finding.png` — makes that plain, and
+`E-zoomed-to-finding.png` is the same finding at a zoom where the copper it is about is legible.
+
+**The window is non-modal and must stay that way.** That is what lets the list sit open beside the
+board while the view moves, and it is the property the request named first.
+
+**How the marker clears, which is the part worth designing rather than discovering:**
+
+- **Picking another place moves it.** One marker at a time. A view that accumulates rings becomes a
+  second findings list, drawn worse.
+- **Escape clears it**, with the viewport focused.
+- **A new check, preview or export clears it**, because the findings it came from are gone. This is
+  the rule story 5 already applies to the panel's highlight — *"a mark that outlives the thing it
+  explains is worse than none, because it looks like a property of the check"* — and the argument is
+  the same one: the marker means "this is the finding you asked about", and after a fresh run there
+  is no such finding.
+- **Panning and zooming do not clear it.** Exploring around the place is the entire point; a marker
+  that vanished on the first scroll would be worse than none.
+- **Closing the findings window does not clear it**, which is why the marker carries its own short
+  label — the coordinate and the nets. A bare ring left on the board after the list is gone is a
+  mark nobody can interpret.
+
+**Not in it.** Selection semantics. This is a marker, not a selected object: nothing acts on it,
+nothing is measured from it, and calling it a selection would invite both. Measuring belongs to
+6.1's tape-measure drag.
+
+**Done when** clicking a place in the findings view moves the viewport to it at a zoom where the
+copper is legible, the marker names what it is, and it clears by each of the routes above — with a
+`--shot` of the before and after.
+
+**Requires:** [6.1](#61-rulers--enhancement--open) is not a prerequisite, but the two were asked for
+together and the ruler is what lets an operator confirm the view went where it said it would.
