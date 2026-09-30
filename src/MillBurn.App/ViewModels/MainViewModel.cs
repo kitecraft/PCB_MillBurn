@@ -31,8 +31,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The preview in flight, so that the next edit cancels it rather than queueing.</summary>
     private readonly LatestRun _previewRun = new();
 
+    /// <summary>
+    /// The on-demand board check, tracked separately from the preview.
+    ///
+    /// Its own run rather than sharing the preview's, because the two are different questions and
+    /// asking one must not cancel the other: checking a board while a preview is building is a
+    /// reasonable thing to do, and making it abandon the picture would be a surprise.
+    /// </summary>
+    private readonly LatestRun _checkRun = new();
+
+    private readonly LatestRun _findingsRun = new();
+
     /// <summary>Stops a preview still in flight when the window holding this goes away.</summary>
-    public void Dispose() => _previewRun.Dispose();
+    public void Dispose()
+    {
+        _previewRun.Dispose();
+        _checkRun.Dispose();
+        _findingsRun.Dispose();
+    }
 
     [ObservableProperty]
     public partial BoardScene? Scene { get; set; }
@@ -120,14 +136,66 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public ObservableCollection<LayerGroup> LayerGroups { get; } = [];
 
     /// <summary>
-    /// How many checks there are, for the heading — because the list is capped and scrolled, and a
+    /// What the heading says beside the word CHECK — because the list is capped and scrolled, and a
     /// panel showing three of nine with nothing saying so is worse than one showing all nine.
+    ///
+    /// **It always states the number now, and it names the refusals.** It used to fall silent at a
+    /// count of one, which was fine while the list was always open and is not fine once the section
+    /// folds: folded, this line is the only thing left, and *"a job with three checks and a job with
+    /// none must not look the same"*. None hides the panel outright, so the pair that could collide
+    /// is one and one — hence the number unconditionally.
+    ///
+    /// The refusal count is here for the same reason. Severity is readable in the list by its mark,
+    /// and folding the list would take that away entirely; a reader who has folded the panel is
+    /// still entitled to know whether anything in it was a refusal rather than a note.
     /// </summary>
-    public string WarningCount => Warnings.Count > 1
-        ? string.Create(CultureInfo.InvariantCulture, $"· {Warnings.Count}")
-        : string.Empty;
+    public string ChecksSummary
+    {
+        get
+        {
+            var refusals = Warnings.Count(w => w.IsRefusal);
 
-    public ObservableCollection<string> Warnings { get; } = [];
+            // Three cases rather than two, because the second reading of this on a real board said
+            // "· 11, 11 to look at" — the Mega's checks are all refusals, and a number repeated is
+            // a number a reader has to compare against itself to learn nothing.
+            if (refusals == 0)
+            {
+                return string.Create(CultureInfo.InvariantCulture, $"· {Warnings.Count}");
+            }
+
+            return refusals == Warnings.Count
+                ? string.Create(CultureInfo.InvariantCulture, $"· {Warnings.Count} to look at")
+                : string.Create(CultureInfo.InvariantCulture, $"· {Warnings.Count}, {refusals} to look at");
+        }
+    }
+
+    /// <summary>
+    /// Whether the section is folded to its heading.
+    ///
+    /// **Not saved with the settings, and that is a decision rather than an omission.** A fold
+    /// remembered across sessions would hide the checks on the next board the operator opens —
+    /// one they have never seen, whose checks they have never read — and the state that caused it
+    /// would have been set on some other board days earlier. Within a session it stays exactly
+    /// where it was put, which is what somebody who folded it away wanted.
+    ///
+    /// **A new check does not unfold it either**, with one exception, in
+    /// <see cref="Warn"/>: the count in the heading is what makes leaving it folded defensible, so
+    /// an arriving check changes that count and a reader who folded the panel is not overruled for
+    /// a note. An <see cref="CheckSeverity.Error"/> is not a note — it means do not run this — and
+    /// that one reopens the section.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ChecksFolded { get; set; }
+
+    /// <summary>
+    /// How many files a single export refusal names before it starts counting instead.
+    ///
+    /// Measured rather than chosen: the test board's export refuses a dry run for seventeen
+    /// programs at once for one reason, and the line naming all seventeen was taller than the panel.
+    /// </summary>
+    private const int MaxNamedFiles = 3;
+
+    public ObservableCollection<CheckRow> Warnings { get; } = [];
 
     public ObservableCollection<RefreshItem> RefreshItems { get; } = [];
 
@@ -166,7 +234,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         AttachProject(_project);
 
         // The heading counts the list, so it has to hear about the list changing.
-        Warnings.CollectionChanged += (_, _) => OnPropertyChanged(nameof(WarningCount));
+        Warnings.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ChecksSummary));
     }
 
     /// <summary>Remembers where the window was, so it opens where it was left.</summary>
@@ -491,19 +559,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // disappears because they opened a file to look at it.
         foreach (var note in _project.OpenNotes)
         {
-            Warnings.Add(note);
+            Warn(Check.Advice(CheckSource.Project, CheckKind.Project, note));
         }
 
         // Anything the parser could not make sense of. On somebody else's file this is the useful
         // part: it says which lines are not being drawn, so an empty-looking picture has a reason.
+        //
+        // The diagnostic already knows whether it is an error; that was a bool nothing outside the
+        // parser could read, and it is the severity now.
+        var opened = CheckSource.File(Path.GetFileName(path));
+
         foreach (var diagnostic in parsed.Diagnostics.Take(20))
         {
-            Warnings.Add(diagnostic.ToString());
+            Warn(new Check
+            {
+                Source = opened,
+                Kind = CheckKind.Parse,
+                Severity = diagnostic.IsError ? CheckSeverity.Error : CheckSeverity.Advice,
+                Message = diagnostic.ToString(),
+            });
         }
 
         if (measured.GougeCount > 0)
         {
-            Warnings.Add($"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this.");
+            Warn(Check.Error(opened, CheckKind.Program,
+                $"{measured.GougeCount} rapid move(s) at cutting depth. Do not run this."));
         }
 
         StatusMessage = measured.GougeCount > 0
@@ -1346,6 +1426,213 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// every one of which the status line already carries something the operator needs more than
     /// a caller's own message.
     /// </returns>
+    /// <summary>
+    /// Check the board as its own job, without exporting or previewing anything.
+    ///
+    /// **Why the button exists.** The board-level checks run on load; the electrical ones — the
+    /// valuable ones — used to arrive only with an export plan, so a board with a short on it
+    /// showed nothing in the panel until somebody pressed Preview. An operator who looked at an
+    /// empty CHECK list and believed it was being told nothing by a list that had not looked.
+    ///
+    /// **The automatic check stays.** The Mega's short was found because the app spoke without
+    /// being asked, and a button only protects somebody who thinks to press it. This adds a way to
+    /// ask and takes nothing away.
+    /// </summary>
+    public async Task CheckBoardAsync()
+    {
+        if (ExportRequestFor(OutputKind.Gcode, onlyLayer: null, alignment: null) is not { } request)
+        {
+            return;
+        }
+
+        var token = _checkRun.Begin();
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        StatusMessage = "Checking the board…";
+
+        BoardCheck.Result result;
+
+        try
+        {
+            result = await Task.Run(
+                () => BoardCheck.For(request.Board, request.Outputs, request.Library, token), token)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a later press, or the window is closing. The older answer is not worth
+            // showing and its status line is not worth writing over the newer one's.
+            return;
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            if (_checkRun.Finish(token))
+            {
+                StatusMessage = $"Check failed: {ex.Message}";
+            }
+
+            return;
+        }
+
+        if (!_checkRun.Finish(token))
+        {
+            return;
+        }
+
+        // **A run that stopped early must never read as a clean board.** It looked at some of the
+        // copper and not the rest, so publishing its findings would put a short list on screen
+        // that means "so far" while looking like "all of it" — the same distinction sprint 2's
+        // story 3 was about, arriving in a new place.
+        if (result.Cancelled)
+        {
+            StatusMessage = "Check stopped; the board was not fully checked.";
+            return;
+        }
+
+        ReplaceElectricalChecks(result);
+
+        var found = result.Checks.Count;
+        var layers = result.LayersChecked == 1 ? "1 layer" : $"{result.LayersChecked} layers";
+        var took = $"{result.Elapsed.TotalSeconds:F2} s";
+
+        // **The count is of findings; the panel now shows one line a layer.** Those are different
+        // numbers — eleven findings on the Mega, two lines — and a status saying "11" over a panel
+        // headed "2" is a contradiction a reader has to resolve. Naming where the eleven are is
+        // what resolves it, and it is the same pointer the lines themselves carry.
+        StatusMessage = found == 0
+            ? $"Checked {layers} in {took}: nothing to report."
+            : $"Checked {layers} in {took}: {found} thing(s) worth checking — Job ▸ Findings (F7) says where.";
+    }
+
+    /// <summary>
+    /// Puts this check's findings in the panel in place of whatever was last said about the same
+    /// layers.
+    ///
+    /// **This is the method that could not have been written before a check had a source.** The
+    /// electrical findings for a layer are the same findings whether a preview produced them or
+    /// the button did, so accumulating both would show every one of them twice — and the old way
+    /// of taking a set back out, matching on the sentence, cannot tell "this layer's copy" from
+    /// "the other layer's identical copy". Matching on the layer and the kind can.
+    /// </summary>
+    private void ReplaceElectricalChecks(BoardCheck.Result result)
+    {
+        // **Every layer that was looked at, not every layer that said something.** A layer whose
+        // short has since been fixed contributes no check to announce itself, so taking the
+        // refreshed set from the findings would leave its old line on screen permanently — right
+        // when the operator most wants to see it gone.
+        // **Every electrical line goes, not only the ones about layers this run looked at.**
+        //
+        // Keying the removal on `result.Layers` was nearly right and left one hole: a layer that
+        // has been switched *off* since the last press is not in that list either, so its old
+        // "3 finding(s) this cut cannot separate" row survived every subsequent check, for ever,
+        // about copper nobody is cutting any more.
+        //
+        // A board check examines the whole board, so whatever it says about the copper supersedes
+        // whatever was said before — by an earlier check or by a preview. That is a simpler rule
+        // than the one it replaces as well as a complete one, and `result.Layers` is still what
+        // makes it safe: it is the evidence that this run really did look, which is what the first
+        // version of this method got wrong in the other direction.
+        for (var i = Warnings.Count - 1; i >= 0; i--)
+        {
+            if (Warnings[i].Check.Kind == CheckKind.Electrical)
+            {
+                Warnings.RemoveAt(i);
+            }
+        }
+
+        // This run's status line is about to be "so many things worth checking", which is about the
+        // list rather than about any one line in it. Anything an earlier message was pointing at is
+        // no longer what the operator is being told, so the pointing stops with the message.
+        ClearHighlights();
+
+        WarnAll(result.Checks);
+    }
+
+    /// <summary>
+    /// Works out the full electrical findings for the board, for the view that shows them.
+    ///
+    /// **The expensive answer, asked for deliberately.** Locating where each gap is costs an offset
+    /// per piece of copper — a quarter of a second per layer on the Arduino Mega — against a check
+    /// that otherwise runs on every preview and every export. It is off the UI thread and
+    /// cancellable for that reason, on the same `LatestRun` pattern as the preview and the board
+    /// check: a second press supersedes the first, and the older answer is never shown over it.
+    /// </summary>
+    public async Task<BoardFindings.Result?> FindingsAsync()
+    {
+        if (ExportRequestFor(OutputKind.Gcode, onlyLayer: null, alignment: null) is not { } request)
+        {
+            return null;
+        }
+
+        var token = _findingsRun.Begin();
+
+        if (token.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        StatusMessage = "Looking for where the copper stays joined…";
+
+        BoardFindings.Result result;
+
+        try
+        {
+            result = await Task.Run(
+                () => BoardFindings.For(request.Board, request.Outputs, request.Library, token), token)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex) when (IsExpected(ex))
+        {
+            if (_findingsRun.Finish(token))
+            {
+                StatusMessage = $"Could not work out the findings: {ex.Message}";
+            }
+
+            return null;
+        }
+
+        if (!_findingsRun.Finish(token))
+        {
+            return null;
+        }
+
+        var layers = result.Layers.Count == 1 ? "1 layer" : $"{result.Layers.Count} layers";
+        var took = $"{result.Elapsed.TotalSeconds:F2} s";
+
+        // **A stopped run is named as one**, here and again on the window itself. This is the view
+        // somebody opens to satisfy themselves a board is sound, so a partial answer that reads as
+        // a complete one is worse here than anywhere else in the application.
+        StatusMessage = result.Cancelled
+            ? "Stopped before the whole board was examined; the findings below are incomplete."
+            : $"Examined {layers} in {took}.";
+
+        return result;
+    }
+
+    /// <summary>
+    /// Stops every check claiming to be the one a status message is about.
+    ///
+    /// **Tied to the message rather than to a timer or a click.** A highlight is only ever true
+    /// relative to the sentence in the status bar; once that sentence is replaced the highlight is
+    /// pointing at nothing, and a mark that survives the thing it explains is worse than none
+    /// because it looks like a property of the check.
+    /// </summary>
+    private void ClearHighlights()
+    {
+        foreach (var row in Warnings)
+        {
+            row.IsHighlighted = false;
+        }
+    }
+
     public async Task<bool> PreviewAsync()
     {
         if (ExportRequestFor(OutputKind.Gcode, onlyLayer: null, alignment: null) is not { } request
@@ -1479,10 +1766,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         Rebuild(TimeSpan.Zero);
 
-        foreach (var warning in result.Warnings)
-        {
-            Warnings.Add(warning);
-        }
+        WarnAll(result.Warnings);
+
 
         // The warning gets the line to itself. A board that is about to be cut at rapid speed is
         // not the moment to also report how briskly the picture was drawn.
@@ -2329,40 +2614,79 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// What the last export put in the checks panel.
-    ///
-    /// Held so the next export can take it back out. Without that, exporting twice leaves both
-    /// sets on screen — and when the two runs disagreed about which side the map was probed on,
-    /// the panel showed each file refused for two opposite reasons at once. Both were true when
-    /// they were written and only one of them still was.
-    /// </summary>
-    private readonly List<string> _exportWarnings = [];
-
-    /// <summary>
     /// Puts this export's refusals in the checks panel, in place of the last one's.
+    ///
+    /// **"In place of the last one's" is the whole job.** Without it, exporting twice leaves both
+    /// sets on screen — and when two runs disagreed about which side the map was probed on, the
+    /// panel showed each file refused for two opposite reasons at once. Both were true when they
+    /// were written and only one of them still was.
     ///
     /// **Grouped by reason, with the files named.** A refusal explains itself in a paragraph,
     /// which is right once and unreadable five times: an export that could not level four
     /// programs used to print the same ninety words four times over, filling the panel and
     /// pushing the layer list off the screen. The panel earns attention by being short enough to
     /// read, and a wall of repeated text is how it stops being read at all.
+    ///
+    /// **"In place of the last one's" used to need a second list.** This method kept
+    /// `_exportWarnings`, a parallel `List&lt;string&gt;` of the lines it had added, purely so it
+    /// could find them again and `Remove` them by string equality — which is ambiguous the moment
+    /// two checks read the same, and which is the whole argument for a check having a source.
+    /// It has one now, so "the ones I put there" is a question the list can answer itself.
     /// </summary>
     private void ReplaceExportWarnings(List<(string What, string File, string Reason)> refusals)
     {
-        foreach (var stale in _exportWarnings)
+        // CheckSource.Export is this method's alone. Everything else in the panel is about a
+        // layer, the stock, the board or the project, so nothing else can be caught by this.
+        for (var i = Warnings.Count - 1; i >= 0; i--)
         {
-            Warnings.Remove(stale);
+            if (Warnings[i].Check.Source == CheckSource.Export)
+            {
+                Warnings.RemoveAt(i);
+            }
         }
 
-        _exportWarnings.Clear();
+        // Nothing an earlier message pointed at is what the operator is about to be told.
+        ClearHighlights();
 
         foreach (var group in refusals.GroupBy(r => (r.What, r.Reason)))
         {
-            var files = string.Join(", ", group.Select(r => r.File));
-            var line = $"{group.Key.What}: {files} — {group.Key.Reason}";
+            // **Capped, because uncapped it is the least readable thing in the panel.** One export
+            // of the test board refuses a dry run for seventeen programs with the same reason, and
+            // naming all seventeen filled the whole section with a comma-separated list that had to
+            // be read to the end to learn one fact — that it was all of them. A screenshot of it
+            // beside the rest of this story's work made the case on its own.
+            //
+            // Three then a count, on the same argument `ElectricalFindings` caps its named joins:
+            // enough to recognise which programs are meant, not so many that the line stops being a
+            // line. The reason follows, and it is the part that is actually actionable.
+            var named = group.Select(r => r.File).Take(MaxNamedFiles).ToList();
+            var files = group.Count() > MaxNamedFiles
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{string.Join(", ", named)} and {group.Count() - MaxNamedFiles} more")
+                : string.Join(", ", named);
 
-            _exportWarnings.Add(line);
-            Warnings.Add(line);
+            // **The link the bench asked for twice.** The status line this export is about to set
+            // names what was refused; these are the lines it means, so they say so themselves
+            // rather than leaving a reader to match one sentence against a list of them. The mark
+            // is put on here, where the set is known exactly, rather than inferred afterwards from
+            // a severity — every refusal in the panel is not the same set as the ones this run just
+            // produced, and highlighting a refusal from a previous export would point the message
+            // at the wrong line.
+            Warn(Check.Refusal(
+                CheckSource.Export,
+                CheckKind.Program,
+                $"{group.Key.What}: {files} — {group.Key.Reason}")).IsHighlighted = true;
+        }
+
+        // **A message pointing into a folded panel is an instruction that cannot be followed.**
+        // This is not the same rule as "a new check unfolds the section", which is deliberately not
+        // the behaviour: an arriving note is reported by the count and a reader who folded the panel
+        // is not overruled for it. But the status line is about to say *go and look at these*, and
+        // if the list is folded there is nothing to look at.
+        if (refusals.Count > 0)
+        {
+            ChecksFolded = false;
         }
     }
 
@@ -2761,28 +3085,47 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // only in a status line they may have been looking away from.
         foreach (var note in _project.OpenNotes)
         {
-            Warnings.Add(note);
+            Warn(Check.Advice(CheckSource.Project, CheckKind.Project, note));
         }
 
+        // A file that would not open at all. An error rather than a refusal: nothing declined to
+        // do this, the board on screen is simply missing a piece of itself.
         foreach (var failure in board.Failures)
         {
-            Warnings.Add($"Could not read {failure}");
+            // The name alone to the source, the reason alone to the message. Passing `failure`
+            // to both put "F_Cu.gbr: unexpected token at line 12" in a field whose entire job is
+            // to be matched against a layer's file name, which nothing could ever equal.
+            //
+            // **And the reason rather than the whole sentence**, now that the panel renders the
+            // source: this check's label *is* the file name, so `$"Could not read {failure}"` read
+            // "F_Cu.gbr — Could not read F_Cu.gbr: unexpected token at line 12". Splitting
+            // `BoardFailure` in two is what makes the half that is not already in the label
+            // reachable, which is the second thing that split has paid for.
+            Warn(Check.Error(CheckSource.File(failure.FileName), CheckKind.Board,
+                $"Could not read this file: {failure.Reason}"));
         }
 
         foreach (var layer in board.Layers.Where(l => l.HasErrors))
         {
             var first = layer.Diagnostics.First(d => d.IsError);
-            Warnings.Add($"{layer.FileName}: {first.Message}");
+            Warn(Check.Error(SourceFor(layer), CheckKind.Parse,
+                $"{layer.FileName}: {first.Message}"));
         }
 
         foreach (var layer in board.Layers.Where(l => l.RoleGuessed))
         {
-            Warnings.Add($"{layer.FileName} declares no file function; role guessed as {layer.Label}.");
+            // The role is the label the panel now prints in front of this, so restating it here
+            // said the same layer three times: "Top copper — F_Cu.gbr declares no file function;
+            // role guessed as Top copper." The file name stays — it is the thing the operator
+            // would open to check the guess, and it is the one fact the label does not carry.
+            Warn(Check.Advice(SourceFor(layer), CheckKind.Board,
+                $"{layer.FileName} declares no file function; this role is a guess."));
         }
 
         if (!board.Layers.Any(l => l.Role == LayerRole.Outline))
         {
-            Warnings.Add("No board outline: extents are taken from the drawn geometry.");
+            Warn(Check.Advice(CheckSource.Board, CheckKind.Board,
+                "No board outline: extents are taken from the drawn geometry."));
         }
 
         // Two files claiming to be the top copper is a real problem; two drill maps is a normal
@@ -2800,10 +3143,179 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             .GroupBy(l => l.Role)
             .Where(g => g.Count() > 1))
         {
-            Warnings.Add(
+            // The board, not any one of them: naming either file as the source would be picking
+            // a culprit, and which of the two is wrong is exactly what is not known here.
+            Warn(Check.Advice(CheckSource.Board, CheckKind.Board,
                 $"{group.Count()} files claim to be {LayerRoleInfo.Label(group.Key)}: " +
-                string.Join(", ", group.Select(l => l.FileName)));
+                string.Join(", ", group.Select(l => l.FileName))));
         }
+    }
+
+    /// <summary>
+    /// The layer a check is about, keyed by its file.
+    ///
+    /// The same shape the planner builds, and deliberately so: the panel holds checks from both,
+    /// and a layer's checks are meant to group and colour together whichever side produced them.
+    /// </summary>
+    private static CheckSource SourceFor(BoardLayer layer) =>
+        CheckSource.Layer(layer.Role, layer.Label, layer.FileName);
+
+    /// <summary>
+    /// Puts a check in the panel, dressed for it.
+    ///
+    /// **One door, so that a check cannot reach the panel without its colour.** Twelve places in
+    /// this file produce checks and every one of them used to call `Warnings.Add` directly; with a
+    /// row to build, that would be twelve chances to forget the brush and get a label in the
+    /// default text colour that reads as though the layer has no colour rather than as though this
+    /// line was built wrongly.
+    /// </summary>
+    /// <summary>
+    /// Puts a set of checks in the panel, with the electrical ones collapsed to a line a layer.
+    ///
+    /// **This is the dilution 6.44 is about, fixed at the one place it can be.** Seventeen items
+    /// before sprint 1's story 4; a dense board adds eleven more, every one of them naming nets.
+    /// The Arduino Mega's top copper alone contributes six groups and two further lines, which
+    /// buries the layer that would not parse and the tool that is missing a drill — and those are
+    /// the checks with nowhere else to be said.
+    ///
+    /// The electrical findings do have somewhere else: <see cref="Views.FindingsWindow"/>, where
+    /// there is room to name every net in a group and say where each gap actually is. So the panel
+    /// keeps what only it can carry and points at the rest.
+    ///
+    /// **Collapsed here rather than in <see cref="ElectricalFindings"/>**, and that is the whole
+    /// reason this method exists rather than a shorter check. The companion page and the CLI have
+    /// no window to point at: a one-line summary ending "see the findings view" would be a
+    /// dead end on a page read away from the app. They keep the full set; only the panel shortens.
+    /// </summary>
+    private void WarnAll(IEnumerable<Check> checks)
+    {
+        foreach (var check in checks)
+        {
+            if (check.Kind != CheckKind.Electrical)
+            {
+                Warn(check);
+            }
+        }
+
+        // Grouped by source, so a two-sided board gets one line a side rather than one line. Which
+        // layer a short is on decides which way up the stock goes to fix it.
+        foreach (var layer in checks
+            .Where(c => c.Kind == CheckKind.Electrical)
+            .GroupBy(c => c.Source))
+        {
+            Warn(Collapsed(layer.Key, [.. layer]));
+        }
+    }
+
+    /// <summary>
+    /// One line standing for a layer's electrical findings, pointing at where they are said in
+    /// full.
+    ///
+    /// **Severity is the worst of what it stands for**, never an average and never softened. This
+    /// line is all the panel will show of a short, so a layer with copper left connected has to
+    /// read as a refusal even though most of what it replaced was advice.
+    /// </summary>
+    private static Check Collapsed(CheckSource source, IReadOnlyList<Check> checks)
+    {
+        var refusals = checks.Count(c => c.IsRefusal);
+
+        var message = refusals > 0
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"{refusals} finding(s) this cut cannot separate. Job ▸ Findings (F7) says where they are.")
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"{checks.Count} note(s) about this copper. Job ▸ Findings (F7) says more.");
+
+        // The kind stays Electrical, which is what lets a later run take this line back out again:
+        // `ReplaceElectricalChecks` matches on the kind and the layer, and a summary that called
+        // itself something else would accumulate one copy per press.
+        return refusals > 0
+            ? Check.Refusal(source, CheckKind.Electrical, message)
+            : Check.Advice(source, CheckKind.Electrical, message);
+    }
+
+    private CheckRow Warn(Check check)
+    {
+        var row = new CheckRow(check, LabelBrushFor(check.Source));
+
+        Warnings.Add(row);
+
+        // The one thing that overrules a fold. See <see cref="ChecksFolded"/>: a note arriving
+        // behind a folded heading is reported by the count and that is enough, but "do not run
+        // this" is not a note, and a reader who has to open the panel to discover it has been
+        // failed by the fold.
+        if (check.IsError)
+        {
+            ChecksFolded = false;
+        }
+
+        return row;
+    }
+
+    /// <summary>
+    /// The colour to print a check's label in: the layer's own, or null for anything that is not a
+    /// layer.
+    ///
+    /// **Through <see cref="Palette"/> rather than <see cref="BoardPalette"/>,** so that a label
+    /// follows the operator's colour override. The alternative is a check that names "Top copper"
+    /// in a colour the top copper is not currently drawn in, two inches below a layer row showing
+    /// the real one — which is precisely the disagreement this project's rules put first.
+    /// </summary>
+    private SolidColorBrush? LabelBrushFor(CheckSource source) =>
+        source.Role is { } role ? LayerRow.ToBrush(Readable(Palette(role).Fill)) : null;
+
+    /// <summary>
+    /// The same colour, brought into a range that can be read as text on either theme.
+    ///
+    /// **A colour chosen to look like the thing is not always a colour you can read the name in.**
+    /// The drill roles are near-black on purpose — `PlatedDrill` is #141A1F, `NonPlatedDrill`
+    /// #0A0D10 — because that is what a hole looks like on copper, and it is right in the viewport.
+    /// As a word on the dark theme's panel it is invisible: the Mega's export lists "Plated holes"
+    /// and "Non-plated holes" on every board, and both rows were unreadable while the copper rows
+    /// beside them were fine. Story 5 asked for a layer's checks to carry that layer's colour in
+    /// order to be *findable*, so a colour that hides the label defeats the thing it was for.
+    ///
+    /// **Clamped rather than replaced**, so the label keeps whatever identity its hue carries: a
+    /// near-black drill becomes a muted blue-grey rather than the ordinary text colour, which is
+    /// still recognisably not copper. The band is stated in terms of perceived luminance and is
+    /// two-sided, because the silkscreen roles have the opposite problem — #F5F5F5 reads on dark
+    /// and vanishes on light.
+    ///
+    /// Applied here rather than in <see cref="BoardPalette"/>, which is asked what a layer looks
+    /// like when it is *drawn*, and must keep answering that.
+    /// </summary>
+    private static SKColor Readable(SKColor colour)
+    {
+        // Rec. 709 luma, which is what "how light does this look" means to an eye rather than to a
+        // channel average: green carries most of the apparent brightness and blue almost none.
+        var luma = ((0.2126 * colour.Red) + (0.7152 * colour.Green) + (0.0722 * colour.Blue)) / 255.0;
+
+        // The band either theme can carry. Below it the label disappears into the dark panel, above
+        // it into the light one; between, it reads on both.
+        const double Floor = 0.38;
+        const double Ceiling = 0.78;
+
+        if (luma >= Floor && luma <= Ceiling)
+        {
+            return colour;
+        }
+
+        // Mixed toward white or black by however much is missing, so the hue survives the move. A
+        // pure lighten keeps the ratios between the channels, which is what carries the colour.
+        var target = luma < Floor ? Floor : Ceiling;
+        var mix = luma < Floor
+            ? (target - luma) / (1.0 - luma)
+            : (luma - target) / luma;
+
+        byte Blend(byte channel) => (byte)Math.Clamp(
+            luma < Floor
+                ? channel + ((255 - channel) * mix)
+                : channel * (1 - mix),
+            0,
+            255);
+
+        return new SKColor(Blend(colour.Red), Blend(colour.Green), Blend(colour.Blue), colour.Alpha);
     }
 
     private static bool IsExpected(Exception ex) =>

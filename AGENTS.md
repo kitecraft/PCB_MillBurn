@@ -47,9 +47,16 @@ Every serious bug in this project was found by looking at output. A green suite 
 sufficient.
 
 - `dotnet run --project src/MillBurn.App -- <board> --shot out.png` renders the real window and
-  exits. Useful flags: `--size WxH`, `--theme`, `--preview`, `--settings [--settings-tab X]`,
-  `--about`, `--machine-check [squareness]`, `--align`, `--only-toolpath <layer>`, `--map <log>`,
-  `--recent`, `--framing`, `--colour`. `--bench` and `--probe` are handled before the UI starts.
+  exits. Useful flags: `--size WxH`, `--theme`, `--preview`, `--check`, `--findings`,
+  `--fold-checks`, `--settings [--settings-tab X]`, `--about`, `--machine-check [squareness]`, `--align`,
+  `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
+  `--probe` are handled before the UI starts. `--check` runs *Job ▸ Check this board* and nothing
+  else, so the checks panel can be photographed with **no export planned** — which `--preview`
+  cannot show, since it plans one. `--findings` opens *Job ▸ Findings* (F7), which locates where each
+  gap actually is — an offset per piece of copper, so it is seconds rather than milliseconds and is
+  deliberately off the export path. `--fold-checks` folds the checks panel, and runs **after every
+  other flag** so it folds whatever they put there — an export that refuses something deliberately
+  unfolds it again, and that ordering is what makes the rule visible in a screenshot.
 - `millburn-cli export <board> --write -o <dir>` prints travel, line counts and time estimates —
   **the numbers to quote when a change claims to make something faster or tighter.**
 - Publishing: the script **empties the output folder first**, so a wrong second argument deletes

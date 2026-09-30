@@ -23,6 +23,11 @@ nothing in it depends on the checks and nothing in the checks depends on it — 
 one story here that can be dropped without stranding another, if the six turn out to be as large as
 sprint 2 thought they were.
 
+**And it was dropped — after being built.** Not for size, but because the fix turned out to make two
+nets' separation depend on the drill finishing what the isolation started. See the withdrawal note
+under story 7. The sentence above turned out to be the useful thing in this paragraph: it went last,
+so taking it out stranded nothing.
+
 ---
 
 ## What is actually wrong
@@ -48,6 +53,15 @@ data model asking to be given one field and then not needing any of it.
 **Forty-four producer sites**, across four files: `MainViewModel.cs` (12), `ExportPlanner.cs`,
 `MachineCheck.cs` and `TestCut.cs`. That is the size of the migration and the reason this is a
 sprint rather than a story.
+
+**Thirty-eight of them, corrected while story 1 was built.** That count was taken with one grep and
+it conflated two channels that never meet. The CHECK panel is fed by `MainViewModel` and
+`ExportPlanner`; `MachineCheck` and `TestCut` produce warnings for a coupon, shown in their own
+dialog and by the CLI beside the report they belong to, and **not one of them ever reaches the
+panel** — traced through `MachineCheckWindow`, `TestCutWindow` and `Program.cs`. Converting those
+six would deliver nothing to any story in this sprint and would put a second vocabulary through
+three consumers for the sake of a number. They stay strings, named here so that the next person
+counting gets the same answer for the same reason.
 
 ### What sprint 1's story 4 did to it
 
@@ -121,9 +135,15 @@ workarounds instead of one model. 6.44 was agreed on that basis on 2026-09-23.
 - **`_exportWarnings` goes away.** With a source on the item, replacing this export's refusals is a
   filter rather than a shadow list and a string comparison. If it does not go away, the model is
   not carrying enough.
-- **The sentence stops beginning with its source.** Lines that already say `Stock: …` say it
-  because there was nowhere else to put it. Once there is, the prefix is duplication — and worse,
-  duplication that can disagree with the field beside it.
+- **The sentence keeps its current text, exactly.** Lines that already say `Stock: …` say it
+  because there was nowhere else to put it, and moving that prefix into the field is right — but it
+  is only right *together with* the panel rendering the field, because the moment it does, the
+  other forty lines gain a prefix they did not have. That is a change to what the operator sees and
+  to the companion pages' bytes, so it is story 5's to make and not this one's. Until then a
+  prefixed message carries its source twice, in the text and in the field, and the field is the one
+  that is right. **Recorded here because it was got wrong first:** this bullet originally said the
+  prefix moves in this story, which would have made "the output does not change" impossible to
+  keep.
 
 **Where this gets dangerous, and the rule for it.** Forty-four sites is enough that a mechanical
 migration will be tempting, and the sites are not interchangeable: `TestCut.cs` and
@@ -133,14 +153,184 @@ decided, not defaulted.** A refusal quietly demoted to advice by a default is ex
 fault this sprint exists to make impossible.
 
 **Done when** a check carries its source, its kind and its severity rather than beginning with them
-by convention; all forty-four sites produce one; `_exportWarnings` and its string-equality removal
-are gone; the panel renders the same content it does today from the new model, proved by a `--shot`
-against one taken before the story; and nothing in the emitted files changed, proved by the golden
-baselines.
+by convention; every site that feeds the CHECK panel produces one; `_exportWarnings` and its
+string-equality removal are gone; the panel renders the same content it does today from the new
+model, proved by a `--shot` against one taken before the story; and nothing in the emitted files
+changed, proved by the golden baselines.
 
 **Not in it.** Anything that changes what the panel *looks* like. This story ends with the same
-list on screen and a model underneath it, and that is deliberate: a migration of forty-four sites
+list on screen and a model underneath it, and that is deliberate: a migration of this many sites
 and a redesign of the surface in one story is two ways for it to go wrong at once.
+
+### Closed — 2026-09-28
+
+**Done, against every clause.** `Check` carries a `CheckSource`, a `CheckKind` and a
+`CheckSeverity`; the thirty-eight sites that feed the panel produce one; `_exportWarnings` and its
+string-equality removal are gone; and both proofs hold.
+
+**The output did not move, and that is the whole verdict.** 1,244 tests green — 1,216 plus 28
+golden — with **no golden baseline regenerated**, which is what says the emitted programs and every
+companion page are byte-for-byte what they were.
+
+**And that claim was itself checked, because it could have been true for the wrong reason.**
+`Snapshot.Match` rewrites a baseline and *passes* when `MILLBURN_UPDATE_SNAPSHOTS` is set, so a
+green golden suite proves nothing unless that variable is absent. It is unset, `MILLBURN_BOARDS` is
+unset, `git status` on the Snapshots folder is clean and no `.actual.txt` was left behind. The
+`/describe-test` pass is what put the question, by describing that escape hatch plainly.
+
+**The panel is pixel-identical.** `--preview --shot` on the Arduino Mega at 1100 x 1100, before the
+story and after it, compared pixel by pixel:
+
+| | |
+|---|---|
+| Whole window differing box | **(250, 1079) to (283, 1091)** — 33 x 12 px |
+| What is in it | the status bar's *"built in 2.78 s"* against *"built in 2.80 s"* |
+| CHECK panel differing box | **none** |
+
+The preview's own elapsed time is the only thing on screen that changed, and it is not the kind of
+number that can be the same twice. The panel shows the Mega's fourteen checks including its real
+short — *"+5V and GND are left connected: the gap between them is narrower than the 0.154 mm this
+cut is wide"* — laid out exactly as before.
+
+**What the migration decided, rather than defaulted.** The story said anything whose severity is
+not obvious from its call site gets read and decided, and the ones worth recording are:
+
+- **The electrical findings are `Refusal`, not `Error`.** The file is correct and safe to run; what
+  will not happen is the separation that was asked for. That is precisely the middle severity and
+  the reason there is one.
+- **`ToolAdvice` decided its own.** Its class comment already said *"Advice, never refusal"*, so all
+  three call sites take their severity from the class that produces them rather than from a guess
+  at the call site.
+- **Start/end G-code was the one site that already knew.** `issue.IsError` was a bool being
+  flattened into two different sentences; it is the severity now, and nothing else changed.
+- **"No tabs: the board will be thrown by the cutter" stayed `Advice`**, and it was the closest
+  call. It is the worst consequence on the list, and `TabCount == 0` is something the operator set
+  on purpose — `Refusal` means *we did not do what you asked*, which would be false. Left as
+  advice and written down here because story 5 may prove the list needs emphasis that severity
+  alone does not give.
+
+**`/describe-test` found the hole this story would otherwise have left, and it was in the new code
+rather than in the tests.** Six files were read back cold, one per run. Of one of them the account
+said plainly: *"The `Check` record carries `Severity`, `Kind` and `Source`; no test in this file
+reads any of them — only `Message`."* That was true of every test in the repository, and it
+generalises into the thing that matters:
+
+| Pins | What it pins |
+|---|---|
+| Golden baselines | the **text**, which this story leaves unchanged by construction |
+| The panel comparison | the **pixels**, which render that text |
+| *Nothing* | the source, the kind and the severity |
+
+So a check attached to the wrong layer, or a refusal recorded as advice, would have been caught by
+nothing at all — the sentence right, the panel right, the field underneath wrong. Thirty-eight
+sites were assigned in one pass and every one of them was unguarded.
+
+**`tests/MillBurn.Tests/CheckSourceTests.cs`** closes it, with invariants rather than pinned values
+— wording is already pinned in a dozen places and the new fields are not pinned anywhere. Five
+tests: a check that names a file names its own item's file; every check carries a label; a tool
+check is never a refusal (which is `ToolAdvice`'s own declared rule, not this file's opinion);
+copper that will not separate is a refusal and names its layer; and a board with something refused
+carries more than one severity.
+
+**Both halves were then mutation-tested**, because a guard nobody has seen fail is a guard nobody
+has seen:
+
+| Mutation | Result |
+|---|---|
+| Every layer source made to name `"mutant.gbr"` | two tests fail |
+| The four electrical refusals demoted to advice | two tests fail |
+
+**Then the new file was itself put through `/describe-test`**, the rule applying to a file created
+as much as to one edited — and it found a name promising more than its body delivered, in a test
+an hour old. `CopperThatWillNotSeparateIsARefusalAndNamesItsLayer` asserted only that the source
+carried *some* file name, which a check hung on the wrong layer satisfies perfectly. The account
+said so in as many words: *"the test does not verify that the file named is the right layer for
+that check — only that a file name is present."*
+
+It walks the items now and compares each finding against the one carrying it. **The first mutation
+above caught one test before that change and catches two after it**, which is the difference
+measured rather than asserted. A second, smaller correction came from the same account: a test
+named *"…IsNeverARefusal"* that actually required `Advice` — a name promising less than it checks,
+which is the safe direction and still wrong. It is `EveryCheckAboutAToolIsAdvice`.
+
+That is the second time in this story the pass has found the defect in the new work rather than in
+the code being read, which is the argument for the rule as written: *without exception*, including
+on the file you wrote to close the last finding.
+
+**Writing those tests found two things about the fixtures**, both worth keeping:
+
+- **Depth is what fuses copper, not the moat.** The first version set a 0.4 mm moat and got a plan
+  whose every check was advice. A wider moat adds laps; the cut width — which is what decides
+  whether two nets stay joined — is a function of depth alone for a V-bit. 0.75 mm is the depth
+  06 §6.42 records the test board fusing at, and it is what makes the electrical path produce
+  anything.
+- **PogoTest1 produces only advice, and that is correct.** A clean board with nothing declined has
+  one severity, so the severity test had to move to a board that really does refuse something.
+  Asserting otherwise would have been asserting that the application complains.
+
+**Two more things found on the way, neither of them in the story.**
+
+`PreviewBuild` deduplicated warnings with `Distinct(StringComparer.Ordinal)` — the text as the key,
+because it was the only key there was. It is `Distinct()` on the record now. The set is identical
+today, since two checks reading the same also agree on source, kind and severity; the point is that
+when they stop agreeing, two genuinely different findings worded alike both survive.
+
+**A trap worth the note it is getting:** rewriting a `.cs` file with a Python script that reads
+text and writes with `newline=''` converts the file from CRLF to LF, and the build fails with three
+`IDE0055` formatting errors pointing at code nobody touched. Half an hour went into reading a
+perfectly correct `&&` chain. Read and write bytes, or restore the endings afterwards. It belongs
+beside the heredoc-eats-backslashes trap in AGENTS.md.
+
+**`/code-review` at medium found three, and the middle one is the one that matters.**
+
+**It found a regression the pixel comparison could not have caught, and a comment of mine asserting
+it was impossible.** `PreviewBuild` de-duplicated the panel's checks on the sentence; record
+equality looked like the obvious upgrade, and the comment written beside it claimed the set was
+unchanged *"because two checks reading the same also agree on source, kind and severity"*. That is
+false **because of this very story** — every planner check now carries its own layer, so one
+sentence produced for the top copper and again for the bottom is two records where it was one
+line. Reproduced on the Arduino Uno: six checks, **five lines before and six after**. It
+generalises to tool advice for the same bit on both copper layers, the mask-relief sentence on both
+masks, and the mirror sentence on every mirrored item — so the migration underneath 6.44 was
+quietly lengthening the panel that 6.44 exists to shorten.
+
+**Why the evidence missed it, which is the lesson worth keeping.** The before/after comparison was
+pixel-perfect and it was taken on the Arduino Mega, a board with no cross-layer duplicate to show.
+The proof was sound for that board and was stated as though it were general. A screenshot proves a
+board, not a property.
+
+De-duplication is back on the rendered line, and `OneSentenceFromTwoLayersIsOneLineInThePanel` pins
+it — with a guard that fails if the Uno ever stops repeating a sentence, so the test cannot pass by
+having nothing to examine. It fails on the record-equality version. **And it is expected to change
+in story 5:** once the label renders, "Top copper: …" and "Bottom copper: …" are two different
+lines and both must survive. The key changes when the label does, together, with the panel in
+front of you.
+
+**The other two.** A check built for an unreadable file was handed the whole sentence — `Board.Failures`
+entries are `"F_Cu.gbr: unexpected token at line 12"` — as its `FileName`, a field whose entire job
+is to be matched against a layer's name and which nothing could ever equal. Reconstructing the name
+by splitting the sentence is exactly what this story exists to stop, so `Board.Failures` is now
+`BoardFailure(FileName, Reason)` with a `ToString` that renders the sentence it always was; every
+reader is unchanged and the name is there for anything that needs it. And the deleted
+`_exportWarnings` left its doc comment behind, giving `ReplaceExportWarnings` two `<summary>`
+blocks — the orphan recorded a real fixed bug (two runs disagreeing about the probed side showed
+each file refused for two opposite reasons at once), so it is folded into the method's own summary
+rather than deleted.
+
+**Left open, deliberately.** The source is attached everywhere and rendered nowhere: `Check.Line`
+returns the message alone, so a prefixed message such as `Stock: …` carries its source twice, in
+the text and in the field. Story 5 renders the label, strips the duplicates and takes the golden
+diff that comes with it.
+
+**6.50 revisited, as the story required.** The work landed almost entirely in `MainViewModel` — a
+new `SourceFor`, twelve producer sites and the deletion of the shadow list — and **none of it is
+reachable from a test.** What proves this story is the golden files and a pixel comparison of a
+screenshot, which is real evidence and is not a unit test. The one genuinely new decision in the
+view model, *"which checks in this list are the export's"*, is now a one-line predicate on a field
+and would be the easiest thing in the file to test if anything could reach it. That is the argument
+for 6.50 stated from the other side, and it is stronger than it was on 2026-09-28 morning. Still
+not pulled into this sprint: stories 4, 5 and 6 are all in this file, and a seam pulled now would
+be pulled underneath them. **Worth putting to the product owner again when story 6 closes.**
 
 ---
 
@@ -228,6 +418,66 @@ exporting anything; the automatic check still runs on load and on preview as it 
 button reports how long it took and can be superseded rather than freezing the window; and the
 closure carries a `--shot` of the Mega showing its short, taken without an export.
 
+### Closed — 2026-09-28
+
+**Done.** *Job ▸ Check this board* (**F6**), above Preview in the menu because it is the cheaper
+question and the one worth asking first. `BoardCheck` in the pipeline does the work; the window
+runs it on a background thread through its own `LatestRun`, so pressing it twice supersedes rather
+than queues, and it does **not** share the preview's run — checking a board while a preview builds
+is a reasonable thing to do and must not throw the picture away.
+
+**The picture is the verdict.** `--check --shot` on the Mega: the board still drawn as copper
+rather than as a toolpath — nothing was planned — the CHECK panel holding eleven findings beginning
+*"+5V and GND are left connected…"*, and the status line reading **"Checked 2 layers in 0.50 s: 11
+thing(s) worth checking."** No export, no preview, no G-code. A screenshot taken after a preview
+could not have shown this, which is why `--check` exists as a flag of its own.
+
+**Half a second on the Mega**, so the window does not need protecting from it — but the run is
+cancellable anyway, because the six-layer i.MX8M board is the one this was sized against and
+nobody should discover the ceiling at the machine.
+
+**The automatic check stays, and nothing was taken away.** Planning still checks and still refuses
+to let a board through quietly. The button is for the operator who has not pressed Preview yet; the
+automatic half is for the one who never thinks to press anything.
+
+**Pressing Check after Preview does not show everything twice.** Preview alone puts 14 items in the
+panel, Check alone 11, and Preview-then-Check 14 — the eleven electrical findings replaced rather
+than appended. That is `ReplaceElectricalChecks`, and **it is a method that could not have been
+written before story 1**: the electrical findings for a layer are the same findings whoever
+produced them, so what has to be matched is the layer and the kind. Matching on the sentence — the
+only key there used to be — cannot tell one layer's copy from another layer's identical copy.
+
+**A bug caught while writing it, and worth recording because the test would not have found it.**
+The first version worked out which layers to refresh from the findings themselves. A layer that was
+checked and came back *clean* contributes no finding to announce itself, so its stale line would
+have stayed on screen for ever — precisely when the operator most wants to see a short they have
+just fixed disappear. `BoardCheck.Result` carries the layers it looked at, not only a count of
+them.
+
+**And the cancellation test was written wrongly first, in exactly the way CLAUDE.md warns about.**
+The first version cancelled the token *before* the call — which a single `IsCancellationRequested`
+at the top of the method satisfies, proving nothing about a running check stopping. That is the
+`LatestRun` failure CLAUDE.md names as having already happened once, reproduced verbatim. A
+`/describe-test` pass said so plainly: *"a run cancelled part-way through, which is the situation
+the doc comment describes, is not exercised."*
+
+It uses `CancelsAfterLayers` now, the fixture sprint 2 built for this, aimed at the first isolated
+layer's own settings lookup so the run finishes one layer and stops at the next. **Measured:** the
+whole run checks 2 layers, the abandoned one reaches 1 lookup and checks 1. And it is
+mutation-tested — moving the token check out of the loop to the top of the method, which is what
+the first version would have allowed, **fails it**.
+
+Getting there took two wrong assertions of my own, both recorded in the test: a cut-off expressed
+as "most of the way through the layer list" landed after both copper layers on a board with
+thirteen layers and two isolated ones, and a guard written on the lookup count failed on a board
+whose first layer is copper, where one lookup is all it takes to be half done. Lookups are how the
+cut-off is aimed; layers are what "part way" means.
+
+**Left open.** `CheckBoardAsync` and `ReplaceElectricalChecks` are in `MainViewModel`, which no
+test can reach — the third time this sprint. `BoardCheck` itself is in the pipeline and is tested
+four ways. What is untested is the wiring, and the wiring is what sprint 2 was bitten by. See the
+note on 6.50 below.
+
 ---
 
 ## Story 5 — The list can be read at a glance
@@ -256,7 +506,11 @@ folds to its title and count.
 **How.**
 
 - **Source first, in the layer's colour**, which story 1 made possible by putting the layer on the
-  check rather than its name in the sentence.
+  check rather than its name in the sentence. **This is where the prefix actually moves.** Story 1
+  attached the source and deliberately did not render it; rendering it gives forty lines a prefix
+  they have never had and takes it out of the text of the handful that carry it today. Both halves
+  are one change, and the companion pages' golden baselines move with it — **a golden file that
+  changes is a decision, so the diff gets read rather than regenerated.**
 - **A refusal looks different from advice** without reading to the end of the sentence. 6.36's
   *Done when* asks for exactly this and does not say how; a mark, a colour and a word are all
   candidates and the one that survives a `--shot` at working size wins.
@@ -278,6 +532,81 @@ layer's colour, a reader can tell a refusal from advice without reading to the e
 a status message that points at the checks points at one a reader can find without hunting, the
 section folds to its title and count with the count legible folded, and the closure carries
 `--shot`s folded and unfolded on a board with both refusals and advice on it.
+
+### Closed — 2026-09-28
+
+**The prefix moved, and it cost six golden lines.** `Check.Line` is now
+`"{Source.Label} — {Message}"`, which reaches the panel, the companion page, the CLI and the export
+window from one place. The golden diff was read rather than regenerated: exactly six lines across two
+baselines, each gaining the label of the `layer` line in its own block — `Bottom copper — Mirrored:
+…`, `Non-plated holes — …`, `Plated holes — …`. The two drill warnings had been indistinguishable
+prose about two different layers; they now say which.
+
+**The panel takes the halves apart, because it colours one of them.** `CheckRow` carries the label,
+the message, the mark and the brush, and the brush comes from the view model's `Palette(role)` so a
+label follows a colour override. A check naming "Top copper" in the palette's orange while the layer
+row above it shows a chosen green is the disagreement this project's rules name first.
+
+**A null brush is not the same as no brush, and a screenshot is what said so.** Binding a null
+`Foreground` to a `Run` does not inherit — it sets the property to null and the text vanishes. A
+board with no outline rendered two checks as `— No board outline: …` with the word "Board" simply
+absent. `BrushOrInherited` returns `AvaloniaProperty.UnsetValue` instead, so an uncoloured label
+inherits from a style and therefore follows a light/dark toggle, which a brush resolved once and
+handed to the row could not. **Nothing in the test suite could have caught this**; it is the 6.50
+argument again, and this time the evidence is a screenshot of a missing word.
+
+**The fold's two open questions, answered with the count in front of us** — not remembered across
+sessions, not reopened by an arriving note, reopened by an error or by an export refusal. The second
+exception is a different rule from the first: the status line is about to say *go and look at these*,
+and a message pointing into a folded list is an instruction nobody can follow. Recorded in 06 §6.37.
+
+**The de-duplication key did not move, and its reason did.** Story 1 predicted the key would have to
+change here. It did not: `DistinctBy(w => w.Line)` reads identically and now means something else,
+because `Line` changed underneath it. The comment was rewritten rather than left looking prescient —
+the rule is *the key is what the reader can see*, which is why record equality is still wrong, and
+for a reason that outlasts the label: it would separate checks differing only in a field the panel
+does not print.
+
+**A test inverted on purpose.** `OneSentenceFromTwoLayersIsOneLineInThePanel` said in its own summary
+that it expected to change here, and it has, to
+`TwoLayersSayingTheSameThingAreTwoLinesThatNameTheirLayers`. Both halves are now pinned: the pair
+survives and each names its layer, and no line still appears twice.
+
+**Three duplicated sources removed, all found by reading screenshots**, none reachable by a test
+because two of the three live in `MainViewModel`. `NoCheckNamesItsOwnSourceTwice` sweeps four boards
+so the planner's half cannot regress — and its emptiness guard immediately earned itself by failing
+on `GridStripConnector`, which produces no checks at this cut and would have been a passing case that
+examined nothing.
+
+**One defect exposed rather than introduced.** An export refusing a dry run for seventeen programs
+named all seventeen in one check, which filled the entire panel. Capped at three and a count. It had
+always been that way; what changed is that this story put a screenshot of the panel in front of
+someone.
+
+**The companion page gained a line, correctly.** Its `Distinct` collapsed the two soldermask
+warnings — *"This layer is negative: the shapes are its openings…"*, identical prose about two
+different layers — into one. They now read `Top soldermask — …` and `Bottom soldermask — …` and both
+survive, which is the same principle as the panel arriving at a surface with no golden file on it.
+
+**Shots.** Unfolded, Arduino Mega via `--check`: eleven findings, "Bottom copper" in blue and "Top
+copper" in orange matching their layer rows, amber `!` marks aligned in their own column.
+Folded, same board: `CHECK · 11 to look at` and five more layer rows visible.
+Highlighted, test board via `--write-export`: the tinted `Export — No dry run: …and 14 more` check
+under the status line *"17 refused — No dry run — see the checks."*
+
+**1,261 tests green** (1,233 + 28 golden), two baselines moved by three lines each and read line by
+line.
+
+**And 06's own status lines were left alone, on the repository's say-so.** Marking 6.36 and 6.37
+`· Fixed` in their headings failed `BacklogTests.TheBacklogMatchesTheRoadmap`, which generates
+[11](../Documentation/11-Backlog.md) from those headings. The convention it enforces is the one 6.42
+and 6.43 already follow after stories 2, 3 and 4: a folded entry keeps `folded into 6.44` and records
+its outcome in its body, and 6.44 itself is what gets marked when the last of the six lands. The
+headings went back; the bodies say what was built.
+
+**Left for story 6.** The companion page still flattens severity — it is read away from the app, so a
+refusal and a note look identical there with no panel to compare against. Not fixed here because the
+fix is a section of its own rather than a mark on a list item, which is exactly what story 6 is.
 
 ---
 
@@ -330,6 +659,80 @@ condition under which somebody adds one.
 names where a gap is rather than only which copper it is in, it shows story 3's split, the CHECK
 list is down to one line per layer pointing at it, and the closure carries a `--shot` of the view
 on the Mega and on the test board.
+
+### Closed — 2026-09-28
+
+**Where a gap is, computed rather than approximated.** `ElectricalCheck.Gaps` grows each piece of
+artwork on its own and intersects the results: the overlap is exactly the set of places a cut of that
+width cannot fit between two pieces. That is the answer `NetJoin.Near` says in its own doc comment
+that it does not give — *"enough to select the right piece of copper and not enough to point at the
+fault"*.
+
+**It is off the export path on purpose, and the measurement is why.** The first version paired every
+piece against every other and rejected the far ones by their boxes, which is useless against a ground
+pour whose box is the whole board: every other piece survived the rejection and paid for a boolean
+against a two-hundred-ring pour. **1,205 ms** on the Mega's top copper. Restricting pairs to pieces
+that merged into the *same grown region* — different regions are provably further apart than the cut
+— gave the same eight gaps in **266 ms**. A whole board is 1.59 s on the Mega, 0.26 s on the test
+board, off the UI thread on the `LatestRun` pattern.
+
+**Two faults the first screenshot of the view found, neither reachable by any test that existed:**
+
+- **The coordinates were in the Gerber frame.** Shorts reported at "107.35, -92.13 mm" on a board
+  whose own coordinates run from zero. Work zero is the board's lower-left corner in every emitted
+  program, and a negative coordinate on a board with no negative corner is worse than none, because
+  somebody will try to go there. Shifted in `BoardFindings`, which knows about boards — not in
+  `ElectricalCheck`, which knows about copper and would be guessing at a convention it does not own.
+- **One bridge appeared under two groups.** Matching a place to a group by the two nets either side
+  looks right and is not: a ground pour reaches many separate regions, so a GND–USHIELD bridge was
+  filed under every group holding both names and the board looked worse than it is. It now matches on
+  the whole region's net names — **carried as names rather than as a region index**, because
+  numbering the regions in two methods couples them through a traversal order computed twice from the
+  same input, which works and is a trap.
+
+**The CHECK list is down to one line a layer.** The Mega's eleven electrical lines became two, each
+coloured, each a refusal, each naming its count and pointing at F7; three more layer rows fit above
+it. Collapsed in the view model and **not** in `ElectricalFindings`, because the companion page and
+the CLI have no window to point at — a line ending "see the findings view" would be a dead end on a
+page read away from the app, so they keep the full set. The status line gained the same pointer, so
+"11 thing(s) worth checking" over a panel headed "· 2" is explained rather than contradictory.
+
+**Story 3's split is places now, not a tally.** Same-net and nameless bridges each get their own
+section with coordinates and a sentence saying which of them can be ignored and which cannot.
+
+**The line held.** No other DRC check was added while the view was open — no drill-to-copper
+clearance, no outline severing a trace — and nothing from the severed-net family, which stays out
+until the operation that can sever is the one being checked.
+
+**Shots.** Mega: 2 layers, 23 places, 13 groups, 1.59 s, every group with real coordinates inside the
+board's 101.85 × 53.59 mm. Test board: *"nothing shorted"*, both layers green, 0.26 s — the clean
+case, which is the one a view like this must get right or it will be ignored.
+
+**`/describe-test` found three defects in the new tests, and one of them was a trap this repository
+had already written down.**
+
+- **`NetGapTests` set `WidthNm` and named its cases after it** — "at 0.4 mm" — while the check reads
+  `EffectiveWidthNm`, which is the bit's width at the depth it cuts and never looks at `WidthNm`.
+  Every case ran at the default 0.05 mm depth whatever was passed, so two tests framed as a wide cut
+  against a narrow one were the same cut twice, and the figures printed to the test log were false.
+  `CheckSourceTests` records this exact trap — *"The depth is what does it, not the moat"* — which
+  makes this the second time it has been walked into. The helper now takes a depth and every test
+  prints the width it actually used. **A new test pins the relationship** that would have caught it:
+  a 0.127 mm cut finds 8 places, a 0.234 mm cut finds 161.
+- **`BoardFindingsTests`' split test could not fail.** `Assert.Single(gap.Between)` and "no nameless
+  gap has names" restate the partition itself — `IsSameNet` *is* `Between.Count == 1` — and the test
+  named for showing places never touched a coordinate. It now asserts the places are on the board,
+  are distinct from one another, and name nets the board actually declares.
+- **Two guards were missing**: the determinism test compared two lists with nothing saying they were
+  not both empty, and the timing test asserted only a ceiling, which is satisfied perfectly by
+  returning nothing instantly.
+
+**1,273 tests green** (1,245 + 28 golden), no golden baseline regenerated.
+
+**6.44 is closed.** All six of its *Done when* clauses are met across stories 1–6, and it leaves the
+backlog: 23 open entries become 22. The backlog is generated from 06, so that page was regenerated
+rather than edited — with `MILLBURN_UPDATE_SNAPSHOTS=1` scoped to that one test, because setting it
+across the suite would silently accept any golden that had drifted.
 
 ---
 
@@ -408,6 +811,34 @@ and on the test board; a test covers both Mega holes by position; the travel and
 quoted before and after, from `millburn-cli export --write`; the closure says what was decided about
 a pass cut in two and why; and the closure names the test that would have caught it.
 
+### Withdrawn — 2026-09-29
+
+**Built, and taken back out on the product owner's judgement:** *"I worry this is actually creating a
+problem and the copper is not getting separated. Let's leave this one out for now."*
+
+The objection is the right one and it is not about the implementation. Clipping the moat at a hole
+makes two nets' separation depend on the **drill** completing what the isolation started — a
+different operation, run afterwards, with its own registration. A hole slightly out of position, an
+undersized bit, or an operator who stops after isolation to look at the board leaves copper joined
+and a program that reads as complete. The behaviour being fixed costs a fraction of a second and
+looks wrong; the fix risks a short. **Refuse rather than guess** decides that, and a cut completed by
+a later operation is a guess about that operation.
+
+**Everything measured is recorded in [06 §6.47](../Documentation/06-Roadmap-and-Risks.md)** — the 44
+crossings, the 43 seconds of extra plunges against 0.2 seconds of cutting saved, the keepout band,
+and the shape a replacement would need: stop the moat short of the hole while still closing the loop,
+so the isolation separates the copper on its own. The code is kept as a patch in
+`WorkingFolder/held/` rather than deleted.
+
+**Four of the five faults found while building it were mistakes in measuring it**, not in the code,
+and the product owner found the one that mattered by looking at the board. Endpoints hid a chord
+across a hole; chords invented crossings on arcs; a wrong radius produced a defect that did not
+exist and was reported as a finding; a mirrored program was compared against an unmirrored drill
+file. Plotting the toolpath from the emitted G-code was the only measurement that held up.
+
+**The sprint ships six stories, not seven**, and 6.47 stays open with more written under it than it
+had before.
+
 ---
 
 ## Held for sprint 4
@@ -462,9 +893,10 @@ that is not halfway through a story:
 | 6.4 | The true tab-height comment, then placement by edge | Manual placement, keep-out from features |
 | 6.6 | The scannable row — 06 says *"build the row first and see what is left to want"* | Copy, sort, filter, in that order |
 
-**6.47 is no longer here.** It was held with the rest for part of a day and then brought into this
-sprint as story 7, which is the third decision made about it in five days and the one that ends the
-run. The reasoning is in the story.
+**6.47 is back here**, and it is the fourth decision about it in six days. It was held twice, brought
+into this sprint as story 7, built, and withdrawn once the fix was seen to make the copper's
+separation depend on the drill. It goes back to the held list better understood than it left:
+everything measured is under the entry, and so is the shape a replacement has to take.
 
 ---
 
@@ -516,6 +948,16 @@ This sprint is two roadmap items and the second was added deliberately, with a r
 the sprint was agreed — which is the bar. The temptation here will not be a new feature but a small
 fix noticed while reading forty-four call sites. Those go into 06 as they are found, with a note
 saying which story found them.
+
+**One thing came in under that rule, and it is recorded rather than absorbed.** Story 2's
+measurement turned up a third disagreement between the two paths that had nothing to do with the
+check: `mill` synthesised its cutter from its own 30°/0.1 mm defaults while `export` resolved one
+from the operator's saved library, so the two commands planned different cuts on the same board
+and `mill` ignored a tip the author had measured and corrected. It was put to the product owner
+with the measurement rather than fixed in passing, because defaulting `mill` to the library is a
+**Breaking** CLI change; they took it the same day. It belongs to G16 rather than to 6.42, it is
+written up in [06 §6.42](../Documentation/06-Roadmap-and-Risks.md) where it was found, and the
+matrix row says what was actually true before it.
 
 ---
 

@@ -1145,6 +1145,11 @@ internal static class Program
         var angle = 30.0;
         var tipMm = 0.1;
         var toolMm = 1.0;
+
+        // Whether the operator described a bit rather than leaving it to the library. See where
+        // the tools are resolved, below.
+        var bitDescribed = false;
+        var cutterDescribed = false;
         var tabs = 4;
         var thicknessMm = 0.0; // not given: resolved once the input is known
         var side = BoardSide.Top;
@@ -1185,18 +1190,25 @@ internal static class Program
                     i++;
                     break;
 
+                // Each of these three records that it was *given*, not only its value. The default
+                // cutter now comes from the operator's own library, so "they did not say" and
+                // "they said 30°, which happens to be the default" have to be told apart — the
+                // first takes the library's bit and the second overrides it.
                 case "--angle" when value is not null:
                     if (!TryMm(value, out angle)) { return Bad(flag); }
+                    bitDescribed = true;
                     i++;
                     break;
 
                 case "--tip" when value is not null:
                     if (!TryMm(value, out tipMm)) { return Bad(flag); }
+                    bitDescribed = true;
                     i++;
                     break;
 
                 case "--tool" when value is not null:
                     if (!TryMm(value, out toolMm)) { return Bad(flag); }
+                    cutterDescribed = true;
                     i++;
                     break;
 
@@ -1294,14 +1306,34 @@ internal static class Program
             }
         }
 
-        isolationTool ??= Tool.DefaultVBit with
-        {
-            TipNm = Nm.FromMillimetres(tipMm),
-            IncludedAngleDegrees = angle,
-            Name = FormattableString.Invariant($"{angle:F0}° V-bit, {tipMm:F2} mm tip"),
-        };
+        // **The library first, and a synthesised bit only when one was asked for.**
+        //
+        // This used to synthesise unconditionally from `angle` and `tipMm`, whose defaults are 30°
+        // and 0.1 mm — so `mill` planned with a bit nobody necessarily owns, while `export` chose
+        // from the saved library. On the author's own machine that is a 30° bit with a 0.127 mm
+        // tip, and the two commands therefore cut 0.127 mm and 0.154 mm at the same 0.05 mm depth
+        // and disagreed about what the board would come out like. G16 records "a cutter chosen
+        // from the library rather than synthesised" as done; it was done for one path.
+        //
+        // `LayerOperations.DefaultToolFor` is the rule the export planner and the board pane both
+        // use, so all three now agree by construction rather than by being written alike.
+        //
+        // **Breaking**, deliberately: a script that relied on the synthesised 30°/0.1 mm default
+        // now gets the library's isolation bit instead. Saying `--angle` or `--tip` keeps the old
+        // behaviour exactly, which is why they are tracked as *given* rather than compared against
+        // their defaults — "30°" typed out loud and "30°" never mentioned are different requests.
+        isolationTool ??= bitDescribed
+            ? Tool.DefaultVBit with
+            {
+                TipNm = Nm.FromMillimetres(tipMm),
+                IncludedAngleDegrees = angle,
+                Name = FormattableString.Invariant($"{angle:F0}° V-bit, {tipMm:F2} mm tip"),
+            }
+            : LayerOperations.DefaultToolFor(OperationKind.Isolation, library.Tools);
 
-        outlineTool ??= Tool.DefaultOutlineMill with { DiameterNm = Nm.FromMillimetres(toolMm) };
+        outlineTool ??= cutterDescribed
+            ? Tool.DefaultOutlineMill with { DiameterNm = Nm.FromMillimetres(toolMm) }
+            : LayerOperations.DefaultToolFor(OperationKind.Outline, library.Tools);
 
         var tool = isolationTool;
         // --passes is still honoured when it is the only thing given, so a script written against

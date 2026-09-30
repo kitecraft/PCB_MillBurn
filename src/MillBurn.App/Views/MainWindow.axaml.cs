@@ -214,6 +214,8 @@ public partial class MainWindow : Window
                 (Key.T, true, false) => () => OnEditToolsClicked(this, new RoutedEventArgs()),
                 (Key.D0, true, false) => () => OnFitClicked(this, new RoutedEventArgs()),
                 (Key.F5, false, false) => () => OnPreviewClicked(this, new RoutedEventArgs()),
+                (Key.F6, false, false) => () => OnCheckBoardClicked(this, new RoutedEventArgs()),
+                (Key.F7, false, false) => () => OnFindingsClicked(this, new RoutedEventArgs()),
                 (Key.F1, false, false) => () => OnHelpClicked(this, new RoutedEventArgs()),
                 _ => null,
             };
@@ -396,6 +398,14 @@ public partial class MainWindow : Window
             // Awaited, not started: everything below and the screenshot itself would otherwise
             // capture the window before the preview it was asked for had arrived in it.
             await vm.PreviewAsync();
+        }
+
+        // Job ▸ Check this board, so the panel can be photographed with the electrical findings in
+        // it **and no export planned** — which is the entire claim the check makes, and one a
+        // screenshot taken after a preview could not distinguish from the old behaviour.
+        if (args.Contains("--check", StringComparer.OrdinalIgnoreCase))
+        {
+            await vm.CheckBoardAsync();
         }
 
         // "Show only this layer's toolpath" on the first layer whose name contains the text, so what
@@ -642,6 +652,37 @@ public partial class MainWindow : Window
             _captureInstead = window;
         }
 
+        // The findings, so the window the CHECK panel points at is checkable in a screenshot like
+        // everything else here — and so the panel's one-line-per-layer summary can be photographed
+        // beside the thing it points at rather than described.
+        //
+        // **Awaited rather than routed through the click handler**, which is `async void`: that
+        // returns at its first await and the capture would then race the window into existence.
+        // The same reason `--check` awaits the view model instead of pressing the menu item.
+        if (args.Contains("--findings", StringComparer.OrdinalIgnoreCase)
+            && await vm.FindingsAsync().ConfigureAwait(true) is { } findings)
+        {
+            var window = new FindingsWindow(findings, vm.BoardTitle)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            window.Show(this);
+            _captureInstead = window;
+        }
+
+        // Folds the checks section, which is the half of it no screenshot could otherwise reach:
+        // folding is a click, and what it has to prove is that the heading still says how many
+        // checks there are and whether any of them wants looking at.
+        //
+        // **Last of all the flags on purpose.** It has to fold whatever every flag above has just
+        // put in the panel, and one of them — an export that refuses something — deliberately
+        // unfolds it again, because a status message pointing into a folded list is an instruction
+        // nobody can follow. Ordering this before them would hide that rule instead of showing it.
+        if (args.Contains("--fold-checks", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.ChecksFolded = true;
+        }
 
         var shot = ShotPath(args);
         if (shot is not null)
@@ -1138,6 +1179,41 @@ public partial class MainWindow : Window
         {
             await vm.PreviewAsync();
         }
+    }
+
+    private async void OnCheckBoardClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            await vm.CheckBoardAsync();
+        }
+    }
+
+    /// <summary>
+    /// Opens the findings, which is where the CHECK panel's electrical lines point.
+    ///
+    /// Non-modal, like the other windows opened for inspection: an operator reading where a short
+    /// is wants to move the board about behind it.
+    /// </summary>
+    private async void OnFindingsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm)
+        {
+            return;
+        }
+
+        if (await vm.FindingsAsync() is not { } findings)
+        {
+            return;
+        }
+
+        var window = new FindingsWindow(findings, vm.BoardTitle)
+        {
+            RequestedThemeVariant = ActualThemeVariant,
+        };
+
+        window.Show(this);
+        _captureInstead = window;
     }
 
     /// <summary>

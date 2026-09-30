@@ -79,6 +79,23 @@ public sealed record BoardLayer
 }
 
 /// <summary>Everything loaded from one export folder.</summary>
+/// <summary>
+/// A file that was found and could not be read, and which file it was.
+///
+/// **It was one sentence, and the file name could not be got back out of it.** `"F_Cu.gbr: …"`
+/// reads correctly and is useless to anything that needs to *match* on the name: a check built
+/// from it named a file no layer could ever have, so the window could never colour it, and once
+/// the label renders the line would say the file name twice. The <see cref="ToString"/> below is
+/// the sentence it always was, so every reader of it is unchanged; what is new is that the name
+/// is still there separately for anything that needs it.
+/// </summary>
+/// <param name="FileName">The file, on its own, as a layer would name it.</param>
+/// <param name="Reason">Why it could not be read.</param>
+public sealed record BoardFailure(string FileName, string Reason)
+{
+    public override string ToString() => $"{FileName}: {Reason}";
+}
+
 public sealed record Board
 {
     public required string Source { get; init; }
@@ -86,7 +103,7 @@ public sealed record Board
     public required IReadOnlyList<BoardLayer> Layers { get; init; }
 
     /// <summary>Files that were found but could not be read at all.</summary>
-    public IReadOnlyList<string> Failures { get; init; } = [];
+    public IReadOnlyList<BoardFailure> Failures { get; init; } = [];
 
     /// <summary>
     /// The board's extent, taken from the outline when there is one and from everything drawn when

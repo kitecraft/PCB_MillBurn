@@ -381,7 +381,7 @@ public sealed class ExportPlannerTests
 
         var outline = Plan(board, settings).Items.Single(i => i.Operation == OperationKind.Outline);
 
-        Assert.Contains(outline.Warnings, w => w.Contains("thrown by the cutter", StringComparison.Ordinal));
+        Assert.Contains(outline.Warnings, w => w.Message.Contains("thrown by the cutter", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -393,7 +393,7 @@ public sealed class ExportPlannerTests
 
         var mask = Plan(board, settings).Items.Single(i => i.LayerFileName == "PogoTest1-F_Mask.gbr");
 
-        Assert.Contains(mask.Warnings, w => w.Contains("openings, not its material", StringComparison.Ordinal));
+        Assert.Contains(mask.Warnings, w => w.Message.Contains("openings, not its material", StringComparison.Ordinal));
     }
 
     // ------------------------------------------------------------------ the flip
@@ -478,7 +478,7 @@ public sealed class ExportPlannerTests
 
         Assert.Contains("BOTTOM SIDE", item.Content, StringComparison.Ordinal);
         Assert.Contains("left-to-right", item.Content, StringComparison.Ordinal);
-        Assert.Contains(item.Warnings, w => w.Contains("flipped left-to-right", StringComparison.Ordinal));
+        Assert.Contains(item.Warnings, w => w.Message.Contains("flipped left-to-right", StringComparison.Ordinal));
         Assert.Contains(item.Summary, s => s.Contains("Mirrored", StringComparison.Ordinal));
     }
 
@@ -490,7 +490,7 @@ public sealed class ExportPlannerTests
         var top = Plan(board, Defaults(board)).Items.Single(i => i.LayerFileName == "PogoTest1-F_Cu.gbr");
 
         Assert.DoesNotContain("BOTTOM SIDE", top.Content, StringComparison.Ordinal);
-        Assert.DoesNotContain(top.Warnings, w => w.Contains("flipped", StringComparison.Ordinal));
+        Assert.DoesNotContain(top.Warnings, w => w.Message.Contains("flipped", StringComparison.Ordinal));
     }
 
     // ------------------------------------------------------------------ overriding the flip
@@ -550,16 +550,16 @@ public sealed class ExportPlannerTests
 
         Assert.Contains(
             Item(board, "PogoTest1-B_Cu.gbr", s => s with { Output = OutputKind.Gcode, Mirrored = false }).Warnings,
-            w => w.Contains("come out reversed", StringComparison.Ordinal));
+            w => w.Message.Contains("come out reversed", StringComparison.Ordinal));
 
         Assert.Contains(
             Item(board, "PogoTest1-F_Cu.gbr", s => s with { Mirrored = true }).Warnings,
-            w => w.Contains("only fit if the stock is flipped", StringComparison.Ordinal));
+            w => w.Message.Contains("only fit if the stock is flipped", StringComparison.Ordinal));
 
         // And says nothing at all when the setting is the one the layer's side implies.
         Assert.DoesNotContain(
             Item(board, "PogoTest1-F_Cu.gbr", s => s).Warnings,
-            w => w.Contains("mirror", StringComparison.OrdinalIgnoreCase));
+            w => w.Message.Contains("mirror", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

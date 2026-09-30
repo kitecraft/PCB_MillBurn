@@ -348,7 +348,7 @@ public sealed class RoutingGuideTests(ITestOutputHelper output)
 
             Assert.Equal(Path.GetFileNameWithoutExtension(layer.Key) + ".slots.nc", file.TargetName);
             Assert.Equal([endMill.Name], cutters);
-            Assert.DoesNotContain(file.Warnings, w => w.Contains("are NOT cut", StringComparison.Ordinal));
+            Assert.DoesNotContain(file.Warnings, w => w.Message.Contains("are NOT cut", StringComparison.Ordinal));
         }
 
         // The plated layer is the one that has slots as well as milled holes.

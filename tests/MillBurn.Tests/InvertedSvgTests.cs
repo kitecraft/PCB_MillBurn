@@ -54,7 +54,7 @@ public sealed class InvertedSvgTests(ITestOutputHelper output)
 
         Assert.Contains(
             item.Warnings,
-            w => w.Contains("shapes are its openings", StringComparison.Ordinal));
+            w => w.Message.Contains("shapes are its openings", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -67,11 +67,11 @@ public sealed class InvertedSvgTests(ITestOutputHelper output)
     {
         var item = MaskSvg(inverted: true);
 
-        output.WriteLine(string.Join("\n", item.Warnings.Concat(item.Summary)));
+        output.WriteLine(string.Join("\n", item.Warnings.Select(w => w.Message).Concat(item.Summary)));
 
         Assert.DoesNotContain(
             item.Warnings,
-            w => w.Contains("shapes are its openings", StringComparison.Ordinal));
+            w => w.Message.Contains("shapes are its openings", StringComparison.Ordinal));
 
         Assert.Contains(
             item.Summary,
@@ -157,6 +157,6 @@ public sealed class InvertedSvgTests(ITestOutputHelper output)
             loaded, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Svg).Items);
 
         Assert.Contains(item.Summary, s => s.Contains("except this layer", StringComparison.Ordinal));
-        Assert.DoesNotContain(item.Warnings, w => w.Contains("openings", StringComparison.Ordinal));
+        Assert.DoesNotContain(item.Warnings, w => w.Message.Contains("openings", StringComparison.Ordinal));
     }
 }

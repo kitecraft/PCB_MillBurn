@@ -10,6 +10,53 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
+## Unreleased — sprint 3, `release/0.4.0`
+
+**Breaking: `millburn-cli mill` now takes its cutters from your tool library.** It synthesised them
+from its own defaults — a 30° V-bit with a 0.1 mm tip, and a 1.0 mm end mill — and ignored the
+library entirely unless you named a tool. So `mill` and `export` planned different cuts on the same
+board: on a library holding the built-in V-bit with its tip corrected to a measured 0.127 mm, one
+command cut 0.154 mm and the other 0.127 mm at the same depth, and they disagreed about which nets
+the cut would leave connected. `--angle`, `--tip` and `--tool` still synthesise a bit exactly as
+before; what changes is what happens when you say nothing. A script relying on the old default gets
+your library's isolation bit instead.
+
+**The checks now read as a list rather than a wall of sentences.** Every line begins with the thing
+it is about — `Top copper — …`, `Stock — …`, `Export — …` — and a layer's own checks carry that
+layer's colour, the one you chose if you have overridden it. A mark in front of each says how much it
+matters without your reading to the end of the sentence: a faint dot for advice, an amber `!` for
+something refused, a red `▲` for do-not-run-this.
+
+**The section folds away**, leaving the heading, the count, and how many of them want looking at, so
+a board you have already read the checks on gives the room back to the layer list. It is not
+remembered between sessions — a fold set on one board should not hide the checks on the next one you
+open — and a new check does not reopen it, except an error or an export refusal, which are the two
+cases where leaving it folded would hide something you are being told to go and look at.
+
+**And the export's status line now points at a line you can see.** *"17 refused — No dry run — see
+the checks"* used to send you to a list where nothing said which one it meant; the checks it is
+about are now tinted in the panel. A refusal naming seventeen files also stops after three and counts
+the rest, instead of filling the whole panel with a list you had to read to the end to learn it was
+all of them.
+
+**The findings have a place of their own — *Job ▸ Findings*, F7.** Every copper layer in one window
+instead of one report per program, with room for what a warning line could never carry: every net in
+a shorted group rather than the first six, and **where each gap actually is**. Not which copper it is
+in — the actual coordinate, in the same frame the G-code uses, so you can go to it.
+
+Finding those places means growing each piece of copper on its own and intersecting the results,
+which costs about a second and a half for a two-sided board. That is why it lives behind a menu item
+rather than running on every preview, and why it can be cancelled while it works.
+
+**And the CHECK list gets out of the way.** A dense board used to add eleven lines of net names to it
+and bury the layer that would not parse; it now adds one line per copper layer, saying how many
+findings there are and pointing at F7. The companion pages and the CLI still carry the full set,
+because a page read away from the app has no window to open.
+
+This section is a placeholder for the sprint's notes and will be folded into the 0.4.0 entry.
+
+---
+
 ## [0.3.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.3.0) — 2026-09-27
 
 **Fix what is broken.** The first sprint defined by the defect list rather than by a theme, which is

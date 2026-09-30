@@ -50,7 +50,7 @@ public static class BoardLoader
         options ??= new RealisationOptions();
 
         var layers = new List<BoardLayer>();
-        var failures = new List<string>();
+        var failures = new List<BoardFailure>();
 
         foreach (var file in files)
         {
@@ -63,7 +63,7 @@ public static class BoardLoader
                 // One unreadable file must not cost the whole board. The name and the reason go in
                 // the result so the UI can say which file, rather than showing a board that is
                 // quietly missing a layer.
-                failures.Add($"{Path.GetFileName(file)}: {ex.Message}");
+                failures.Add(new BoardFailure(Path.GetFileName(file), ex.Message));
             }
         }
 
@@ -91,7 +91,7 @@ public static class BoardLoader
         options ??= new RealisationOptions();
 
         var layers = new List<BoardLayer>();
-        var failures = new List<string>();
+        var failures = new List<BoardFailure>();
 
         foreach (var (fileName, content, role) in sources)
         {
@@ -120,7 +120,7 @@ public static class BoardLoader
             }
             catch (Exception ex) when (ex is GerberParseException or DecoderFallbackException)
             {
-                failures.Add($"{fileName}: {ex.Message}");
+                failures.Add(new BoardFailure(fileName, ex.Message));
             }
         }
 

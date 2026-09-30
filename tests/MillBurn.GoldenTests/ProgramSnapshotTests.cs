@@ -96,7 +96,7 @@ public sealed class ProgramSnapshotTests
 
         foreach (var warning in item.Warnings)
         {
-            Line(into, "warning", warning);
+            Line(into, "warning", warning.Line);
         }
 
         // Every comment, in order. This is where the operation, the tool changes, the depths and

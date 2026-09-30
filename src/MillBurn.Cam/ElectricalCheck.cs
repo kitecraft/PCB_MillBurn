@@ -42,6 +42,70 @@ public sealed record NetJoin
         text.ToString(CultureInfo.InvariantCulture);
 }
 
+/// <summary>
+/// One place where two pieces of copper stay joined, and the nets either side of it.
+///
+/// **This is the answer <see cref="NetJoin.Near"/> deliberately does not give.** `Near` is one of a
+/// net's own points inside the shared copper — a pad centre or a trace midpoint — which on a ground
+/// pour can be tens of millimetres from the narrow place the tool could not reach. It is enough to
+/// select the right piece of copper and not enough to point at the fault.
+///
+/// This is the fault. It is found by growing each piece of artwork on its own and intersecting the
+/// results: where two separately-grown pieces overlap is exactly where a cut of this width cannot
+/// fit between them. That is an offset per piece and a boolean per candidate pair, which is why it
+/// is not on the path that runs during every export — <see cref="ElectricalCheck.Isolation"/> stays
+/// cheap and says *which copper*, and this is asked for only when somebody opens the findings view
+/// and has therefore asked for the expensive answer.
+/// </summary>
+public sealed record NetGap
+{
+    /// <summary>
+    /// The nets either side, in name order.
+    ///
+    /// **Can be empty, and can hold one name.** Copper carrying no net attribute bridges just as
+    /// physically and has no name to report it under; two pieces of the same net give one name and
+    /// are electrically nothing, which is story 3's split arriving here as a fact about a place
+    /// rather than as a tally. The view says which kind each one is, so a reader can see the
+    /// difference instead of being told a number.
+    /// </summary>
+    public required IReadOnlyList<string> Between { get; init; }
+
+    /// <summary>Where. A point inside the copper that bridges the gap.</summary>
+    public required Point2 At { get; init; }
+
+    /// <summary>
+    /// Every net named anywhere in the merged copper this bridge is part of, in name order.
+    /// </summary>
+    /// <remarks>
+    /// **This is what ties a place to the group that named it**, and it is a set of names rather
+    /// than an index on purpose. The obvious way to match the two — have both methods number their
+    /// regions and compare the numbers — couples them through the order
+    /// <see cref="Polygons.Separate"/> happens to return, computed twice from the same input in two
+    /// different methods. It works and it is a trap: anything that changes one traversal silently
+    /// mismatches every place against the wrong group.
+    ///
+    /// Matching on the names is derived from the board on both sides, and it is the comparison the
+    /// reader would make anyway. It matters because <see cref="Between"/> alone is not enough: a
+    /// ground pour reaches many regions, so a GND–USHIELD bridge whose own two pieces are named
+    /// that could be filed under every group holding both names — which is exactly what the first
+    /// version of the findings view did, listing one bridge under two separate groups and making
+    /// the board look worse than it is.
+    /// </remarks>
+    public required IReadOnlyList<string> RegionNets { get; init; }
+
+    /// <summary>
+    /// Whether anything is actually shorted here.
+    ///
+    /// Two distinct names is a short. One name is the same conductor meeting itself, which the cut
+    /// equally cannot divide and which shorts nothing. No name at all is the honest middle: this is
+    /// a bridge nobody can speak for.
+    /// </summary>
+    public bool IsShort => Between.Count >= 2;
+
+    /// <summary>The same-net case, which is safe by construction and still worth seeing.</summary>
+    public bool IsSameNet => Between.Count == 1;
+}
+
 /// <summary>What an electrical check of one copper layer found — or why it could not look.</summary>
 public sealed record NetCheck
 {
@@ -80,6 +144,32 @@ public sealed record NetCheck
     /// unnamed copper at all. Each region's merges are attributed to it instead.
     /// </summary>
     public int Unnamed { get; init; }
+
+    /// <summary>
+    /// Merges where one piece of copper met another piece of the same net.
+    ///
+    /// **Electrically nothing**, and worth saying so plainly: the two pieces were one conductor
+    /// before the cut and are one conductor after it. The tool could not fit between them, which
+    /// is a fact about the geometry and not about the circuit, and an operator who has been told
+    /// twenty-five gaps could not be cut deserves to know how many of them are this.
+    ///
+    /// It is still not *nothing at all*. A trace the cutter could not separate from its own pad is
+    /// copper left where the design wanted none, which matters for solderability and for anyone
+    /// probing the board — so it is reported, and reported as what it is.
+    /// </summary>
+    public int SameNet { get; init; }
+
+    /// <summary>
+    /// Merges where the copper carried no net attribute at all, so nothing could be named.
+    ///
+    /// **This is the half that might be a short.** A fill, a fiducial, an unnamed pour, anything a
+    /// Protel export wrote: it fuses with its neighbour exactly as a named net would and the check
+    /// has no name to report it under. Whether it matters cannot be decided here, which is the
+    /// reason it is counted separately rather than folded in with <see cref="SameNet"/> — one of
+    /// the two is safe by construction and the other is unknown, and averaging them into a single
+    /// number told the operator neither.
+    /// </summary>
+    public int Nameless { get; init; }
 
     /// <summary>
     /// Net points that could not be placed in any piece of grown copper, which should be none.
@@ -280,22 +370,57 @@ public static class ElectricalCheck
         }
 
         var joins = new List<NetJoin>();
-        var explained = 0;
 
         foreach (var (index, held) in inRegion)
         {
-            if (held.Nets.Count < 2)
+            if (held.Nets.Count >= 2)
+            {
+                joins.Add(new NetJoin { Nets = [.. held.Nets], Near = held.First });
+            }
+        }
+
+        // **Which kind of unnamed each merge is.** The residual used to be one number covering two
+        // things that mean opposite amounts of trouble: copper carrying no net attribute, which is
+        // a gap nobody can name and might be a short; and two pieces of the *same* net rejoining,
+        // which the tool equally cannot cut and which is electrically nothing at all, because they
+        // were one conductor before the cut and are one conductor after it.
+        //
+        // An operator reading "25 gaps" could not tell how many mattered, and the honest wording
+        // that allowed for both — "the copper either side carries no net, or carries the same one,
+        // in which case nothing is shorted" — is a sentence that asks the reader to do the work.
+        //
+        // The machinery was already here. Every region's merges are attributed to that region, so
+        // the only question is how many names the region holds: two or more is a join and is
+        // reported by name; exactly one is the same net meeting itself; none is copper that cannot
+        // be spoken for.
+        var sameNet = 0;
+        var nameless = 0;
+
+        for (var index = 0; index < pieces.Length; index++)
+        {
+            if (pieces[index] <= 1)
             {
                 continue;
             }
 
-            joins.Add(new NetJoin { Nets = [.. held.Nets], Near = held.First });
+            var extra = pieces[index] - 1;
+            var names = inRegion.TryGetValue(index, out var held) ? held.Nets.Count : 0;
 
-            // Every merge inside this region is accounted for by the group just reported. Charging
-            // it one merge instead of all of them is what made the residual nonsense.
-            if (pieces[index] > 1)
+            if (names >= 2)
             {
-                explained += pieces[index] - 1;
+                // Every merge inside this region is accounted for by the group reported above, so
+                // it is not part of the residual and nothing needs to be added anywhere. It was
+                // counted into an `explained` total for a while, which nothing ever read —
+                // `Unnamed` is `sameNet + nameless` — and a compound assignment does not warn, so
+                // it sat here looking load-bearing.
+            }
+            else if (names == 1)
+            {
+                sameNet += extra;
+            }
+            else
+            {
+                nameless += extra;
             }
         }
 
@@ -315,10 +440,319 @@ public static class ElectricalCheck
             Joins = joins,
             NetsSeen = named.Count,
             Merged = merged,
-            Unnamed = Math.Max(0, merged - explained),
+
+            // Summed from the two kinds rather than subtracted from the total. The old
+            // `merged - explained` gives the same answer and says nothing about which kind, and
+            // keeping the subtraction alongside the split would be two ways of computing one
+            // number, waiting to disagree.
+            Unnamed = sameNet + nameless,
+            SameNet = sameNet,
+            Nameless = nameless,
             Unplaced = dropped,
             UnplacedCopper = strays,
         };
+    }
+
+    /// <summary>
+    /// Every place this cut leaves two pieces of copper joined, with the nets either side.
+    ///
+    /// **The expensive answer, and it is only ever asked for deliberately.** Where
+    /// <see cref="Isolation"/> says *this copper holds +5V and GND*, this says *here, at 41.6,
+    /// 22.3 mm*. Getting from one to the other costs an offset per piece of artwork and a boolean
+    /// per surviving pair, which is unjustifiable for a warning line and reasonable for a view
+    /// somebody opened.
+    ///
+    /// **How it works, and why it is exact rather than approximate.** The isolation pass runs its
+    /// centreline half a cut width from the copper, so two pieces can be separated exactly when
+    /// their outlines grown by that half-width do not meet. Growing each piece *on its own* and
+    /// intersecting two of them therefore answers the real question directly: the overlap is the
+    /// set of places a cut of this width cannot get between them, and any point in it is a point
+    /// the operator can go and look at.
+    ///
+    /// **Pairs are rejected by their boxes first**, which is what keeps this tractable. A board's
+    /// copper is mostly nowhere near any given piece, and two pieces whose bounding boxes do not
+    /// come within a cut width cannot possibly bridge — four comparisons each, against an offset
+    /// and a boolean for the ones that survive. On the Arduino Mega that is the difference between
+    /// examining every pair of 245 islands and examining the handful that touch.
+    /// </summary>
+    /// <param name="copper">The layer's artwork, as realised.</param>
+    /// <param name="nets">The net points, used to name the copper either side of each bridge.</param>
+    /// <param name="options">The isolation as it will actually be cut.</param>
+    /// <param name="token">Checked per candidate pair; a cancelled run returns what it has.</param>
+    public static IReadOnlyList<NetGap> Gaps(
+        Paths64 copper,
+        IReadOnlyList<NetPoint> nets,
+        IsolationOptions options,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(copper);
+        ArgumentNullException.ThrowIfNull(nets);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var reach = options.EffectiveWidthNm / 2;
+
+        if (reach <= 0)
+        {
+            // The same refusal `Isolation` makes: a cut of no width separates nothing, so there is
+            // no gap to be narrower than it.
+            return [];
+        }
+
+        var artwork = Polygons.Separate(copper).ToList();
+
+        if (artwork.Count < 2)
+        {
+            // One piece of copper cannot bridge to anything, and nought pieces still less.
+            return [];
+        }
+
+        var boxes = BoxesOf(artwork);
+
+        // **Only pieces that merged into the same region can bridge**, and this is what makes the
+        // whole thing tractable rather than merely possible.
+        //
+        // The first version paired every piece against every other and rejected the far ones by
+        // their boxes, which sounds sufficient and is not: the largest piece on a real board is the
+        // ground pour, its outer box is the whole board, and so no other piece is ever rejected
+        // against it. Every one of them then paid for a boolean against a two-hundred-ring pour.
+        // **Measured on the Arduino Mega's top copper at 0.4 mm: 1,205 ms.**
+        //
+        // Growing the layer as a whole first answers the question directly. Two pieces that landed
+        // in different merged regions are provably further apart than this cut, because the regions
+        // *are* the grown copper's connected parts — so the only pairs worth examining are the ones
+        // inside a region holding more than one piece, which on a board that is mostly fine is a
+        // handful out of hundreds.
+        var merged = Polygons.Separate(
+            Polygons.Inflate(copper, reach, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm))
+            .ToList();
+
+        if (merged.Count == 0)
+        {
+            return [];
+        }
+
+        var mergedBoxes = BoxesOf(merged);
+        var together = new Dictionary<int, List<int>>();
+
+        for (var piece = 0; piece < artwork.Count; piece++)
+        {
+            if (artwork[piece].Count == 0 || artwork[piece][0].Count == 0)
+            {
+                continue;
+            }
+
+            // A vertex of the artwork is safe to locate with: the grown copper is the artwork
+            // offset outwards by a positive amount, so every point of the original — boundary
+            // included — is strictly inside it. The same argument `Isolation` relies on.
+            var first = artwork[piece][0][0];
+            var region = RegionAt(merged, mergedBoxes, new Point2(first.X, first.Y));
+
+            if (region < 0)
+            {
+                continue;
+            }
+
+            if (together.TryGetValue(region, out var list))
+            {
+                list.Add(piece);
+            }
+            else
+            {
+                together[region] = [piece];
+            }
+        }
+
+        // Which piece each named net point sits in. Attributed per *piece* rather than per grown
+        // region, which is the whole reason this can name the two sides of a bridge separately:
+        // a region is what the pieces became after they merged, so asking it which nets it holds
+        // gives the union and not the two halves.
+        var namesOf = new SortedSet<string>[artwork.Count];
+
+        foreach (var point in nets)
+        {
+            if (string.IsNullOrWhiteSpace(point.Net))
+            {
+                continue;
+            }
+
+            var piece = RegionAt(artwork, boxes, point.At);
+
+            if (piece < 0)
+            {
+                // A net point that does not land on this layer's copper names nothing here. Counted
+                // by `Isolation`, which reports it; not counted twice.
+                continue;
+            }
+
+            (namesOf[piece] ??= new SortedSet<string>(StringComparer.Ordinal)).Add(point.Net);
+        }
+
+        var grown = new Paths64?[artwork.Count];
+        var gaps = new List<NetGap>();
+
+        // Regions in index order, so two runs walk the same pairs in the same sequence. A
+        // dictionary's own enumeration order is not something to build a reported list on.
+        foreach (var region in together.Keys.OrderBy(k => k))
+        {
+            var here = together[region];
+
+            if (here.Count < 2)
+            {
+                // One piece that grew into a region of its own merged with nothing. This is the
+                // common case on a board that is mostly fine, and it costs nothing to skip.
+                continue;
+            }
+
+            // Every name in this region, which is what `Isolation` reports as a group's nets. Built
+            // once for the region rather than per pair: it is a property of the copper, not of any
+            // one bridge through it.
+            var regionNets = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var piece in here)
+            {
+                if (namesOf[piece] is { } named)
+                {
+                    regionNets.UnionWith(named);
+                }
+            }
+
+            string[] inRegionNets = [.. regionNets];
+
+            for (var a = 0; a < here.Count; a++)
+            {
+                for (var b = a + 1; b < here.Count; b++)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        // Ordered even on the way out. A partial list is still shown — the findings
+                        // view says it is partial — and this method's own contract is that two runs
+                        // of the same board report the same places in the same sequence.
+                        gaps.Sort(OrderGaps);
+                        return gaps;
+                    }
+
+                    var i = here[a];
+                    var j = here[b];
+
+                    // Still worth the box test inside a region: three pieces can merge in a chain,
+                    // where the ends never touch each other. Four comparisons to find that out.
+                    if (Apart(boxes[i][0], boxes[j][0], options.EffectiveWidthNm))
+                    {
+                        continue;
+                    }
+
+                    var left = grown[i] ??= Grow(artwork[i], reach, options);
+                    var right = grown[j] ??= Grow(artwork[j], reach, options);
+
+                    var overlap = Polygons.Intersect(left, right);
+
+                    if (overlap.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var between = new SortedSet<string>(StringComparer.Ordinal);
+
+                    if (namesOf[i] is { } one)
+                    {
+                        between.UnionWith(one);
+                    }
+
+                    if (namesOf[j] is { } other)
+                    {
+                        between.UnionWith(other);
+                    }
+
+                    gaps.Add(new NetGap
+                    {
+                        Between = [.. between],
+                        At = Somewhere(overlap),
+                        RegionNets = inRegionNets,
+                    });
+                }
+            }
+        }
+
+        // A total order, for the same reason the joins have one: two runs of the same board must
+        // report the same places in the same sequence, or a view of them is not a fact about the
+        // board. Names first, because that is what a reader scans.
+        gaps.Sort(OrderGaps);
+
+        return gaps;
+    }
+
+    private static Paths64 Grow(Paths64 piece, long reach, IsolationOptions options) =>
+        Polygons.Inflate(piece, reach, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
+
+    /// <summary>Whether two boxes are further apart than <paramref name="by"/> in either axis.</summary>
+    private static bool Apart(
+        (long MinX, long MinY, long MaxX, long MaxY) a,
+        (long MinX, long MinY, long MaxX, long MaxY) b,
+        long by) =>
+        a.MinX - b.MaxX > by || b.MinX - a.MaxX > by ||
+        a.MinY - b.MaxY > by || b.MinY - a.MaxY > by;
+
+    /// <summary>
+    /// A point inside the overlap, which is the coordinate the operator is given.
+    ///
+    /// The centroid of the largest ring, verified rather than assumed. The overlap of two
+    /// round-grown outlines is a lens and its centroid is inside it, but "usually convex" is not
+    /// "always convex" — two pieces that touch in several places at once give an overlap in several
+    /// parts, and the centroid of the largest part is what is wanted there too. When the test fails
+    /// the first vertex is used: it sits on the boundary of the overlap rather than within it,
+    /// which is a fraction of a cut width away from the answer and still points at the right place
+    /// on the board. Refusing to name a location at all would be worse than naming one a hair off.
+    /// </summary>
+    private static Point2 Somewhere(Paths64 overlap)
+    {
+        var best = overlap[0];
+        var most = Math.Abs(Clipper.Area(best));
+
+        foreach (var ring in overlap)
+        {
+            var area = Math.Abs(Clipper.Area(ring));
+
+            if (area > most)
+            {
+                most = area;
+                best = ring;
+            }
+        }
+
+        double x = 0, y = 0;
+
+        foreach (var v in best)
+        {
+            x += v.X;
+            y += v.Y;
+        }
+
+        var middle = new Point64((long)(x / best.Count), (long)(y / best.Count));
+
+        return Polygons.PointIn(middle, best) == PointInPolygonResult.IsInside
+            ? new Point2(middle.X, middle.Y)
+            : new Point2(best[0].X, best[0].Y);
+    }
+
+    private static int OrderGaps(NetGap a, NetGap b)
+    {
+        for (var i = 0; i < Math.Min(a.Between.Count, b.Between.Count); i++)
+        {
+            var by = string.CompareOrdinal(a.Between[i], b.Between[i]);
+            if (by != 0)
+            {
+                return by;
+            }
+        }
+
+        var byCount = a.Between.Count.CompareTo(b.Between.Count);
+        if (byCount != 0)
+        {
+            return byCount;
+        }
+
+        var byX = a.At.X.CompareTo(b.At.X);
+        return byX != 0 ? byX : a.At.Y.CompareTo(b.At.Y);
     }
 
     private static int Order(NetJoin a, NetJoin b)
