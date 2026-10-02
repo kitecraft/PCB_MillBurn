@@ -4,7 +4,7 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (3)
+## Defects (2)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
@@ -12,7 +12,6 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 |---|---|---|
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
-| [6.53](06-Roadmap-and-Risks.md#653-copper-with-no-net-name-is-reported-as-safe-when-one-named-net-shares-its-region--defect--open--found-by-code-review-2026-09-29) | Copper with no net name is reported as safe when one named net shares its region | found by `/code-review`, 2026-09-29 |
 
 ## Enhancements (19)
 
@@ -68,4 +67,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**26 open**, of 56 entries in the roadmap.
+**25 open**, of 56 entries in the roadmap.

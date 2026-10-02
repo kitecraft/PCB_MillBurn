@@ -219,7 +219,8 @@ public sealed class FindingsWindow : Window
                 Invariant($"Copper with no net name — {layer.Nameless.Count} place(s)"),
                 "StatusWarning",
                 "The cut cannot get between these either, and nothing here can say whether it "
-                + "matters: the copper carries no net attribute to check against. Look at them."));
+                + "matters: at least one side carries no net attribute to check against. Look at "
+                + "them — and at the ones where the other side is a net you can look up first."));
 
             panel.Children.Add(Places(layer.Nameless));
         }

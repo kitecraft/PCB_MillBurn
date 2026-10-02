@@ -1050,13 +1050,18 @@ public static class OutlineOperation
         {
             var next = ordered[(t + 1) % ordered.Count];
 
-            // From the far side of this tab to the near side of the next one. The next tab's centre
-            // is taken a whole perimeter further on when it comes before this one, which is the case
-            // for exactly one run: the one that spans the start vertex.
+            // From the far side of this tab to the near side of the next one.
             var from = ordered[t].AlongNm + (ordered[t].WidthNm / 2.0);
             var to = next.AlongNm - (next.WidthNm / 2.0);
 
-            if (to <= from)
+            // **Only the last run spans the start vertex**, and a `/code-review` pass is why this is
+            // said by position rather than by comparing the two distances. Wrapping whenever the
+            // next tab came out earlier could not tell "this run crosses the seam" from "these two
+            // tabs overlap" — and two tabs widened by hand until they met produced a run of nearly
+            // the whole profile, cut at every tabbed depth, straight through every other tab on the
+            // board. That is a piece cut fully free and thrown on the last pass, which is the one
+            // thing tabs exist to prevent.
+            if (t == ordered.Count - 1)
             {
                 to += walk.Perimeter;
             }

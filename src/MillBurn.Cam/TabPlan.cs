@@ -335,8 +335,13 @@ public static class TabPlan
         }
 
         // The first and last runs are one edge cut by the seam.
+        //
+        // Both tolerances, as inside a run: a `/code-review` pass pointed out that testing only
+        // the pairwise one here would let two runs that are each within two degrees of straight
+        // merge into an edge bending twice that, with a tab centred on the bend.
         if (edges.Count > 1
-            && SameWay(segments[^1], segments[0], Straight))
+            && SameWay(segments[^1], segments[0], Straight)
+            && SameWay(segments[0], segments[^1], StraightOverall))
         {
             var last = edges[^1];
             var first = edges[0];

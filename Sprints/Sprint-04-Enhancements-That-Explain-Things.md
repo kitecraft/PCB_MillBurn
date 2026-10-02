@@ -384,6 +384,108 @@ the other. A fix here places both halves against one set of regions rather than 
 four places, a test covers exactly that shape, both halves place their net points against the same
 regions, and the preview and export timings are quoted before and after.
 
+### Closed — 2026-10-02
+
+**Met.** A merge with unnamed copper on either side is reported as nameless in all four places, the
+two halves place their net points against the same geometry, and the cost is measured.
+
+- **`Isolation` attributes a name to the piece it sits on**, and reads the region off the piece. A
+  region is same-net only when every piece that merged there carries a name of its own; one named
+  net beside unnamed copper is nameless.
+- **`NetGap.NamedSides`** counts the two sides rather than the union of their names, and `IsSameNet`
+  is now *both named, and named the same*. The union could never tell one named side from two.
+- **Both halves locate in the raw artwork**, with the grown region as a fallback for a point that
+  lands on a boundary — and a region holding such a point is never called wholly named, because
+  nothing can say which piece the name was on.
+- **The panel, the companion page and the CLI** take their words from `ElectricalFindings`, which
+  reads these counts, so all three moved with them. The sentence widened with the bucket: *"with at
+  least one side carrying no net name"*, where it used to say the copper carried none — true while
+  the bucket held only regions with no names at all, and no longer. The findings window's heading
+  says the same, and points at the ones whose other side is a net you can look up.
+
+**What it cost**, which is what 6.53 asked to be measured before the shape was chosen. The work
+snapshot counts point-in-polygon tests and they are the whole of the extra work:
+
+| | before | after |
+|---|---|---|
+| Arduino Mega, point tests | 13,740 | 14,060 (+2.3 %) |
+| Arduino Uno, point tests | 5,222 | 5,370 (+2.8 %) |
+| Mega export, wall clock | 4.86 s | 4.94 s |
+| Panel export, wall clock | 2.94 s | 2.85 s |
+
+No second offset and no second separation — the expensive halves are untouched, which is why the
+entry's worry about the preview path did not materialise and the fallback shape it suggested was not
+needed.
+
+**No board in the corpus changes**, and that is the honest result. The test board still reports 25
+nameless gaps and no same-net ones at 0.75 mm; the Uno still reports its one genuine same-net merge
+at the default cut, both of whose pieces are named; the Mega's 240 merges are still all explained by
+a named group. The fault needs a region holding exactly one named net *and* unnamed copper, and none
+of the five boards has one — which is exactly why nothing caught it and why a review reading the code
+had to.
+
+**`/describe-test` on the one test file touched, and it found three.** The bridge test asserted
+`IsSameNet`, `IsShort` and `Between.Count` — and every one of those but the first reduces to
+"`Between` holds one name", which is exactly what could not tell this case from two pieces of one
+net. It asserts `NamedSides` now, which is the fact the fix turns on. The Mega test checked that
+nothing was misfiled as nameless and not that anything was misfiled as same-net, which is the
+direction this change could have broken. And the test-board test’s prose claimed "overwhelmingly
+nameless" where the line below it says "more nameless than same-net"; the prose moved rather than
+the assertion, because 25 against 0 does not need a threshold invented for it.
+
+### What the second code review found — 2026-10-02, medium
+
+**Four of the five were in story 1’s tabs**, which this review reached because it diffs the whole
+branch from the sprint’s start rather than the last commit. They are fixed here rather than reopened
+there, and the two serious ones are the kind only a reader finds:
+
+- **Two tabs widened until they met cut through every other tab on the board.** The splitter built
+  each run from one tab’s far side to the next tab’s near side and wrapped a whole perimeter
+  whenever the next tab came out earlier — which cannot tell *this run spans the seam* from *these
+  two overlap*. Measured on the 21 x 37 mm board with two 20 mm tabs: the runs covered **190.3 mm of
+  a 119.1 mm profile**, every tab crossed, the piece free on a pass that is not the last one with
+  the cutter still turning. Only the last run spans the seam now, by position rather than by
+  comparing distances, and the test covers the gaps the way the board does: every millimetre of the
+  profile is either cut or under a tab, so the runs and the tabs have to add up to it.
+- **The board-wide width box was inert, and worse than inert.** `Apply` decides a tab was set by
+  hand by comparing its box with the board-wide one, so typing 3.0 at the top left every row holding
+  2.0 — which came out as four explicit 2.0 mm edits nobody made, applied *after* the width and
+  overriding it. The number changed and every tab was cut at the old one. The top box now carries the
+  rows that agreed with it, and a row the operator has already changed keeps what they set.
+- **The guard against a default `ImmutableArray` was reached past twice**, in the advice this story
+  added — three lines after the comment explaining why it exists.
+- **The seam merge tested only the pairwise straightness**, not the overall one, so two runs each
+  within two degrees could merge into an edge bending twice that.
+- And **nothing warned about a tab wider than the planner would ever derive**, which is the input
+  that produces the first of these. It does now.
+
+**The process note was right too.** `TabsShowAsGapsInTheFullDepthCutLine` picks each run’s nearest
+neighbour across the whole full-depth layer, so if two depths ever both counted as full depth a run
+could pair with its own copy — distance zero, a "gap" that is the run’s own end, and an assertion
+that passes because the dim line crosses a point on the line. The gap is now required to be a tab
+wide.
+
+**And `/describe-test` again on the two test files the fixes touched**, which is the rule about a
+file that gains tests after it was last read. It found both of the new assertions claiming more than
+they checked. The overlap test asserted "at least 40 mm is left uncut" — a number picked by hand,
+and it passed by three tenths of a millimetre, so a legitimate change in how an overlapping pair is
+clipped could have moved it either way. It now unions the tabs’ own spans and asserts the runs and
+the tabs add up to the profile exactly: 78.8 mm cut, 40.3 mm under a tab, 119.1 mm of profile. And
+the backplot’s new gap check pinned 2.0 mm, which couples a test about the *picture* to whatever
+width the planner happens to derive for that board; it asks for four equal, non-trivial gaps
+instead.
+
+**Nothing in story 2’s own change was found wanting**, which is worth recording as plainly as the
+rest: the per-piece naming, the box sets it pairs with each path set, and the way `unplacedName`
+errs toward "look at this" were all checked and sound.
+
+**So the case is three squares.** A named one, an unnamed one a tenth of a millimetre away, and a
+second named one far enough off to be its own region — which is there because a layer naming one net
+is refused outright, and rightly. Against the old code the first test fails with `Nameless` at 0
+where it should be 1, and the third fails because the bridge is filed under *"one net meeting
+itself"*. The second is the guard that stops the fix being a relabelling: two pieces of one *named*
+net still report as same-net.
+
 ---
 
 ## Story 3 — A picture on the companion pages

@@ -5966,7 +5966,7 @@ thickness, and a test pins the emitted depths to the rungs they belong to.
 page and the operator types it into Settings; closing that loop means a project knowing which coupon
 it was calibrated against, and that is its own argument.
 
-#### 6.53 Copper with no net name is reported as safe when one named net shares its region — **defect · open** — *found by `/code-review`, 2026-09-29*
+#### 6.53 Copper with no net name is reported as safe when one named net shares its region — **defect · fixed**
 
 Story 3 of sprint 3 split the residual gaps into the two things it had been covering: copper carrying
 **no net name**, which might be a short and which nothing can decide about, and two pieces of the
@@ -6022,6 +6022,39 @@ set of regions rather than two.
 **Done when** a merge with unnamed copper on either side is reported as nameless wherever it is
 reported — the panel, the companion page, the CLI and the findings view — and a test covers a region
 holding one named net beside unnamed copper.
+**Fixed 2026-10-02**, sprint 4 story 2, and the fix is the one this entry said it would cost.
+
+**A name now belongs to a piece, not to a region.** `Isolation` already located every piece of
+artwork in the grown region it merged into; it now locates every *net point* in the piece it sits on
+and reads the region off that. A region is called same-net only when every piece that merged there
+carries a name of its own and they agree; one named net beside unnamed copper is nameless, which is
+the bucket that says somebody should look.
+
+**And the findings view by its own route.** `NetGap` carries `NamedSides`, counted from the two
+pieces rather than from the union of their names, and `IsSameNet` is now *both sides named and named
+the same*. The union could never tell one named side from two, which is how the window came to print
+*"Nothing is shorted by these"* over a bridge to copper carrying no net at all.
+
+**Both halves place their points against the same geometry**, which was the third fault this entry
+records: `Isolation` used the copper grown by the cut and `Gaps` the raw artwork, so a pad centre a
+nanometre outside its island was named by one and dropped by the other. Both use the artwork now,
+with the grown region kept as a fallback for a point that lands on a boundary — and a region holding
+such a point is never called wholly named, because nothing can say which piece the name was on.
+
+**What it cost, which is what this entry asked to be measured.** The work snapshot counts
+point-in-polygon tests, and they are the whole of the extra work: the Arduino Mega goes from 13,740
+to 14,060 (+2.3 %) and the Uno from 5,222 to 5,370 (+2.8 %). Export wall-clock is unchanged within
+the noise of a cold start — the Mega at 4.86 s before and 4.94 s after, the panel at 2.94 s and
+2.85 s. No second offset and no second separation: the expensive halves are untouched.
+
+**No board in the corpus changes.** The test board still reports 25 nameless gaps and no same-net
+ones at 0.75 mm; the Uno still reports its one genuine same-net merge at the default cut, both of
+whose pieces are named; the Mega's 240 merges are still all explained by a named group. That is the
+honest result and it is why nothing caught this: the fault needs a region holding exactly one named
+net *and* unnamed copper, and none of the five boards has one. The case is covered by three
+synthetic tests instead — three squares, two of them named — and the first of them fails against the
+old code with `Nameless` at 0 where it should be 1.
+
 
 #### 6.54 The checks panel cannot show a cancelled run — **enhancement · open** — *found by `/code-review`, 2026-09-29*
 

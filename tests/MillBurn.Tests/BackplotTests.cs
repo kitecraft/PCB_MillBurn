@@ -506,6 +506,8 @@ public sealed class BackplotTests
         // so the emitter carries straight on from the tab-top lap into the first deep run without
         // lifting and the two reach the picture as one open polyline. The claim worth making was never
         // about the shape of that run — it is that nothing is hidden at the tab.
+        var gaps = new List<double>();
+
         foreach (var run in cut.Runs)
         {
             var next = cut.Runs
@@ -517,12 +519,37 @@ public sealed class BackplotTests
                 (run[^1].X + next[0].X) / 2,
                 (run[^1].Y + next[0].Y) / 2);
 
+            // **Every gap is a real one, and they are all the same size.**
+            //
+            // A `/code-review` pass gave the reason: the nearest run start is searched for over the
+            // whole layer, so if two depths ever both counted as full depth a run could pair with
+            // its own copy at the other one — distance zero, a "gap" that is the run’s own end, and
+            // the assertion below passing because the dim line obviously crosses a point on the
+            // line.
+            //
+            // Said as a relation rather than as the tab’s width in millimetres: a `/describe-test`
+            // pass pointed out that a literal here couples the picture to whatever
+            // `TabPlan.DefaultWidthFor` happens to give this board, and would fail with a confusing
+            // message on a change that leaves the picture perfectly correct. What this file is
+            // about is that the gaps are there and are drawn.
+            var across = run[^1].DistanceTo(next[0]);
+
+            gaps.Add(across);
+
+            Assert.True(
+                across > Mm(0.5),
+                $"a gap of {Nm.ToMillimetreString((long)across, 2)} mm is not a tab");
+
             // **Against the run's segments, not its points**, which is the mistake this assertion was
             // written with the first time: a straight edge of the lap is one polyline segment from
             // corner to corner, so the nearest *vertex* to a tab in the middle of that edge is ten
             // millimetres away and the line passes straight through it.
             Assert.Contains(partial.Runs, r => Crosses(r, gap, Mm(0.2)));
         }
+
+        // All four the same width, because they are all the same tab: four different gaps would mean
+        // the pairing had gone wrong somewhere even where each one looked plausible.
+        Assert.All(gaps, g => Assert.Equal(gaps[0], g, Mm(0.1)));
 
         // The full-depth line is what is drawn; the shallower passes are there to be turned on, not
         // laid over the board. A ramped program is nearly all part-depth runs, and showing those by

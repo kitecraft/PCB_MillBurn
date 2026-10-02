@@ -458,6 +458,134 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// Two tabs widened until they meet leave one wide gap, not a pass through everything else.
+    ///
+    /// **Found by `/code-review`, and it is the worst thing in this story.** The splitter built each
+    /// run from one tab's far side to the next tab's near side, and took the next tab's centre a
+    /// whole perimeter further on whenever it came out earlier — which cannot tell *this run spans
+    /// the seam* from *these two tabs overlap*. Widen two tabs on one edge until they touch and the
+    /// run between them wrapped: ninety-five per cent of the profile, cut at every tabbed depth,
+    /// straight through every other tab on the board. The piece comes fully free on a pass that is
+    /// not the last one, with the cutter still turning.
+    ///
+    /// The gaps are what is asserted, because that is what holds the board: every millimetre of the
+    /// profile is either cut or under a tab, so the runs and the tabs have to add up to it. A run
+    /// that crossed a tab would push the total past the perimeter.
+    /// </summary>
+    [Fact]
+    public void TabsWidenedUntilTheyMeetDoNotCutThroughTheRest()
+    {
+        var profile = Rect(21, 37);
+
+        var options = Options(6) with
+        {
+            // Two neighbours on one long edge, each ten times the width that edge would give them.
+            TabEdits =
+            [
+                new TabEdit { Index = 0, WidthNm = Mm(20) },
+                new TabEdit { Index = 1, WidthNm = Mm(20) },
+            ],
+        };
+
+        var toolpath = OutlineOperation.Build([profile], options);
+
+        var cut = Polygons.Inflate(
+            [profile],
+            options.Tool.DiameterNm / 2,
+            JoinType.Round,
+            EndType.Polygon,
+            arcTolerance: options.SagittaNm);
+
+        var perimeter = IsolationOperation.ToSegments(cut[0]).Sum(s => s.From.DistanceTo(s.To));
+
+        var deepest = toolpath.Passes
+            .Where(p => !p.Closed)
+            .GroupBy(p => p.DepthNm)
+            .OrderByDescending(g => g.Key)
+            .First()
+            .ToList();
+
+        var cutting = deepest.Sum(p => p.Path.Sum(s => s.From.DistanceTo(s.To)));
+
+        output.WriteLine(
+            $"{deepest.Count} run(s) covering {Nm.ToMillimetreString((long)cutting, 1)} mm of a "
+            + $"{Nm.ToMillimetreString((long)perimeter, 1)} mm profile");
+
+        // Nothing is cut twice, and nothing is cut where a tab is.
+        Assert.True(
+            cutting <= perimeter,
+            $"the runs cover {Nm.ToMillimetreString((long)cutting, 1)} mm of a "
+            + $"{Nm.ToMillimetreString((long)perimeter, 1)} mm profile, so one of them crosses a tab");
+
+        // **And they add up exactly**, which is the property rather than a margin. A
+        // `/describe-test` pass pointed out that the first version asserted "at least 40 mm is left
+        // uncut" and passed by three tenths of a millimetre — a number picked by hand, close enough
+        // to the real figure that a legitimate change in how an overlapping pair is clipped could
+        // have moved it either way.
+        //
+        // What holds the board is that every millimetre of the profile is either cut or under a tab.
+        // The tabs' own spans are unioned here — two that overlap are one span, which is what the
+        // splitter does by leaving no run between them — and the rest must be cut.
+        var held = Covered(TabPlan.For(cut[0], options), perimeter);
+
+        output.WriteLine($"{Nm.ToMillimetreString((long)held, 1)} mm of profile is under a tab");
+
+        Assert.Equal(perimeter - held, cutting, Mm(0.05));
+    }
+
+    /// <summary>
+    /// How much of a profile that long is under one of these tabs, counting overlapping tabs once.
+    ///
+    /// Derived from the tabs' own centres and widths rather than from anything the splitter
+    /// produced, so that the two accounts of the same board are independent: this one unions
+    /// intervals, the splitter walks the profile between them.
+    /// </summary>
+    private static double Covered(IReadOnlyList<PlacedTab> tabs, double perimeter)
+    {
+        var spans = new List<(double From, double To)>();
+
+        foreach (var tab in tabs)
+        {
+            var from = tab.AlongNm - (tab.WidthNm / 2.0);
+            var to = tab.AlongNm + (tab.WidthNm / 2.0);
+
+            // A tab straddling the start vertex is two spans, one at each end of the walk.
+            if (from < 0)
+            {
+                spans.Add((from + perimeter, perimeter));
+                spans.Add((0, to));
+            }
+            else if (to > perimeter)
+            {
+                spans.Add((from, perimeter));
+                spans.Add((0, to - perimeter));
+            }
+            else
+            {
+                spans.Add((from, to));
+            }
+        }
+
+        spans.Sort((a, b) => a.From.CompareTo(b.From));
+
+        var covered = 0.0;
+        var at = 0.0;
+
+        foreach (var (from, to) in spans)
+        {
+            var start = Math.Max(from, at);
+
+            if (to > start)
+            {
+                covered += to - start;
+                at = to;
+            }
+        }
+
+        return covered;
+    }
+
+    /// <summary>
     /// A tab with its own height gets its own pass, and the others are not cut down to it.
     ///
     /// **The depth ladder used to have one rung for all the tabs**, because all the tabs were one

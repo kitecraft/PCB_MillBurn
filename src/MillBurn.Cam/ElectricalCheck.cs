@@ -102,8 +102,24 @@ public sealed record NetGap
     /// </summary>
     public bool IsShort => Between.Count >= 2;
 
-    /// <summary>The same-net case, which is safe by construction and still worth seeing.</summary>
-    public bool IsSameNet => Between.Count == 1;
+    /// <summary>
+    /// How many of the two pieces carried a net name at all: two, one, or none.
+    ///
+    /// **Not derivable from <see cref="Between"/>**, which is the union of the two sides’ names —
+    /// and that is exactly how 06 §6.53 got into the findings view. A bridge between unnamed
+    /// copper and one named net holds one name, the same as two pieces of one net meeting, so the
+    /// window filed it under "one net meeting itself" and printed "nothing is shorted by these"
+    /// over its coordinates. One side of it carries no net at all.
+    /// </summary>
+    public required int NamedSides { get; init; }
+
+    /// <summary>
+    /// The same-net case, which is safe by construction and still worth seeing.
+    ///
+    /// Both sides named, and named the same. One side named and the other not is a bridge nobody
+    /// can speak for, and belongs with the nameless ones.
+    /// </summary>
+    public bool IsSameNet => NamedSides == 2 && Between.Count == 1;
 }
 
 /// <summary>What an electrical check of one copper layer found — or why it could not look.</summary>
@@ -301,8 +317,15 @@ public static class ElectricalCheck
         var pieces = new int[regions.Count];
         var strays = 0;
 
-        foreach (var piece in artwork)
+        // Which region each piece ended up in, so that a name found on a piece can be charged to
+        // the region the piece merged into. -1 is a piece that did not locate at all.
+        var regionOf = new int[artwork.Count];
+
+        for (var p = 0; p < artwork.Count; p++)
         {
+            var piece = artwork[p];
+            regionOf[p] = -1;
+
             if (piece.Count == 0 || piece[0].Count == 0)
             {
                 continue;
@@ -313,6 +336,7 @@ public static class ElectricalCheck
             if (found >= 0)
             {
                 pieces[found]++;
+                regionOf[p] = found;
             }
             else
             {
@@ -338,6 +362,27 @@ public static class ElectricalCheck
         var inRegion = new Dictionary<int, (SortedSet<string> Nets, Point2 First)>();
         var dropped = 0;
 
+        // **Which pieces carry a name, not just which regions do** — 06 §6.53.
+        //
+        // The split below used to ask how many names a region held: one meant the same net
+        // meeting itself. A region holding one named net *and unnamed copper beside it* holds
+        // exactly one name, so every merge in it was reported as advice — "nothing is shorted by
+        // those" — about copper one side of which carries no net at all. Wrong in the direction
+        // that reassures, which is why it is a defect and not a tidy-up.
+        //
+        // A name is therefore attributed to the *piece* it sits on, and the piece says which
+        // region it merged into. That also puts this method and <see cref="Gaps"/> on the same
+        // geometry: both now locate a net point in the raw artwork, where before one used the
+        // copper grown by the cut and the other the artwork, and a point a nanometre outside its
+        // island was named by one and silently dropped by the other.
+        var namedPieces = new bool[artwork.Count];
+        var artworkBoxes = BoxesOf(artwork);
+
+        // Regions holding a name that could not be put on any one piece. Rare — a point exactly on
+        // a boundary — and it has to be remembered rather than ignored: without knowing which
+        // piece a name belongs to, nothing can say the region is wholly named.
+        var unplacedName = new HashSet<int>();
+
         foreach (var point in nets)
         {
             if (string.IsNullOrWhiteSpace(point.Net))
@@ -345,7 +390,17 @@ public static class ElectricalCheck
                 continue;
             }
 
-            var where = RegionAt(regions, boxes, point.At);
+            var piece = RegionAt(artwork, artworkBoxes, point.At);
+            var where = piece >= 0 ? regionOf[piece] : RegionAt(regions, boxes, point.At);
+
+            if (piece >= 0 && where >= 0)
+            {
+                namedPieces[piece] = true;
+            }
+            else if (where >= 0)
+            {
+                unplacedName.Add(where);
+            }
 
             if (where < 0)
             {
@@ -396,6 +451,17 @@ public static class ElectricalCheck
         var sameNet = 0;
         var nameless = 0;
 
+        // How many of each region’s pieces carry a name of their own.
+        var namedIn = new int[regions.Count];
+
+        for (var p = 0; p < artwork.Count; p++)
+        {
+            if (namedPieces[p] && regionOf[p] >= 0)
+            {
+                namedIn[regionOf[p]]++;
+            }
+        }
+
         for (var index = 0; index < pieces.Length; index++)
         {
             if (pieces[index] <= 1)
@@ -406,6 +472,10 @@ public static class ElectricalCheck
             var extra = pieces[index] - 1;
             var names = inRegion.TryGetValue(index, out var held) ? held.Nets.Count : 0;
 
+            // Whether every piece that merged here could be spoken for. One name over three
+            // pieces is two merges nobody can vouch for, however confidently the one name reads.
+            var wholly = namedIn[index] == pieces[index] && !unplacedName.Contains(index);
+
             if (names >= 2)
             {
                 // Every merge inside this region is accounted for by the group reported above, so
@@ -414,12 +484,15 @@ public static class ElectricalCheck
                 // `Unnamed` is `sameNet + nameless` — and a compound assignment does not warn, so
                 // it sat here looking load-bearing.
             }
-            else if (names == 1)
+            else if (names == 1 && wholly)
             {
                 sameNet += extra;
             }
             else
             {
+                // One name and an unnamed neighbour lands here, which is the fix: the merge is
+                // between copper that carries no net and copper that does, and the only honest
+                // thing to say about it is that somebody should look.
                 nameless += extra;
             }
         }
@@ -673,6 +746,10 @@ public static class ElectricalCheck
                         Between = [.. between],
                         At = at,
                         RegionNets = inRegionNets,
+
+                        // Counted from the two pieces rather than from the union of their names,
+                        // which cannot tell one named side from two.
+                        NamedSides = (namesOf[i] is null ? 0 : 1) + (namesOf[j] is null ? 0 : 1),
                     });
                 }
             }

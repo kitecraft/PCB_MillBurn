@@ -1,3 +1,4 @@
+using Clipper2Lib;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Pipeline;
@@ -95,6 +96,11 @@ public sealed class UnnamedKindTests(ITestOutputHelper output)
     /// Asserted as a relation rather than a pinned count: the totals move with the cutter and the
     /// board, and what this file is about is the two kinds being told apart, not how many there
     /// happen to be today. The counts are written to the test output so a reader can see them.
+    ///
+    /// **What it pins is "more nameless than same-net", not "overwhelmingly"** — a `/describe-test`
+    /// pass pointed out that the prose claimed more than the line below does. The stronger claim
+    /// is not worth inventing a threshold for: this board reports 25 and 0, and a day when it
+    /// reports 13 and 12 is a day to come and read it rather than one a multiplier should decide.
     /// </summary>
     [Fact]
     public void OnTheTestBoardTheUnnamedMergesAreNamelessCopper()
@@ -160,6 +166,12 @@ public sealed class UnnamedKindTests(ITestOutputHelper output)
         Assert.True(check.Ran, check.Silent);
         Assert.True(check.Merged > 0, "nothing merged on this board, so nothing was classified");
         Assert.Equal(0, check.Nameless);
+
+        // **And nothing in the other bucket either**, which a `/describe-test` pass noticed was
+        // printed and never asserted: a board whose copper is all named has no residual of either
+        // kind, and a change that misfiled named copper as same-net would have passed the line
+        // above without anybody noticing. Every merge here belongs to a reported group.
+        Assert.Equal(0, check.SameNet);
     }
 
     /// <summary>
@@ -220,4 +232,145 @@ public sealed class UnnamedKindTests(ITestOutputHelper output)
 
         Assert.Equal(expected, residual);
     }
+
+    /// <summary>
+    /// A square of copper, in millimetres.
+    ///
+    /// Synthetic rather than a board, because the shape this is about — one named net and an unnamed
+    /// neighbour merging — is a few square millimetres of a real layer and cannot be pointed at from
+    /// the outside. Three squares say it in nine lines.
+    /// </summary>
+    private static Path64 Square(double xMm, double yMm, double sideMm) =>
+    [
+        new(Nm.FromMillimetres(xMm), Nm.FromMillimetres(yMm)),
+        new(Nm.FromMillimetres(xMm + sideMm), Nm.FromMillimetres(yMm)),
+        new(Nm.FromMillimetres(xMm + sideMm), Nm.FromMillimetres(yMm + sideMm)),
+        new(Nm.FromMillimetres(xMm), Nm.FromMillimetres(yMm + sideMm)),
+    ];
+
+    private static Point2 Middle(double xMm, double yMm, double sideMm) => new(
+        Nm.FromMillimetres(xMm + (sideMm / 2)),
+        Nm.FromMillimetres(yMm + (sideMm / 2)));
+
+    /// <summary>
+    /// Copper with no net name beside copper that has one is nameless, not same-net.
+    ///
+    /// **06 §6.53, found by `/code-review`, and wrong in the direction that reassures.** The split
+    /// charged a region's merges by counting the *named* nets it held: two or more was a reported
+    /// group, exactly one was the same net meeting itself, none was nameless. A region holding one
+    /// named net **and unnamed copper beside it** has exactly one name — so every merge in it was
+    /// filed under same-net and reported as advice: *"Nothing is shorted by those: they were one
+    /// conductor before the cut."* One side of such a merge carries no net at all. That is precisely
+    /// the case the split exists to isolate, reported as safe by construction.
+    ///
+    /// The fixture is the smallest board that can hold the shape: a named square, an unnamed square
+    /// a tenth of a millimetre from it, and a second named square far enough away to be its own
+    /// region — which is there because a layer naming only one net is refused outright, and rightly.
+    /// </summary>
+    [Fact]
+    public void CopperWithNoNameBesideANamedNetIsNameless()
+    {
+        Paths64 copper = [Square(0, 0, 2), Square(2.1, 0, 2), Square(20, 0, 2)];
+
+        // Only two of the three carry a name, and the unnamed one is the near neighbour.
+        NetPoint[] nets =
+        [
+            new("NET_A", Middle(0, 0, 2)),
+            new("NET_B", Middle(20, 0, 2)),
+        ];
+
+        var check = ElectricalCheck.Isolation(copper, nets, Wide);
+
+        output.WriteLine(
+            $"merged {check.Merged} · same-net {check.SameNet} · nameless {check.Nameless} · "
+            + $"{check.Joins.Count} group(s)");
+
+        Assert.True(check.Ran, check.Silent);
+
+        // One merge, and it is the dangerous kind: nothing here can say whether it matters.
+        Assert.Equal(1, check.Merged);
+        Assert.Equal(1, check.Nameless);
+        Assert.Equal(0, check.SameNet);
+    }
+
+    /// <summary>
+    /// And the same shape with both squares named the same is still the same net meeting itself.
+    ///
+    /// The other side of the claim, and what stops the fix being a relabelling: if every merge were
+    /// now called nameless the test above would pass just as happily and mean nothing. This is the
+    /// case the advice was written for — two pieces of one conductor the cut cannot divide — and it
+    /// has to keep saying so.
+    /// </summary>
+    [Fact]
+    public void TwoPiecesOfOneNamedNetAreStillTheSameNet()
+    {
+        Paths64 copper = [Square(0, 0, 2), Square(2.1, 0, 2), Square(20, 0, 2)];
+
+        NetPoint[] nets =
+        [
+            new("NET_A", Middle(0, 0, 2)),
+            new("NET_A", Middle(2.1, 0, 2)),
+            new("NET_B", Middle(20, 0, 2)),
+        ];
+
+        var check = ElectricalCheck.Isolation(copper, nets, Wide);
+
+        output.WriteLine($"same-net {check.SameNet} · nameless {check.Nameless}");
+
+        Assert.Equal(1, check.Merged);
+        Assert.Equal(1, check.SameNet);
+        Assert.Equal(0, check.Nameless);
+    }
+
+    /// <summary>
+    /// And a bridge to unnamed copper is not filed under "one net meeting itself" in the findings
+    /// view either.
+    ///
+    /// **The same fault by its own route.** `NetGap.Between` is the union of both pieces' names, so a
+    /// bridge between unnamed copper and one named net holds exactly one name — and `IsSameNet` was
+    /// `Between.Count == 1`. The window an operator opens to decide a board is sound printed
+    /// *"Nothing is shorted by these"* over its coordinates.
+    /// </summary>
+    [Fact]
+    public void ABridgeToUnnamedCopperIsNotFiledAsOneNetMeetingItself()
+    {
+        Paths64 copper = [Square(0, 0, 2), Square(2.1, 0, 2), Square(20, 0, 2)];
+
+        NetPoint[] nets =
+        [
+            new("NET_A", Middle(0, 0, 2)),
+            new("NET_B", Middle(20, 0, 2)),
+        ];
+
+        var gaps = ElectricalCheck.Gaps(copper, nets, Wide, CancellationToken.None);
+
+        foreach (var gap in gaps)
+        {
+            output.WriteLine(
+                $"[{string.Join(", ", gap.Between)}] at {gap.At} · short {gap.IsShort} · "
+                + $"same-net {gap.IsSameNet}");
+        }
+
+        var bridge = Assert.Single(gaps);
+
+        Assert.False(bridge.IsSameNet, "a bridge to copper carrying no name was called one net meeting itself");
+        Assert.False(bridge.IsShort, "nothing here is shorted: only one of the two pieces is named");
+
+        // **One named side, said as the number rather than as the flag.** A `/describe-test` pass
+        // pointed out that every other assertion here reduces to `Between.Count == 1`, which is
+        // exactly what could not tell this case from two pieces of one net: the only thing that
+        // distinguishes them is how many of the two pieces carried a name at all.
+        Assert.Equal(1, bridge.NamedSides);
+
+        // Which leaves it in the bucket the view calls "copper with no net name", where somebody has
+        // to look at it.
+        Assert.Single(bridge.Between);
+    }
+
+    /// <summary>The cut this file's synthetic cases use: wide enough to close a tenth of a millimetre.</summary>
+    private static IsolationOptions Wide => new()
+    {
+        Tool = Tool.DefaultVBit,
+        DepthNm = DepthNm,
+    };
 }

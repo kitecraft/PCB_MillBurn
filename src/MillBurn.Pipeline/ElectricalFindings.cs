@@ -137,8 +137,13 @@ public static class ElectricalFindings
             // The half that might be a short: copper with no net attribute on it — a fill, a
             // fiducial, an unnamed pour, anything a Protel export wrote. Nothing here can decide
             // whether it matters, and saying so is the point.
+            //
+            // **"At least one side"**, since 6.53. The sentence used to say the copper carried no
+            // net name, which was true while this bucket held only regions with no names at all;
+            // a merge between a named piece and an unnamed neighbour now lands here too, and it is
+            // the more alarming of the two — one side of it is a net somebody can look up.
             checks.Add(Check.Refusal(source, CheckKind.Electrical, Invariant(
-                $"{electrical.Nameless} further gap(s) are narrower than the cut and stay connected, in copper carrying no net name. Nothing here can say whether those matter: look at them.")));
+                $"{electrical.Nameless} further gap(s) are narrower than the cut and stay connected, with at least one side carrying no net name. Nothing here can say whether those matter: look at them.")));
         }
 
         if (electrical.SameNet > 0 && electrical.Ran)

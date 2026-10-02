@@ -2047,7 +2047,12 @@ public static class ExportPlanner
         // is still working and the board is thrown — the exact thing tabs exist to prevent — and
         // the program said nothing about it. Advice rather than a refusal: thin stock and a light
         // touch are somebody’s own business, and the operator is the one holding the board.
-        var thin = setting.TabEdits
+        // The same guard the options above apply, hoisted: an explicit `"TabEdits": null` in a
+        // project file deserialises to a default `ImmutableArray`, which throws when enumerated.
+        // A `/code-review` pass caught the two sites below reaching past the guard added for it.
+        var edits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits;
+
+        var thin = edits
             .Where(e => e.HeightNm is { } h && h < TabPlan.MinHeightNm)
             .Select(e => e.HeightNm!.Value)
             .Append(tabHeightNm < TabPlan.MinHeightNm ? tabHeightNm : long.MaxValue)
@@ -2059,7 +2064,7 @@ public static class ExportPlanner
                 $"A tab here leaves {Nm.ToMillimetreString(thin, 2)} mm of material, under the {Nm.ToMillimetreString(TabPlan.MinHeightNm, 2)} mm a tab needs to survive the rest of the cut.")));
         }
 
-        var narrow = setting.TabEdits
+        var narrow = edits
             .Where(e => e.WidthNm is { } w && w < TabPlan.MinWidthNm)
             .Select(e => e.WidthNm!.Value)
             .Append(setting.TabWidthNm is { } set && set < TabPlan.MinWidthNm ? set : long.MaxValue)
@@ -2069,6 +2074,22 @@ public static class ExportPlanner
         {
             warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
                 $"A tab here is {Nm.ToMillimetreString(narrow, 2)} mm wide, under the {Nm.ToMillimetreString(TabPlan.MinWidthNm, 1)} mm below which a tab is a nick rather than a bridge.")));
+        }
+
+        // **And the other end of the range**, which nothing said either. A tab wider than the
+        // planner would ever derive is the input that can run two tabs into each other, and the
+        // splitter answers that by leaving no run between them — a wider gap than anybody asked
+        // for, in a place the picture shows and the header did not mention.
+        var wide = edits
+            .Where(e => e.WidthNm is { } w && w > TabPlan.MaxWidthNm)
+            .Select(e => e.WidthNm!.Value)
+            .Append(setting.TabWidthNm is { } asked && asked > TabPlan.MaxWidthNm ? asked : 0)
+            .Max();
+
+        if (setting.TabCount > 0 && wide > TabPlan.MaxWidthNm)
+        {
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"A tab here is {Nm.ToMillimetreString(wide, 1)} mm wide, over the {Nm.ToMillimetreString(TabPlan.MaxWidthNm, 1)} mm past which a tab stops being something a hand can break. Two that wide on one edge run into each other and leave one gap.")));
         }
 
         if (tool.Kind == ToolKind.VBit)

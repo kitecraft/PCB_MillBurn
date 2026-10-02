@@ -32,6 +32,10 @@ public sealed class TabsWindow : Window
     private readonly NumericUpDown _height;
     private readonly List<(NumericUpDown Width, NumericUpDown Height)> _rows = [];
 
+    /// <summary>What the board-wide boxes held last, so a change can carry the rows that agreed.</summary>
+    private decimal? _lastWidth;
+    private decimal? _lastHeight;
+
     /// <summary>What was chosen, or null if it was called off.</summary>
     public Choice? Result { get; private set; }
 
@@ -69,6 +73,21 @@ public sealed class TabsWindow : Window
         _height = Box(heightNm ?? derivedHeightNm, 0.05, 2, 0.05, 2);
 
         Content = Body(boardLabel);
+
+        // **Changing the box at the top moves the tabs that agreed with it**, and a `/code-review`
+        // pass is why. Without this the control was inert and worse than inert: `Apply` decides a
+        // tab has been set by hand by comparing its box with the board-wide one, so typing 3.0 at
+        // the top left every row holding 2.0 — which then came out as four explicit 2.0 mm edits
+        // nobody made, applied after the width and overriding it. The board-wide number changed
+        // and every tab was cut at the old one.
+        //
+        // A row the operator has already changed keeps what they set: it no longer agrees with the
+        // board-wide value, which is exactly what "set by hand" means here.
+        _lastWidth = _width.Value;
+        _lastHeight = _height.Value;
+
+        _width.ValueChanged += (_, _) => FollowWidth();
+        _height.ValueChanged += (_, _) => FollowHeight();
     }
 
     /// <summary>
@@ -241,6 +260,32 @@ public sealed class TabsWindow : Window
         grid.Children.Add(height);
 
         return grid;
+    }
+
+    /// <summary>
+    /// Moves every per-tab box that still held the old board-wide value to the new one.
+    ///
+    /// The previous value is remembered here rather than read off the event, which keeps this
+    /// independent of how the control reports a change.
+    /// </summary>
+    private void FollowWidth()
+    {
+        foreach (var row in _rows.Where(r => r.Width.Value == _lastWidth))
+        {
+            row.Width.Value = _width.Value;
+        }
+
+        _lastWidth = _width.Value;
+    }
+
+    private void FollowHeight()
+    {
+        foreach (var row in _rows.Where(r => r.Height.Value == _lastHeight))
+        {
+            row.Height.Value = _height.Value;
+        }
+
+        _lastHeight = _height.Value;
     }
 
     private void ResetToDerived()
