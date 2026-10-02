@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using System.Globalization;
+using MillBurn.Cam;
 using MillBurn.Core;
 
 namespace MillBurn.Pipeline;
@@ -83,8 +85,38 @@ public sealed record LayerOutputSettings
     /// </summary>
     public long IsolationWidthNm { get; init; }
 
-    /// <summary>Outline only. Zero cuts the board fully free.</summary>
+    /// <summary>
+    /// Outline only: how many tabs to put round the board. Zero cuts it fully free.
+    ///
+    /// A target rather than a spacing. The tabs go one to a straight edge, longest first, so the
+    /// default four is one centred on each side of a rectangle.
+    /// </summary>
     public int TabCount { get; init; } = 4;
+
+    /// <summary>
+    /// Outline only: the gap each tab leaves, in nanometres. Null derives it from the board's narrow
+    /// side, which is the dimension that decides whether 3 mm is a tab or a bridge.
+    /// </summary>
+    public long? TabWidthNm { get; init; }
+
+    /// <summary>
+    /// Outline only: the material left under each tab, in nanometres. Null derives it from the
+    /// thickness — a third of it, which is 0.50 mm on ordinary 1.6 mm laminate.
+    /// </summary>
+    public long? TabHeightNm { get; init; }
+
+    /// <summary>
+    /// Outline only: tabs whose width or height the operator set by hand.
+    ///
+    /// Sparse and usually empty. A tab is named by its place in the planned order, which is what the
+    /// tabs dialog lists and what the program's own report numbers — so an edit and the thing it
+    /// edits can be compared by eye.
+    ///
+    /// **Added after the format's first version, and deliberately without bumping it.** A project
+    /// from an older build has no edits, which is exactly what the default says; the same is true of
+    /// every other setting added since — see <see cref="Passes"/> and <see cref="IsolationWidthNm"/>.
+    /// </summary>
+    public ImmutableArray<TabEdit> TabEdits { get; init; } = [];
 
     /// <summary>
     /// Drilling only: write a page beside the program explaining how to run it.

@@ -14,7 +14,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 | [6.53](06-Roadmap-and-Risks.md#653-copper-with-no-net-name-is-reported-as-safe-when-one-named-net-shares-its-region--defect--open--found-by-code-review-2026-09-29) | Copper with no net name is reported as safe when one named net shares its region | found by `/code-review`, 2026-09-29 |
 
-## Enhancements (20)
+## Enhancements (19)
 
 Something new or better, which is not the same as something broken.
 
@@ -22,7 +22,6 @@ Something new or better, which is not the same as something broken.
 |---|---|---|
 | [6.1](06-Roadmap-and-Risks.md#61-rulers--enhancement--open) | Rulers | — |
 | [6.2](06-Roadmap-and-Risks.md#62-climb-or-conventional--enhancement--open--low-priority) | Climb or conventional | low priority |
-| [6.4](06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--open) | Tabs: where, how many, how big | — |
 | [6.5](06-Roadmap-and-Risks.md#65-a-picture-on-the-companion-pages--enhancement--open) | A picture on the companion pages | — |
 | [6.6](06-Roadmap-and-Risks.md#66-the-tool-library-once-it-has-more-than-a-handful-in-it--enhancement--open) | The tool library, once it has more than a handful in it | — |
 | [6.7](06-Roadmap-and-Risks.md#67-teaching-the-conventions-coachmarks-and-a-first-run-walkthrough--enhancement--open--needs-research) | Teaching the conventions: coachmarks and a first-run walkthrough | needs research |
@@ -41,12 +40,13 @@ Something new or better, which is not the same as something broken.
 | [6.55](06-Roadmap-and-Risks.md#655-the-findings-view-costs-about-twice-what-it-needs-to-and-cannot-be-interrupted--enhancement--open--found-by-code-review-at-xhigh-2026-09-30) | The findings view costs about twice what it needs to, and cannot be interrupted | found by `/code-review` at xhigh, 2026-09-30 |
 | [6.56](06-Roadmap-and-Risks.md#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30) | A finding takes you to the copper it is about | asked for by the product owner, 2026-09-30 |
 
-## Part-built (3)
+## Part-built (4)
 
 Begun, and the entry says which half. Open work, but not from nothing.
 
 | # | what | note |
 |---|---|---|
+| [6.4](06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-from-the-board-in-sprint-4-moving-one-by-hand-is-not-built) | Tabs: where, how many, how big *(enhancement)* | placed and sized from the board in sprint 4; moving one by hand is not built |
 | [6.11](06-Roadmap-and-Risks.md#611-bit-changes-one-file-per-bit-or-one-file-with-custom-tool-change-g-code--enhancement--partial--per-bit-files-built-the-choice-between-them-is-not) | Bit changes: one file per bit, or one file with custom tool-change G-code *(enhancement)* | per-bit files built; the choice between them is not |
 | [6.17](06-Roadmap-and-Risks.md#617-the-stocks-alignment-holes-marked-in-the-svgs--enhancement--partial--used-on-metal-print-and-cut-not-tried) | The stock's alignment holes, marked in the SVGs *(enhancement)* | used on metal; Print and Cut not tried |
 | [6.22](06-Roadmap-and-Risks.md#622-machine-checks-measure-the-machine-not-only-the-bit--enhancement--partial--backlash-and-squareness-built-four-more-sketched) | Machine checks: measure the machine, not only the bit *(enhancement)* | backlash and squareness built; four more sketched |

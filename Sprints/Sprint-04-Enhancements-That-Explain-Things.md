@@ -185,6 +185,159 @@ height can be set individually, the emitted gaps land where the preview says the
 still tabs only its top and right edges, and the tab positions are pinned by a test on a board whose
 edges are different lengths.
 
+### Closed — 2026-09-30
+
+**Met**, with one clause of 6.4's own *Done when* deliberately left for later: a tab can be resized
+individually but not **moved** individually, which needs the viewport to hit-test the profile. 6.4 is
+now `enhancement · partial` and says which half.
+
+- **A rectangular board puts one centred tab on each edge.** `TabPlan` groups the offset profile's
+  segments into straight edges and gives one to each, longest first, before any edge gets a second.
+- **Each tab's width and height can be set individually**, in *Tabs ▸ Sizes…* beside the count, and
+  an edit changes the tab it names and nothing else.
+- **The emitted gaps land where the plan says.** Asserted against the toolpath rather than the
+  planner, because the two walk the profile independently.
+- **The blank still tabs its top and right edges only.** Untouched, and `BlankTests` still holds it.
+- **The positions are pinned** on a 21 x 37 mm rectangle — the workshop's own board, whose edges are
+  different lengths — against the four side midpoints rather than four remembered coordinates.
+
+**What it looks like.** `WorkingFolder/V0.5.0/Screenshots/story-1-tabs-on-the-board.png`: the test
+board's outline alone, four gaps, each in the middle of an edge and none at a corner. Compare the
+same board before, where four tabs were spaced from an arbitrary seam.
+`story-1-tabs-dialog.png` is the sizes window, which also shows the two things the first screenshot
+caught — a coordinate in the Gerber's frame (*"183.41, -124.47 mm"*, fixed by shifting to the board's
+lower-left corner as `BoardFindings` does) and a numeric box too narrow for its own second decimal.
+
+**The sizes now come off the board**: a tenth of the narrow side, a third of the thickness. The
+workshop's 21 x 37 mm board gets 2.0 mm tabs where it used to get 3.0 — *"they are large tabs"* — and
+a 30 x 50 mm board still gets exactly 3.0, so the ordinary case did not move.
+
+**And a default for them, asked for the morning after** — *"add some options to the settings → new
+board tab for default tab width and thickness"* — under *Settings ▸ New boards ▸ Tabs*, applied as a
+board is imported, where the isolation width beside it is applied. **Zero means the board decides**,
+which is how it ships, so nobody who does not want the setting ever meets it. Negatives are refused
+and say which tab of the window they are on; there is no upper bound, because whether 1.5 mm of
+material left is absurd depends on a thickness the settings record does not hold, and the program
+already says plainly when a tab is taller than the whole cut.
+
+**Measured, against the previous release, over the corpus:**
+
+| | cutting | rapid | estimate |
+|---|---|---|---|
+| Panel outline | 13,786 → 13,762 mm | 337 → 521 mm | 49m33s → 49m34s |
+| PogoTest1 outline | 676 → 688 mm | 71 → 79 mm | 2m49s → 2m50s |
+| Connector strip | 398 → 416 mm | 83 → 73 mm | 1m54s → 1m55s |
+
+Cutting moves with tab width — narrower tabs leave less uncut — and the rapid is where the placement
+shows. The panel gains 184 mm of it because the frame's runs now begin and end at edge midpoints
+rather than wherever the offset started; at the machine that is about five seconds on a
+forty-nine-minute program.
+
+**And 309 mm of that was avoidable and was avoided.** The first version left the last full lap
+finishing at the profile's start vertex while the first tabbed run began at the middle of an edge —
+further than a tab is wide, so the emitter climbed to the safe height and traversed. Starting the lap
+at the **near** side of the first tab costs one hop over a tab that has just been cut down. Ending it
+at the *far* side would have been free, and was rejected: the emitter then carries straight on
+without lifting, the backplot classifies a run by its deepest point, and the shallow lap would be
+drawn in the full-depth colour over the gaps the tabs leave — the v0.1.2 complaint
+(*"the outline's cut line stopped showing where the tabs were"*) reintroduced to save a few
+millimetres. `BackplotTests.TabsShowAsGapsInTheFullDepthCutLine` is what caught it.
+
+**Two tests changed, and both had been passing for the wrong reason:**
+
+- `OutlineTabTests.ATabTallerThanTheCutSaysSo` looked for the words *"full thickness of the board"*,
+  which now also appear in the note about the extra pass at a tab's top — so it went on passing after
+  the derived height stopped making that case happen at all. It asserts the sentence only this case
+  writes, and passes the height it is about.
+- `BackplotTests.TabsShowAsGapsInTheFullDepthCutLine` asserted that a part-depth run is a closed loop,
+  which is a fact about how the emitter happened to break up its runs rather than about the picture.
+  It now checks that a dim run crosses each gap in the bright line — **against the run's segments, not
+  its vertices**, which is this sprint's own measuring rule and was got wrong on the first attempt: a
+  straight edge is one polyline segment, so the nearest vertex to a tab in the middle of it is ten
+  millimetres away.
+
+**Five golden files moved**, all of them the outline programs, and all four differences read the same
+way: a narrower or wider tab, a new line saying which edges the tabs are centred on, and the rapid
+figures above.
+
+**`/describe-test` on all four test files, and it earned its place on every one:**
+
+- `TabPlacementTests.OnARealBoardEveryTabSitsOnAStraightEdge` asserted `EdgeLengthNm >= 3 × WidthNm`,
+  which is the planner's own placement rule restated in the planner's own numbers — it could only
+  have failed if the planner contradicted itself, and it looked at no coordinates at all, in a test
+  named for tabs sitting on straight edges. It now walks the contour half a tab either side of each
+  centre and asserts the profile between them is straight to within a micron. That is the assertion
+  the story's whole placement rule rests on, and it was not being made.
+- Three assertions could pass over an empty list: the corner check, the edit comparison, and the
+  plan-against-program count. All three now say how many tabs they expect.
+- The round-profile test compared its gaps only with each other and never measured the closing one,
+  so four tabs crowded into one arc would have passed a test named for even spacing. It measures
+  against the circumference now.
+- `OutlineTabTests.TheTabbedPassesAreAllDeeperThanTheOneThatCrossesThem` was an `Assert.All` over a
+  sequence that would be empty if tabbing were removed entirely.
+- And on the settings tests written for the default sizes: nothing passed a **zero** through the
+  validator, which is the pair every install ships with — a rule written as "not positive" rather
+  than "negative" would have refused to save the settings of every machine that had never touched a
+  tab. The legacy-file case also asserted an isolation width equal to the record's own default, so a
+  loader that ignored the whole `Milling` object would have passed it.
+- And two findings in a file this story only touched in passing:
+  `LayerOutputPersistenceTests.EverySettingSurvivesASaveAndReopen` says *"every field, not a
+  representative one"* and was not checking two of them, and
+  `TheOrderLayersWereTouchedInDoesNotReachTheFile` never saved a file — it compared two in-memory
+  collections under a name and a comment that both talk about bytes. Both fixed here, because the
+  second would have been satisfied by a serialiser that wrote nothing at all.
+
+**Left open**, and recorded under 6.4: moving a tab by hand, keep-out from holes and pads, and the
+blank sharing the sizing rule rather than only the placement one.
+
+### What the code review found — 2026-10-01, medium
+
+Nine findings, all acted on. The four that could have reached a board:
+
+- **The tabs window planned from the layer's raw area; the export plans from its positive rings
+  only.** A stroked Edge_Cuts realises as an annulus per outline, so the dialog would have shaped a
+  different set of paths from the program — different nesting, a different contour order, and
+  therefore a tab numbered *3* in the list that is not the third tab in the file. The filter now has
+  one home, `ExportPlanner.OutlineProfiles`, and both callers use it. The same fix halved the
+  dialog's cost: asking for the plan and the derived sizes separately shaped every profile twice, 102
+  of them on the panel, on the UI thread, per click. One call returns both.
+- **A per-tab edit survived a change of tab count.** An edit names a tab by its place in the planned
+  order, and the order is a function of the count — one to each edge before any edge gets a second —
+  so going from four tabs to six moved a 4.5 mm width onto whichever tab now sorted third, and going
+  the other way dropped it silently. Changing the count now clears the edits: asking for a different
+  number of tabs is asking for a different set of tabs, and keeping them would need a tab to have an
+  identity that survives re-planning, which is 6.4's unbuilt "move a tab by hand".
+- **A generously rounded corner read as a straight edge.** Straightness was tested between each
+  segment and the next, which bounds one turn and not the sum of them; at the default 0.001 mm
+  sagitta a curve of radius 11 mm or more turns by less than the tolerance at every step. A 15 mm
+  corner radius chained into a 23 mm "edge" — room for a tab, placed on a curve, under a program
+  saying *"never across a corner"*. There is a second bound now, about two degrees across the whole
+  run, and `ATabIsNeverPlacedOnARoundedCorner` fails without it: a tab lands at 49.76, 0.78 mm, on
+  the corner.
+- **Nothing warned about a tab too thin or too narrow to do its job.** The 1.5 mm and 0.2 mm floors
+  clamp the *derived* sizes; a number typed into the dialog, the settings or `--tab-width` went
+  through untouched, so a 0.05 mm web — which breaks while the cutter is still working, with the
+  board loose next to it — emitted a program that read as if it were fine. Advice now, not a
+  refusal: thin stock and a light touch are somebody's own business.
+
+And five smaller ones: the program's tab note described only the first tabbed profile although the
+width is derived per profile (a sheet holding a 21 x 37 mm board and a 60 x 60 mm one gets 2.0 mm
+tabs on one and 5.0 on the other); `TabEdits` could arrive as a default `ImmutableArray` from an
+explicit `"TabEdits": null` and throw mid-export, where a refusal belongs; the tabs dialog clamped
+and rounded a saved size on opening and wrote the result back as the operator's own choice, which is
+the clamping-without-telling the settings window explicitly refuses; the new tab-size problems were
+raised against the Milling section while their boxes are on New boards, so the window would have
+marked the wrong tab; and the comment claiming the new lap start was worth 309 mm of rapid on the
+panel read as though the panel came out ahead — it recovers 125 mm of the 184 mm that moving the tabs
+cost, and now says so with all three numbers.
+
+**One test failed twice under the full suite and passes on its own:**
+`OptimizerBenchmarkTests.APanelIsWhereTheOrderingMattersMost`, which asserts the panel's isolation
+orders in under 800 ms of wall clock. Nothing in this story touches the optimiser, and the machine
+was running several background agents at the time. Left alone, and noted here because a wall-clock
+budget in a test is the shape [06's own note](../Documentation/06-Roadmap-and-Risks.md) records about
+the optimizer's budget: it measures the machine as much as the code.
+
 ---
 
 ## Story 2 — Unnamed copper is called unnamed everywhere

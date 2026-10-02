@@ -16,6 +16,42 @@ public sealed class BackplotTests
 {
     private static long Mm(double mm) => Nm.FromMillimetres(mm);
 
+    /// <summary>
+    /// Whether a polyline passes within a tolerance of a point, measured against its segments.
+    ///
+    /// Against the segments and not the vertices, because a straight edge of a board is one segment
+    /// tens of millimetres long: a line can run exactly through a point while its nearest vertex is
+    /// nowhere near it.
+    /// </summary>
+    private static bool Crosses(IReadOnlyList<Point2> run, Point2 at, long within)
+    {
+        for (var i = 0; i + 1 < run.Count; i++)
+        {
+            var a = run[i];
+            var b = run[i + 1];
+
+            double dx = b.X - a.X;
+            double dy = b.Y - a.Y;
+            var length = (dx * dx) + (dy * dy);
+
+            // A zero-length segment is just its own endpoint.
+            var t = length <= 0
+                ? 0
+                : Math.Clamp((((at.X - a.X) * dx) + ((at.Y - a.Y) * dy)) / length, 0, 1);
+
+            var nearest = new Point2(
+                a.X + (long)Math.Round(dx * t),
+                a.Y + (long)Math.Round(dy * t));
+
+            if (nearest.DistanceTo(at) <= within)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // ------------------------------------------------------------------ modal state
 
     /// <summary>
@@ -453,10 +489,40 @@ public sealed class BackplotTests
         var cut = layers.Single(l => l.Id == "gcode-cut");
         var partial = layers.Single(l => l.Id == "gcode-cut-partial");
 
-        // Four tabs break the deepest passes into four runs each; the pass over the tabs is whole.
+        // Four tabs break the deepest passes into four runs each, and none of those runs closes.
+        //
+        // The count is checked for being non-zero as well as for dividing by four: zero divides by
+        // four perfectly, and every assertion below it is over a list.
+        Assert.NotEmpty(cut.Runs);
         Assert.Equal(0, cut.Runs.Count % 4);
         Assert.All(cut.Runs, r => Assert.NotEqual(r[0], r[^1]));
-        Assert.Contains(partial.Runs, r => r[0] == r[^1]);
+
+        // And the shallow pass crosses every one of those gaps, which is the other half of the
+        // picture: the break in the bright line is where the board stays attached, and the dim line
+        // running through it is the pass that cut the tab down to its height.
+        //
+        // **This used to be asserted as "some part-depth run is a closed loop"**, and that stopped
+        // being true for a reason that is an improvement: the full laps now begin beside the first tab,
+        // so the emitter carries straight on from the tab-top lap into the first deep run without
+        // lifting and the two reach the picture as one open polyline. The claim worth making was never
+        // about the shape of that run — it is that nothing is hidden at the tab.
+        foreach (var run in cut.Runs)
+        {
+            var next = cut.Runs
+                .Where(other => !ReferenceEquals(other, run))
+                .OrderBy(other => other[0].DistanceTo(run[^1]))
+                .First();
+
+            var gap = new Point2(
+                (run[^1].X + next[0].X) / 2,
+                (run[^1].Y + next[0].Y) / 2);
+
+            // **Against the run's segments, not its points**, which is the mistake this assertion was
+            // written with the first time: a straight edge of the lap is one polyline segment from
+            // corner to corner, so the nearest *vertex* to a tab in the middle of that edge is ten
+            // millimetres away and the line passes straight through it.
+            Assert.Contains(partial.Runs, r => Crosses(r, gap, Mm(0.2)));
+        }
 
         // The full-depth line is what is drawn; the shallower passes are there to be turned on, not
         // laid over the board. A ramped program is nearly all part-depth runs, and showing those by

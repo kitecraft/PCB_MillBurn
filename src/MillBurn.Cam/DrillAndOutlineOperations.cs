@@ -46,14 +46,34 @@ public sealed record OutlineOptions
     /// <summary>Depth taken per pass. The whole thickness in one go is what breaks 1 mm cutters.</summary>
     public long DepthPerPassNm { get; init; } = Nm.FromMillimetres(0.4);
 
-    /// <summary>Width of each holding tab.</summary>
-    public long TabWidthNm { get; init; } = Nm.FromMillimetres(3.0);
+    /// <summary>
+    /// Width of each holding tab. Null derives it from the board — see
+    /// <see cref="TabPlan.DefaultWidthFor"/>.
+    /// </summary>
+    public long? TabWidthNm { get; init; }
 
-    /// <summary>Material left under a tab, for snapping the board out afterwards.</summary>
-    public long TabHeightNm { get; init; } = Nm.FromMillimetres(0.5);
+    /// <summary>
+    /// Material left under a tab, for snapping the board out afterwards. Null derives it from the
+    /// thickness — see <see cref="TabPlan.DefaultHeightFor"/>.
+    /// </summary>
+    public long? TabHeightNm { get; init; }
 
-    /// <summary>How many tabs to space around the outline. Zero cuts the board fully free.</summary>
+    /// <summary>
+    /// How many tabs to put round the outline. Zero cuts the board fully free.
+    ///
+    /// A target rather than a spacing: the tabs go one to a straight edge, longest edge first, so
+    /// four on a rectangle is one centred on each side. A count larger than the board's edges can
+    /// carry places what fits and the program says how many that was.
+    /// </summary>
     public int TabCount { get; init; } = 4;
+
+    /// <summary>
+    /// Tabs whose width or height was set by hand, keyed by the tab's place in the planned order.
+    ///
+    /// Empty is the ordinary case: everything derived. An edit changes the tab it names and nothing
+    /// else, which is why it is applied after the positions are settled rather than before.
+    /// </summary>
+    public IReadOnlyList<TabEdit> TabEdits { get; init; } = [];
 
     /// <summary>Cut outside the profile line, so the finished board is nominal size.</summary>
     public bool CutOutside { get; init; } = true;
@@ -225,69 +245,7 @@ public static class OutlineOperation
         ArgumentNullException.ThrowIfNull(outline);
         ArgumentNullException.ThrowIfNull(options);
 
-        var radius = options.Tool.DiameterNm / 2;
-
-        // Nesting is worked out on the profiles as drawn, before any offsetting, because the offset
-        // now depends on it. It used to be derived from the offset contours, which was harmless
-        // only while every profile moved the same way.
-        var nesting = NestingOf(outline);
-        var pieces = PiecesAmong(outline, options.Keep, options.Tool.DiameterNm);
-
-        // Each profile is offset on its own, not as one polygon set.
-        //
-        // Offsetting them together makes Clipper fill the whole set: a panel frame's own rectangle
-        // then covers every board inside it and they disappear, which is a program that cuts the
-        // frame out and leaves every board attached to it. Independently, each profile keeps its
-        // own boundary — and its own side.
-        var contours = new Paths64();
-        var depths = new List<int>();
-        var closed = new List<bool>();
-        var voids = 0;
-        var centrelines = 0;
-
-        for (var p = 0; p < outline.Count; p++)
-        {
-            // Which side of the line the cutter runs on, per profile.
-            //
-            // A piece keeps its size when the cutter passes outside it; a void keeps its size when
-            // the cutter stays inside it. Getting this backwards on a panel's routed channels does
-            // not merely cut in the wrong place — it cuts two grooves through the boards either
-            // side and leaves the channel itself uncut, so the panel never comes apart.
-            var outward = pieces[p] == options.CutOutside;
-
-            if (!pieces[p])
-            {
-                voids++;
-            }
-
-            var grown = Polygons.Inflate(
-                new Paths64 { outline[p] },
-                outward ? radius : -radius,
-                JoinType.Round,
-                EndType.Polygon,
-                arcTolerance: options.SagittaNm);
-
-            var depth = nesting.GetValueOrDefault(p);
-
-            // A channel about as wide as the cutter is one pass down its middle, not a lap around
-            // the sliver left when it is offset inward. Only when the middle demonstrably covers
-            // what the lap would have: VoidCentreline checks and hands back null if it does not.
-            var middle = pieces[p]
-                ? null
-                : VoidCentreline.For(grown, options.Tool.DiameterNm, options.SagittaNm);
-
-            if (middle is not null)
-            {
-                centrelines++;
-            }
-
-            foreach (var contour in middle ?? grown)
-            {
-                contours.Add(contour);
-                depths.Add(depth);
-                closed.Add(middle is null);
-            }
-        }
+        var (contours, depths, closed, pieces, voids, centrelines) = Shape(outline, options);
 
         var notes = new List<string>();
         List<ToolpathPass> passes = [];
@@ -311,36 +269,27 @@ public static class OutlineOperation
         // still attached to it is loose while the cutter is still working.
         var deepest = depths.Count == 0 ? 0 : depths.Max();
 
-        var shallowDepths = new List<long>();
-        var tabbedDepths = new List<long>();
-        var allDepths = new List<long>();
+        // The cutter's own ladder, before the tabs have a say in it.
+        var stepDepths = new List<long>();
 
         for (var step = 1; step <= steps; step++)
         {
-            var depth = Math.Min(options.TotalDepthNm, step * options.DepthPerPassNm);
-            var tabbed = options.TabCount > 0
-                && depth > options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
-
-            (tabbed ? tabbedDepths : shallowDepths).Add(depth);
-            allDepths.Add(depth);
+            stepDepths.Add(Math.Min(options.TotalDepthNm, step * options.DepthPerPassNm));
         }
 
-        // A tab is only a tab if something cut down to its top.
+        // Every tab this program cuts, so the notes can describe them.
         //
-        // Reported from the workshop: a 0.8 mm board, 0.90 mm of total depth, a cutter whose step
-        // down is 1.00 mm — one pass, deeper than the tab, so the gap was jumped on the only pass
-        // the profile had and every "tab" was left at the full thickness of the board. The piece
-        // does not come free, and nothing in the file says why. The step down is the cutter's and
-        // the tab height is ours, so the two need not divide into each other at all: cut the depth
-        // the tab's top sits at, whatever the steps work out to.
-        var tabTopNm = options.TotalDepthNm - options.TabHeightNm - options.BreakThroughNm;
-        var addedForTabs = options.TabCount > 0 && tabTopNm > 0 && !shallowDepths.Contains(tabTopNm);
-
-        if (addedForTabs)
-        {
-            shallowDepths.Add(tabTopNm);
-            shallowDepths.Sort();
-        }
+        // **All of the profiles, not the first one that gets any**, which is what it used to be on
+        // the grounds that every profile on a board is cut with the same plan. A `/code-review`
+        // pass pointed out that this story made that false: the width is derived from the
+        // profile’s own narrow side, so a sheet holding a 21 x 37 mm board and a 60 x 60 mm one
+        // gets 2.0 mm tabs on the first and 5.0 mm on the second — and the header said 2.0 for
+        // both.
+        var planned = new List<PlacedTab>();
+        var edgesUsed = 0;
+        var profilesTabbed = 0;
+        var addedTops = new List<long>();
+        var tabsSwallowProfile = false;
 
         for (var c = 0; c < contours.Count; c++)
         {
@@ -363,6 +312,52 @@ public static class OutlineOperation
             // that has to be cut apart by hand.
             var outermost = depths[c] == 0;
 
+            // Where this profile's tabs go, decided from its own edges.
+            //
+            // Per profile rather than per board, because "one centred on each straight edge" is a
+            // fact about the shape in front of it. On a panel only the frame is tabbed anyway, and a
+            // board whose outline is a rounded rectangle gets a different answer from one that is a
+            // plain rectangle of the same size.
+            var tabs = outermost && closed[c] ? TabPlan.For(contour, options) : [];
+            var walk = closed[c] ? new ProfileWalk(contour) : null;
+
+            // **The full laps begin at the near side of the first tab, not at the profile's own start
+            // vertex.**
+            //
+            // Measured on PogoTest1: without this the last lap finishes wherever Clipper's offset
+            // happened to start and the first tabbed run begins at the middle of an edge twenty
+            // millimetres away — further than a tab is wide, so the emitter rightly climbs to the safe
+            // height and traverses.
+            //
+            // **Measured on the panel’s outline, and the baseline matters:** 337 mm of rapid before
+            // this story, 646 mm with the tabs centred on edges and the lap still starting at the
+            // seam, 521 mm with it starting beside the first tab. So this recovers 125 mm of the
+            // 184 mm that moving the tabs cost, rather than making the panel cheaper than it was.
+            // The remainder is the route between the frame and the boards inside it, which moved
+            // with the frame’s entry point; on a one-profile board it goes the other way (the
+            // connector strip: 83 mm to 73 mm).
+            //
+            // The old placement never showed the problem because a tab always straddled the seam,
+            // so the run after it started where the lap ended.
+            //
+            // **The near side and not the far side**, which is a one-character difference with two
+            // consequences. Ending the lap exactly where run zero begins would let the emitter carry
+            // straight on without lifting — cheaper still — and the two would arrive in the backplot
+            // as *one* run, whose depth is the deeper of them. The picture classifies a run by the
+            // deepest point in it, so the shallow lap would be drawn in the full-depth colour and
+            // would paint over the very gaps the tabs leave. That is the workshop's own complaint
+            // ("the outline's cut line stopped showing where the tabs were"), reintroduced to save a
+            // few millimetres. Ending a tab's width short leaves the lap a closed loop of its own and
+            // costs one hop over a tab the cutter has just cut down.
+            var start = tabs.Count > 0 && walk is not null
+                ? tabs[0].AlongNm - (tabs[0].WidthNm / 2.0)
+                : 0;
+
+            if (start < 0)
+            {
+                start += walk!.Perimeter;
+            }
+
             // An open run is cut in alternate directions as it goes deeper.
             //
             // A closed contour ends where it began, so the next pass down starts where the last one
@@ -370,42 +365,111 @@ public static class OutlineOperation
             // taking it the same way round every time means travelling its whole length back first
             // — 7 m of it across this panel. Turning round instead is free, and a slot is cut at
             // full engagement on both sides anyway, so there is no climb-or-conventional to lose.
-            var forward = closed[c] ? IsolationOperation.ToSegments(contour) : Along(contour);
+            var forward = walk is null
+                ? Along(contour)
+                : start > 0
+                    ? walk.Sub(start, start + walk.Perimeter)
+                    : IsolationOperation.ToSegments(contour);
+
             var backward = closed[c] ? forward : Along(Reversed(contour));
             var turn = false;
 
-            foreach (var depth in outermost ? shallowDepths : allDepths)
+            if (tabs.Count > 0)
             {
-                passes.Add(new ToolpathPass
-                {
-                    Path = turn ? backward : forward,
-                    DepthNm = depth,
-                    Closed = closed[c],
-                    Group = group,
-                    Stack = c,
-                });
+                planned.AddRange(tabs);
+                profilesTabbed++;
 
-                turn = !closed[c] && !turn;
+                // Counted per profile: an edge index is a place on its own profile, so the same
+                // number means different edges on two of them.
+                edgesUsed += tabs.Where(t => !t.Spaced).Select(t => t.Edge).Distinct().Count();
             }
 
-            // The tabbed passes go depth by depth, all runs at one depth before the next.
-            //
-            // The opposite — one run taken to full depth before moving on — sounds tidier and is
-            // much worse: an open run ends at the far end of itself, so repeating it at the next
-            // depth means travelling its whole length back first. Going round the profile instead
-            // costs only the tab gap between one run and the next, and the last run's end is
-            // already next to the first run's start.
-            var runs = !outermost || !closed[c] || tabbedDepths.Count == 0
-                ? []
-                : SplitForTabs(contour, options).ToList();
-
-            foreach (var depth in tabbedDepths)
+            // Tabs were asked for and the planner could not place any: they would have consumed the
+            // whole profile. Recorded so the notes can say it, because what happens instead is that
+            // the profile is cut clean through and the piece comes free on the last pass.
+            if (tabs.Count == 0 && outermost && closed[c] && options.TabCount > 0)
             {
-                for (var r = 0; r < runs.Count; r++)
+                tabsSwallowProfile = true;
+            }
+
+            // A tab is only a tab if something cut down to its top.
+            //
+            // Reported from the workshop: a 0.8 mm board, 0.90 mm of total depth, a cutter whose step
+            // down is 1.00 mm — one pass, deeper than the tab, so the gap was jumped on the only pass
+            // the profile had and every "tab" was left at the full thickness of the board. The piece
+            // does not come free, and nothing in the file says why. The step down is the cutter's and
+            // the tab height is ours, so the two need not divide into each other at all: cut the depth
+            // each tab's top sits at, whatever the steps work out to.
+            //
+            // One depth per *distinct* height, now that tabs need not be the same height as each
+            // other: a board with a 0.5 mm tab and a 0.3 mm tab is cut down to 0.3 mm of material
+            // everywhere the second one is, and to 0.5 mm where the first one is.
+            var depthsHere = new List<long>(stepDepths);
+
+            foreach (var top in tabs.Select(t => TabTop(t, options)).Where(t => t > 0).Distinct())
+            {
+                if (!depthsHere.Contains(top))
+                {
+                    depthsHere.Add(top);
+
+                    if (!addedTops.Contains(top))
+                    {
+                        addedTops.Add(top);
+                    }
+                }
+            }
+
+            depthsHere.Sort();
+
+            // The split is the same for every depth that jumps the same tabs, and the set of tabs a
+            // pass jumps only grows as it goes deeper — so the count is enough to know whether the
+            // last answer still holds.
+            var splitFor = -1;
+            List<(IReadOnlyList<ArtSegment> Run, long GapAfterNm)> runs = [];
+
+            foreach (var depth in depthsHere)
+            {
+                // Which tabs this pass has to jump: the ones whose top it is already past.
+                var active = tabs.Where(t => depth > TabTop(t, options)).ToList();
+
+                if (active.Count == 0)
                 {
                     passes.Add(new ToolpathPass
                     {
-                        Path = runs[r],
+                        Path = turn ? backward : forward,
+                        DepthNm = depth,
+                        Closed = closed[c],
+                        Group = group,
+                        Stack = c,
+                    });
+
+                    turn = !closed[c] && !turn;
+                    continue;
+                }
+
+                if (active.Count != splitFor)
+                {
+                    runs = SplitAt(walk!, active);
+                    splitFor = active.Count;
+                }
+
+                // The tabbed passes go depth by depth, all runs at one depth before the next.
+                //
+                // The opposite — one run taken to full depth before moving on — sounds tidier and is
+                // much worse: an open run ends at the far end of itself, so repeating it at the next
+                // depth means travelling its whole length back first. Going round the profile instead
+                // costs only the tab gap between one run and the next, and the last run's end is
+                // already next to the first run's start.
+                foreach (var run in runs)
+                {
+                    if (run.Run.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    passes.Add(new ToolpathPass
+                    {
+                        Path = run.Run,
                         DepthNm = depth,
                         Closed = false,
                         Group = group,
@@ -416,15 +480,18 @@ public static class OutlineOperation
                         // rather than as "this one is next to that one", because the ordering this
                         // lays down is not the ordering that gets cut — see HopWithinNm.
                         //
-                        // Exactly the tab's width, with nothing added. SplitForTabs walks the
-                        // already-offset contour and removes half a tab either side of each tab
-                        // centre, so the gap it leaves is the tab and no more: measured on a 3.0 mm
-                        // tab, 3.000 mm along a straight edge and 2.321 mm across a corner, where
-                        // the chord cuts inside the path. An earlier version added the cutter's
-                        // diameter on the theory that the run ends sit half a cutter either side,
-                        // which is not what that method does — and the slack was not free, because
-                        // every millimetre of it widens the window in which a reordered move that is
-                        // not a tab gets taken at hop height.
+                        // Exactly the tab's width, with nothing added. SplitAt cuts the already-offset
+                        // contour at half a tab either side of each tab centre, so the gap it leaves
+                        // is the tab and no more: measured on a 3.0 mm tab, 3.000 mm along a straight
+                        // edge and 2.321 mm across a corner, where the chord cuts inside the path. An
+                        // earlier version added the cutter's diameter on the theory that the run ends
+                        // sit half a cutter either side, which is not what that method does — and the
+                        // slack was not free, because every millimetre of it widens the window in
+                        // which a reordered move that is not a tab gets taken at hop height.
+                        //
+                        // **The width of the tab this run ends at**, not the widest on the board.
+                        // Tabs need not be the same size as each other any more, and one wide tab
+                        // would otherwise open the window for every crossing on the profile.
                         //
                         // Set on every run, including the first of each depth. That one used to be
                         // left out, on the grounds that what precedes it — a full lap, or the last
@@ -439,7 +506,7 @@ public static class OutlineOperation
                         // safe height." Six crossings between 1.43 mm and 2.84 mm on the panel were
                         // climbing the full two millimetres, and the only thing marking them out was
                         // being first in their depth.
-                        HopWithinNm = options.TabWidthNm,
+                        HopWithinNm = run.GapAfterNm,
                     });
                 }
             }
@@ -465,27 +532,76 @@ public static class OutlineOperation
                 $"Cut on the outside: {pieces.Count(p => p)}. Cut from the inside: {voids}, because they enclose nothing — so the pieces either side of them keep their size."));
         }
 
-        if (options.TabCount > 0)
+        if (options.TabCount > 0 && planned.Count == 0)
         {
-            var tabWidth = Nm.ToMillimetreString(options.TabWidthNm, 1);
-            var tabHeight = Nm.ToMillimetreString(options.TabHeightNm, 2);
+            // Asked for and not placed, which is two different sentences at the machine: either the
+            // tabs would have taken up the whole profile, or there was no profile to put them on.
+            // Both end with a piece that comes free on the last pass, and that is the part the
+            // operator has to know.
+            notes.Add(tabsSwallowProfile
+                ? Invariant($"The {options.TabCount} tabs asked for are wider than the profile they would hold, so it is cut right through and the piece comes free on the last pass. Hold it down.")
+                : "No profile here takes tabs, so nothing holds the piece on the last pass. Hold it down.");
+        }
+        else if (planned.Count > 0)
+        {
             var outerCount = depths.Count(d => d == 0);
+            var widths = planned.Select(t => t.WidthNm).Distinct().Order().ToList();
+            var heights = planned.Select(t => t.HeightNm).Distinct().Order().ToList();
 
-            notes.Add(Invariant(
-                $"{options.TabCount} tabs, {tabWidth} mm wide, {tabHeight} mm of material left under each."));
+            // One number when they all agree, a range when they do not, because a tab is allowed to
+            // be its own size now and a single figure would be a guess at which one.
+            var wide = widths.Count == 1
+                ? Invariant($"{Nm.ToMillimetreString(widths[0], 1)} mm wide")
+                : Invariant($"{Nm.ToMillimetreString(widths[0], 1)} to {Nm.ToMillimetreString(widths[^1], 1)} mm wide");
 
-            if (addedForTabs)
+            var under = heights.Count == 1
+                ? Invariant($"{Nm.ToMillimetreString(heights[0], 2)} mm of material left under each")
+                : Invariant($"{Nm.ToMillimetreString(heights[0], 2)} to {Nm.ToMillimetreString(heights[^1], 2)} mm of material left under them");
+
+            notes.Add(Invariant($"{planned.Count} tabs, {wide}, {under}."));
+
+            // Where they are, and why there. This is the line that answers the report this work came
+            // from — "they may not be in the best locations" — so it says what chose the positions.
+            var where = profilesTabbed > 1
+                ? Invariant($"{edgesUsed} straight edge(s) across {profilesTabbed} profiles")
+                : Invariant($"{edgesUsed} straight edge(s) of the profile");
+
+            notes.Add(planned.All(t => t.Spaced)
+                ? "Spaced evenly: no edge long enough to centre a tab on."
+                : Invariant($"Centred on {where}, never across a corner."));
+
+            if (planned.Count < options.TabCount * profilesTabbed)
             {
                 notes.Add(Invariant(
-                    $"One extra pass at {Nm.ToMillimetreString(tabTopNm, 2)} mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the board."));
+                    $"{options.TabCount * profilesTabbed} were asked for: the straight edges hold {planned.Count} with clearance either side of each."));
+            }
+
+            if (addedTops.Count == 1)
+            {
+                notes.Add(Invariant(
+                    $"One extra pass at {Nm.ToMillimetreString(addedTops[0], 2)} mm, which is where the tabs start: the step down does not reach it on its own, and a tab nothing cuts down to is the full thickness of the board."));
+            }
+            else if (addedTops.Count > 1)
+            {
+                var tops = string.Join(", ", addedTops.Order().Select(t => Nm.ToMillimetreString(t, 2)));
+
+                notes.Add(Invariant(
+                    $"Extra passes at {tops} mm, which is where the tabs start: the step down reaches none of them on its own, and a tab nothing cuts down to is the full thickness of the board."));
             }
 
             // A tab as tall as the board is the board. Said plainly, because what it looks like at
             // the machine is a cut that simply did not release the piece.
-            if (tabTopNm <= 0)
+            var uncut = planned.Where(t => TabTop(t, options) <= 0).ToList();
+
+            if (uncut.Count > 0)
             {
+                var tallest = Nm.ToMillimetreString(uncut.Max(t => t.HeightNm), 2);
+                var which = uncut.Count == planned.Count
+                    ? "The tabs are"
+                    : Invariant($"{uncut.Count} of the tabs are");
+
                 notes.Add(Invariant(
-                    $"The tabs are {tabHeight} mm tall and this cut is only {total} mm deep, so nothing is cut away at them: they hold the full thickness of the board and have to be cut by hand."));
+                    $"{which} up to {tallest} mm tall and this cut is only {total} mm deep, so nothing is cut away at them: they hold the full thickness of the board and have to be cut by hand."));
             }
 
             if (depths.Count > outerCount)
@@ -689,115 +805,275 @@ public static class OutlineOperation
         return nesting;
     }
 
-    private static IEnumerable<IReadOnlyList<ArtSegment>> SplitForTabs(Path64 contour, OutlineOptions options)
+    /// <summary>
+    /// The tabs this outline would be cut with, and the sizes the board would give them if nobody
+    /// had, without building the program.
+    ///
+    /// **So that the dialog and the file cannot disagree.** The tabs dialog has to show where the
+    /// tabs are before anything is emitted, and the only honest way to do that is to ask the same
+    /// question the emitter asks: the same offset contours, the same planner, the same options. A
+    /// second implementation in the window would be a picture of a board nobody is going to cut.
+    ///
+    /// **One call rather than two**, because the expensive half is the shaping — offsetting every
+    /// profile to the waste side — and the window needs both answers at once. A `/code-review` pass
+    /// counted it: the panel shapes 102 profiles, and asking the two questions separately did all of
+    /// that twice, on the UI thread, per click.
+    ///
+    /// The outermost closed profile's tabs, which is the one that gets them — the board, or a panel's
+    /// frame.
+    /// </summary>
+    public static TabPlanning PlanTabs(Paths64 outline, OutlineOptions options)
     {
-        var segments = IsolationOperation.ToSegments(contour);
+        ArgumentNullException.ThrowIfNull(outline);
+        ArgumentNullException.ThrowIfNull(options);
 
-        var perimeter = 0.0;
-        foreach (var s in segments)
+        var height = TabPlan.DefaultHeightFor(options.BoardThicknessNm);
+        var (contours, depths, closed, _, _, _) = Shape(outline, options);
+
+        var width = TabPlan.DefaultWidthFor([]);
+        var found = false;
+
+        for (var c = 0; c < contours.Count; c++)
         {
-            perimeter += s.From.DistanceTo(s.To);
-        }
-
-        if (perimeter <= 0 || options.TabWidthNm * options.TabCount >= perimeter)
-        {
-            // The tabs would consume the whole outline. Cutting it as one closed pass is wrong, but
-            // so is emitting nothing, and a caller can see the note.
-            yield return segments;
-            yield break;
-        }
-
-        var spacing = perimeter / options.TabCount;
-        var half = options.TabWidthNm / 2.0;
-
-        var run = new List<ArtSegment>();
-        var travelled = 0.0;
-
-        foreach (var segment in segments)
-        {
-            var length = segment.From.DistanceTo(segment.To);
-
-            if (length <= 0)
+            if (depths[c] != 0 || !closed[c] || contours[c].Count < 3)
             {
                 continue;
             }
 
-            // Every place inside this segment where a tab starts or ends, so the segment can be cut
-            // there rather than kept or dropped whole.
-            //
-            // This is what was wrong. The test used to be made once per segment, against the
-            // segment's own midpoint — which works only while segments are short. An offset
-            // rectangle is four straight edges and four tessellated corners, so a 37 mm edge is a
-            // single segment and a tab landing anywhere along it was simply not noticed. Asking for
-            // four tabs on a 21 x 37 mm board produced two, both at corners, in opposing corners,
-            // because the corners were the only places with segments short enough to be seen.
-            var marks = new List<double> { travelled };
-
-            for (var k = (long)Math.Floor(travelled / spacing) - 1;
-                k <= (long)Math.Ceiling((travelled + length) / spacing) + 1;
-                k++)
+            // The first profile that could take tabs decides the derived sizes, whether or not any
+            // were placed on it: a board that cannot hold the tabs asked for still has a width its
+            // own narrow side would give, and that is the number the dialog shows beside the boxes.
+            if (!found)
             {
-                foreach (var edge in new[] { (k * spacing) - half, (k * spacing) + half })
-                {
-                    if (edge > travelled + 1e-9 && edge < travelled + length - 1e-9)
-                    {
-                        marks.Add(edge);
-                    }
-                }
+                width = TabPlan.DefaultWidthFor(contours[c]);
+                found = true;
             }
 
-            marks.Add(travelled + length);
-            marks.Sort();
+            var tabs = TabPlan.For(contours[c], options);
 
-            for (var i = 0; i + 1 < marks.Count; i++)
+            if (tabs.Count > 0)
             {
-                var from = marks[i];
-                var to = marks[i + 1];
-
-                if (to - from <= 1e-9)
-                {
-                    continue;
-                }
-
-                if (UnderTab((from + to) / 2, spacing, half))
-                {
-                    if (run.Count > 0)
-                    {
-                        yield return run;
-                        run = [];
-                    }
-
-                    continue;
-                }
-
-                // An arc is kept whole: the offset corners are tessellated to lines before they get
-                // here, so nothing that reaches this is curved, and slicing one by distance would
-                // be wrong if anything ever did.
-                run.Add(segment.IsArc
-                    ? segment
-                    : ArtSegment.Line(
-                        Along(segment, (from - travelled) / length),
-                        Along(segment, (to - travelled) / length)));
+                return new TabPlanning(tabs, width, height);
             }
-
-            travelled += length;
         }
 
-        if (run.Count > 0)
-        {
-            yield return run;
-        }
+        return new TabPlanning([], width, height);
     }
 
     /// <summary>
-    /// Whether a point this far around the contour is under a tab.
-    ///
-    /// Tab centres sit at whole multiples of the spacing, so the one at zero straddles the seam
-    /// where the contour closes — which is right, and is why <c>TabCount</c> gaps come out of
-    /// <c>TabCount</c> centres rather than one more.
+    /// The profiles as the cutter will follow them: offset to the waste side, nested, and with a
+    /// channel no wider than the cutter replaced by one pass down its middle.
     /// </summary>
-    private static bool UnderTab(double at, double spacing, double half) =>
-        Math.Abs(((at + (spacing / 2)) % spacing) - (spacing / 2)) < half;
+    private static (Paths64 Contours, List<int> Depths, List<bool> Closed, IReadOnlyList<bool> Pieces, int Voids, int Centrelines) Shape(
+        Paths64 outline,
+        OutlineOptions options)
+    {
+        var radius = options.Tool.DiameterNm / 2;
+
+        // Nesting is worked out on the profiles as drawn, before any offsetting, because the offset
+        // now depends on it. It used to be derived from the offset contours, which was harmless
+        // only while every profile moved the same way.
+        var nesting = NestingOf(outline);
+        var pieces = PiecesAmong(outline, options.Keep, options.Tool.DiameterNm);
+
+        // Each profile is offset on its own, not as one polygon set.
+        //
+        // Offsetting them together makes Clipper fill the whole set: a panel frame's own rectangle
+        // then covers every board inside it and they disappear, which is a program that cuts the
+        // frame out and leaves every board attached to it. Independently, each profile keeps its
+        // own boundary — and its own side.
+        var contours = new Paths64();
+        var depths = new List<int>();
+        var closed = new List<bool>();
+        var voids = 0;
+        var centrelines = 0;
+
+        for (var p = 0; p < outline.Count; p++)
+        {
+            // Which side of the line the cutter runs on, per profile.
+            //
+            // A piece keeps its size when the cutter passes outside it; a void keeps its size when
+            // the cutter stays inside it. Getting this backwards on a panel's routed channels does
+            // not merely cut in the wrong place — it cuts two grooves through the boards either
+            // side and leaves the channel itself uncut, so the panel never comes apart.
+            var outward = pieces[p] == options.CutOutside;
+
+            if (!pieces[p])
+            {
+                voids++;
+            }
+
+            var grown = Polygons.Inflate(
+                new Paths64 { outline[p] },
+                outward ? radius : -radius,
+                JoinType.Round,
+                EndType.Polygon,
+                arcTolerance: options.SagittaNm);
+
+            var depth = nesting.GetValueOrDefault(p);
+
+            // A channel about as wide as the cutter is one pass down its middle, not a lap around
+            // the sliver left when it is offset inward. Only when the middle demonstrably covers
+            // what the lap would have: VoidCentreline checks and hands back null if it does not.
+            var middle = pieces[p]
+                ? null
+                : VoidCentreline.For(grown, options.Tool.DiameterNm, options.SagittaNm);
+
+            if (middle is not null)
+            {
+                centrelines++;
+            }
+
+            foreach (var contour in middle ?? grown)
+            {
+                contours.Add(contour);
+                depths.Add(depth);
+                closed.Add(middle is null);
+            }
+        }
+
+        return (contours, depths, closed, pieces, voids, centrelines);
+    }
+    /// <summary>
+    /// One closed profile, measured along itself.
+    ///
+    /// The tabs, the runs between them and the full laps are all expressed as distances round the
+    /// profile, so the segment lengths and their running totals are worth computing once: the planner
+    /// and the splitter would otherwise walk the same contour twice for every depth on a board.
+    /// </summary>
+    private sealed class ProfileWalk
+    {
+        public ProfileWalk(Path64 contour)
+        {
+            Segments = IsolationOperation.ToSegments(contour);
+            Starts = new double[Segments.Count];
+            Lengths = new double[Segments.Count];
+
+            for (var i = 0; i < Segments.Count; i++)
+            {
+                Starts[i] = Perimeter;
+                Lengths[i] = Segments[i].From.DistanceTo(Segments[i].To);
+                Perimeter += Lengths[i];
+            }
+        }
+
+        public IReadOnlyList<ArtSegment> Segments { get; }
+
+        public double[] Starts { get; }
+
+        public double[] Lengths { get; }
+
+        public double Perimeter { get; }
+
+        /// <summary>
+        /// The stretch between two distances along the profile, wrapping past the start vertex if it
+        /// has to.
+        ///
+        /// A segment wholly inside the stretch is kept exactly as it was rather than rebuilt from its
+        /// endpoints, so a run crossing a tessellated corner keeps that corner's own vertices to the
+        /// nanometre.
+        /// </summary>
+        public List<ArtSegment> Sub(double from, double to)
+        {
+            var run = new List<ArtSegment>();
+
+            // Two laps at most: a stretch can begin part-way round and end part-way round again, and
+            // nothing longer than one whole profile is ever asked for.
+            for (var lap = 0; lap < 2; lap++)
+            {
+                for (var i = 0; i < Segments.Count; i++)
+                {
+                    if (Lengths[i] <= 0)
+                    {
+                        continue;
+                    }
+
+                    var s0 = Starts[i] + (lap * Perimeter);
+                    var s1 = s0 + Lengths[i];
+
+                    var a = Math.Max(from, s0);
+                    var b = Math.Min(to, s1);
+
+                    if (b - a <= 1e-9)
+                    {
+                        continue;
+                    }
+
+                    run.Add(a <= s0 + 1e-9 && b >= s1 - 1e-9
+                        ? Segments[i]
+                        : ArtSegment.Line(
+                            Along(Segments[i], (a - s0) / Lengths[i]),
+                            Along(Segments[i], (b - s0) / Lengths[i])));
+                }
+            }
+
+            return run;
+        }
+    }
+
+    /// <summary>The depth a tab's top sits at: below this, a pass has to jump it.</summary>
+    private static long TabTop(PlacedTab tab, OutlineOptions options) =>
+        options.TotalDepthNm - tab.HeightNm - options.BreakThroughNm;
+
+    /// <summary>
+    /// The profile broken into the runs between its tabs, each with the width of the gap that
+    /// follows it.
+    ///
+    /// **Runs are the stretches between consecutive tabs**, taken in order, which is a different
+    /// construction from the one this replaced and fixes two things by being so. The old version
+    /// walked every segment asking "is this bit under a tab", which only worked because tab centres
+    /// sat at whole multiples of the spacing — one of them always straddled the seam where the
+    /// contour closes, so the walk started and finished inside a gap. Tabs centred on edges do not
+    /// straddle anything, and that walk would have ended the last run at the seam and started the
+    /// first one there: an extra lift, in the middle of an edge, for nothing.
+    ///
+    /// Here the seam is simply not a boundary. A run that spans it is one run, because a run's own
+    /// ends are the two tabs either side of it.
+    ///
+    /// The gap after each run is the tab that ends it, which is what tells the emitter how far a
+    /// crossing may be and still be a tab rather than a reordered move.
+    /// </summary>
+    private static List<(IReadOnlyList<ArtSegment> Run, long GapAfterNm)> SplitAt(
+        ProfileWalk walk,
+        List<PlacedTab> tabs)
+    {
+        var runs = new List<(IReadOnlyList<ArtSegment> Run, long GapAfterNm)>();
+
+        if (walk.Perimeter <= 0 || tabs.Count == 0)
+        {
+            return runs;
+        }
+
+        var ordered = tabs.OrderBy(t => t.AlongNm).ToList();
+
+        for (var t = 0; t < ordered.Count; t++)
+        {
+            var next = ordered[(t + 1) % ordered.Count];
+
+            // From the far side of this tab to the near side of the next one. The next tab's centre
+            // is taken a whole perimeter further on when it comes before this one, which is the case
+            // for exactly one run: the one that spans the start vertex.
+            var from = ordered[t].AlongNm + (ordered[t].WidthNm / 2.0);
+            var to = next.AlongNm - (next.WidthNm / 2.0);
+
+            if (to <= from)
+            {
+                to += walk.Perimeter;
+            }
+
+            // Two tabs close enough to overlap leave no run between them, which can only happen when
+            // one has been widened by hand past the room its edge has. Nothing is emitted for it and
+            // the two become one wider gap; the notes carry the widths as they were set.
+            if (to - from <= 0)
+            {
+                continue;
+            }
+
+            runs.Add((walk.Sub(from, to), next.WidthNm));
+        }
+
+        return runs;
+    }
 
     private static Point2 Along(ArtSegment segment, double t) => new(
         segment.From.X + (long)Math.Round((segment.To.X - segment.From.X) * t),

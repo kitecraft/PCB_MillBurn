@@ -257,7 +257,7 @@ public sealed class SettingsWindow : Window
             + "because a probe repeats to a few microns and a surface forced through that noise "
             + "ripples in a way the board does not.");
 
-        body = Tab(tabs, "New boards");
+        body = Tab(tabs, "New boards", SettingsSection.NewBoards);
         Section(body, "When a folder is imported");
         body.Children.Add(Muted(
             "What each kind of layer becomes before you change anything. Layers with nothing in "
@@ -296,6 +296,24 @@ public sealed class SettingsWindow : Window
         }
 
         body.Children.Add(presets);
+
+        Section(body, "Tabs");
+        body.Children.Add(Muted(
+            "The bridges that hold the board in its stock while the outline is cut. Where they go is "
+            + "decided by the board — one centred on each straight edge, longest first — and so is "
+            + "how big they are, unless you say otherwise here. Each board can still be changed "
+            + "afterwards, one tab at a time, in Tabs › Sizes… beside the count.",
+            11, new Thickness(0, 0, 0, 8)));
+
+        Number(body, "tabWidth", "Tab width", "mm", settings.Milling.TabWidthMm, 0, 20, 0.5,
+            "How wide a gap each tab leaves. Zero sizes it from the board: a tenth of its narrow "
+            + "side, never under 1.5 mm and never over 5 mm — so a 21 x 37 mm board gets 2.0 mm and "
+            + "anything from 50 mm across gets 5.0.");
+
+        Number(body, "tabHeight", "Material left", "mm", settings.Milling.TabHeightMm, 0, 2, 0.05,
+            "How much is left under each tab for snapping the board out. Zero takes a third of the "
+            + "board's thickness, which is 0.50 mm on ordinary 1.6 mm laminate and 0.25 mm on 0.8 mm "
+            + "stock. Too thick tears the laminate; too thin breaks while the cutter is still working.");
 
         Grid.SetRow(tabs, 1);
         root.Children.Add(tabs);
@@ -659,7 +677,12 @@ public sealed class SettingsWindow : Window
             Silk = Chosen("silk"),
             Paste = Chosen("paste"),
         },
-        new MillingDefaults { IsolationWidthMm = Value("isolation") });
+        new MillingDefaults
+        {
+            IsolationWidthMm = Value("isolation"),
+            TabWidthMm = Value("tabWidth"),
+            TabHeightMm = Value("tabHeight"),
+        });
 
     /// <summary>
     /// Re-runs the checks and blocks saving on anything inconsistent.
@@ -733,6 +756,8 @@ public sealed class SettingsWindow : Window
         _flags["canned"].IsChecked = machine.CannedCycles;
 
         _numbers["isolation"].Value = (decimal)new MillingDefaults().IsolationWidthMm;
+        _numbers["tabWidth"].Value = (decimal)new MillingDefaults().TabWidthMm;
+        _numbers["tabHeight"].Value = (decimal)new MillingDefaults().TabHeightMm;
         _shortLap.SelectedIndex = (int)machine.ShortLastLap;
         _flags["finishingLap"].IsChecked = machine.FinishingLapOnThroughCuts;
         _placing.SelectedIndex = (int)machine.SvgPlacingLayers;

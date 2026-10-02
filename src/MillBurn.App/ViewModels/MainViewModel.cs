@@ -4,6 +4,7 @@ using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MillBurn.Align;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
@@ -221,6 +222,60 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Where a refresh would read from, or null when there is nowhere to read.</summary>
     public string? RefreshSource =>
         _project.OriginFolder is { } folder && Directory.Exists(folder) ? folder : null;
+
+    /// <summary>
+    /// The tabs this outline layer would be cut with as things stand.
+    ///
+    /// Asked of the planner rather than worked out here, and through the same options the export
+    /// builds — so the tabs window shows the board that is going to be cut and not a second opinion
+    /// about it. Empty when there is no board, when the layer is not being cut out, or when the tabs
+    /// asked for would take up the whole profile.
+    /// </summary>
+    public TabPlanning? PlannedTabs(LayerRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        if (_board is null || row.Operation != OperationKind.Outline)
+        {
+            return null;
+        }
+
+        var layer = _board.Layers.FirstOrDefault(l => string.Equals(l.FileName, row.FileName, StringComparison.Ordinal));
+
+        if (layer is null)
+        {
+            return null;
+        }
+
+        var options = ExportPlanner.OutlineOptionsFor(
+            _board, row.ToSettings(), row.Tool, Nm.FromMillimetres(BoardThicknessMm));
+
+        // **The profiles the export cuts, not the layer’s raw area.** The planner is shaped by
+        // what it is given: a stroked Edge_Cuts realises as an annulus per outline, and handing it
+        // the negative rings as well would nest and order the contours differently from the
+        // program — so the tab an operator edited as "3" in this list would not be the third tab
+        // in the file. Shaped once here and used for both questions.
+        var profiles = ExportPlanner.OutlineProfiles(layer);
+
+        var planned = OutlineOperation.PlanTabs(profiles, options);
+        var tabs = planned.Tabs;
+
+        // **Into the frame the machine works in**, which is the board's lower-left corner — the same
+        // move `BoardFindings` makes for the same reason. The planner answers in the artwork's own
+        // coordinates, and on this board that reads "183.41, -124.47 mm": right about the Gerber and
+        // useless at the machine, where nothing is negative and nothing is at 183.
+        var origin = _board.Bounds;
+
+        if (!origin.IsEmpty)
+        {
+            tabs = [.. tabs.Select(t => t with
+            {
+                At = new Point2(t.At.X - origin.MinX, t.At.Y - origin.MinY),
+            })];
+        }
+
+        return planned with { Tabs = tabs };
+    }
 
     public MainViewModel()
     {
@@ -2266,6 +2321,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                     FileName = layer.Id,
                     Output = LayerOperations.DefaultFor(source.Role, Settings.Import),
                     IsolationWidthNm = Settings.Milling.IsolationWidthNm,
+
+                    // Null unless the operator set a figure, in which case it is theirs and the
+                    // board stops deriving one. Carried on every layer, like the isolation
+                    // width, because only the outline reads it and a settings record that
+                    // applied to some layers and not others would be a second rule to remember.
+                    TabWidthNm = Settings.Milling.TabWidthNm,
+                    TabHeightNm = Settings.Milling.TabHeightNm,
                 };
 
             var row = new LayerRow(
@@ -2503,6 +2565,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 FileName = layer.FileName,
                 Output = LayerOperations.DefaultFor(layer.Role, Settings.Import),
                 IsolationWidthNm = Settings.Milling.IsolationWidthNm,
+                TabWidthNm = Settings.Milling.TabWidthNm,
+                TabHeightNm = Settings.Milling.TabHeightNm,
             });
         }
 

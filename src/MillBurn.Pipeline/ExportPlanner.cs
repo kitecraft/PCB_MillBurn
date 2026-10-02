@@ -1934,15 +1934,43 @@ public static class ExportPlanner
     private static IReadOnlyList<Toolpath> Only(Toolpath? toolpath) =>
         toolpath is null ? [] : [toolpath];
 
-    private static Toolpath BuildOutline(
+    /// <summary>
+    /// The profiles an outline layer is cut from.
+    ///
+    /// **Positive rings only, and public for the same reason the options are.** A stroked Edge_Cuts
+    /// realises as an annulus per outline — a positive ring around the outside of the pen and a
+    /// negative one inside it — and the negative ones are the inside of the stroke rather than real
+    /// cutouts. The tabs window plans from this too: planning from the raw area would hand the
+    /// planner a different set of paths from the one the program is built on, so the nesting, the
+    /// contour order and therefore the numbering of the tabs an operator edits would all be answers
+    /// about a board nobody is cutting.
+    /// </summary>
+    public static Paths64 OutlineProfiles(BoardLayer layer)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+
+        return new Paths64(layer.Area.Where(r => Clipper.Area(r) > 0));
+    }
+
+    /// <summary>
+    /// How this board's outline will be cut, from its settings.
+    ///
+    /// **Public so that the window can ask instead of guessing.** The tabs dialog has to show where
+    /// the tabs are going to be before anything is written, and the only way for the picture and the
+    /// file to agree is for both to be built from the same options — the same thickness, the same
+    /// break-through, the same bit, and the same idea of what counts as a piece. A second copy of
+    /// this in the view model would be a board nobody is going to cut.
+    /// </summary>
+    public static OutlineOptions OutlineOptionsFor(
         Board board,
-        BoardLayer layer,
         LayerOutputSettings setting,
         Tool tool,
-        long thicknessNm,
-        List<string> summary,
-        List<Check> warnings)
+        long thicknessNm)
     {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(tool);
+
         // Everything on the board except the outline itself, so the cut knows a piece from a void.
         //
         // A profile with none of this inside it encloses nothing worth keeping, which is what a
@@ -1958,15 +1986,35 @@ public static class ExportPlanner
             .SelectMany(l => l.Area)
             .Where(r => Clipper.Area(r) > 0));
 
-        var options = new OutlineOptions
+        return new OutlineOptions
         {
             Tool = tool,
             BoardThicknessNm = thicknessNm,
             BreakThroughNm = setting.BreakThroughNm,
             TabCount = setting.TabCount,
+            TabWidthNm = setting.TabWidthNm,
+            TabHeightNm = setting.TabHeightNm,
+
+            // `IsDefaultOrEmpty` rather than the array itself: an absent key in a project file
+            // gives the `= []` initialiser, but an explicit `"TabEdits": null` deserialises to a
+            // default `ImmutableArray`, whose `Count` throws through `IReadOnlyList` — in the
+            // middle of an export, where a refusal belongs rather than a NullReferenceException.
+            TabEdits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             Keep = keep,
         };
+    }
+
+    private static Toolpath BuildOutline(
+        Board board,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        Tool tool,
+        long thicknessNm,
+        List<string> summary,
+        List<Check> warnings)
+    {
+        var options = OutlineOptionsFor(board, setting, tool, thicknessNm);
 
         var cutter = Nm.ToMillimetreString(tool.DiameterNm, 2);
         var total = Nm.ToMillimetreString(options.TotalDepthNm, 2);
@@ -1974,18 +2022,53 @@ public static class ExportPlanner
         summary.Add(Invariant(
             $"{cutter} mm cutter outside the profile · {total} mm deep in {perPass} mm passes"));
 
+        // The height a tab will actually have, which is the settings' number when there is one and
+        // the derived one when there is not. Resolved here rather than read off the options, because
+        // an unset height is not a zero-height tab.
+        var tabHeightNm = setting.TabHeightNm ?? TabPlan.DefaultHeightFor(thicknessNm);
+
         if (setting.TabCount == 0)
         {
             warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program,
                 "No tabs: the board comes free on the last pass and will be thrown by the cutter."));
         }
-        else if (options.TotalDepthNm - options.TabHeightNm - setting.BreakThroughNm <= 0)
+        else if (options.TotalDepthNm - tabHeightNm - setting.BreakThroughNm <= 0)
         {
             // Nothing can be cut away at the tab, so the piece stays attached by its full thickness.
             // Worth a line in the report as well as in the program: at the machine it looks like a
             // cut that simply did not work.
             warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
-                $"The tabs are {Nm.ToMillimetreString(options.TabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board.")));
+                $"The tabs are {Nm.ToMillimetreString(tabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board.")));
+        }
+
+        // **And the other end of it, which nothing said.** The planner clamps a *derived* size to
+        // what a tab can be and still be a tab; a number typed into the dialog, the settings or
+        // `--tab-width` goes through untouched. A web of five hundredths breaks while the cutter
+        // is still working and the board is thrown — the exact thing tabs exist to prevent — and
+        // the program said nothing about it. Advice rather than a refusal: thin stock and a light
+        // touch are somebody’s own business, and the operator is the one holding the board.
+        var thin = setting.TabEdits
+            .Where(e => e.HeightNm is { } h && h < TabPlan.MinHeightNm)
+            .Select(e => e.HeightNm!.Value)
+            .Append(tabHeightNm < TabPlan.MinHeightNm ? tabHeightNm : long.MaxValue)
+            .Min();
+
+        if (setting.TabCount > 0 && thin < TabPlan.MinHeightNm)
+        {
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"A tab here leaves {Nm.ToMillimetreString(thin, 2)} mm of material, under the {Nm.ToMillimetreString(TabPlan.MinHeightNm, 2)} mm a tab needs to survive the rest of the cut.")));
+        }
+
+        var narrow = setting.TabEdits
+            .Where(e => e.WidthNm is { } w && w < TabPlan.MinWidthNm)
+            .Select(e => e.WidthNm!.Value)
+            .Append(setting.TabWidthNm is { } set && set < TabPlan.MinWidthNm ? set : long.MaxValue)
+            .Min();
+
+        if (setting.TabCount > 0 && narrow < TabPlan.MinWidthNm)
+        {
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"A tab here is {Nm.ToMillimetreString(narrow, 2)} mm wide, under the {Nm.ToMillimetreString(TabPlan.MinWidthNm, 1)} mm below which a tab is a nick rather than a bridge.")));
         }
 
         if (tool.Kind == ToolKind.VBit)
@@ -2002,7 +2085,7 @@ public static class ExportPlanner
         // cut the frame and left every board attached, and it would drop an interior slot the
         // same way. The negative rings are the inside of the pen stroke rather than real cutouts,
         // so they are not profiles and are left alone.
-        var profiles = new Paths64(layer.Area.Where(r => Clipper.Area(r) > 0));
+        var profiles = OutlineProfiles(layer);
 
         if (profiles.Count == 0)
         {
@@ -2025,7 +2108,9 @@ public static class ExportPlanner
         // This is worth a line of its own because it is the difference between a panel that comes
         // apart and one that is quietly destroyed: a routed channel cut on the outside takes a
         // cutter-radius off the boards on both sides and leaves the channel itself standing.
-        var cutInside = OutlineOperation.PiecesAmong(profiles, keep, tool.DiameterNm).Count(p => !p);
+        var cutInside = OutlineOperation
+            .PiecesAmong(profiles, options.Keep, tool.DiameterNm)
+            .Count(p => !p);
 
         if (cutInside > 0)
         {

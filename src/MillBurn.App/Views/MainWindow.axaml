@@ -759,7 +759,7 @@
                                                                        ToolTip.Tip="How far past the underside to go. Stopping exactly at the nominal thickness leaves a skin that tears." />
                                                     </Grid>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0"
                                                           IsVisible="{Binding NeedsTabs}">
                                                         <TextBlock Grid.Column="0" Classes="caption" Width="78"
                                                                    VerticalAlignment="Center" Text="Tabs" />
@@ -767,7 +767,11 @@
                                                                        Minimum="0" Maximum="12" Increment="1"
                                                                        FormatString="0"
                                                                        Value="{Binding TabCount, Mode=TwoWay}"
-                                                                       ToolTip.Tip="Uncut bridges holding the board in the stock. Zero cuts it fully free, and the last pass throws it." />
+                                                                       ToolTip.Tip="How many bridges hold the board in the stock, one to a straight edge, longest first. Zero cuts it fully free, and the last pass throws it." />
+                                                        <Button Grid.Column="2" Content="Sizes…"
+                                                                Margin="6,0,0,0" Padding="8,2"
+                                                                Click="OnTabsClicked"
+                                                                ToolTip.Tip="Where each tab is, how wide it is, and how much it leaves. Every one starts at the size the board gives it." />
                                                     </Grid>
 
                                                     <CheckBox Content="Drilling guide"

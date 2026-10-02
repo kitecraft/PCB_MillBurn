@@ -2269,15 +2269,16 @@ depth rather than the two neighbouring passes. It would pick up links across gro
 in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
 a strict subset of it, so nothing has to be undone to get there.
 
-#### 6.4 Tabs: where, how many, how big — **enhancement · open**
+#### 6.4 Tabs: where, how many, how big — **enhancement · partial** — *placed and sized from the board in sprint 4; moving one by hand is not built*
 
 Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
 put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
 locations."*
 
-Both observations are right, and both follow from the same thing: tabs today are **count plus two
-global numbers**. `TabCount` are spaced by equal arc length from an arbitrary seam, every one is
-`TabWidthNm` wide and leaves `TabHeightNm` of material. Nothing looks at the board.
+Both observations are right, and both follow from the same thing: a tab was **a count plus two
+global numbers**. `TabCount` of them were spaced by equal arc length from an arbitrary seam, every
+one `TabWidthNm` wide and leaving `TabHeightNm` of material. Nothing looked at the board. What
+follows is the list as it was written; *Built in sprint 4* below says which of it now exists.
 
 What that gets wrong:
 
@@ -2324,6 +2325,68 @@ which vertices happen to exist.
 **Done when** a rectangular board puts one centred tab on each edge by default, any of them can be
 moved and resized individually, the emitted gaps land where the picture says they will, and the
 material left under a tab is the height the program says it is.
+
+##### Built in sprint 4 story 1 — placement and sizes
+
+**Where they go.** `TabPlan` walks the offset profile, groups its segments into straight edges, and
+gives one tab to each — longest edge first, centred — before any edge gets a second. A tab therefore
+lands where anybody would draw one, and never on a corner: not by a rule about corners, but because a
+corner offset by the cutter's radius is a fan of segments a few tenths of a millimetre long and no
+tab fits on one with clearance either side. The count stays a count — six on a rectangle is two on
+each long side and one on each short one — and a profile with no straight edge long enough falls back
+to the old even spacing and says in the program that nothing chose the positions.
+
+> **The "one each before any gets two" rule came out of a golden file.** The first version allocated
+> purely by length per tab, which put both of the connector strip's spare tabs on its long sides and
+> left both ends free — half of forty beats all of seven. The snapshot showed it as *"Centred on 2
+> straight edge(s)"*, which is exactly what a fingerprint of the programs is for.
+
+**What size.** Both defaults now come off the board rather than out of the code: a tab is **a tenth
+of the board's narrow side**, clamped to 1.5–5.0 mm and rounded to the nearest half millimetre, and
+it leaves **a third of the thickness**, clamped to 0.2–0.6 mm and rounded down to five hundredths.
+The workshop's 21 x 37 mm board gets 2.0 mm tabs where it used to get 3.0; a 30 x 50 mm board still
+gets exactly 3.0, and 1.6 mm laminate still leaves exactly 0.50 mm, so the ordinary case is unmoved.
+
+**And each tab can be set by hand**, width and height independently, in *Tabs ▸ Sizes…* beside the
+count. An edit names a tab by its place in the planned order and changes that tab alone — applied
+after the positions are settled, because width decides how many tabs an edge can hold and an edit
+applied before placement would let one widened tab move every other tab on the board. A tab's own
+height gets its own pass at its own depth, so a board with a 0.50 mm tab and a 0.30 mm tab is cut
+down to each of them in turn.
+
+**And a default, asked for the next morning.** From the product owner, 2026-10-01: *"add some
+options to the settings → new board tab for default tab width and thickness."* `MillingDefaults`
+gains `TabWidthMm` and `TabHeightMm`, shown under *Settings › New boards › Tabs* and applied to the
+layers of a board as it is imported — exactly where the isolation width beside them is applied, and
+with the same idiom for "leave it alone": **zero means the board decides**, which is the shipped
+default. An operator who knows what their stock and their hands want says it once instead of on
+every board; everybody else gets a tab sized from the board and never sees the setting.
+
+**The dialog asks the planner rather than working it out.** `OutlineOperation.PlanTabs` and
+`ExportPlanner.OutlineOptionsFor` are public for that reason: the window shows the board that is
+about to be cut, from the same options, or it shows a second opinion about it. Positions are shifted
+into the frame the machine works in, the same move `BoardFindings` makes — the first screenshot read
+*"183.41, -124.47 mm"*, which is right about the Gerber and useless at the machine.
+
+**Measured.** The full laps now start at the near side of the first tab instead of at whatever vertex
+Clipper's offset began on, which removes a climb to the safe height and a traverse between the last
+lap and the first tabbed run — 309 mm of rapid on the panel. Ending at the *far* side would have been
+cheaper still, and was rejected: the emitter then carries straight on without lifting, the backplot
+classifies a run by its deepest point, and the shallow lap would be drawn in the full-depth colour
+over the very gaps the tabs leave. That is the workshop's own complaint
+from v0.1.2 ("the outline's cut line stopped showing where the tabs were") reintroduced to save a few millimetres. Against the previous release, over the corpus: the panel's
+outline loses 24 mm of cutting and gains 184 mm of rapid, and its estimate moves by one second;
+PogoTest1 gains 12 mm of cutting and 7 mm of rapid on narrower tabs.
+
+**Still open, and why this entry is `partial`:**
+
+- **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
+  best locations"* completely. It needs the viewport to hit-test the profile, which nothing does;
+  [6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30)
+  gives the viewport a marker, which is not the same as a pick.
+- **Keep-out from features** — item 4. No tab within *n* mm of a hole or a pad.
+- **The blank still places its own**, two to an edge on the top and right only. That rule is right and
+  was kept; what it does not yet share is the sizing.
 
 #### 6.5 A picture on the companion pages — **enhancement · open**
 

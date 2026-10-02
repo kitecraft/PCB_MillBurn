@@ -77,6 +77,7 @@ internal static class Program
             Console.WriteLine("                                 --isolation-tool <name> --outline-tool <name> pick from the library");
             Console.WriteLine("                                 --isolation-width <mm> how wide a moat to clear around each trace");
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
+            Console.WriteLine("                                 --tab-width <mm> --tab-height <mm> override what the board would give");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
             Console.WriteLine("                                 --stock / --stock-size / --stock-have / --stock-holes / --mill-holes / --mill-tool / --mill-above / --thickness as for export");
@@ -1151,6 +1152,10 @@ internal static class Program
         var bitDescribed = false;
         var cutterDescribed = false;
         var tabs = 4;
+
+        // Null means "sized from the board", which is the default and not a number.
+        double? tabWidthMm = null;
+        double? tabHeightMm = null;
         var thicknessMm = 0.0; // not given: resolved once the input is known
         var side = BoardSide.Top;
         string? png = null;
@@ -1218,6 +1223,21 @@ internal static class Program
                         return Bad(flag);
                     }
 
+                    i++;
+                    break;
+
+                // Both of these are left unset by default, which is not the same as zero: unset means
+                // the tab is sized from the board — a tenth of its narrow side, a third of its
+                // thickness — and that is what somebody who does not pass them wants.
+                case "--tab-width" when value is not null:
+                    if (!TryMm(value, out var tabWidth) || tabWidth <= 0) { return Bad(flag); }
+                    tabWidthMm = tabWidth;
+                    i++;
+                    break;
+
+                case "--tab-height" when value is not null:
+                    if (!TryMm(value, out var tabHeight) || tabHeight <= 0) { return Bad(flag); }
+                    tabHeightMm = tabHeight;
                     i++;
                     break;
 
@@ -1365,6 +1385,8 @@ internal static class Program
             {
                 BoardThicknessNm = Nm.FromMillimetres(thicknessMm),
                 TabCount = tabs,
+                TabWidthNm = tabWidthMm is { } w ? Nm.FromMillimetres(w) : null,
+                TabHeightNm = tabHeightMm is { } h ? Nm.FromMillimetres(h) : null,
             },
         };
 

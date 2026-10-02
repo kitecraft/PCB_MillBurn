@@ -374,6 +374,48 @@ public partial class MainWindow : Window
             _captureInstead = editor;
         }
 
+        // Changes something the way a click would, so that "unsaved changes" below can print yes.
+        //
+        // **The other half of a diagnostic that was only ever able to say no.** The line this run
+        // prints at the end exists to catch a project that marks itself changed when nobody touched
+        // it; nothing headless could make the opposite mistake visible — a change that does *not*
+        // mark the project — which is the one an operator meets as a prompt that never comes and
+        // work quietly replaced. Reported from the workshop, 2026-10-01: "the app no longer asks me
+        // to save/discard when I have changes to a project and then open a recent one."
+        if (Argument(args, "--change") is { } what && vm.Layers.Count > 0)
+        {
+            switch (what.ToLowerInvariant())
+            {
+                case "thickness":
+                    vm.BoardThicknessMm = Math.Round(vm.BoardThicknessMm + 0.1, 2);
+                    break;
+
+                case "tabs":
+                    if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } outlineRow)
+                    {
+                        outlineRow.TabCount = outlineRow.TabCount == 4 ? 6 : 4;
+                    }
+
+                    break;
+
+                // The tabs window's own route in, which is not a binding like the others.
+                case "sizes":
+                    if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
+                    {
+                        sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), []);
+                    }
+
+                    break;
+
+                default:
+                    var row = vm.Layers.First(r => r.Layer is not null);
+                    row.SelectedOutput = row.Outputs.First(o => o.Kind != row.Output);
+                    break;
+            }
+
+            Console.WriteLine($"changed: {what}");
+        }
+
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
         // the shut one. The rows are the part most likely to lay out wrongly.
         //
@@ -540,6 +582,30 @@ public partial class MainWindow : Window
             var editor = new FramingWindow(vm.Framing) { RequestedThemeVariant = ActualThemeVariant };
             editor.Show(this);
             _captureInstead = editor;
+        }
+
+        // The tabs on the board's outline, for a picture of where they landed.
+        //
+        // Worth a flag of its own because the list is the only place the planner's answer can be read
+        // as a whole — the program's comment says how many and how wide, and this says which edge each
+        // one is on and at what coordinate.
+        if (args.Contains("--tabs", StringComparer.OrdinalIgnoreCase)
+            && vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } outline
+            && vm.PlannedTabs(outline) is { } planning)
+        {
+            var tabs = new TabsWindow(
+                outline.Label,
+                planning.Tabs,
+                outline.TabWidthNm,
+                outline.TabHeightNm,
+                planning.DerivedWidthNm,
+                planning.DerivedHeightNm)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            tabs.Show(this);
+            _captureInstead = tabs;
         }
 
         // Opens the colour picker for a screenshot: it lives in a separate package with its own
@@ -1607,6 +1673,41 @@ public partial class MainWindow : Window
         else if (colour is { } picked)
         {
             vm.SetColour(row, picked);
+        }
+    }
+
+    /// <summary>
+    /// The tabs on one outline layer: where they are, and what size each of them is.
+    ///
+    /// The plan comes from the planner rather than from anything worked out here, so the list is the
+    /// board that is about to be cut. Saving rebuilds the preview, because the tab sizes change the
+    /// program.
+    /// </summary>
+    private async void OnTabsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm
+            || sender is not Control { DataContext: LayerRow row })
+        {
+            return;
+        }
+
+        if (vm.PlannedTabs(row) is not { } planning)
+        {
+            return;
+        }
+
+        var chosen = await TabsWindow.AskAsync(
+            this,
+            row.Label,
+            planning.Tabs,
+            row.TabWidthNm,
+            row.TabHeightNm,
+            planning.DerivedWidthNm,
+            planning.DerivedHeightNm);
+
+        if (chosen is not null)
+        {
+            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits);
         }
     }
 

@@ -526,9 +526,29 @@ MyBoard-F_Cu.levelled.nc   the same path, depth following the measured surface</
 
 <p>
   Tabs are short uncut bridges that keep the board attached to the surrounding stock while the
-  outline is cut. The default is four, spaced by <em>arc length</em> around the profile rather than
-  by vertex — offset contours bunch their vertices at corners, so spacing by index would put every
-  tab on one corner.
+  outline is cut. The default is four, and they go <strong>one to a straight edge, centred</strong>,
+  longest edge first — which on a rectangular board is one on each side, and is what anybody would
+  draw by hand. Ask for more than the board has edges and the extras go to the longest ones, two to
+  an edge; ask for more than it can hold with clearance either side and the program says how many it
+  managed.
+</p>
+
+<p>
+  <strong>Never across a corner</strong>, and not by a rule about corners: a corner offset by the
+  cutter’s radius is a fan of very short segments, and a tab needs an edge long enough to sit on with
+  cut material either side of it. A profile with no straight edge at all — a round board — falls back
+  to spacing them evenly and says so in the program, because a piece with no tabs is thrown on the
+  last pass.
+</p>
+
+<p>
+  <strong>How big they are comes off the board.</strong> A tab is a tenth of the board’s narrow side,
+  never under 1.5 mm and never over 5 mm, and it leaves a third of the thickness — so a 21 × 37 mm
+  board gets 2.0 mm tabs, and 1.6 mm laminate leaves 0.50 mm under each. Any of them can be set by
+  hand in <em>Tabs › Sizes…</em> beside the count, one at a time, and that window says where each one
+  is in the coordinates the machine works in. If you would rather not have them derived at all,
+  <em>Settings › New boards › Tabs</em> sets a width and a material-left figure for every board you
+  import from then on; zero in either box hands that one back to the board.
 </p>
 
 <div class="warn">

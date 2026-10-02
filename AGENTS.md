@@ -49,6 +49,10 @@ sufficient.
 - `dotnet run --project src/MillBurn.App -- <board> --shot out.png` renders the real window and
   exits. Useful flags: `--size WxH`, `--theme`, `--preview`, `--check`, `--findings`,
   `--fold-checks`, `--settings [--settings-tab X]`, `--about`, `--machine-check [squareness]`, `--align`,
+  `--tabs` (the outline's tab sizes, with every tab's place on the board),
+  `--change <output|thickness|tabs|sizes>` (makes that change the way a click would, so the
+  `unsaved changes:` line below can print *yes* — it is the only way to check from a script that an
+  edit marks the project changed, which is what decides whether the save/discard prompt appears),
   `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
   `--probe` are handled before the UI starts. `--check` runs *Job ▸ Check this board* and nothing
   else, so the checks panel can be photographed with **no export planned** — which `--preview`
