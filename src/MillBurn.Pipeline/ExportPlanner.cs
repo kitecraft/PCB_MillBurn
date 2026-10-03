@@ -260,6 +260,15 @@ public sealed record ExportPlan
     public ExportCompanion? Page { get; init; }
 
     /// <summary>
+    /// The CLI commands that would write this export again, in the order they have to be run.
+    ///
+    /// On the plan rather than only on the page because an aligned export has no page — it writes
+    /// the moved programs and nothing else — and because <c>export --commands</c> prints these
+    /// without writing anything at all.
+    /// </summary>
+    public IReadOnlyList<CliStep> Commands { get; init; } = [];
+
+    /// <summary>
     /// The rectangle every program in this plan is referenced to: the blank's, or the board's when
     /// there is no blank.
     ///
@@ -532,28 +541,52 @@ public static class ExportPlanner
 
         var plan = new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
 
+        if (items.Count == 0)
+        {
+            return plan;
+        }
+
+        // Worked out from the plan that was just built, because the plan is the only thing here that
+        // knows what the export did rather than what it was asked for: a stock that was refused, or
+        // a layer whose role cannot do what it was set to, is in the settings and not in these.
+        plan = plan with
+        {
+            Commands = CliScript.For(plan, new CliScriptContext
+            {
+                Source = Path.GetFileName(board.Source ?? "board"),
+                Board = board,
+                Settings = settings,
+                Library = library,
+                BoardThicknessNm = boardThicknessNm,
+                Only = only,
+                Job = options,
+                Alignment = alignment,
+                Marks = (machineSettings ?? new MachineSettings()).SvgPlacingLayers,
+                Framing = framing ?? ProgramFraming.None,
+            }),
+        };
+
         // One page for the whole export, written last because it describes everything above it.
         //
         // Every fact on it is said somewhere already — in the export window, in a program's
         // comments, on a drilling page — and each of those is a different place, none of which is
         // open when somebody opens the folder next week.
-        return items.Count == 0
-            ? plan
-            : plan with
-            {
-                Page = new ExportCompanion(
-                    Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".project.html",
-                    ProjectPage.Build(plan, new ProjectPageContext
-                    {
-                        BoardName = Path.GetFileName(board.Source ?? "board"),
-                        Board = board.Bounds,
-                        BoardThicknessNm = boardThicknessNm,
-                        Blank = blank,
-                        OutlineCutter = OutlineCutter(board, settings, library).Name,
-                        Skipped = skipped,
-                    }),
-                    Invariant($"{items.Count} file(s), a suggested running order, and where work zero is")),
-            };
+        return plan with
+        {
+            Page = new ExportCompanion(
+                Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".project.html",
+                ProjectPage.Build(plan, new ProjectPageContext
+                {
+                    BoardName = Path.GetFileName(board.Source ?? "board"),
+                    Board = board.Bounds,
+                    BoardThicknessNm = boardThicknessNm,
+                    Blank = blank,
+                    OutlineCutter = OutlineCutter(board, settings, library).Name,
+                    Skipped = skipped,
+                    Commands = plan.Commands,
+                }),
+                Invariant($"{items.Count} file(s), a suggested running order, and where work zero is")),
+        };
     }
 
     /// <summary>
@@ -1705,8 +1738,11 @@ public static class ExportPlanner
     /// program, so a backdrop that was only translated would sit under marks that had also been
     /// mirrored: on an asymmetric board the holes would land off the profile, and on a symmetric one
     /// they would look plausible and be wrong, which is the worse of the two.
+    ///
+    /// Public because the tabs window asks the same question of the same code: it shows where each
+    /// tab is, and "where" has to mean the coordinate in the file.
     /// </summary>
-    private static Point2 Placed(Point2 at, Bounds frame, bool mirrored, DrillAlignment? alignment)
+    public static Point2 Placed(Point2 at, Bounds frame, bool mirrored, DrillAlignment? alignment)
     {
         var point = mirrored
             ? new Point2(frame.MinX + frame.MaxX - at.X, at.Y)

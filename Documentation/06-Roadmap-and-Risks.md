@@ -2024,7 +2024,7 @@ than discovered after.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - **Routing holes and slots properly** — done. Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own. See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
-- **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
+- **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline — built, and `export --commands` prints the same block. See 6.15.
 - **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction — built, then parked. See 6.16.
 - **The stock's alignment holes marked in the SVGs**, on a layer of their own, so a burn can be registered on the holes the mill made. See 6.17.
 - Material-removal simulation as a first-class view and test oracle.
@@ -2378,6 +2378,22 @@ from v0.1.2 ("the outline's cut line stopped showing where the tabs were") reint
 outline loses 24 mm of cutting and gains 184 mm of rapid, and its estimate moves by one second;
 PogoTest1 gains 12 mm of cutting and 7 mm of rapid on narrower tabs.
 
+**Six faults came out of a later `/code-review` pass, all in how a tab's size is chosen rather than
+where it goes.** Clearing the Width box in Tabs and pressing Enter wrote a width of *zero*, which is
+not a tab: the board came fully free while the program's header said "4 tabs, 0.0 mm wide" — an empty
+box means "as the board gives it" now, and `TabPlan.For` ignores a non-positive size as a last line.
+A change to the board-wide width re-places every tab, because the width decides how many an edge can
+hold, so per-tab edits made against the old list landed on whichever tab then sorted third; the rows
+now follow the board-wide pair and close until the window is reopened, reversibly. A per-tab edit was
+being handed to *every* outermost profile and applied by index inside each, so an edit chosen from
+one board's list also widened a tab on a second board in the same Edge_Cuts. The derived width came
+from the first profile that *could* have held tabs rather than the one that got them, which made
+every row in the window read as hand-set and turned a Save with no changes into an explicit edit per
+tab. The window's coordinates shifted by the board's corner alone, so on stock they were out by the
+border and on a mirrored layer they were not mirrored — they go through the planner's own `Placed`
+now. And the "were asked for" count scaled by the profiles that *received* a tab, so one too small to
+hold any was left out of the arithmetic.
+
 **Still open, and why this entry is `partial`:**
 
 - **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
@@ -2478,6 +2494,14 @@ would run to hundreds of kilobytes on the panel and answer nothing; shifted by t
 rather than the board's, because that is what every emitted coordinate is measured from; and thinned
 to a tenth of a millimetre, which is finer than the line it is drawn with and turns the panel's
 tessellated profile from tens of thousands of points into hundreds.
+
+**A number beside a mark on the board's edge was drawn outside the frame**, found by a later
+`/code-review` pass. The frame has a millimetre of margin and a label can be pushed `font * 2.1` from
+its mark — about 5.8 mm on a 100 mm board — so a hole on the edge had its number outside the
+`viewBox`, where a browser clips the root SVG: the mark drawn, the number simply missing, on a
+drawing whose whole job is to say which hole is which. Holes do sit on the edge, because a
+castellation is one. Candidates inside the frame are preferred now, and the chosen spot is pulled in
+as a backstop.
 
 **Two faults were found by rendering the figures and looking at them**, neither of which the markup
 would have shown: the numbers were placed above and to the right of their holes, so on a column of
@@ -3069,7 +3093,7 @@ board's rotation. Three drilling files, two routing files and the outline all ra
 0.3 mm vias landed inside their pads. *"The test will not only compensate for any rotation of the
 placement, but will also fix the not-perfect X/Y origin setting."*
 
-#### 6.15 The companion page names the commands that would rebuild it — **enhancement · open**
+#### 6.15 The companion page names the commands that would rebuild it — **enhancement · fixed**
 
 Requested from the workshop: *"in the project html companion file that is written on export, can we
 add a new section at the bottom for the cli command used to create the export... or maybe, a list of
@@ -3080,33 +3104,71 @@ those power users a big head start on setting up their own pipelines."*
 a command was run, and most exports come from the window, where there was none. Deriving the
 commands that *would* reproduce this export works either way, and is more useful in the case that
 matters: somebody who has set the job up by clicking, likes the result, and now wants it repeatable.
-That is exactly the move from the app to a pipeline, and today it means reading the CLI's help and
-guessing which flags correspond to what they ticked.
 
-**It is the same principle the rest of the export already follows** — derive the description from
-what was emitted, never from what was intended. The commands come off the finished plan: the layer
-settings it used, the thickness, the stock, the alignment. A block written from the *settings* could
-name flags the export ignored, which is worse than no block at all, because it would be tried.
+**Derived from the finished plan, never from the settings** — the same principle the rest of the
+export follows. The settings hold what was asked for; the plan holds what happened. A stock that was
+refused, or a layer whose role cannot do what it was set to, is in the settings and not in the
+block. The stock is written as the four borders the plan resolved rather than as the size it was
+asked for, because a stated size centres the board and the command line cannot say otherwise: four
+borders carry the size and the placement together, and resolve back to the same rectangle.
 
-**Expect it to be a short script, not one line.** A double-sided job with stock, a probe and an
-alignment is several invocations in an order that matters, and the order is half the value. So the
-section is the sequence, with a line of prose before each saying what it produces — close to what
-"Suggested running order" already does for the files, which is the section it should sit beside in
-tone.
+**One pasteable block, not a section of prose with commands in it.** The description of each command
+is a `#` comment above it, so what somebody copies is the whole script including its warnings — and
+the comments are hard-wrapped by the generator, because a comment left for the browser to wrap
+pastes as one line and would run its own tail as a command.
 
-**Every path has to be quoted and relative**, because board names have spaces in them (`Arduino Mega
-2560`) and an absolute path from the machine that exported is wrong on the machine that runs it.
-`--set` values need the same care: layer names have spaces too.
+**Every path is quoted and relative.** The folder is named, never its path: an absolute path from
+the machine that exported is wrong on the machine that runs it. `--set` values are quoted for the
+same reason — layer names have spaces in them, and a split there would be silent.
 
-**It must be honest about what it cannot express.** Anything the window can do that the CLI cannot —
-if such a gap exists when this is built — gets named in the block as a comment rather than quietly
-omitted, so a script that does less than the export is not handed over as if it did the same. Worth
-checking both ways while building it: this is the kind of feature that finds missing CLI flags, and
-those are worth fixing rather than papering over.
+**A project needs nothing but itself.** `millburn-cli export "Board.millburn" -o "out" --write
+--svg-marks stock` and that is the whole command: the project carries the thickness, the job, the
+stock and every layer's output, depth, cutter and tabs. Naming any one of them would have been worse
+than noise, because naming a single job flag makes the CLI build the whole job from flags, and the
+flags cannot express a board placed off-centre on its stock. A folder of Gerbers is the other
+extreme — every layer named with its own `--set`, because the defaults belong to whichever machine
+runs the block, and a mask left unnamed becomes whatever that machine's Settings › Import says a
+mask is.
 
-**Done when** an export of the test board writes a block that, pasted into a shell in a fresh folder
-with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
-double-sided one with stock and alignment, and for a board whose name has a space in it.
+**It grew four flags.** `export` had no `--isolation-width`, `--tabs`, `--tab-width` or
+`--tab-height`, all four of which `mill` already had, so a block that rebuilt an export could not
+say how wide the copper was cleared or how big the tabs are — the two settings most often changed
+from their defaults, and the two whose absence would have been read as agreement. They are spelled
+as `mill` spells them.
+
+**And it names what no flag can carry**, as comments rather than by omission: a per-layer depth,
+break-through, pass count, cutter, mirror or per-tab size; a board placed off-centre on a stated
+stock; copper layers isolated to different widths; and Settings › Machine and the tool library,
+which shape every line of every program — the bit each layer is cut with is chosen out of that
+library — and belong to the machine that runs the block rather than to the export. "Byte for byte" is a claim about one machine, and the block says so.
+
+**`export --commands` prints the block and writes nothing.** It is the same text the page carries,
+from the same renderer, so the two cannot drift; it is the only way to read the script for an
+aligned export, which writes the moved programs and no page; and it is how all of this was checked.
+
+**Checked by running it**, five ways. A single-sided export of the test board; a double-sided one
+with stock, milled holes and an alignment, where the block is two commands and the second writes the
+`.aligned` programs; a board whose folder and layer names all have spaces in them; a laser-only job
+with two inverted layers; and the author's own saved project. Each block was piped to a file, pasted
+into a shell in a fresh folder holding the Gerbers, and the two folders compared file by file —
+identical in every case, in bash and again in PowerShell.
+
+**A project source pins the flags too, which `/code-review` is the reason for.** It used to be left
+to carry its own settings — one short command — and that made it wrong: the window exports what is
+on screen and nothing stops that being an unsaved change, so a board whose tab count had just been
+raised from four to six wrote `export "Board.millburn"`, which rebuilds the *saved* four-tab job.
+The flags are the authority whatever the source now, and the file is named as being read as last
+saved. The three tab flags also hold off when a board has two outline layers set differently, since
+one number for all of them would reproduce half the export and silently change the other half.
+
+**The project was what found the bug.** Routed slots are written as an outline operation on a drill
+layer, so taking the first outline item out of the plan picked the test board's plated slots rather
+than its Edge_Cuts, and read the tab count off a layer nobody had touched: a project with three tabs
+rebuilt with four — a different count, different tab positions and one extra retract in the outline
+program. `IsBoardOutline` already existed for exactly this and says so in its own doc comment.
+Nothing on the page looked wrong, and no test failed; it took rebuilding a real project and diffing
+the programs.
+
 
 #### 6.16 A re-measured stock keeps the holes it was cut with — **enhancement · parked**
 

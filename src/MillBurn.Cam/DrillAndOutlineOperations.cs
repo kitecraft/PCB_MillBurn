@@ -288,8 +288,16 @@ public static class OutlineOperation
         var planned = new List<PlacedTab>();
         var edgesUsed = 0;
         var profilesTabbed = 0;
+        var profilesEligible = 0;
         var addedTops = new List<long>();
         var tabsSwallowProfile = false;
+
+        // Per-tab edits belong to one profile: the first that places any, which is the one the tabs
+        // window lists and numbers. Found by `/code-review`: the edits were handed to every
+        // outermost profile and applied by index inside each, so "tab 3, 0.30 mm" set a thin web on
+        // tab 3 of a second board in the same Edge_Cuts that nobody had looked at.
+        var edits = options.TabEdits;
+        var editsSpent = false;
 
         for (var c = 0; c < contours.Count; c++)
         {
@@ -318,7 +326,19 @@ public static class OutlineOperation
             // fact about the shape in front of it. On a panel only the frame is tabbed anyway, and a
             // board whose outline is a rounded rectangle gets a different answer from one that is a
             // plain rectangle of the same size.
-            var tabs = outermost && closed[c] ? TabPlan.For(contour, options) : [];
+            var tabs = outermost && closed[c]
+                ? TabPlan.For(contour, editsSpent ? options with { TabEdits = [] } : options)
+                : [];
+
+            if (outermost && closed[c] && contour.Count >= 3)
+            {
+                profilesEligible++;
+            }
+
+            if (tabs.Count > 0)
+            {
+                editsSpent = editsSpent || edits.Count > 0;
+            }
             var walk = closed[c] ? new ProfileWalk(contour) : null;
 
             // **The full laps begin at the near side of the first tab, not at the profile's own start
@@ -570,10 +590,16 @@ public static class OutlineOperation
                 ? "Spaced evenly: no edge long enough to centre a tab on."
                 : Invariant($"Centred on {where}, never across a corner."));
 
-            if (planned.Count < options.TabCount * profilesTabbed)
+            // Against the profiles that could have had tabs, not the ones that got them. Found by
+            // `/code-review`: a profile too small to hold any was left out of the multiplier, so a
+            // board of two profiles where one held three and the other none reported "4 were asked
+            // for" — and the guard could suppress the note altogether.
+            var asked = options.TabCount * Math.Max(profilesEligible, 1);
+
+            if (planned.Count < asked)
             {
                 notes.Add(Invariant(
-                    $"{options.TabCount * profilesTabbed} were asked for: the straight edges hold {planned.Count} with clearance either side of each."));
+                    $"{asked} were asked for: the straight edges hold {planned.Count} with clearance either side of each."));
             }
 
             if (addedTops.Count == 1)
@@ -840,20 +866,28 @@ public static class OutlineOperation
                 continue;
             }
 
-            // The first profile that could take tabs decides the derived sizes, whether or not any
-            // were placed on it: a board that cannot hold the tabs asked for still has a width its
+            var candidate = TabPlan.DefaultWidthFor(contours[c]);
+
+            // The first profile that could take tabs decides the derived sizes when none are
+            // placed anywhere: a board that cannot hold the tabs asked for still has a width its
             // own narrow side would give, and that is the number the dialog shows beside the boxes.
             if (!found)
             {
-                width = TabPlan.DefaultWidthFor(contours[c]);
+                width = candidate;
                 found = true;
             }
 
             var tabs = TabPlan.For(contours[c], options);
 
+            // **The width comes from the profile the tabs came from.** Found by `/code-review`: it
+            // used to be the first *eligible* profile's, so a board whose first profile held no
+            // tabs reported one profile's derived width beside another profile's tabs. The dialog
+            // seeds its board-wide box from this number and each row from its own tab's width, so
+            // every row read as hand-set and pressing Save with no changes wrote an explicit edit
+            // for every tab.
             if (tabs.Count > 0)
             {
-                return new TabPlanning(tabs, width, height);
+                return new TabPlanning(tabs, candidate, height);
             }
         }
 

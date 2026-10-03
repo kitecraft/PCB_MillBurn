@@ -23,6 +23,12 @@ public sealed record ProjectPageContext
 
     /// <summary>Anything the export list flagged, so the page carries it too.</summary>
     public IReadOnlyList<string> Skipped { get; init; } = [];
+
+    /// <summary>
+    /// The CLI commands that would rebuild this export, from <see cref="CliScript"/>. Empty says
+    /// nothing, and the section is left out.
+    /// </summary>
+    public IReadOnlyList<CliStep> Commands { get; init; } = [];
 }
 
 /// <summary>
@@ -60,6 +66,7 @@ public static class ProjectPage
         Zero(page, context);
         Laser(page, plan, context);
         Watch(page, plan, context);
+        Rebuild(page, context);
 
         page.Append(GuideFooter.For(
             "It describes the files beside it; if you export again, read it again.",
@@ -410,6 +417,42 @@ public static class ProjectPage
         }
 
         page.Append("</ul>\n");
+    }
+
+    /// <summary>
+    /// The commands that would write this folder again.
+    ///
+    /// Asked for from the workshop, for the people who will want a pipeline rather than a window.
+    /// Derived commands rather than a record of what was run, because most exports come from the
+    /// window, where nothing was run — and because the useful case is somebody who clicked their way
+    /// to a job they like and now wants it repeatable.
+    ///
+    /// **One block, pasteable whole.** The prose and everything the command line cannot carry are
+    /// <c>#</c> comments inside it rather than text beside it, so what somebody copies is the whole
+    /// script including the warnings. They are hard-wrapped for the same reason: a comment wrapped
+    /// only by the browser would paste as one long line and run its own tail as a command.
+    ///
+    /// **Last on the page.** Everything above is for the person at the machine today; this is for
+    /// the person automating it next month.
+    /// </summary>
+    private static void Rebuild(StringBuilder page, ProjectPageContext context)
+    {
+        if (context.Commands.Count == 0)
+        {
+            return;
+        }
+
+        page.Append("<h2>The same export, from the command line</h2>\n");
+        page.Append("<p class=\"sub\">Not a record of what was run — this export may have come from "
+            + "the window. These are the commands that would write this folder again, worked out "
+            + "from the files that were written. Run them from the folder that holds <code>")
+            .Append(Escape(context.BoardName))
+            .Append("</code>.</p>\n<pre class=\"cli\"><code>");
+
+        // The block itself comes from CliScript, which is also what `export --commands` prints: one
+        // renderer, so the page and the command line cannot come to disagree about the script.
+        page.Append(Escape(CliScript.Text(context.Commands)));
+        page.Append("</code></pre>\n");
     }
 
     private static string What(ExportItem item) => item.Bit is { } bit ? Kind(item) + " · " + bit : Kind(item);

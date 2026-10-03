@@ -20,8 +20,8 @@ namespace MillBurn.App.Views;
 ///
 /// The positions are read-only: this window says where the tabs are, and moving one by hand is
 /// 06 §6.4's third item, which needs the viewport to hit-test the profile. Showing the coordinate is
-/// what makes that absence bearable — it is the same number the machine works in, measured from the
-/// board's lower-left corner.
+/// what makes that absence bearable — it is the same number the machine works in, which means work
+/// zero: the stock's lower-left corner on a job built on stock, and the board's when there is none.
 /// </summary>
 public sealed class TabsWindow : Window
 {
@@ -35,6 +35,29 @@ public sealed class TabsWindow : Window
     /// <summary>What the board-wide boxes held last, so a change can carry the rows that agreed.</summary>
     private decimal? _lastWidth;
     private decimal? _lastHeight;
+
+    /// <summary>
+    /// The width the tabs below were placed at, and what the rows held then.
+    ///
+    /// **A tab's number is its place in a list the width decides**, which a `/code-review` pass
+    /// found: the width is what tells the planner how many tabs an edge can hold, so widening it
+    /// past what a short edge can take drops that edge and re-places every tab. An edit made against
+    /// the old list then lands on whichever tab now sorts third — a thin web nobody chose — or is
+    /// dropped for being out of range. Only the width does this; the height is applied after the
+    /// positions are settled.
+    /// </summary>
+    private readonly decimal? _openingWidth;
+    private readonly List<(decimal? Width, decimal? Height)> _opening = [];
+
+    /// <summary>Shown while the board-wide width is not the one the rows were placed at.</summary>
+    private readonly TextBlock _stale = new()
+    {
+        Text = "The width changed, so the tabs will be placed again when you save and the numbering "
+            + "below is for the old width. Save, then reopen this window to size them one at a time.",
+        FontSize = 11,
+        TextWrapping = TextWrapping.Wrap,
+        IsVisible = false,
+    };
 
     /// <summary>What was chosen, or null if it was called off.</summary>
     public Choice? Result { get; private set; }
@@ -86,6 +109,11 @@ public sealed class TabsWindow : Window
         _lastWidth = _width.Value;
         _lastHeight = _height.Value;
 
+        // Taken after the rows exist, so returning the width to what it was brings back the hand
+        // edits rather than leaving them wiped by a number typed and typed back.
+        _openingWidth = _width.Value;
+        _opening.AddRange(_rows.Select(r => (r.Width.Value, r.Height.Value)));
+
         _width.ValueChanged += (_, _) => FollowWidth();
         _height.ValueChanged += (_, _) => FollowHeight();
     }
@@ -119,8 +147,17 @@ public sealed class TabsWindow : Window
         };
     }
 
-    private static long Nanometres(NumericUpDown box) =>
-        Nm.FromMillimetres((double)(box.Value ?? 0));
+    /// <summary>
+    /// What a box holds, or null when it holds nothing — which means "as the board gives it".
+    ///
+    /// **It used to read an empty box as zero**, found by `/code-review`: clearing the Width box and
+    /// pressing Enter — Save is the default button — wrote a tab width of 0, which is not a tab. The
+    /// outline then cut the board fully free while the program's header said "4 tabs, 0.0 mm wide".
+    /// Nothing clamps it on the way through: the Minimum does not stop a box being emptied, and
+    /// zero is not equal to the derived width so it was taken for the operator's own number.
+    /// </summary>
+    private static long? Nanometres(NumericUpDown box) =>
+        box.Value is { } value ? Nm.FromMillimetres((double)value) : null;
 
     private Grid Body(string boardLabel)
     {
@@ -182,6 +219,7 @@ public sealed class TabsWindow : Window
         if (_tabs.Count > 0)
         {
             body.Children.Add(Label("One at a time"));
+            body.Children.Add(Token(_stale, "StatusWarning"));
 
             for (var i = 0; i < _tabs.Count; i++)
             {
@@ -276,6 +314,36 @@ public sealed class TabsWindow : Window
         }
 
         _lastWidth = _width.Value;
+        Replaced();
+    }
+
+    /// <summary>
+    /// Once the width is not the one the tabs were placed at, the rows stop being about them.
+    ///
+    /// So every row takes the board-wide pair — not only the ones that agreed with it — and the
+    /// per-tab boxes are closed until the window is opened again on the new layout. Dropping an
+    /// edit the operator can see they are losing, with a line saying why, beats keeping one that
+    /// silently moves to another tab.
+    ///
+    /// Reversible, because "let the board decide" and a number typed back are both this: when the
+    /// width returns to the one the window opened with, the layout is the one on screen again and
+    /// the rows come back as they were.
+    /// </summary>
+    private void Replaced()
+    {
+        var stale = _width.Value != _openingWidth;
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            var (width, height) = _rows[i];
+
+            width.Value = stale ? _width.Value : _opening[i].Width;
+            height.Value = stale ? _height.Value : _opening[i].Height;
+            width.IsEnabled = !stale;
+            height.IsEnabled = !stale;
+        }
+
+        _stale.IsVisible = stale;
     }
 
     private void FollowHeight()
@@ -313,8 +381,10 @@ public sealed class TabsWindow : Window
         var widthNm = Nanometres(_width);
         var heightNm = Nanometres(_height);
 
-        var chosenWidth = widthNm == _derivedWidthNm ? (long?)null : widthNm;
-        var chosenHeight = heightNm == _derivedHeightNm ? (long?)null : heightNm;
+        // An empty box and a box holding the derived number mean the same thing, and it is the same
+        // null either way.
+        var chosenWidth = widthNm == _derivedWidthNm ? null : widthNm;
+        var chosenHeight = heightNm == _derivedHeightNm ? null : heightNm;
 
         var edits = ImmutableArray.CreateBuilder<TabEdit>();
 

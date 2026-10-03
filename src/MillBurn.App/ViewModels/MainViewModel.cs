@@ -260,17 +260,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         var planned = OutlineOperation.PlanTabs(profiles, options);
         var tabs = planned.Tabs;
 
-        // **Into the frame the machine works in**, which is the board's lower-left corner — the same
-        // move `BoardFindings` makes for the same reason. The planner answers in the artwork's own
+        // **Into the frame the machine works in.** The planner answers in the artwork's own
         // coordinates, and on this board that reads "183.41, -124.47 mm": right about the Gerber and
         // useless at the machine, where nothing is negative and nothing is at 183.
-        var origin = _board.Bounds;
+        //
+        // Through the planner's own `Placed`, which a `/code-review` pass is the reason for: this
+        // used to shift by the board's corner alone. On stock, work zero is the *stock's* corner and
+        // every coordinate in the file is measured from there, so the window was out by the border;
+        // and a mirrored outline layer has its x flipped about the frame's centreline in the file
+        // and was not here. The one step left out is a drill alignment, which is a correction
+        // measured later against copper already on the board rather than part of where the tabs are.
+        var frame = Frame.IsEmpty ? _board.Bounds : Frame;
 
-        if (!origin.IsEmpty)
+        if (!frame.IsEmpty)
         {
+            var mirrored = row.ToSettings().MirrorFor(layer.Role);
+
             tabs = [.. tabs.Select(t => t with
             {
-                At = new Point2(t.At.X - origin.MinX, t.At.Y - origin.MinY),
+                At = ExportPlanner.Placed(t.At, frame, mirrored, alignment: null),
             })];
         }
 

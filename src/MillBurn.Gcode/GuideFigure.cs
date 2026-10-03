@@ -134,7 +134,7 @@ public static class GuideFigure
         }
         else
         {
-            Numbered(sb, marks, X, Y, stroke, font, dot);
+            Numbered(sb, marks, X, Y, stroke, font, dot, width, height);
         }
 
         sb.Append("</svg>");
@@ -197,7 +197,9 @@ public static class GuideFigure
         Func<Point2, double> y,
         double stroke,
         double font,
-        double dot)
+        double dot,
+        double width,
+        double height)
     {
         var placed = new List<(double X, double Y)>();
         var order = 0;
@@ -240,7 +242,7 @@ public static class GuideFigure
             // number sitting on its own arrowhead, which is what the first attempt produced.
             var away = mark.Path is { Count: > 1 } run3 && x(run3[^1]) > x(run3[0]) ? -1 : 1;
 
-            Label(sb, anchor, label, placed, font, stroke, mark.Refused, away);
+            Label(sb, anchor, label, placed, font, stroke, mark.Refused, width, height, away);
         }
     }
 
@@ -253,6 +255,8 @@ public static class GuideFigure
         double font,
         double stroke,
         bool refused,
+        double width,
+        double height,
         int away = 1)
     {
         // Beside the mark, on the line of its own centre, which is how a drawing numbers a hole.
@@ -272,18 +276,39 @@ public static class GuideFigure
             (at.X - (font * 2.1 * away), at.Y + (font * 0.36)),
         ];
 
-        var spot = tries[0];
+        // **Inside the frame, which a `/code-review` pass is the reason for.** The furthest a number
+        // goes is `font * 2.1` from its mark — about 5.8 mm on a 100 mm board — against a margin of
+        // one, so a hole beside the board's edge had its number drawn outside the `viewBox`, where a
+        // browser clips the root SVG and leaves a mark with no readable number. Holes do sit on the
+        // edge: a castellation is one.
+        //
+        // Preferred rather than only clamped, so the number lands on the side that has room instead
+        // of being squashed against the edge it was heading for.
+        var room = font * 0.35 * text.Length;
+
+        bool Inside((double X, double Y) p) =>
+            p.X - room >= 0 && p.X + room <= width
+            && p.Y - (font * 0.8) >= 0 && p.Y + (font * 0.25) <= height;
+
+        var spot = tries.FirstOrDefault(Inside, tries[0]);
         var clear = false;
 
         foreach (var candidate in tries)
         {
-            if (placed.All(p => Math.Abs(p.X - candidate.X) > font || Math.Abs(p.Y - candidate.Y) > font))
+            if (Inside(candidate)
+                && placed.All(p => Math.Abs(p.X - candidate.X) > font || Math.Abs(p.Y - candidate.Y) > font))
             {
                 spot = candidate;
                 clear = true;
                 break;
             }
         }
+
+        // And pulled in if even that left it outside — a figure small enough that no candidate fits,
+        // where a clipped number is worse than one touching the edge.
+        spot = (
+            Math.Clamp(spot.X, room, Math.Max(room, width - room)),
+            Math.Clamp(spot.Y, font * 0.8, Math.Max(font * 0.8, height - (font * 0.25))));
 
         placed.Add(spot);
 

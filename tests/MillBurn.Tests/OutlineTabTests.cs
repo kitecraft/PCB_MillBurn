@@ -85,7 +85,13 @@ public sealed class OutlineTabTests(ITestOutputHelper output)
 
         // 0.8 mm board, 0.5 mm tabs: the tab region is cut to 0.30 mm, leaving 0.50 mm under it.
         Assert.Equal(Nm.FromMillimetres(0.3), overTabs);
-        Assert.Equal(Nm.FromMillimetres(0.5), Nm.FromMillimetres(0.8) - overTabs);
+
+        // **And the board is cut through**, which a `/describe-test` pass found nothing checking:
+        // the line above is satisfied by a program consisting of one closed 0.30 mm pass and
+        // nothing else, which cuts a groove and leaves the board in the stock. (A second line
+        // asserting 0.5 == 0.8 - overTabs used to sit here, which restates the line above and
+        // cannot fail once it has passed.)
+        Assert.Contains(toolpath.Passes, p => p.DepthNm > Nm.FromMillimetres(0.8));
     }
 
     /// <summary>
@@ -206,8 +212,60 @@ public sealed class OutlineTabTests(ITestOutputHelper output)
         // removing the thing it is named for.
         Assert.NotEmpty(broken);
 
+        // **And the other side of the same hole**, from the `/describe-test` pass that read this
+        // back: with no closed pass at all `OverTheTabs` returns 0, every real depth beats it, and
+        // both assertions pass while nothing ever crosses a tab.
+        Assert.Contains(toolpath.Passes, p => p.Closed);
+        Assert.True(overTabs > 0, "no pass laps right round, so nothing cuts the tabs");
+
         Assert.All(
             broken,
             p => Assert.True(p.DepthNm > overTabs, $"a broken pass at {Nm.ToMillimetreString(p.DepthNm, 2)} mm"));
+    }
+    /// <summary>
+    /// What was asked for is counted against the profiles that could have had tabs, not the ones
+    /// that got them.
+    ///
+    /// **Found by `/code-review`.** The multiplier was the number of profiles that received at least
+    /// one tab, so a profile too small to hold any was left out of it: a job of two profiles where
+    /// one holds four tabs and the other none reported "4 were asked for: the straight edges hold
+    /// 4" — a sentence that says nothing happened when half the job went untabbed — and when the
+    /// counts happened to match it suppressed the note entirely.
+    ///
+    /// Two separate rectangles, the second a 2 x 2 mm square that twenty tabs cannot fit on. The
+    /// note has to account for all forty.
+    /// </summary>
+    [Fact]
+    public void WhatWasAskedForCountsEveryProfileThatCouldHaveHadTabs()
+    {
+        Paths64 two =
+        [
+            Board()[0],
+            [
+                new(Nm.FromMillimetres(70), 0),
+                new(Nm.FromMillimetres(72), 0),
+                new(Nm.FromMillimetres(72), Nm.FromMillimetres(2)),
+                new(Nm.FromMillimetres(70), Nm.FromMillimetres(2)),
+            ],
+        ];
+
+        var toolpath = OutlineOperation.Build(
+            two,
+            new OutlineOptions
+            {
+                Tool = Tool.DefaultOutlineMill,
+                BoardThicknessNm = Nm.FromMillimetres(1.6),
+                DepthPerPassNm = Nm.FromMillimetres(0.4),
+                TabCount = 20,
+                Keep = [],
+            });
+
+        output.WriteLine(string.Join(" | ", toolpath.Notes));
+
+        var asked = Assert.Single(toolpath.Notes, n => n.Contains("were asked for", StringComparison.Ordinal));
+
+        // Forty: twenty on each of the two profiles. Twenty is what the old arithmetic said, the
+        // count for the one profile that got any, so the two cannot be confused.
+        Assert.StartsWith("40 were asked for", asked, StringComparison.Ordinal);
     }
 }

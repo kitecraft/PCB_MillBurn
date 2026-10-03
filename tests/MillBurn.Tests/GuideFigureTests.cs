@@ -313,6 +313,85 @@ public sealed class GuideFigureTests(ITestOutputHelper output)
 
         output.WriteLine($"{bytes} bytes for {holes.Count} marks");
 
+        // Both ends of it, from a `/describe-test` pass: an empty string is under twelve thousand
+        // bytes too, and a figure that drew nothing would have passed this on its own.
+        Assert.NotEmpty(svg);
         Assert.True(bytes < 12_000, $"a figure of {bytes} bytes is not a few kilobytes");
+    }
+    /// <summary>
+    /// A number beside a mark on the board's edge stays inside the frame.
+    ///
+    /// **Found by `/code-review`.** The frame has a millimetre of margin and a number can be pushed
+    /// `font * 2.1` from its mark — about 5.8 mm on a 100 mm board — so a hole on the edge had its
+    /// number drawn outside the `viewBox`. A browser clips the root SVG by default, which leaves the
+    /// mark drawn and its number simply missing: a drawing whose whole job is to say which hole is
+    /// which, silently not saying it for the holes at the edges. And holes do sit on the edge —
+    /// a castellation is one.
+    ///
+    /// Four holes, one in each corner of the board, plus a crowd beside each so the labels are
+    /// pushed to their furthest candidates rather than sitting in their first choice. Asserted
+    /// against the `viewBox` the figure declares, with room for the glyphs either side, so it
+    /// follows the frame rather than a remembered number.
+    /// </summary>
+    [Fact]
+    public void ANumberBesideAnEdgeStaysInsideTheFrame()
+    {
+        var marks = new List<GuideMark>();
+
+        // The corners, and then a cluster round each one: a label only moves to its outermost
+        // candidate when the ones nearer the mark are taken.
+        foreach (var (cx, cy) in new[] { (0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0) })
+        {
+            for (var k = 0; k < 3; k++)
+            {
+                marks.Add(new GuideMark
+                {
+                    At = new Point2(Mm(cx), Mm(cy + (cy > 15 ? -k * 0.8 : k * 0.8))),
+                    WidthNm = Mm(0.8),
+                });
+            }
+        }
+
+        var svg = GuideFigure.Draw(Board(), marks, Extent(), "holes on every edge");
+
+        output.WriteLine(svg);
+
+        var box = Regex.Match(svg, "viewBox=\"0 0 ([\\d.]+) ([\\d.]+)\"");
+        Assert.True(box.Success, svg);
+
+        var width = double.Parse(box.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        var height = double.Parse(box.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+        var size = Regex.Match(svg, "font-size=\"([\\d.]+)\"");
+
+        // Asserted rather than left to throw inside `double.Parse`, which a `/describe-test` pass
+        // pointed out: a figure declaring no font size has nothing to measure against, and that
+        // should read as a failure rather than a format exception.
+        Assert.True(size.Success, "the figure declares no font size");
+
+        var font = double.Parse(size.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+        // The room allowed below assumes the glyphs are centred on x with the baseline at y, so the
+        // anchor it assumes is checked rather than taken on trust: anchored at the start instead,
+        // every number would reach twice as far to the right as this allows for and the test would
+        // pass a figure that clipped.
+        Assert.Contains("text-anchor=\"middle\"", svg, StringComparison.Ordinal);
+
+        var labels = Placed(svg);
+        Assert.Equal(marks.Count, labels.Count);
+
+        foreach (var (text, x, y) in labels)
+        {
+            // Anchored in the middle, so the glyphs reach half the string's width either side; the
+            // baseline sits at y, with the glyphs above it and a descender below.
+            var room = font * 0.35 * text.Length;
+
+            output.WriteLine($"\"{text}\" at {x:0.00}, {y:0.00} in a {width:0.00} x {height:0.00} frame");
+
+            Assert.True(x - room >= 0, $"\"{text}\" runs off the left at {x:0.00}");
+            Assert.True(x + room <= width, $"\"{text}\" runs off the right at {x:0.00} of {width:0.00}");
+            Assert.True(y - (font * 0.8) >= 0, $"\"{text}\" runs off the top at {y:0.00}");
+            Assert.True(y + (font * 0.25) <= height, $"\"{text}\" runs off the bottom at {y:0.00} of {height:0.00}");
+        }
     }
 }

@@ -32,6 +32,9 @@ internal static class Program
             Console.WriteLine("                                 --dry-run-rise <mm>   the real program lifted (default 3)");
             Console.WriteLine("                                 --dry-run-height <mm> or held flat at one height (5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
+            Console.WriteLine("                                 --isolation-width <mm> how wide to clear round every track (0: the cutter's own)");
+            Console.WriteLine("                                 --tabs <n> tabs holding the board in, on every outline layer");
+            Console.WriteLine("                                 --tab-width <mm> --tab-height <mm> their size (default: from the board)");
             Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
             Console.WriteLine("                                 --stock <l,b,r,t mm> cut the stock to size too, this much bigger than the board");
@@ -50,6 +53,7 @@ internal static class Program
             Console.WriteLine("                                 --align-turn <deg> --align-about <x,y mm> turned as well, about that hole");
             Console.WriteLine("                                 --align-outline the board outline too");
             Console.WriteLine("                                 --align-moves <names> exactly these programs instead, e.g. drilling,\"bottom copper\"");
+            Console.WriteLine("                                 --commands print the commands that would rebuild this export, and write nothing");
             Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
             Console.WriteLine("                                 --file <part of a name> --hole <n> --hover <mm> -o <file>");
             Console.WriteLine("                                 --at <x,y mm> where the hole really is, as the machine shows it; or --offset <x,y mm>");
@@ -1730,6 +1734,77 @@ internal static class Program
             }
         }
 
+        // Board-wide numbers the window had and this command did not.
+        //
+        // Found by writing the project page's command block: the block is meant to rebuild an
+        // export byte for byte, and without these four it could not say how wide the copper was
+        // isolated or how big the tabs are — which are the two things most often changed from
+        // their defaults, and the two whose absence would be read as agreement. They are spelled
+        // as `mill` spells them, because somebody who knows one should not have to learn the other.
+        //
+        // The isolation width goes on every layer, exactly as the app's own default does above:
+        // each setting is only read by the operation it belongs to. The tabs go on the outline
+        // layers alone, so a board with two of them gets both and nothing else is touched.
+        void Apply(Func<LayerOutputSettings, LayerOutputSettings> change, LayerRole? role = null)
+        {
+            foreach (var layer in board.Layers.Where(l => role is null || l.Role == role))
+            {
+                if (settings.TryGetValue(layer.FileName, out var current))
+                {
+                    settings[layer.FileName] = change(current);
+                }
+            }
+        }
+
+        if (Argument(args, "--isolation-width") is { } isolationText)
+        {
+            if (!double.TryParse(isolationText, NumberStyles.Float, CultureInfo.InvariantCulture, out var isolationMm)
+                || isolationMm < 0)
+            {
+                Console.Error.WriteLine("--isolation-width needs a width in millimetres, or 0 for the cutter's own width.");
+                return 1;
+            }
+
+            Apply(s => s with { IsolationWidthNm = Nm.FromMillimetres(isolationMm) });
+        }
+
+        if (Argument(args, "--tabs") is { } tabsText)
+        {
+            if (!int.TryParse(tabsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tabs) || tabs < 0)
+            {
+                Console.Error.WriteLine("--tabs needs a count, 0 or more.");
+                return 1;
+            }
+
+            Apply(s => s with { TabCount = tabs }, LayerRole.Outline);
+        }
+
+        // Unset is not zero: it means the tab is sized from the board — a tenth of its narrow side,
+        // a third of its thickness — which is what somebody who does not pass them wants.
+        if (Argument(args, "--tab-width") is { } tabWidthText)
+        {
+            if (!double.TryParse(tabWidthText, NumberStyles.Float, CultureInfo.InvariantCulture, out var tabWidthMm)
+                || tabWidthMm <= 0)
+            {
+                Console.Error.WriteLine("--tab-width needs a positive width in millimetres.");
+                return 1;
+            }
+
+            Apply(s => s with { TabWidthNm = Nm.FromMillimetres(tabWidthMm) }, LayerRole.Outline);
+        }
+
+        if (Argument(args, "--tab-height") is { } tabHeightText)
+        {
+            if (!double.TryParse(tabHeightText, NumberStyles.Float, CultureInfo.InvariantCulture, out var tabHeightMm)
+                || tabHeightMm <= 0)
+            {
+                Console.Error.WriteLine("--tab-height needs a positive height in millimetres.");
+                return 1;
+            }
+
+            Apply(s => s with { TabHeightNm = Nm.FromMillimetres(tabHeightMm) }, LayerRole.Outline);
+        }
+
         // The project's own lines where it has them, the machine's where it does not. A project
         // carries what it was cut with, so one that needed something unusual keeps it when it is
         // opened on another machine or a year later.
@@ -1860,6 +1935,27 @@ internal static class Program
         if (alignment is not null)
         {
             plan = plan with { Items = [.. plan.Items.Where(alignment.Moves)], Page = null };
+        }
+
+        // The script and nothing else, so it can be redirected into a file and run.
+        //
+        // The same text the project page carries, from the same renderer — and the only way to see
+        // it for an aligned export, which writes the moved programs and no page.
+        if (args.Contains("--commands", StringComparer.OrdinalIgnoreCase))
+        {
+            // An export that writes nothing has no commands to print, and printing nothing with a
+            // zero exit would look like a block that came out empty. Said, on stderr, so a
+            // redirected script file is either a script or absent rather than silently blank.
+            if (plan.Commands.Count == 0)
+            {
+                Console.Error.WriteLine(
+                    "This export writes no files, so there is nothing to rebuild. Run it without --commands to see why.");
+
+                return 1;
+            }
+
+            Console.Write(CliScript.Text(plan.Commands));
+            return 0;
         }
 
         // Companion programs that trace the same path in the air. Built here rather than at write

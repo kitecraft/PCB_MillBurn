@@ -176,8 +176,16 @@ public static class TabPlan
         }
 
         var segments = IsolationOperation.ToSegments(contour);
-        var width = options.TabWidthNm ?? DefaultWidthFor(contour);
-        var height = options.TabHeightNm ?? DefaultHeightFor(options.BoardThicknessNm);
+        // A size of nothing is not a tab, and the last line against one: an outline cut with tabs
+        // of no width releases the board on the final lap while the program's own header promises
+        // it is held. The settings file refuses a non-positive number and so does the CLI, and the
+        // dialog now reads an emptied box as "no choice" rather than as zero — but this is geometry
+        // that cuts a real board, so it does not take anyone's word for it.
+        var width = options.TabWidthNm is { } chosen and > 0 ? chosen : DefaultWidthFor(contour);
+
+        var height = options.TabHeightNm is { } left and > 0
+            ? left
+            : DefaultHeightFor(options.BoardThicknessNm);
 
         var starts = new double[segments.Count];
         var lengths = new double[segments.Count];

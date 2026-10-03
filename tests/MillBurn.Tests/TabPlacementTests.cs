@@ -762,4 +762,128 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             At((tab.AlongNm - half + perimeter) % perimeter),
             At((tab.AlongNm + half) % perimeter));
     }
+    /// <summary>
+    /// A tab width of nothing is not a tab, and the board is not cut free by one.
+    ///
+    /// **Found by `/code-review` in the tabs window**, where clearing the Width box and pressing
+    /// Enter — Save is the default button — read the empty box as zero and wrote it through as the
+    /// operator's own choice. Zero is not equal to the derived width, so nothing upstream treated it
+    /// as "no choice"; nothing downstream clamped it either, so the outline cut the board fully free
+    /// while its own header said "4 tabs, 0.0 mm wide".
+    ///
+    /// The window reads an empty box as no choice now. This is the guard behind that: geometry that
+    /// cuts a real board does not take anyone's word for a size. Asserted against the derived width
+    /// for the same rectangle, so it checks the fallback rather than a remembered number.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ATabSizeOfNothingFallsBackToTheBoardsOwn(double givenMm)
+    {
+        var rect = Rect(40, 30);
+
+        var tabs = TabPlan.For(rect, Options() with
+        {
+            TabWidthNm = Mm(givenMm),
+            TabHeightNm = Mm(givenMm),
+        });
+
+        Assert.Equal(4, tabs.Count);
+
+        foreach (var tab in tabs)
+        {
+            output.WriteLine($"{Nm.ToMillimetreString(tab.WidthNm, 2)} x {Nm.ToMillimetreString(tab.HeightNm, 2)} mm");
+
+            Assert.Equal(TabPlan.DefaultWidthFor(rect), tab.WidthNm);
+            Assert.Equal(TabPlan.DefaultHeightFor(Mm(0.8)), tab.HeightNm);
+            Assert.True(tab.WidthNm >= TabPlan.MinWidthNm);
+            Assert.True(tab.HeightNm >= TabPlan.MinHeightNm);
+        }
+    }
+
+    /// <summary>
+    /// A per-tab edit belongs to one profile: the one the tabs window lists.
+    ///
+    /// **Found by `/code-review`.** The edits were handed to every outermost profile and applied by
+    /// index inside each, so "tab 1, 4 mm wide" — chosen from a list of one board's tabs — also
+    /// widened tab 1 of a second board in the same Edge_Cuts that nobody had looked at.
+    ///
+    /// Two separate rectangles, so both are outermost and neither is nested in the other. Asserted
+    /// by width, because the two profiles are different sizes and so their derived widths differ:
+    /// the edited tab is the only one that is neither.
+    /// </summary>
+    [Fact]
+    public void AnEditReachesOneProfileNotEveryProfile()
+    {
+        Paths64 two = [Rect(40, 30), Shifted(Rect(44, 34), 60, 0)];
+
+        var options = Options() with
+        {
+            TabEdits = [new TabEdit { Index = 1, WidthNm = Mm(4.25) }],
+        };
+
+        var toolpath = OutlineOperation.Build(two, options);
+
+        output.WriteLine(string.Join(" | ", toolpath.Notes));
+
+        // Read off the program, not off a second call to the planner: each tabbed run carries the
+        // width of the gap it stops at, so counting the runs that stop at 4.25 mm counts the tabs
+        // the edit actually reached. With the fault there were two of them, one per profile.
+        var runs = toolpath.Passes
+            .Where(p => !p.Closed)
+            .GroupBy(p => p.DepthNm)
+            .OrderBy(g => g.Key)
+            .First()
+            .ToList();
+
+        foreach (var run in runs)
+        {
+            output.WriteLine($"gap {Nm.ToMillimetreString(run.HopWithinNm ?? 0, 2)} mm");
+        }
+
+        // Eight tabs: four on each of the two profiles, which is what makes the count meaningful.
+        Assert.Equal(8, runs.Count);
+        Assert.Single(runs, r => Math.Abs((r.HopWithinNm ?? 0) - Mm(4.25)) < Mm(0.01));
+    }
+
+    /// <summary>
+    /// The derived width is the one belonging to the profile whose tabs came back.
+    ///
+    /// **Found by `/code-review`.** It used to be the first profile that *could* have had tabs, so a
+    /// board whose first profile was too small to hold any reported that profile's number beside
+    /// another profile's tabs. The tabs window seeds its board-wide box from this number and each
+    /// row from its own tab's width, so every row read as hand-set and pressing Save with no changes
+    /// wrote an explicit edit for every tab — the one thing that window's `Apply` exists to avoid.
+    ///
+    /// The first profile is a 5 x 5 mm square asked for twenty tabs, which it cannot hold at its own
+    /// derived width; the second is 40 x 30 and can. Asserted by requiring the reported width to be
+    /// the width the tabs themselves carry, which is the agreement the window depends on.
+    /// </summary>
+    [Fact]
+    public void TheDerivedWidthBelongsToTheProfileThatGotTheTabs()
+    {
+        Paths64 two = [Rect(5, 5), Shifted(Rect(40, 30), 40, 0)];
+
+        // Twenty, so the little square cannot hold them: twenty tabs at its own derived width come
+        // to more than its perimeter, which is the one way a profile is eligible for tabs and gets
+        // none. The 40 x 30 has room for them.
+        var planning = OutlineOperation.PlanTabs(two, Options(tabs: 20));
+
+        output.WriteLine($"derived {Nm.ToMillimetreString(planning.DerivedWidthNm, 2)} mm, "
+            + $"tabs {string.Join(", ", planning.Tabs.Select(t => Nm.ToMillimetreString(t.WidthNm, 2)))} mm");
+
+        Assert.NotEmpty(planning.Tabs);
+        Assert.All(planning.Tabs, t => Assert.Equal(planning.DerivedWidthNm, t.WidthNm));
+
+        // And it is the big rectangle's number, not the little square's: the square's narrow side
+        // gives 0.5 mm, floored to the 1.5 mm minimum, and the 40 x 30 gives 3 mm. Stated as the
+        // two functions rather than as the two numbers, and required to differ, so the test cannot
+        // pass by both profiles happening to agree.
+        Assert.NotEqual(TabPlan.DefaultWidthFor(Rect(5, 5)), TabPlan.DefaultWidthFor(Rect(40, 30)));
+        Assert.Equal(TabPlan.DefaultWidthFor(Rect(40, 30)), planning.DerivedWidthNm);
+    }
+
+    /// <summary>A path moved, for building a job out of two separate profiles.</summary>
+    private static Path64 Shifted(Path64 path, double xMm, double yMm) =>
+        [.. path.Select(p => new Point64(p.X + Mm(xMm), p.Y + Mm(yMm)))];
 }

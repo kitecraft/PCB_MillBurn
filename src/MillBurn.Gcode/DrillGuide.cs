@@ -585,5 +585,11 @@ public static class DrillGuide
         .plan { margin: 1.5rem 0; }
         .plan svg { width: 100%; max-width: 30rem; height: auto; display: block; }
         .plan figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+        .cli {
+          font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; line-height: 1.5;
+          border: 1px solid var(--rule); border-radius: 4px; padding: 0.75rem 0.85rem;
+          white-space: pre-wrap; background: #00000008; margin: 0;
+        }
+        @media (prefers-color-scheme: dark) { .cli { background: #ffffff0d; } }
         """;
 }

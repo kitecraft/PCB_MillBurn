@@ -650,6 +650,172 @@ to grow a flag or two and say which in its closure.
 holding the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
 double-sided one with stock and alignment, and for a board whose name has a space in it.
 
+### Closed — 2026-10-03
+
+**The block is one pasteable thing.** A `#` comment of prose above each command, the commands between
+them, and nothing beside it: what somebody copies is the whole script including its warnings. The
+comments are hard-wrapped by the generator at ninety characters rather than left to the browser,
+because a comment the page wrapped pastes as one line and would run its own tail as a command.
+
+**Derived from the finished plan, never from the settings.** `CliScript.For` takes the plan and reads
+the stock off the rectangle that was resolved, the tabs off the layer that cut the outline, the
+isolation width off the layers that were isolated. A refused stock is in the settings and not in the
+block.
+
+**The stock is written as four borders**, whichever way it was asked for, because a stated size
+centres the board inside it and the command line has no way to say otherwise: borders carry the size
+and the placement in the same four numbers and resolve back to the same rectangle through the same
+function the CLI uses. The one exception is pre-cut stock that only gets its alignment holes drilled,
+which the CLI honours only on a stated size — so that case says `--stock-size`, and says in a comment
+when the board is not centred on it.
+
+**A project needs nothing but itself.** `millburn-cli export "Board.millburn" -o "out" --write
+--svg-marks stock`, and that is all: the project carries the thickness, the job, the stock and every
+layer's output, depth, cutter and tabs. Naming one of them would have been worse than noise — naming
+a single job flag makes the CLI build the whole job from flags, and the flags cannot place a board
+off-centre on its stock. A folder of Gerbers is the other extreme: every layer named with its own
+`--set`, because a layer left unnamed becomes whatever the *running* machine's Settings › Import says
+that role becomes.
+
+**It grew four flags.** `export` had no `--isolation-width`, `--tabs`, `--tab-width` or
+`--tab-height`; all four already existed on `mill`, and they are spelled here as `mill` spells them.
+Without them a block could not say how wide the copper was cleared or how big the tabs are — the two
+settings most often changed from their defaults, and the two whose absence would read as agreement.
+
+**And `export --commands`, which prints the block and writes nothing.** The same text the page
+carries, from the same renderer, so the terminal and the folder cannot drift apart. It is also the
+only way to read the script for an aligned export — an aligned export writes the moved programs and
+no page — and it is how every check below was done.
+
+**What it cannot carry is named, not omitted.** A per-layer depth, break-through, pass count, cutter,
+mirror or per-tab size; a board off-centre on a stated stock; copper layers isolated to different
+widths; and Settings › Machine and the tool library, which shape every line of every program — the
+bit each layer is cut with comes out of that library — and belong to the machine that runs the
+block. "Byte for byte" is a claim about one
+machine, and the block says so above every command.
+
+**Checked by running it, five ways**, each block piped to a file, pasted into a shell in a fresh
+folder holding the Gerbers, and the two folders compared file by file. A single-sided export of the
+test board with `--only gcode` (23 files); a double-sided one with stock, alignment holes, milled
+holes and a drill alignment, where the block is two commands and the second writes the `.aligned`
+programs (30 files); a board whose folder *and* every layer name has a space in it (25 files); a
+laser-only job with two inverted layers and the placing layers set to the outline alone; and the
+author's own saved project (16 files). Identical in every case, under bash and again under
+PowerShell.
+
+**`/describe-test` on `CliScriptTests` found three tests weaker than they read.** The round-trip of
+the stock's four borders placed the board on whole millimetres, so it would have passed a generator
+that printed the borders to the nearest tenth — it places the board at 20.123456, 8.07654 mm now,
+which is what makes the six decimals the formatting actually uses load-bearing. The check that every
+flag is one `export` documents was plain substring containment, so a dropped `--align` would have
+passed on the strength of `--align-outline` still being listed; it matches the whole flag now, and
+says so when the help's own headings move rather than throwing out of range. And the project case
+asserted six flags absent without asserting the one that must still be there, which is the half of
+that claim somebody would get wrong: the export now has a layer going to the laser, so `--svg-marks`
+has to appear.
+
+**The project was what found the bug.** Routed slots are written as an outline operation on a drill
+layer, so taking the first outline item out of the plan picked the test board's plated slots rather
+than its Edge_Cuts and read the tab count off a layer nobody had touched. A project with three tabs
+rebuilt with four: a different count, different positions, one extra retract. `IsBoardOutline`
+already existed for exactly this and warns about it in its own doc comment. Nothing on the page
+looked wrong and no test failed — it took rebuilding a real project and diffing the programs, which
+is the whole argument for the Done-when being what it is.
+
+### What the code review found — 2026-10-03, medium
+
+Eight, and only one of them was in this story's own code. The other seven are story 1's tabs and
+story 3's figures: the review diffs the whole branch from the sprint's start, so a story merged a
+day ago is still in front of it.
+
+**The one here was the worst of the eight.** A project source used to be left to carry its own
+settings, which made the command one line and made it wrong. The window exports what is on screen,
+and nothing stops that being an unsaved change — so a board whose tab count had just been raised
+from four to six wrote a page saying `export "Board.millburn"`, a command that rebuilds the *saved*
+four-tab job. That is exactly what this class's own doc says it exists to prevent, and the one thing
+worse than no block is a wrong one somebody runs. The flags are the authority now, whatever the
+source: a project command carries the thickness, the stock, the job, the tabs and every layer's
+output, and the project is only the input. What no flag reaches is named twice — once as the layer's
+own setting, once as a line saying the file is read as it was last saved. The project still rebuilds
+byte for byte, now from a long command instead of a short lie.
+
+**Three tab flags grew a guard.** `--tabs`, `--tab-width` and `--tab-height` go on every outline
+layer, so a board with two of them set differently would have come back with both cut to one of the
+two. They are left off when the layers disagree, with a note, exactly as the isolation width already
+was.
+
+#### Story 1's tabs, found by the same pass
+
+**An empty box was read as zero, and zero is not a tab.** Clearing the Width box in Tabs and
+pressing Enter — Save is the default button — wrote a tab width of 0. Nothing clamped it: zero is
+not equal to the derived width, so it was taken for the operator's own number, and the outline cut
+the board fully free while its own header said "4 tabs, 0.0 mm wide". An empty box means "as the
+board gives it" now, and `TabPlan.For` ignores a non-positive size as a last line, because this is
+geometry that cuts a real board.
+
+**A width change re-places the tabs, so the per-tab rows stop being about them.** The width is what
+tells the planner how many tabs an edge can hold, so widening it past what a short edge can take
+drops that edge and moves every tab. An edit made against the old list then landed on whichever tab
+now sorted third — a thin web nobody chose — or was dropped for being out of range. The rows now
+follow the board-wide pair and close until the window is reopened on the new layout, with a line
+saying why. It reverses: put the width back and the hand edits come back with it.
+
+**A per-tab edit reached every outermost profile.** The edits were handed to each one and applied by
+index inside it, so "tab 1, 4.25 mm" — chosen from a list of one board's tabs — also widened tab 1
+of a second board in the same Edge_Cuts that nobody had looked at. They go to the one profile the
+window lists now, which is the first that places any.
+
+**The derived width came from the wrong profile.** It was the first profile that *could* have had
+tabs rather than the one that got them, so a board whose first profile was too small reported one
+profile's number beside another's tabs. The window seeds its board-wide box from that number and
+each row from its own tab's width, so every row read as hand-set and pressing Save with no changes
+wrote an explicit edit for every tab — the one thing `Apply` exists to avoid.
+
+**The tabs window's coordinates were the board's, not the machine's.** It shifted by the board's
+corner alone, while the file is written in the frame: on stock, work zero is the *stock's* corner, so
+the window was out by the border, and a mirrored outline layer has its x flipped about the frame's
+centreline in the file and was not here. It goes through the planner's own `Placed` now — the same
+three steps the emitter takes, less the drill alignment, which is a correction measured later and
+not part of where a tab is.
+
+**And "were asked for" counted the wrong profiles**: the multiplier was the profiles that received a
+tab, so one too small to hold any was left out of it. A job of two profiles where one held four and
+the other none reported "4 were asked for: the straight edges hold 4", a sentence that says nothing
+happened.
+
+#### Story 3's figures
+
+**A number beside a mark on the edge was drawn outside the frame.** The margin is a millimetre and a
+label can be pushed `font * 2.1` from its mark — about 5.8 mm on a 100 mm board — so a hole on the
+board's edge had its number outside the `viewBox`, where a browser clips the root SVG. The mark is
+drawn and the number is simply missing, on a drawing whose whole job is to say which hole is which;
+and holes do sit on the edge, because a castellation is one. Candidates inside the frame are
+preferred now and the chosen spot is pulled in as a backstop.
+
+**Six of the eight have a regression test that fails without its fix**, each checked by putting the
+fault back and watching it go red. The two that do not are in the window: nothing in this suite
+drives Avalonia, so both were read rather than run.
+
+**`/describe-test` on the three test files the fixes touched found four more**, two of them in
+sentences this sprint wrote. `AStepDownDeeperThanTheWholeCutStillCutsTheTabs` ended with
+`Assert.Equal(0.5, 0.8 - overTabs)` after the line above it had already pinned `overTabs` to 0.3 —
+a restatement that cannot fail once the first has passed — and neither line said the board is cut
+*through*, so a program of one shallow groove would have satisfied both; it now requires a pass past
+the board's thickness. `TheTabbedPassesAreAllDeeperThanTheOneThatCrossesThem` had the mirror image of
+a hole a previous `/describe-test` pass closed: with no closed pass at all the crossing depth comes
+back as zero, every real depth beats it, and both assertions pass while nothing ever crosses a tab.
+The new figure test parsed the font size without checking the match, so a figure declaring none would
+have thrown rather than failed, and it estimated each number's width from an anchor it never
+asserted — it checks `text-anchor="middle"` now, because the whole measurement rests on it. And
+`ThePictureIsAFewKilobytes` would have passed an empty string.
+
+**Two comments were wrong.** The new two-profile fixture is a 5 x 5 mm square and its own doc said
+6 x 6; and the note test's comment gave two different numbers for the same thing in one sentence —
+"Nineteen is what the old arithmetic would have said — twenty, for the one profile that got any".
+Twenty was right.
+
+1,295 tests and 28 goldens green, and all five rebuild checks still come out byte for byte.
+
 ---
 
 ## Story 5 — A test cut that finds where the copper stops
