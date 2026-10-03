@@ -13,7 +13,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 
-## Enhancements (19)
+## Enhancements (18)
 
 Something new or better, which is not the same as something broken.
 
@@ -21,7 +21,6 @@ Something new or better, which is not the same as something broken.
 |---|---|---|
 | [6.1](06-Roadmap-and-Risks.md#61-rulers--enhancement--open) | Rulers | — |
 | [6.2](06-Roadmap-and-Risks.md#62-climb-or-conventional--enhancement--open--low-priority) | Climb or conventional | low priority |
-| [6.5](06-Roadmap-and-Risks.md#65-a-picture-on-the-companion-pages--enhancement--open) | A picture on the companion pages | — |
 | [6.6](06-Roadmap-and-Risks.md#66-the-tool-library-once-it-has-more-than-a-handful-in-it--enhancement--open) | The tool library, once it has more than a handful in it | — |
 | [6.7](06-Roadmap-and-Risks.md#67-teaching-the-conventions-coachmarks-and-a-first-run-walkthrough--enhancement--open--needs-research) | Teaching the conventions: coachmarks and a first-run walkthrough | needs research |
 | [6.15](06-Roadmap-and-Risks.md#615-the-companion-page-names-the-commands-that-would-rebuild-it--enhancement--open) | The companion page names the commands that would rebuild it | — |
@@ -67,4 +66,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**25 open**, of 56 entries in the roadmap.
+**24 open**, of 56 entries in the roadmap.

@@ -40,7 +40,31 @@ public sealed record RoutingGuideContext
 
     /// <summary>Whether work zero is a blank's corner rather than the board's.</summary>
     public bool OnBlank { get; init; }
+
+    /// <summary>
+    /// The board's own profile, for the picture to be drawn on. Empty draws no picture.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Point2>> Outline { get; init; } = [];
+
+    /// <summary>The board's extent, which fixes the frame the picture is drawn in.</summary>
+    public Bounds Bounds { get; init; } = Bounds.Empty;
+
+    /// <summary>
+    /// The shapes of the features this program will not make, to be drawn hatched.
+    ///
+    /// **The strongest reason this story exists is about routing rather than drilling.** A refused
+    /// slot is invisible: it is not in the program, and the board renders exactly as the EDA tool
+    /// drew it. The page names it in prose, which is better than nothing and worse than a picture of
+    /// the board with four slots marked *not cut* — one drawing turns a paragraph somebody skims
+    /// into a shape they recognise.
+    /// </summary>
+    public IReadOnlyList<RefusedFeature> Refused { get; init; } = [];
 }
+
+/// <summary>A feature the program will not make, and where it would have been.</summary>
+/// <param name="Path">Its shape, in the frame the program works in.</param>
+/// <param name="WidthNm">How wide it is, which is why it was refused and what it is labelled with.</param>
+public readonly record struct RefusedFeature(IReadOnlyList<Point2> Path, long WidthNm);
 
 /// <summary>One cutter's worth of routing.</summary>
 public sealed record RoutingGuideStep
@@ -62,6 +86,16 @@ public sealed record RoutingGuideStep
 
     /// <summary>The file this cutter's work is in.</summary>
     public string Program { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The runs this cutter makes, in the order it makes them, each from where it enters the
+    /// material to where it leaves.
+    ///
+    /// Read off the emitted program, so the picture shows what the machine will do. The direction
+    /// matters as much as the shape: it is what tells somebody watching that the machine is doing
+    /// what the page says.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Point2>> Runs { get; init; } = [];
 }
 
 /// <summary>What a routing program does, in the order it does it.</summary>
@@ -211,6 +245,7 @@ public static class RoutingGuide
                 Order = steps.Count + 1,
                 Cutter = features[0].Cutter,
                 Makes = [.. features.Select(f => f.What)],
+                Runs = Runs(lines[from..to]),
                 Line = starts[groups[g][0]] + 1,
                 Seconds = seconds,
             });
@@ -234,6 +269,177 @@ public static class RoutingGuide
             ? null
             : (trimmed[1..at].Trim(), trimmed[(at + marker.Length)..].TrimEnd(')', ' ', '.').Trim());
     }
+
+    /// <summary>
+    /// The cutting runs in a section of the program, in order, with arcs opened out.
+    ///
+    /// A run is from where the cutter enters the material to where it leaves it: anything that is
+    /// not a cut — a rapid, a plunge, a retract — ends one. Several passes down one slot are several
+    /// runs, and the picture draws them over each other, which is what the machine does.
+    ///
+    /// **Arcs are opened into short lines** rather than drawn as their chords. A routed slot ends in
+    /// a half-circle the cutter sweeps, and a chord across it would draw a stadium as a rectangle —
+    /// the one thing the picture is for is recognising the shape.
+    /// </summary>
+    private static List<IReadOnlyList<Point2>> Runs(string[] section)
+    {
+        var parsed = GcodeParser.Parse(string.Join("\n", section));
+        var runs = new List<IReadOnlyList<Point2>>();
+        List<Point2>? run = null;
+
+        foreach (var move in parsed.Moves)
+        {
+            if (move.IsRapid || move.ToZNm >= 0 || !move.MovesInPlane)
+            {
+                if (run is { Count: > 1 })
+                {
+                    runs.Add(run);
+                }
+
+                run = null;
+                continue;
+            }
+
+            run ??= [move.From];
+
+            if (move.IsArc)
+            {
+                Arc(run, move);
+            }
+            else
+            {
+                run.Add(move.To);
+            }
+        }
+
+        if (run is { Count: > 1 })
+        {
+            runs.Add(run);
+        }
+
+        return runs;
+    }
+
+    /// <summary>Opens an arc out into a few points, enough that a slot end reads as round.</summary>
+    private static void Arc(List<Point2> run, GcodeMove move)
+    {
+        var from = Math.Atan2(move.From.Y - move.Centre.Y, move.From.X - move.Centre.X);
+        var to = Math.Atan2(move.To.Y - move.Centre.Y, move.To.X - move.Centre.X);
+        var radius = Math.Sqrt(
+            Math.Pow(move.From.X - move.Centre.X, 2) + Math.Pow(move.From.Y - move.Centre.Y, 2));
+
+        var sweep = to - from;
+
+        if (move.Kind == MoveKind.ArcCounterClockwise)
+        {
+            while (sweep <= 0)
+            {
+                sweep += 2 * Math.PI;
+            }
+        }
+        else
+        {
+            while (sweep >= 0)
+            {
+                sweep -= 2 * Math.PI;
+            }
+        }
+
+        // One point every fifteen degrees or so, which is smooth at any size a page shows.
+        var steps = Math.Max(2, (int)Math.Ceiling(Math.Abs(sweep) / (Math.PI / 12)));
+
+        for (var i = 1; i <= steps; i++)
+        {
+            var angle = from + (sweep * i / steps);
+
+            run.Add(new Point2(
+                move.Centre.X + (long)Math.Round(radius * Math.Cos(angle)),
+                move.Centre.Y + (long)Math.Round(radius * Math.Sin(angle))));
+        }
+    }
+
+    /// <summary>
+    /// One drawing per cutter, with its runs in the order they are cut and anything refused marked
+    /// on the same board.
+    ///
+    /// **The refusals are drawn on every cutter's figure**, not on one of their own. A refused slot
+    /// is not something a particular bit skips — it is a hole in the board that nothing is going to
+    /// make, and whichever drawing somebody is looking at is the one where they should see it.
+    /// </summary>
+    private static void Figures(StringBuilder page, RoutingGuideReport report, RoutingGuideContext context)
+    {
+        if (context.Outline.Count == 0 || context.Bounds.IsEmpty)
+        {
+            return;
+        }
+
+        var refused = context.Refused
+            .Where(r => r.Path.Count > 1)
+            .Select(r => new GuideMark
+            {
+                At = Middle(r.Path),
+                Path = r.Path,
+                WidthNm = r.WidthNm,
+                Refused = true,
+            })
+            .ToList();
+
+        foreach (var step in report.Steps)
+        {
+            var marks = step.Runs
+                .Where(run => run.Count > 1)
+                .Select(run => new GuideMark { At = Middle(run), Path = run })
+                .Concat(refused)
+                .ToList();
+
+            if (marks.Count == 0)
+            {
+                continue;
+            }
+
+            var figure = GuideFigure.Draw(
+                context.Outline,
+                marks,
+                context.Bounds,
+                Invariant($"{step.Cutter} on {context.BoardName}"));
+
+            if (figure.Length == 0)
+            {
+                continue;
+            }
+
+            page.Append("<figure class=\"plan\">\n").Append(figure).Append('\n');
+
+            page.Append("<figcaption><strong>").Append(Escape(step.Cutter)).Append("</strong> — ")
+                .Append(step.Runs.Count)
+                .Append(step.Runs.Count == 1 ? " run" : " runs")
+                .Append(marks.Count > GuideFigure.MostToNumber
+                    ? ", too many to number: dots in cutting order, starting at the ringed one."
+                    : ", numbered in the order they are cut, each arrow at the end of its run.");
+
+            if (refused.Count > 0)
+            {
+                page.Append(" Hatched and labelled with its width: ")
+                    .Append(refused.Count)
+                    .Append(refused.Count == 1 ? " feature " : " features ")
+                    .Append("this program does not make.");
+            }
+
+            page.Append("</figcaption>\n</figure>\n");
+        }
+    }
+
+    /// <summary>
+    /// A point in the middle of a run, for anything that wants somewhere to point at.
+    ///
+    /// Halfway between its ends rather than its middle *element*, which a `/code-review` pass caught:
+    /// every refused feature has exactly two points, so taking element `Count / 2` handed back the
+    /// far end and called it the middle — and the crowded drawing's travel line then detoured to the
+    /// ends of things rather than past them.
+    /// </summary>
+    private static Point2 Middle(IReadOnlyList<Point2> run) => new(
+        (run[0].X + run[^1].X) / 2,
+        (run[0].Y + run[^1].Y) / 2);
 
     /// <summary>How long a stretch of the program takes, or null if it cuts nothing.</summary>
     private static double? Seconds(string[] section)
@@ -285,7 +491,7 @@ public static class RoutingGuide
             NotCut(page, context);
         }
 
-        Sequence(page, report);
+        Sequence(page, report, context);
         Before(page, context);
 
         if (context.Warnings.Count > 0)
@@ -366,7 +572,7 @@ public static class RoutingGuide
             + "picture will not tell you they are missing.</p>\n</div>\n");
     }
 
-    private static void Sequence(StringBuilder page, RoutingGuideReport report)
+    private static void Sequence(StringBuilder page, RoutingGuideReport report, RoutingGuideContext context)
     {
         page.Append(report.Files > 1 ? "<h2>Suggested order</h2>\n" : "<h2>The run, in order</h2>\n");
 
@@ -402,6 +608,8 @@ public static class RoutingGuide
         }
 
         page.Append("</tbody>\n</table>\n");
+
+        Figures(page, report, context);
 
         if (perFile)
         {

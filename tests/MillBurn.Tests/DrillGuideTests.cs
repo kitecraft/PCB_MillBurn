@@ -347,6 +347,227 @@ public sealed class DrillGuideTests(ITestOutputHelper output)
         Assert.All(plan.Items, i => Assert.Null(i.Companion));
     }
 
+    /// <summary>
+    /// The page a real export writes carries a drawing for every bit, and each drawing has as many
+    /// marks as that bit has holes.
+    ///
+    /// **This is the clause the story is judged on** — *a board with several bits produces one
+    /// drawing per bit with its holes numbered in run order* — and it is asserted against the page
+    /// the planner actually writes rather than against a figure built by hand: the numbers come off
+    /// the emitted program, so a drawing that disagreed with the table would mean the two had been
+    /// read from different places.
+    /// </summary>
+    [Fact]
+    public void ThePageDrawsEveryBitsHoles()
+    {
+        var plan = Plan(RealBoards.MillburnTestBoard);
+
+        var page = plan.Items
+            .Select(i => i.Companion)
+            .FirstOrDefault(c => c is not null && c.TargetName.EndsWith(".drilling.html", StringComparison.Ordinal));
+
+        Assert.NotNull(page);
+
+        var figures = System.Text.RegularExpressions.Regex.Count(page.Content, "<svg class=\"figure\"");
+
+        output.WriteLine($"{figures} drawing(s) on {page.TargetName}");
+
+        Assert.True(figures > 1, $"a board drilled with several bits drew {figures} picture(s)");
+
+        // Every figure is about one bit, and its caption says which — so the drawings and the table
+        // name the same bits in the same order.
+        var captions = System.Text.RegularExpressions.Regex
+            .Matches(page.Content, "<figcaption><strong>([^<]*)</strong>")
+            .Select(m => m.Groups[1].Value)
+            .ToList();
+
+        output.WriteLine(string.Join(", ", captions));
+
+        Assert.Equal(figures, captions.Count);
+        Assert.Equal(captions, captions.Distinct(StringComparer.Ordinal));
+
+        // **One drawing per bit, and each drawing holding that bit's holes** — which a
+        // `/describe-test` pass found this test claiming and not checking: it counted figures and
+        // captions against each other and never opened a figure or asked the program how many holes
+        // a bit drills. A numbered figure draws one circle per hole; a crowded one draws a ring on
+        // the first as well, which is the only reason the two counts differ.
+        var (_, report) = DrillGuide.Build(
+            [.. Files(RealBoards.MillburnTestBoard).Select(f => new GuideProgram(f.TargetName, f.Content))],
+            Context(Files(RealBoards.MillburnTestBoard)));
+
+        var drawn = System.Text.RegularExpressions.Regex
+            .Matches(page.Content, "<svg class=\"figure\".*?</svg>", System.Text.RegularExpressions.RegexOptions.Singleline)
+            .Select(m => System.Text.RegularExpressions.Regex.Count(m.Value, "<circle"))
+            .ToList();
+
+        var holes = report.Steps.Where(s => s.At.Count > 0).Select(s => s.Holes).ToList();
+
+        output.WriteLine($"holes per bit: {string.Join(", ", holes)}");
+        output.WriteLine($"marks per figure: {string.Join(", ", drawn)}");
+
+        Assert.Equal(holes.Count, drawn.Count);
+
+        for (var i = 0; i < holes.Count; i++)
+        {
+            var expected = holes[i] > GuideFigure.MostToNumber ? holes[i] + 1 : holes[i];
+
+            Assert.Equal(expected, drawn[i]);
+        }
+
+        // And nothing was fetched to draw them: the page is one file, which the rest of this class
+        // already pins, and the figures are part of it.
+        Assert.DoesNotContain("http", page.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A bit with more holes than can be numbered says so instead of numbering them.
+    ///
+    /// The Arduino Mega drills 98 holes with its 1.00 mm bit, and that drawing is dots with the
+    /// travel between them and a ring on the first. The caption carries the count either way, which
+    /// is what makes the picture safe to degrade: the text is the authority.
+    /// </summary>
+    [Fact]
+    public void ABitWithTooManyHolesDrawsTheRunInstead()
+    {
+        var plan = Plan(RealBoards.ArduinoMega);
+
+        var page = plan.Items
+            .Select(i => i.Companion)
+            .FirstOrDefault(c => c is not null && c.TargetName.EndsWith(".drilling.html", StringComparison.Ordinal));
+
+        Assert.NotNull(page);
+
+        var crowded = System.Text.RegularExpressions.Regex
+            .Matches(page.Content, "<figcaption><strong>([^<]*)</strong> — (\\d+) holes?([^<]*)")
+            .Select(m => (Bit: m.Groups[1].Value, Holes: int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), Says: m.Groups[3].Value))
+            .ToList();
+
+        foreach (var (bit, holes, says) in crowded)
+        {
+            output.WriteLine($"{bit}: {holes} holes —{says}");
+        }
+
+        Assert.NotEmpty(crowded);
+
+        // The rule, stated against the page rather than against the figure: over the limit the
+        // caption promises dots, under it the caption promises numbers.
+        foreach (var (bit, holes, says) in crowded)
+        {
+            Assert.Equal(
+                holes > GuideFigure.MostToNumber,
+                says.Contains("too many to number", StringComparison.Ordinal));
+        }
+
+        Assert.Contains(crowded, c => c.Holes > GuideFigure.MostToNumber);
+        Assert.Contains(crowded, c => c.Holes <= GuideFigure.MostToNumber);
+
+        // **And the figures do what their captions promise**, which the captions alone cannot show:
+        // over the limit a drawing carries no numbers at all, under it every mark has one. A
+        // `/describe-test` pass pointed out that the phrase in the caption was the only evidence
+        // being taken for the drawing having changed.
+        var figures = System.Text.RegularExpressions.Regex
+            .Matches(page.Content, "<svg class=\"figure\".*?</svg>", System.Text.RegularExpressions.RegexOptions.Singleline)
+            .Select(m => m.Value)
+            .ToList();
+
+        Assert.Equal(crowded.Count, figures.Count);
+
+        for (var i = 0; i < figures.Count; i++)
+        {
+            var numbers = System.Text.RegularExpressions.Regex.Count(figures[i], "<text");
+
+            output.WriteLine($"{crowded[i].Bit}: {crowded[i].Holes} holes, {numbers} number(s) drawn");
+
+            if (crowded[i].Holes > GuideFigure.MostToNumber)
+            {
+                Assert.Equal(0, numbers);
+            }
+            else
+            {
+                Assert.Equal(crowded[i].Holes, numbers);
+            }
+        }
+    }
+
+    /// <summary>
+    /// On a mirrored layer the picture's board is mirrored with its holes.
+    ///
+    /// **Found by `/code-review`, and it is the worst thing a drawing can do.** The marks come out of
+    /// the emitted program, which `AssembleEach` mirrors about the frame's centreline when the layer
+    /// is flipped; the backdrop was only ever translated. On an asymmetric board the holes would land
+    /// off the profile — visible, and recoverable. On a symmetric one they would look perfectly
+    /// plausible and be the mirror image of the truth, which is the half of this that makes it worth
+    /// a test rather than a glance.
+    ///
+    /// Asserted by drawing the same board both ways and requiring the two backdrops to differ: a
+    /// profile that did not move when its holes did is exactly the fault. The test board is used
+    /// because its outline is the least symmetric in the corpus — a comb of notches down one side and
+    /// a chamfer on one corner — so a mirror cannot be mistaken for a shift.
+    /// </summary>
+    [Fact]
+    public void AMirroredLayerMirrorsThePictureToo()
+    {
+        var board = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.MillburnTestBoard));
+
+        string Page(bool mirrored)
+        {
+            var settings = board.Layers.ToDictionary(
+                l => l.FileName,
+                l => new LayerOutputSettings
+                {
+                    FileName = l.FileName,
+                    Output = LayerOperations.DefaultFor(l.Role),
+                    Mirrored = l.Role == LayerRole.PlatedDrill ? mirrored : null,
+                },
+                StringComparer.Ordinal);
+
+            var plan = ExportPlanner.Plan(
+                board, settings, ToolLibrary.Default, Nm.FromMillimetres(1.6), OutputKind.Gcode);
+
+            var companion = plan.Items
+                .Select(i => i.Companion)
+                .First(c => c is not null && c.TargetName.EndsWith(".drilling.html", StringComparison.Ordinal));
+
+            return System.Text.RegularExpressions.Regex
+                .Match(companion!.Content, "<path class=\"board\"[^>]*d=\"([^\"]*)\"")
+                .Groups[1]
+                .Value;
+        }
+
+        var plain = Page(mirrored: false);
+        var flipped = Page(mirrored: true);
+
+        output.WriteLine($"plain   {plain[..Math.Min(90, plain.Length)]}");
+        output.WriteLine($"flipped {flipped[..Math.Min(90, flipped.Length)]}");
+
+        Assert.NotEmpty(plain);
+        Assert.NotEqual(plain, flipped);
+
+        // And it is a mirror rather than any other difference: the profile keeps its width, and every
+        // x is the frame's width less the x it had. Read off the two paths' own numbers, so this does
+        // not depend on knowing the board's size.
+        var left = Numbers(plain);
+        var right = Numbers(flipped);
+
+        Assert.Equal(left.Count, right.Count);
+
+        var width = left.Where((_, i) => i % 2 == 0).Max() + left.Where((_, i) => i % 2 == 0).Min();
+
+        for (var i = 0; i < left.Count; i += 2)
+        {
+            Assert.Equal(width - left[i], right[i], 0.01);
+            Assert.Equal(left[i + 1], right[i + 1], 0.01);
+        }
+    }
+
+    /// <summary>Every number in a path's `d`, in order, for comparing two drawings of one board.</summary>
+    private static List<double> Numbers(string path) =>
+    [
+        .. System.Text.RegularExpressions.Regex
+            .Matches(path, "-?\\d+(?:\\.\\d+)?")
+            .Select(m => double.Parse(m.Value, System.Globalization.CultureInfo.InvariantCulture)),
+    ];
+
     private static DrillGuideContext Context(List<ExportItem> files) => new()
     {
         BoardName = "PogoTest1",

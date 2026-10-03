@@ -778,7 +778,7 @@ public static class ExportPlanner
 
         // One page for the layer, beside its first file, describing every file in the order they run.
         var guide = GuideFor(
-            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame != board.Bounds, aligned);
+            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame, aligned);
 
         return guide is null ? files : [files[0] with { Companion = guide }, .. files.Skip(1)];
     }
@@ -1096,6 +1096,8 @@ public static class ExportPlanner
         // The page that travels with the files. It carries the refusals, which is the one thing on
         // it that cannot be recovered from a program: a file cannot describe what is absent from it,
         // and the export window is not what anybody has open at the machine.
+        var (rings, figureBounds) = Figure(board, frame, setting.MirrorFor(layer.Role), alignment);
+
         var (html, report) = RoutingGuide.Build(
             [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
             new RoutingGuideContext
@@ -1107,6 +1109,15 @@ public static class ExportPlanner
                 BreakThroughNm = setting.BreakThroughNm,
                 Refusals = [.. plan.Refusals.Select(Worded)],
                 RefusedCount = plan.RefusedCount,
+                Outline = rings,
+                Bounds = figureBounds,
+
+                // The shapes of what is not being made, in the frame the program works in. Drawn
+                // hatched on every cutter's picture: a refused feature is a hole in the board that
+                // nothing is going to make, not something a particular bit skips.
+                Refused = [.. plan.Refusals.SelectMany(r => r.Where.Select(w => new RefusedFeature(
+                    [Placed(w.From, frame, setting.MirrorFor(layer.Role), alignment), Placed(w.To, frame, setting.MirrorFor(layer.Role), alignment)],
+                    r.WidthNm)))],
                 // Still matched on the sentence, and left that way on purpose. The page lists the
                 // refusals itself in `Refusals` directly above, so these would appear twice; what
                 // is being excluded is that one wording and not refusals in general, which a
@@ -1686,6 +1697,93 @@ public static class ExportPlanner
     }
 
     /// <summary>
+    /// A point as the emitted program has it: mirrored if the layer is, shifted into the frame, and
+    /// turned by the drill alignment if there is one.
+    ///
+    /// **The same three steps `AssembleEach` applies, in the same order**, and a `/code-review` pass
+    /// is why they are all here. The marks on a companion page's picture are read back out of the
+    /// program, so a backdrop that was only translated would sit under marks that had also been
+    /// mirrored: on an asymmetric board the holes would land off the profile, and on a symmetric one
+    /// they would look plausible and be wrong, which is the worse of the two.
+    /// </summary>
+    private static Point2 Placed(Point2 at, Bounds frame, bool mirrored, DrillAlignment? alignment)
+    {
+        var point = mirrored
+            ? new Point2(frame.MinX + frame.MaxX - at.X, at.Y)
+            : at;
+
+        point = new Point2(point.X - frame.MinX, point.Y - frame.MinY);
+
+        return alignment is null ? point : alignment.Apply(point);
+    }
+
+    /// <summary>
+    /// The board's profile and extent as a companion page's picture needs them: polylines in the
+    /// frame the programs are written in, and simplified enough to travel inside an HTML file.
+    ///
+    /// **Shifted by the frame rather than by the board**, because that is what every emitted
+    /// coordinate is measured from — on a blank, work zero is the stock's corner and the board sits
+    /// somewhere inside it. The marks on the picture come out of the program, so the backdrop has to
+    /// be in the program's own frame or the two would not line up.
+    ///
+    /// **Thinned to a tenth of a millimetre**, which is finer than any line this is drawn at and
+    /// turns the panel's tessellated outline from tens of thousands of points into hundreds. The
+    /// pages are self-contained by rule, so every point in them is bytes somebody has to open on a
+    /// phone in a workshop.
+    /// </summary>
+    private static (IReadOnlyList<IReadOnlyList<Point2>> Rings, Bounds Bounds) Figure(
+        Board board,
+        Bounds frame,
+        bool mirrored,
+        DrillAlignment? alignment)
+    {
+        var outline = board.Layers.FirstOrDefault(l => l.Role == LayerRole.Outline);
+
+        if (outline is null || board.Bounds.IsEmpty)
+        {
+            return ([], Bounds.Empty);
+        }
+
+        var enough = Nm.FromMillimetres(0.1);
+        var rings = new List<IReadOnlyList<Point2>>();
+
+        foreach (var ring in outline.Area)
+        {
+            if (ring.Count < 3)
+            {
+                continue;
+            }
+
+            var points = new List<Point2>(ring.Count);
+
+            foreach (var point in ring)
+            {
+                var at = Placed(new Point2(point.X, point.Y), frame, mirrored, alignment);
+
+                if (points.Count == 0 || at.DistanceTo(points[^1]) >= enough)
+                {
+                    points.Add(at);
+                }
+            }
+
+            if (points.Count >= 3)
+            {
+                rings.Add(points);
+            }
+        }
+
+        // From the rings themselves rather than from the board's own box: once they can be mirrored
+        // and turned, the box that holds them is whatever they came out as.
+        var bounds = Bounds.Empty;
+
+        foreach (var at in rings.SelectMany(r => r))
+        {
+            bounds = bounds.Include(at);
+        }
+
+        return (rings, bounds);
+    }
+    /// <summary>
     /// The page that explains how to run a layer's drilling files.
     ///
     /// Built from the emitted text rather than from the toolpaths, like everything else here that
@@ -1701,9 +1799,11 @@ public static class ExportPlanner
         long thicknessNm,
         IReadOnlyList<Check> warnings,
         int repeats,
-        bool onBlank,
+        Bounds frame,
         DrillAlignment? alignment)
     {
+        var (rings, bounds) = Figure(board, frame, setting.MirrorFor(layer.Role), alignment);
+
         var (html, report) = DrillGuide.Build(
             [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
             new DrillGuideContext
@@ -1715,7 +1815,9 @@ public static class ExportPlanner
                 BreakThroughNm = setting.BreakThroughNm,
                 RepeatedPositions = repeats,
                 Warnings = [.. warnings.Select(w => w.Line)],
-                OnBlank = onBlank,
+                OnBlank = frame != board.Bounds,
+                Outline = rings,
+                Bounds = bounds,
             });
 
         if (report.Steps.Count == 0)

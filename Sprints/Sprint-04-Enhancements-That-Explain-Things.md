@@ -525,6 +525,95 @@ order, a routing page shows its slots with direction and its refusals hatched, t
 step degrades to dots without becoming unreadable, and every page is still one file that opens with
 no network.
 
+### Closed — 2026-10-02
+
+**Met, all four clauses.**
+
+- **One drawing per bit with its holes numbered in run order.** The test board's plated drilling page
+  carries nine, one per bit, each captioned with the bit it belongs to.
+- **The routing page shows its slots with direction and its refusals hatched.** Each run has an
+  arrowhead at its far end and its number at the end the cutter enters from; a refused feature is the
+  shape it would have been, hatched and dashed, labelled with its width.
+- **The Mega's crowded steps degrade to dots** — 98 holes with the 1.00 mm bit, 104 with the 0.41 mm
+  — drawn as dots with the travel between them and a ring on the first, with the caption saying so.
+- **Every page is still one file that opens with no network**, which the pages' own test enforces and
+  which caught the one URL this story tried to add.
+
+**The artefacts, to open rather than read about**: `WorkingFolder/V0.5.0/` holds the test board's
+drilling and routing pages as they ship, and `Screenshots/story-3-*.png` are the three figures that
+matter — the numbered holes, the Mega degrading to dots, and the slots with their arrows.
+
+**`SlotRefusal` had to learn where it was.** It carried a width, a count and a reason and no
+geometry, so a refused slot could only ever be prose — which is the one thing on these pages that
+cannot be checked against the machine, because the feature is absent from the program and the board
+renders exactly as the EDA tool drew it. It now carries the centrelines it refused.
+
+**Two faults were found by rendering the figures and looking at them**, and neither was visible in
+the markup:
+
+- the numbers were placed above and to the right of their holes, so on a column of holes a
+  millimetre apart each number sat between two of them and belonged to neither;
+- a slot running left to right was labelled on its right, which put its number on its own arrowhead.
+
+Both are one line of arithmetic. Neither would have been caught by any assertion I would have thought
+to write, which is this repository's standing claim about pictures arriving as a story about
+pictures.
+
+**`/describe-test` on all three test files, and it found the page tests claiming what the figure
+tests check.** `ThePageDrawsEveryBitsHoles` counted figures and captions against each other and never
+opened a figure or asked the program how many holes a bit drills — it compares the marks in each
+drawing against the hole count now, allowing for the ring a crowded drawing puts on its first.
+`ABitWithTooManyHolesDrawsTheRunInstead` took the caption's own phrase as evidence that the drawing
+had changed; it now asserts a crowded figure carries no numbers at all and an uncrowded one carries
+one per hole. The routing tests could both pass with zero steps, and the refusal fixture said four
+refused and drew one — a fixture disagreeing with itself in exactly the way the page must not. And at
+the figure level: nothing tied the number *1* to the first hole given, the hatch pattern was asserted
+declared but never referenced, and a byte count was counting UTF-16 characters.
+
+**No board in the corpus refuses a feature** with the shipped tool library — a refusal needs a slot
+narrower than the narrowest cutter and none of the five has one — so the hatching is covered by a
+synthetic case and said to be synthetic in the test that covers it.
+
+### What the code review found — 2026-10-03, medium
+
+Seven, and four of them were about shapes nobody had looked at in the one state that produces them.
+
+- **A mirrored layer drew its holes on an unmirrored board.** The marks come out of the emitted
+  program, which is mirrored about the frame's centreline when a layer is flipped; the backdrop was
+  only translated. On an asymmetric board the holes land off the profile; on a symmetric one they
+  look perfectly plausible and are the mirror image of the truth, which is why it is worth a test
+  rather than a glance. The backdrop now takes the same three steps the emitter takes — mirror,
+  shift, then the drill alignment's turn — and `AMirroredLayerMirrorsThePictureToo` fails without it
+  with the two drawings byte-identical.
+- **The refused slot's round ends pointed the wrong way.** Both arc caps carried sweep flag 1, which
+  in a figure that counts down the page turns them *into* the rectangle: a stadium drawn as a
+  rectangle with a bite out of each end. Nothing asserted the flags, so the suite passed on the wrong
+  shape — of the one shape this story calls the strongest reason the drawing exists.
+- **Above forty marks a refusal became an ordinary cut.** The crowded branch never read `Refused`: it
+  drew every mark as a blue dot and threaded the travel line through them, so the features nothing
+  will cut were indistinguishable from the ones it will, the travel detoured through places the
+  cutter never goes, and the caption still promised they were hatched.
+- **A refused *hole* drew nothing at all.** A milled hole refused for being too small is a centreline
+  whose two ends are the same point; the band drew nothing and returned, while the caller still wrote
+  its width — a number floating on the board with no mark under it. It falls through to a hatched
+  circle now.
+
+And three smaller: a number pushed only *downwards* got no leader line, which is two of the eight
+places it can go and the dense column is what leaders are for; `Middle` returned the far end for a
+two-point run, because element `Count / 2` of two points is the second one; and two doc comments had
+been orphaned onto the wrong members by the insertions, leaving one method with two summaries and
+another with none.
+
+**What it costs the page.** A figure is about four kilobytes: the backdrop is the outline alone,
+thinned to a tenth of a millimetre, which turns the panel's tessellated profile from tens of
+thousands of points into hundreds. Drawing the copper instead would have run to hundreds of
+kilobytes and answered nothing about where a bit goes.
+
+**Left out on purpose.** The drawings are not clickable and do not pan or zoom: a companion page is
+read at a machine, printed as often as scrolled, and a figure that needed a pointer would be worse
+in exactly the place it is used. Leader lines are drawn only where a label had to move out of its
+first choice — a line from every number to its own hole is a thicket.
+
 ---
 
 ## Story 4 — The commands that would rebuild the export

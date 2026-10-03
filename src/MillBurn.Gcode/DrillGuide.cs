@@ -34,6 +34,18 @@ public sealed record DrillGuideContext
 
     /// <summary>Whether work zero is a blank's corner rather than the board's.</summary>
     public bool OnBlank { get; init; }
+
+    /// <summary>
+    /// The board's own profile, for the picture to be drawn on.
+    ///
+    /// Polylines in the frame the program works in — the board's lower-left corner as zero — so the
+    /// marks and the backdrop need no reconciling. Empty draws no picture, which is what a caller
+    /// with no outline to give should get rather than a frame around nothing.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Point2>> Outline { get; init; } = [];
+
+    /// <summary>The board's extent, which fixes the frame the picture is drawn in.</summary>
+    public Bounds Bounds { get; init; } = Bounds.Empty;
 }
 
 /// <summary>One bit, and the run it does.</summary>
@@ -52,6 +64,14 @@ public sealed record DrillGuideStep
 
     /// <summary>The file this bit's holes are in.</summary>
     public string Program { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Where each hole is, in the order the program drills them.
+    ///
+    /// Read off the emitted file like everything else on this page, which is what lets the picture be
+    /// checked against the machine rather than against what somebody meant.
+    /// </summary>
+    public IReadOnlyList<Point2> At { get; init; } = [];
 }
 
 /// <summary>What the page says, available without rendering it.</summary>
@@ -168,6 +188,10 @@ public static class DrillGuide
                 steps[^1] = steps[^1] with
                 {
                     Holes = steps[^1].Holes + step.Holes,
+
+                    // Two sections of one bit are one trip to the spindle and one picture: the
+                    // numbering runs straight on across the join, which is the order they are drilled.
+                    At = [.. steps[^1].At, .. step.At],
                     Seconds = steps[^1].Seconds + step.Seconds,
                 };
 
@@ -195,11 +219,17 @@ public static class DrillGuide
         var parsed = GcodeParser.Parse(text);
 
         // A hole is a place the program feeds below zero, however many pecks that takes.
-        var holes = parsed.Moves
+        //
+        // Kept in order rather than counted, because the picture numbers them. `Distinct` over an
+        // ordered sequence keeps the first of each, so a hole pecked four times is one hole at the
+        // place it was first entered.
+        var at = parsed.Moves
             .Where(m => !m.IsRapid && m.IsVertical && m.ToZNm < 0)
-            .Select(m => m.From)
+            .Select(m => new Point2(m.From.X, m.From.Y))
             .Distinct()
-            .Count();
+            .ToList();
+
+        var holes = at.Count;
 
         if (holes == 0)
         {
@@ -217,6 +247,7 @@ public static class DrillGuide
             // be considerably worse than declining to name one.
             Bit = "the bit already in the spindle",
             Holes = holes,
+            At = at,
             Line = offset + 1,
             Seconds = measured.PessimisticTime.TotalSeconds,
         };
@@ -252,7 +283,7 @@ public static class DrillGuide
         }
 
         Overview(page, report, context);
-        Sequence(page, report);
+        Sequence(page, report, context);
         Before(page, context);
 
         if (context.Warnings.Count > 0 || context.RepeatedPositions > 0)
@@ -297,7 +328,7 @@ public static class DrillGuide
         page.Append("</div>\n");
     }
 
-    private static void Sequence(StringBuilder page, DrillGuideReport report)
+    private static void Sequence(StringBuilder page, DrillGuideReport report, DrillGuideContext context)
     {
         // "Suggested", as on the project page: most of the order is physics, but a board can have a
         // reason to differ, and somebody new to this must not read a suggestion as an instruction.
@@ -337,6 +368,8 @@ public static class DrillGuide
         }
 
         page.Append("</tbody>\n</table>\n");
+
+        Figures(page, report, context);
 
         if (perFile)
         {
@@ -431,6 +464,76 @@ public static class DrillGuide
     private static void Fact(StringBuilder page, string label, string value) =>
         page.Append("<div><span>").Append(Escape(label)).Append("</span><strong>")
             .Append(Escape(value)).Append("</strong></div>\n");
+    /// <summary>
+    /// One drawing per bit, under the table, with its holes numbered in the order they are drilled.
+    ///
+    /// **One per bit, never one for the file.** At the machine the question is always *where does
+    /// this bit go*, and an overview with every size on it answers a question nobody asked while
+    /// making the one they did ask harder. The table already has a row per bit; these are those rows
+    /// drawn.
+    ///
+    /// Nothing is drawn when the caller gave no outline. A frame around nothing would look like a
+    /// board with no holes in it, which is worse than no picture at all.
+    /// </summary>
+    private static void Figures(StringBuilder page, DrillGuideReport report, DrillGuideContext context)
+    {
+        if (context.Outline.Count == 0 || context.Bounds.IsEmpty)
+        {
+            return;
+        }
+
+        foreach (var step in report.Steps)
+        {
+            if (step.At.Count == 0)
+            {
+                continue;
+            }
+
+            // The hole drawn at the size it is drilled, when the bit's own name says: a 3.5 mm hole
+            // and a 0.3 mm one look the same as dots, and which is which is half of what somebody
+            // checks a drawing for. Falls back to a dot when the name carries no number.
+            var diameter = Diameter(step.Bit);
+
+            var marks = step.At.Select(at => new GuideMark { At = at, WidthNm = diameter }).ToList();
+
+            var figure = GuideFigure.Draw(
+                context.Outline,
+                marks,
+                context.Bounds,
+                Invariant($"{step.Bit}: {step.Holes} holes on {context.BoardName}"));
+
+            if (figure.Length == 0)
+            {
+                continue;
+            }
+
+            page.Append("<figure class=\"plan\">\n").Append(figure).Append('\n');
+
+            // The caption says which drawing this is and how to read it — and when there are too
+            // many holes to number, it says that too rather than leaving somebody hunting for
+            // numbers that are not there. The count is in the text either way, and the text is the
+            // authority.
+            page.Append("<figcaption><strong>").Append(Escape(step.Bit)).Append("</strong> — ")
+                .Append(step.Holes)
+                .Append(step.Holes == 1 ? " hole" : " holes");
+
+            page.Append(step.At.Count > GuideFigure.MostToNumber
+                ? ", too many to number: dots in drilling order, starting at the ringed one, with the travel between them."
+                : ", numbered in the order they are drilled.");
+
+            page.Append("</figcaption>\n</figure>\n");
+        }
+    }
+
+    /// <summary>The bit's diameter out of its own name — "Drill 1.70 mm" — or zero if it has none.</summary>
+    private static long Diameter(string bit)
+    {
+        var digits = new string([.. bit.SkipWhile(c => !char.IsDigit(c)).TakeWhile(c => char.IsDigit(c) || c == '.')]);
+
+        return double.TryParse(digits, NumberStyles.Float, CultureInfo.InvariantCulture, out var mm)
+            ? Nm.FromMillimetres(mm)
+            : 0;
+    }
 
     private static string Duration(double seconds) => seconds switch
     {
@@ -479,5 +582,8 @@ public static class DrillGuide
         li { margin: 0.4rem 0; }
         .warn { border-left: 3px solid var(--warn); padding: 0.1rem 0 0.1rem 0.9rem; margin: 1rem 0; }
         .foot { color: var(--muted); font-size: 0.8rem; margin-top: 2.5rem; }
+        .plan { margin: 1.5rem 0; }
+        .plan svg { width: 100%; max-width: 30rem; height: auto; display: block; }
+        .plan figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
         """;
 }

@@ -2388,7 +2388,7 @@ PogoTest1 gains 12 mm of cutting and 7 mm of rapid on narrower tabs.
 - **The blank still places its own**, two to an edge on the top and right only. That rule is right and
   was kept; what it does not yet share is the sizing.
 
-#### 6.5 A picture on the companion pages — **enhancement · open**
+#### 6.5 A picture on the companion pages — **enhancement · fixed**
 
 Requested from the workshop: *"in the companion html for drills and routing, include images of the
 layer with the holes/slots numbered in the order of drilling/routing."*
@@ -2444,6 +2444,46 @@ a number. They are the only thing on the page that cannot be checked against the
 order, a routing page shows its slots with direction and its refusals hatched, the Mega's 44-hole
 step degrades to dots without becoming unreadable, and every page is still one file that opens with
 no network.
+**Fixed 2026-10-02**, sprint 4 story 3.
+
+**One drawing per bit, under its row**, with that bit's holes numbered from one in the order the
+program drills them — read off the emitted file, like everything else on these pages, so the picture
+can be checked against the machine rather than against what somebody meant. A hole is drawn at the
+diameter its own bit makes: a 3.5 mm hole and a 0.3 mm one as equal dots is half of what a reader is
+checking for.
+
+**The routing page draws each run with an arrow at its far end** and numbers it at the end the cutter
+enters from, so the two together read as *in at this one, out at that one*. Arcs are opened out
+rather than drawn as their chords, because a slot ends in the half-circle the cutter sweeps and a
+chord would draw a stadium as a rectangle.
+
+**A refused feature is drawn as the shape it would have been**, hatched and dashed and labelled with
+its width instead of a number — it has no place in the running order because it is not in the
+program. `SlotRefusal` now carries the centrelines it refused: it had a width, a count and a reason
+and no geometry, so a refused slot could only ever be prose. That was this entry's strongest
+argument, and it could not be acted on until the refusal knew where it was.
+
+**Above forty marks the drawing stops numbering**: dots, the travel between them, and a ring on the
+first. The Mega's 1.00 mm bit drills 98 holes and its 0.41 mm bit 104; both come out as a readable
+run rather than as spaghetti, and the caption says which kind of drawing it is, because the count is
+in the text and the text is the authority.
+
+**Inline SVG with no namespace attribute**, which the page's own self-contained test caught: `xmlns`
+declares a `http://` URL, and these pages carry no URLs at all so that nothing in them can look like
+something to fetch. An inline SVG in HTML needs none — the parser puts it in the right namespace —
+and the attribute is only required by a standalone `.svg` file. A figure is about four kilobytes.
+
+**And the backdrop is the outline alone, in the frame the program works in.** Not the copper, which
+would run to hundreds of kilobytes on the panel and answer nothing; shifted by the stock's corner
+rather than the board's, because that is what every emitted coordinate is measured from; and thinned
+to a tenth of a millimetre, which is finer than the line it is drawn with and turns the panel's
+tessellated profile from tens of thousands of points into hundreds.
+
+**Two faults were found by rendering the figures and looking at them**, neither of which the markup
+would have shown: the numbers were placed above and to the right of their holes, so on a column of
+holes a millimetre apart each number sat between two of them and belonged to neither; and a slot
+running left to right was labelled on its right, which put its number on its own arrowhead.
+
 
 #### 6.6 The tool library, once it has more than a handful in it — **enhancement · open**
 

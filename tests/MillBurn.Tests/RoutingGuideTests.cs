@@ -184,6 +184,110 @@ public sealed class RoutingGuideTests(ITestOutputHelper output)
         M2
         """;
 
+    /// <summary>
+    /// The runs are drawn in the order they are cut, each with an arrow at the end.
+    ///
+    /// Read out of the emitted program like everything else on the page, so what the picture shows
+    /// is what the machine will do rather than what somebody meant it to.
+    /// </summary>
+    [Fact]
+    public void ThePageDrawsEachRunWithItsDirection()
+    {
+        var (html, report) = RoutingGuide.Build(TwoCuttersThreeFeatures, Drawn);
+
+        output.WriteLine(string.Join("\n", report.Steps.Select(s => $"{s.Cutter}: {s.Runs.Count} run(s)")));
+
+        // Two cutters in this program, said as a number: `Assert.All` over an empty list passes, and
+        // so does a figure count of zero matching a step count of zero.
+        Assert.Equal(2, report.Steps.Count);
+        Assert.All(report.Steps, s => Assert.NotEmpty(s.Runs));
+
+        // One drawing per cutter, each with an arrowhead per run: a filled triangle in the mark
+        // colour, which nothing else on the figure is.
+        var figures = System.Text.RegularExpressions.Regex.Count(html, "<svg class=\"figure\"");
+
+        output.WriteLine($"{figures} drawing(s), {System.Text.RegularExpressions.Regex.Count(html, "<path fill=\"#1a73e8\"")} arrow(s)");
+
+        Assert.Equal(report.Steps.Count, figures);
+
+        Assert.Equal(
+            report.Steps.Sum(s => s.Runs.Count),
+            System.Text.RegularExpressions.Regex.Count(html, "<path fill=\"#1a73e8\""));
+    }
+
+    /// <summary>
+    /// A feature the program will not make is drawn on the board, hatched, and labelled with its
+    /// width.
+    ///
+    /// **The strongest reason the drawings exist.** A refused slot is invisible: it is not in the
+    /// program, and the board renders exactly as the EDA tool drew it, so prose is the only thing
+    /// that can report it — *"4 slots 0.60 mm wide are NOT cut"* is a sentence somebody skims, and a
+    /// shape on the board is one they recognise.
+    ///
+    /// **Synthetic, and that is worth saying.** No board in the corpus refuses a feature with the
+    /// shipped tool library: the refusal needs a slot narrower than the narrowest cutter, and none of
+    /// the five has one. The alternative to a made-up refusal here is no test at all.
+    /// </summary>
+    [Fact]
+    public void ARefusedFeatureIsDrawnOnTheBoardAndLabelled()
+    {
+        var context = Drawn with
+        {
+            // Four refused, and four shapes — a `/describe-test` pass pointed out that the first
+            // version said four and drew one, which is a fixture quietly disagreeing with itself in
+            // exactly the way the page must not.
+            Refusals = ["4 slots 0.60 mm wide are NOT cut: nothing in the library is narrow enough"],
+            RefusedCount = 4,
+            Refused =
+            [
+                .. Enumerable.Range(0, 4).Select(i => new RefusedFeature(
+                    [new Point2(Mm(6), Mm(4 + (i * 3))), new Point2(Mm(14), Mm(4 + (i * 3)))],
+                    Mm(0.6))),
+            ],
+        };
+
+        var (html, _) = RoutingGuide.Build(TwoCuttersThreeFeatures, context);
+
+        // Hatched rather than merely dashed: the shape of what is missing, filled with the pattern
+        // that says "not this".
+        Assert.Contains("<pattern id=\"refused\"", html, StringComparison.Ordinal);
+        Assert.Contains("fill=\"url(#refused)\"", html, StringComparison.Ordinal);
+
+        // Labelled with its width, because it has no place in the running order.
+        Assert.Contains(">0.60</text>", html, StringComparison.Ordinal);
+
+        // And on every cutter's drawing, not on one of its own: whichever picture somebody is looking
+        // at is the one where they should see what is not going to be there.
+        var figures = System.Text.RegularExpressions.Regex.Count(html, "<svg class=\"figure\"");
+        var hatched = System.Text.RegularExpressions.Regex.Count(html, "fill=\"url\\(#refused\\)\"");
+
+        output.WriteLine($"{figures} drawing(s), {hatched} hatched");
+
+        // Every refused feature on every drawing: four shapes, two cutters, eight hatched bands.
+        Assert.Equal(2, figures);
+        Assert.Equal(figures * 4, hatched);
+
+        // The caption says it in words too, with the count, because the text is the authority.
+        Assert.Contains("this program does not make", html, StringComparison.Ordinal);
+    }
+
+    private static long Mm(double mm) => Nm.FromMillimetres(mm);
+
+    /// <summary>The same context with a board behind it, so the pages draw their pictures.</summary>
+    private static RoutingGuideContext Drawn => Context with
+    {
+        Outline =
+        [
+            [
+                new Point2(0, 0),
+                new Point2(Mm(30), 0),
+                new Point2(Mm(30), Mm(20)),
+                new Point2(0, Mm(20)),
+            ],
+        ],
+        Bounds = new Bounds(0, 0, Mm(30), Mm(20)),
+    };
+
     private static RoutingGuideContext Context => new()
     {
         BoardName = "Board",
