@@ -91,7 +91,7 @@ public sealed class TestCutWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         this[!BackgroundProperty] = new DynamicResourceExtension("PageBackground");
 
-        _kind.ItemsSource = new[] { "Depth and width", "Feed rate" };
+        _kind.ItemsSource = new[] { "Depth and width", "Feed rate", "Where the copper stops" };
         _kind.SelectedIndex = 0;
 
         _tool.ItemsSource = library.Tools.ToList();
@@ -103,6 +103,11 @@ public sealed class TestCutWindow : Window
 
         _kind.SelectionChanged += (_, _) =>
         {
+            // The kinds disagree about their own numbers — a copper test that starts and steps
+            // where the depth series does *is* the depth series — so switching reseeds the rows
+            // that belong to the depth ladder. Only those: the coupon's own size and the bit are
+            // the operator's and have nothing to do with which question is being asked.
+            Reseed();
             ShowRowsForKind();
             Refresh();
         };
@@ -181,8 +186,13 @@ public sealed class TestCutWindow : Window
         Add(left, "ladderAt", "Cut at (mm deep)", 0.05, 0.001, 3, 0.01, "F3");
 
         // A feed test has neither of the two sections — it calibrates nothing, it shows you an edge
-        // — so its rows would otherwise sit in the left column under no heading at all.
+        // — so its rows would otherwise sit in the left column under no heading at all. The copper
+        // test is the other way round: it is a depth series, so it uses those rows and wants its own
+        // heading over them, because what it asks of them is a different question.
         left.Children.Add(_sections["feed"] = Heading("Feed series — finds the cleanest edge"));
+
+        left.Children.Add(_sections["copper"] = Heading(
+            "Copper depth — finds where the foil stops"));
 
         left.Children.Add(_sections["useSeries"] = Section(
             "useSeries",
@@ -378,10 +388,31 @@ public sealed class TestCutWindow : Window
         Restore(saved);
     }
 
+    /// <summary>
+    /// Shows one of the three tests, for a screenshot.
+    ///
+    /// The combo's index is private and deliberately so; this is the one way in from outside, and
+    /// it goes through the same reseed and the same row logic a click does rather than round them.
+    /// </summary>
+    internal void ShowKind(TestCutKind kind)
+    {
+        _kind.SelectedIndex = kind switch
+        {
+            TestCutKind.Feed => 1,
+            TestCutKind.Copper => 2,
+            _ => 0,
+        };
+    }
+
     /// <summary>Puts a saved setup back into the dialog, and says what it could not put back.</summary>
     internal void Restore(TestCutSetup saved)
     {
-        _kind.SelectedIndex = saved.Kind == TestCutKind.Depth ? 0 : 1;
+        _kind.SelectedIndex = saved.Kind switch
+        {
+            TestCutKind.Feed => 1,
+            TestCutKind.Copper => 2,
+            _ => 0,
+        };
 
         _numbers["length"].Value = (decimal)saved.LineLengthMm;
         _numbers["spacing"].Value = (decimal)saved.LineSpacingMm;
@@ -432,6 +463,43 @@ public sealed class TestCutWindow : Window
         Refresh();
     }
 
+    /// <summary>
+    /// Which test the combo is showing.
+    ///
+    /// **One place that knows the order of the list.** There were eight `SelectedIndex == 0`
+    /// comparisons meaning "is this the depth test", and a third kind makes every one of them a
+    /// question about which: `!= 0` used to mean "the feed test" and now means "not the depth test",
+    /// which is not the same thing.
+    /// </summary>
+    private TestCutKind Kind => _kind.SelectedIndex switch
+    {
+        1 => TestCutKind.Feed,
+        2 => TestCutKind.Copper,
+        _ => TestCutKind.Depth,
+    };
+
+    /// <summary>
+    /// The depth-ladder rows, back to the defaults of whichever test is now showing.
+    ///
+    /// Nothing is reseeded for the feed test: it does not own these rows, and coming back to the
+    /// depth series should find the numbers that were there before.
+    /// </summary>
+    private void Reseed()
+    {
+        if (Kind == TestCutKind.Feed)
+        {
+            return;
+        }
+
+        var defaults = TestCutOptions.For(Kind, _tool.SelectedItem as Tool ?? Tool.DefaultVBit);
+
+        _numbers["lines"].Value = defaults.LineCount;
+        _numbers["from"].Value = (decimal)defaults.StartDepthMm;
+        _numbers["step"].Value = (decimal)defaults.DepthStepMm;
+        _flags["useSeries"].IsChecked = defaults.LineCount > 0;
+        _flags["useLadder"].IsChecked = defaults.LadderRungs > 0;
+    }
+
     private TestCutLevelling Levelling => _probeFirst.IsChecked == true
         ? TestCutLevelling.WriteProbe
         : _fromLog.IsChecked == true ? TestCutLevelling.FromLog : TestCutLevelling.None;
@@ -459,6 +527,18 @@ public sealed class TestCutWindow : Window
     }
 
     private static Border Gap() => new() { Height = 10 };
+
+    /// <summary>Renames a row, for the words one kind of test uses and another does not.</summary>
+    private void Relabel(string key, string label)
+    {
+        if (_rows.TryGetValue(key, out var row)
+            && row is Grid grid
+            && grid.Children.Count > 0
+            && grid.Children[0] is TextBlock caption)
+        {
+            caption.Text = label;
+        }
+    }
 
     private static Grid Row(string label, Control editor) => new()
     {
@@ -620,26 +700,43 @@ public sealed class TestCutWindow : Window
     /// </summary>
     private void ShowRowsForKind()
     {
-        var depth = _kind.SelectedIndex == 0;
+        // Three questions, not two: whether the depth ladder is in play, whether the width ladder
+        // is, and whether the feed rows are. The copper test answers yes, no, no — it steps depth
+        // like the depth series and has no width ladder at all.
+        var steps = Kind is TestCutKind.Depth or TestCutKind.Copper;
+        var depth = Kind == TestCutKind.Depth;
+        var feed = Kind == TestCutKind.Feed;
 
-        _rows["from"].IsVisible = depth;
-        _rows["step"].IsVisible = depth;
-        _rows["depth"].IsVisible = !depth;
-        _rows["feedStep"].IsVisible = !depth;
+        // The copper test calls them rungs, in its program, on its page and in its own summary, so
+        // the dialog that sets them up calls them rungs too. One word, in the one place the
+        // operator meets the numbers first.
+        var rung = Kind == TestCutKind.Copper;
+
+        Relabel("lines", rung ? "Rungs" : "Lines");
+        Relabel("from", rung ? "First rung at (mm)" : "First line at (mm)");
+        Relabel("step", rung ? "Deeper each rung by (mm)" : "Deeper each line by (mm)");
+        Relabel("passes", rung ? "Passes per rung" : "Passes per line");
+
+        _rows["from"].IsVisible = steps;
+        _rows["step"].IsVisible = steps;
+        _rows["depth"].IsVisible = feed;
+        _rows["feedStep"].IsVisible = feed;
 
         // A feed test is one pass by definition: what it asks is what an edge looks like, and a
         // band of overlapping passes hides every edge but the outer two. It has no ladder either —
         // a ladder asks about width, and a feed test deliberately holds width still.
-        _rows["passes"].IsVisible = depth;
-        _rows["stepover"].IsVisible = depth;
+        _rows["passes"].IsVisible = steps;
+        _rows["stepover"].IsVisible = steps;
         _rows["rungs"].IsVisible = depth;
         _rows["ladderAt"].IsVisible = depth;
 
         _sections["useLadder"].IsVisible = depth;
         _sections["useSeries"].IsVisible = depth;
-        _sections["feed"].IsVisible = !depth;
+        _sections["feed"].IsVisible = feed;
+        _sections["copper"].IsVisible = Kind == TestCutKind.Copper;
 
-        // Off means the rows are still there to read, just not in play.
+        // Off means the rows are still there to read, just not in play. Only the depth test can
+        // switch a half off; the other two are one experiment each.
         var ladder = !depth || _flags["useLadder"].IsChecked == true;
         var series = !depth || _flags["useSeries"].IsChecked == true;
 
@@ -661,12 +758,12 @@ public sealed class TestCutWindow : Window
     /// lines are its own thing and the ladder does not apply to it at all.
     /// </summary>
     private bool Included(string key) =>
-        _kind.SelectedIndex != 0 || _flags[key].IsChecked == true;
+        Kind != TestCutKind.Depth || _flags[key].IsChecked == true;
 
     private TestCutOptions Read() => new()
     {
         Tool = _tool.SelectedItem as Tool ?? Tool.DefaultVBit,
-        Kind = _kind.SelectedIndex == 0 ? TestCutKind.Depth : TestCutKind.Feed,
+        Kind = Kind,
         LineCount = Included("useSeries") ? (int)Value("lines") : 0,
         LineLengthMm = Value("length"),
         LineSpacingMm = Value("spacing"),
@@ -675,7 +772,7 @@ public sealed class TestCutWindow : Window
         PassesPerLine = (int)Value("passes"),
         StepoverMm = Value("stepover"),
         LadderRungs = Included("useLadder") ? (int)Value("rungs") : 0,
-        DepthMm = _kind.SelectedIndex == 0 ? Value("ladderAt") : Value("depth"),
+        DepthMm = Kind == TestCutKind.Depth ? Value("ladderAt") : Value("depth"),
         FeedStepMmPerMin = Value("feedStep"),
         RepeatFirstLine = _flags["repeat"].IsChecked == true,
         SafeZMm = _machine.SafeZMm,
@@ -711,7 +808,16 @@ public sealed class TestCutWindow : Window
         var series = report.Lines.Where(l => !l.IsLadder).ToList();
         var rungs = report.Lines.Where(l => l.IsLadder && !l.IsRepeat).ToList();
 
-        var text = options.Kind != TestCutKind.Depth
+        // The empty case first, because `Min` over no lines throws and a box can be cleared:
+        // `Value` reads an empty box as zero, which is a test with nothing in it. Found by
+        // `/code-review` on the CLI's side of the same fault, where it came out as a stack trace;
+        // here it would throw inside a keystroke handler, which is worse.
+        var text = report.Lines.Count == 0
+            ? string.Join(" ", report.Warnings) + "\n"
+            : options.Kind == TestCutKind.Copper
+            ? Invariant(
+                $"{series.Count(l => !l.IsRepeat)} rungs, {series.Min(l => l.DepthMm):F3} to {series.Max(l => l.DepthMm):F3} mm deep, {options.DepthStepMm:F3} mm apart.\n")
+            : options.Kind == TestCutKind.Feed
             ? Invariant(
                 $"{report.Lines.Count} lines, {report.Lines.Min(l => l.FeedMmPerMin):F0} to {report.Lines.Max(l => l.FeedMmPerMin):F0} mm/min.\n")
             : series.Count > 0
@@ -732,7 +838,19 @@ public sealed class TestCutWindow : Window
         // What the operator will actually put a caliper on, and the number they take off it. The
         // stepover is normally left at zero, meaning "work one out from the shallowest line", so it
         // has to be said here rather than left as a zero sitting in a box.
-        if (series.Count > 0 && series[0].PassCount > 1)
+        //
+        // The copper test is told something different, because nothing on its coupon is measured:
+        // what it needs to know before it runs is how fine the probing will be and that only this
+        // test asks for that.
+        if (series.Count > 0 && series[0].PassCount > 1 && options.Kind == TestCutKind.Copper)
+        {
+            text += Invariant(
+                $"\n\nRead with a loupe: the shallowest rung with no copper left in it, and the first one into the fibreglass. Cut between them.");
+
+            text += Invariant(
+                $"\n\nProbing this coupon touches every {TestCut.ProbeSpacingMmFor(report):F1} mm rather than the {TestCut.CouponSpacingMmFor(report):F1} mm a coupon this size would otherwise get — a hundredth of a millimetre between rungs is finer than clamped stock is flat. Only this test asks for it.");
+        }
+        else if (series.Count > 0 && series[0].PassCount > 1)
         {
             var band = series[0];
 

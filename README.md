@@ -318,6 +318,7 @@ millburn-cli export  <folder> --isolation-width 0.4 --tabs 3   # as the window s
 millburn-cli export  <folder> --commands > rebuild.sh          # the commands that rebuild that export
 
 millburn-cli testcut depth --tool "30°" --from 0.02 --step 0.02
+millburn-cli testcut copper --probe                            # where the copper stops, probed finely
 millburn-cli probe   <folder> --spacing 8                      # a G38.2 grid to run and log
 millburn-cli export  <folder> --level probe.log --write        # bend every program to the surface
 millburn-cli level   anyones.nc --map probe.log                # works on any G-code, not just ours

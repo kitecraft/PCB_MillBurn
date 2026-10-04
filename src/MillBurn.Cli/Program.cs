@@ -64,7 +64,7 @@ internal static class Program
             Console.WriteLine("                                 --axis x|y which axis a backlash check measures");
             Console.WriteLine("                                 --span <mm> between the holes of a pair; squareness wants this long");
             Console.WriteLine("                                 --tool <name> --overshoot <mm> --depth <mm> --pecks <n> -o <file>");
-            Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
+            Console.WriteLine("  testcut [depth|feed|copper]    Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
             Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
@@ -72,6 +72,8 @@ internal static class Program
             Console.WriteLine("                                 depth: --passes <n> --stepover <mm> widen each line to a measurable band");
             Console.WriteLine("                                 depth: --rungs <n> a width ladder at --depth, for the tip width");
             Console.WriteLine("                                 either half can be left out: --rungs 0 or --lines 0");
+            Console.WriteLine("                                 copper: 12 rungs from 0.010 mm, stepping 0.010 — where the copper stops");
+            Console.WriteLine("                                 copper: probes finer than a coupon this size would otherwise get");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -2353,9 +2355,12 @@ internal static class Program
 
     private static int TestCutCommand(string[] args)
     {
-        var kind = args.Length >= 2 && args[1].StartsWith("feed", StringComparison.OrdinalIgnoreCase)
-            ? TestCutKind.Feed
-            : TestCutKind.Depth;
+        var kind = args.Length < 2 ? TestCutKind.Depth : args[1].ToLowerInvariant() switch
+        {
+            var a when a.StartsWith("feed", StringComparison.Ordinal) => TestCutKind.Feed,
+            var a when a.StartsWith("copper", StringComparison.Ordinal) => TestCutKind.Copper,
+            _ => TestCutKind.Depth,
+        };
 
         var library = ToolLibrary.LoadOrDefault();
         var app = AppSettings.LoadOrDefault();
@@ -2398,7 +2403,7 @@ internal static class Program
         }
 
         var defaults = saved is null
-            ? new TestCutOptions { Tool = tool, Kind = kind }
+            ? TestCutOptions.For(kind, tool)
             : new TestCutOptions
             {
                 Tool = tool,
@@ -2436,12 +2441,32 @@ internal static class Program
             StartDepthMm = Number("--from", defaults.StartDepthMm),
             DepthMm = Number("--depth", defaults.DepthMm),
 
-            // One --step, meaning whichever quantity this test is stepping.
-            DepthStepMm = kind == TestCutKind.Depth ? Number("--step", defaults.DepthStepMm) : defaults.DepthStepMm,
+            // One --step, meaning whichever quantity this test is stepping — which is the depth for
+            // both of the kinds that step a depth. `/code-review` caught this reading `== Depth`
+            // after the copper test was added: `--step 0.02` on a copper coupon was taken, ignored,
+            // and the rungs came out a hundredth apart anyway, while the generator's own warnings
+            // told the operator to step 0.010. A number that shapes the cut is honoured or refused,
+            // never dropped.
+            DepthStepMm = kind != TestCutKind.Feed ? Number("--step", defaults.DepthStepMm) : defaults.DepthStepMm,
             FeedStepMmPerMin = kind == TestCutKind.Feed ? Number("--step", defaults.FeedStepMmPerMin) : defaults.FeedStepMmPerMin,
         };
 
         var (text, report) = TestCut.Generate(options);
+
+        // A test with no lines in it is not a test, and writing an empty program beside a page
+        // about it would be worse than saying so. `/code-review` found this coming out as an
+        // unhandled exception from the guide generator instead.
+        if (report.Lines.Count == 0)
+        {
+            foreach (var why in report.Warnings)
+            {
+                Console.Error.WriteLine(why);
+            }
+
+            Console.Error.WriteLine("Nothing was written.");
+            return 1;
+        }
+
         var levelled = string.Empty;
 
         // The coupon's own log, never the board's map. Two passes: write the probe, run it, then
@@ -2508,7 +2533,19 @@ internal static class Program
         if (seriesLines.Count > 0 && seriesLines[0].PassCount > 1)
         {
             Line($"  each line   {seriesLines[0].PassCount} passes stepping {seriesLines[0].StepoverMm:F3} mm");
-            Line($"  measure     the band, then subtract {seriesLines[0].SteppedMm:F3} mm");
+
+            // A copper coupon is not measured, so it must not be told to subtract anything: what it
+            // wants is two rungs found with a loupe, which is a different instruction entirely.
+            if (kind == TestCutKind.Copper)
+            {
+                Line($"  rungs       {seriesLines.Count(l => !l.IsRepeat)} from {seriesLines[0].DepthMm:F3} to {seriesLines.Where(l => !l.IsRepeat).Max(l => l.DepthMm):F3} mm, stepping {options.DepthStepMm:F3}");
+                Line($"  read it     with a loupe: the first rung with no copper left, and the first into the fibreglass");
+                Line($"  probe       --probe touches every {TestCut.ProbeSpacingMmFor(report):F1} mm here, not the {TestCut.CouponSpacingMmFor(report):F1} mm a coupon this size would get");
+            }
+            else
+            {
+                Line($"  measure     the band, then subtract {seriesLines[0].SteppedMm:F3} mm");
+            }
         }
 
         if (ladderRungs.Count > 1)
@@ -2537,7 +2574,8 @@ internal static class Program
 
             var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
             {
-                SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+                SpacingMm = TestCut.ProbeSpacingMmFor(report),
+                OnCoupon = true,
                 SafeHeightMm = app.Machine.SafeZMm,
                 MaxDepthMm = app.Probe.MaxDepthMm,
                 FeedMmPerMin = app.Probe.FeedMmPerMin,

@@ -375,7 +375,10 @@ public static class CliScript
             Agreed("--tab-height", outlines.Select(o => o.TabHeightNm!.Value).Distinct().ToList(), Mm, "mm of material");
         }
 
-        var edited = outlines.Sum(o => o.TabEdits.Length);
+        // `IsDefaultOrEmpty` as everywhere else that touches this array: a default
+        // `ImmutableArray` throws on `Length`, and this runs on every export rather than only on
+        // the outline path. The three sites agree on the guard; `ExportPlanner` has the note on why.
+        var edited = outlines.Sum(o => o.TabEdits.IsDefaultOrEmpty ? 0 : o.TabEdits.Length);
 
         if (edited > 0)
         {

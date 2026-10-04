@@ -19,6 +19,24 @@ public enum TestCutKind
     /// quality of the edge, and that is a thing you can only see.
     /// </summary>
     Feed,
+
+    /// <summary>
+    /// The same ladder as <see cref="Depth"/>, at a tenth of its step: where does the copper stop.
+    ///
+    /// **A kind of its own rather than a retune of the depth series**, decided with the product
+    /// owner on 2026-09-27, because the two are read differently and want opposite defaults. The
+    /// depth series is measured with a caliper across a band and the number matters, so its steps
+    /// are wide on purpose — a narrow spread of widths sits inside the caliper's own error. This one
+    /// is read with a loupe, rung by rung, and the number that matters is a *depth*: one step of the
+    /// depth series is 0.050 mm and one-ounce foil is about 0.035 mm thick, so a single rung of it
+    /// crosses from not through the copper to well into the substrate and no rung sits where the
+    /// answer is.
+    ///
+    /// What it finds is two transitions: the shallowest rung with no copper left anywhere in its
+    /// band, and the first rung where the substrate is visibly cut. The usable depth is between
+    /// them, and how far apart they are is itself the reading — adjacent means nothing in hand.
+    /// </summary>
+    Copper,
 }
 
 /// <summary>One line of a test cut, and what it is meant to tell the operator.</summary>
@@ -204,6 +222,52 @@ public sealed record TestCutOptions
     /// off by an unknown and varying amount.
     /// </summary>
     public bool RepeatFirstLine { get; init; } = true;
+
+    /// <summary>
+    /// Whether this kind cuts a ladder of depths, which is both of them except the feed series.
+    ///
+    /// Named rather than written out, because every place that asked `Kind == Depth` had to be
+    /// found and told about <see cref="TestCutKind.Copper"/>, and the ones that mean *this test
+    /// steps the depth* are not the same as the ones that mean *this test is the width series*.
+    /// </summary>
+    public bool StepsDepth => Kind is TestCutKind.Depth or TestCutKind.Copper;
+
+    /// <summary>
+    /// The defaults for one kind of test.
+    ///
+    /// **The kinds disagree about their own numbers**, which is why this exists rather than one set
+    /// of initialisers: a copper test starting where the depth series starts, and stepping what it
+    /// steps, is the depth series — and would answer the depth series' question instead of its own.
+    ///
+    /// | | <see cref="TestCutKind.Depth"/> | <see cref="TestCutKind.Copper"/> |
+    /// |---|---|---|
+    /// | Asks | how wide does this bit cut, against depth | where does the copper stop |
+    /// | Read with | a caliper, across the band | a loupe, rung by rung |
+    /// | Starts at | 0.020 mm | 0.010 mm |
+    /// | Steps | 0.050 mm | 0.010 mm |
+    /// | Rungs | 6 | 12 |
+    /// | Width ladder | yes | no |
+    /// </summary>
+    public static TestCutOptions For(TestCutKind kind, Tool tool)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+
+        var options = new TestCutOptions { Tool = tool, Kind = kind };
+
+        return kind != TestCutKind.Copper
+            ? options
+            : options with
+            {
+                LineCount = 12,
+                StartDepthMm = 0.01,
+                DepthStepMm = 0.01,
+
+                // No width ladder. The ladder asks what the cut *width* is at one depth, which is
+                // the other test's question; twelve rungs of depth and the repeat is the whole of
+                // this coupon.
+                LadderRungs = 0,
+            };
+    }
 }
 
 /// <summary>What the test will do, in numbers worth seeing before it runs.</summary>
@@ -242,6 +306,62 @@ public sealed record TestCutReport
 /// </summary>
 public static class TestCut
 {
+    /// <summary>
+    /// How finely to probe a coupon, which is not how finely to probe a board.
+    ///
+    /// **One home for it.** This was written out twice — once in the CLI, once in the window — so
+    /// nothing kept the two in step and the rule that decides whether a test means anything was
+    /// nobody's. Both callers ask here now.
+    ///
+    /// A third of the coupon's narrow side, floored at four millimetres, which on an ordinary
+    /// coupon is a handful of touches over a piece of stock small enough to be nearly flat.
+    ///
+    /// **The copper test asks for finer, and says so on its page.** Its rungs are a hundredth of a
+    /// millimetre apart, and a map interpolated across 8.5 mm of clamped copper-clad — which is
+    /// 0.1-0.2 mm out of flat over a board — can be out by several rungs, which does not shift the
+    /// reading so much as invent it. Three millimetres, or the coupon rule where that is already
+    /// finer: measured on the 19.0 x 47.5 mm coupon this test's own defaults produce, that is 96
+    /// touches against the coupon rule's 21, and about six and a half minutes of probing against a
+    /// minute and a half, for three and a half minutes of cutting. The product
+    /// owner asked for exactly this trade — *"I think we should increase the granularity of the
+    /// probe job (when used) to help ensure the best results"* — and the global probing setting is
+    /// left alone, because real boards do not want it and would pay minutes for it.
+    /// </summary>
+    public static double ProbeSpacingMmFor(TestCutReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var coupon = CouponSpacingMmFor(report);
+
+        return report.Kind == TestCutKind.Copper ? Math.Min(FineSpacingMm, coupon) : coupon;
+    }
+
+    /// <summary>
+    /// What a coupon gets on the strength of its size alone: a third of its narrow side, floored at
+    /// four millimetres.
+    ///
+    /// Separate from <see cref="ProbeSpacingMmFor"/> so that the guide page can say what this test
+    /// asked for *and* what it would otherwise have had, without writing the rule out again — which
+    /// is how there came to be two copies of it in the first place.
+    /// </summary>
+    public static double CouponSpacingMmFor(TestCutReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        return Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3);
+    }
+
+    /// <summary>What the copper test probes at, where the coupon rule is not already finer.</summary>
+    public const double FineSpacingMm = 3;
+
+    /// <summary>
+    /// How thick the copper is, roughly: one-ounce foil, which is what hobby copper-clad is.
+    ///
+    /// A number to compare a step against rather than a number to cut to — the whole point of the
+    /// copper test is that the real thickness of the piece on the table is unknown.
+    /// </summary>
+    public const double FoilMm = 0.035;
+
     /// <summary>Builds the program and the report describing it.</summary>
     public static (string Text, TestCutReport Report) Generate(TestCutOptions options)
     {
@@ -264,7 +384,12 @@ public static class TestCut
                 StockWidthMm = 0,
                 StockHeightMm = 0,
                 EstimatedSeconds = 0,
-                Warnings = ["Nothing to cut: this test has no depth series and no width ladder."],
+                Warnings =
+                [
+                    options.Kind == TestCutKind.Copper
+                        ? "Nothing to cut: this test has no rungs."
+                        : "Nothing to cut: this test has no depth series and no width ladder.",
+                ],
             });
         }
 
@@ -354,6 +479,9 @@ public static class TestCut
     {
         var rungs = Math.Clamp(options.LadderRungs, 0, 20);
 
+        // Depth only, and the copper test is deliberately not included: a width ladder asks what
+        // the cut *is* at one depth, which is the other test's question. The copper coupon is
+        // twelve rungs of depth and the repeat, nothing else.
         if (options.Kind != TestCutKind.Depth || rungs < 2 || seriesPasses < 2)
         {
             return y;
@@ -417,7 +545,7 @@ public static class TestCut
             return options.StepoverMm;
         }
 
-        var shallowest = options.Kind == TestCutKind.Depth ? options.StartDepthMm : options.DepthMm;
+        var shallowest = options.StepsDepth ? options.StartDepthMm : options.DepthMm;
         var narrowest = Nm.ToMillimetres(
             options.Tool.WidthAtDepth(Nm.FromMillimetres(Math.Max(0, shallowest))));
 
@@ -429,7 +557,7 @@ public static class TestCut
     {
         var tool = options.Tool;
 
-        var depth = options.Kind == TestCutKind.Depth
+        var depth = options.StepsDepth
             ? options.StartDepthMm + (index * options.DepthStepMm)
             : options.DepthMm;
 
@@ -521,6 +649,66 @@ public static class TestCut
         {
             notes.Add("This tool cuts one width at any depth, so a depth series will not change the width. What it does show is where the finish falls apart and where the bit starts to complain.");
         }
+
+        if (options.Kind == TestCutKind.Copper)
+        {
+            Copper(options, series, notes, warnings);
+        }
+    }
+
+    /// <summary>
+    /// What can go wrong with a copper test specifically, which is mostly its own resolution.
+    ///
+    /// The kind exists because one step of the depth series is wider than the copper, so a copper
+    /// test whose step has drifted back up to that is the thing it was built to replace. Said
+    /// plainly, with the number, because the step is one box in a dialog.
+    /// </summary>
+    private static void Copper(
+        TestCutOptions options, List<TestCutLine> series, List<string> notes, List<string> warnings)
+    {
+        if (series.Count == 0)
+        {
+            return;
+        }
+
+        var step = options.DepthStepMm;
+        var shallowest = series.Min(l => l.DepthMm);
+        var deepest = series.Max(l => l.DepthMm);
+
+        if (step >= FoilMm)
+        {
+            warnings.Add(Invariant(
+                $"Each rung is {step:F3} mm deeper than the last, and copper foil is only about {FoilMm:F3} mm thick — so one rung crosses the whole of it and no rung lands where the answer is. That is what this test exists to avoid: step 0.010 mm."));
+        }
+        else if (step > FoilMm / 3)
+        {
+            notes.Add(Invariant(
+                $"At {step:F3} mm a rung, the foil is only about {FoilMm / step:F0} rungs thick, so the two transitions will be close together whatever the stock does. Step 0.010 mm for room to read between them."));
+        }
+
+        // Both ends, because they fail differently: too shallow and nothing breaks through, too
+        // deep and the whole coupon is in the substrate with the answer behind the first rung.
+        if (deepest < FoilMm)
+        {
+            warnings.Add(Invariant(
+                $"The deepest rung is {deepest:F3} mm and copper foil is about {FoilMm:F3} mm, so this coupon may never cut through it. Add rungs, or start deeper."));
+        }
+
+        if (shallowest > FoilMm)
+        {
+            warnings.Add(Invariant(
+                $"The shallowest rung is {shallowest:F3} mm, already past the {FoilMm:F3} mm the foil is likely to be, so the first transition is behind the start of the ladder. Start at 0.010 mm."));
+        }
+
+        // The risk named in the roadmap entry before this was built: the stepover comes from the
+        // width the library *predicts* at the shallowest rung, and the premise of the test is that
+        // the library is not trusted. Said here as well as on the guide page, because the program's
+        // own header is what gets read at the machine.
+        if (series[0].PredictedRibMm > -0.001)
+        {
+            notes.Add(Invariant(
+                $"The passes step {series[0].StepoverMm:F3} mm and the shallowest rung is predicted to cut {series[0].PredictedWidthMm:F3} mm, so they barely overlap even if the bit is exactly what the library says. Expect rows of copper in the shallow rungs whatever the thickness is."));
+        }
     }
 
     private static double Seconds(TestCutOptions options, List<TestCutLine> lines)
@@ -574,13 +762,18 @@ public static class TestCut
 
         foreach (var line in report.Lines)
         {
+            // A copper rung carries no predicted band, for the same reason it carries no
+            // instruction to subtract one: it is a depth and a yes-or-no, and a width in millimetres
+            // beside it is an invitation to reach for a caliper.
             var what = line.IsLadder
                 ? Invariant($"Line {line.Number}: LADDER RUNG, stepping {line.StepoverMm:F3} mm at {line.DepthMm:F3} mm deep")
                 : line.IsRepeat
-                    ? Invariant($"Line {line.Number}: a repeat of line 1. Both should measure the same.")
-                    : options.Kind == TestCutKind.Depth
-                        ? Invariant($"Line {line.Number}: {line.DepthMm:F3} mm deep, {line.PassCount} pass(es), band predicted {line.BandWidthMm:F3} mm")
-                        : Invariant($"Line {line.Number}: {line.FeedMmPerMin:F0} mm/min at {line.DepthMm:F3} mm deep");
+                    ? Invariant($"Line {line.Number}: a repeat of line 1. Both should {(options.Kind == TestCutKind.Copper ? "look" : "measure")} the same.")
+                    : options.Kind == TestCutKind.Copper
+                        ? Invariant($"Line {line.Number}: {line.DepthMm:F3} mm deep, {line.PassCount} pass(es)")
+                        : options.StepsDepth
+                            ? Invariant($"Line {line.Number}: {line.DepthMm:F3} mm deep, {line.PassCount} pass(es), band predicted {line.BandWidthMm:F3} mm")
+                            : Invariant($"Line {line.Number}: {line.FeedMmPerMin:F0} mm/min at {line.DepthMm:F3} mm deep");
 
             text.Add(Comment(what));
 
@@ -589,6 +782,13 @@ public static class TestCut
                 text.Add(Comment(line.PredictedRibMm > 0
                     ? Invariant($"  should leave {line.PredictedRibMm:F3} mm ribs if the library is right")
                     : Invariant($"  should come out solid; the passes overlap by {-line.PredictedRibMm:F3} mm")));
+            }
+            else if (options.Kind == TestCutKind.Copper)
+            {
+                // Not "measure the band": nothing on this coupon is measured. What each rung wants
+                // is a yes or a no, and saying "subtract 1.501 mm" against it would send the
+                // operator looking for a width with a caliper on a reading made with a loupe.
+                text.Add(Comment("  copper all gone? into the fibreglass?"));
             }
             else if (line.PassCount > 1)
             {
@@ -622,7 +822,12 @@ public static class TestCut
 
     private static IEnumerable<string> Header(TestCutOptions options, TestCutReport report)
     {
-        var kind = options.Kind == TestCutKind.Depth ? "DEPTH" : "FEED";
+        var kind = options.Kind switch
+        {
+            TestCutKind.Copper => "COPPER DEPTH",
+            TestCutKind.Feed => "FEED",
+            _ => "DEPTH",
+        };
 
         yield return Invariant($"{kind} TEST CUT. Scrap copper-clad only.");
         yield return string.Empty;
@@ -645,7 +850,20 @@ public static class TestCut
         yield return "the copper. Line 1 is nearest that corner and every";
         yield return "line runs left to right.";
 
-        if (options.Kind == TestCutKind.Depth)
+        if (options.Kind == TestCutKind.Copper)
+        {
+            yield return string.Empty;
+            yield return "Lines get deeper as they go, a hundredth at a time.";
+            yield return "Under a loupe, find two rungs: the shallowest with";
+            yield return "no copper left anywhere in its band, and the first";
+            yield return "that is visibly into the fibreglass. Cut between";
+            yield return "them. If they are next to each other you have";
+            yield return "nothing in hand on this stock.";
+            yield return string.Empty;
+            yield return "Copper left in rows along a shallow band is the";
+            yield return "stepover, not the thickness. See the guide page.";
+        }
+        else if (options.Kind == TestCutKind.Depth)
         {
             if (series.Count > 0)
             {

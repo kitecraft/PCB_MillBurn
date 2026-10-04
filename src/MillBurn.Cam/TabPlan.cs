@@ -325,6 +325,10 @@ public static class TabPlan
         const double StraightOverall = 0.99939;
 
         var edges = new List<(double Start, double Length)>();
+
+        // Which segments each edge is made of, which the seam check below needs and the edge's own
+        // start and length cannot give back.
+        var spans = new List<(int From, int To)>();
         var from = 0;
 
         while (from < segments.Count)
@@ -339,17 +343,26 @@ public static class TabPlan
             }
 
             edges.Add((starts[from], starts[to] + lengths[to] - starts[from]));
+            spans.Add((from, to));
             from = to + 1;
         }
 
         // The first and last runs are one edge cut by the seam.
         //
-        // Both tolerances, as inside a run: a `/code-review` pass pointed out that testing only
-        // the pairwise one here would let two runs that are each within two degrees of straight
-        // merge into an edge bending twice that, with a tab centred on the bend.
+        // **Both tolerances, and against the right pair of segments**, which took two
+        // `/code-review` passes. The first added the overall check here after the pairwise one let
+        // two runs that are each within two degrees of straight merge into an edge bending twice
+        // that, with a tab centred on the bend. The second found that the check it added did
+        // nothing: `SameWay` is a normalised dot product and so is symmetric in its arguments, so
+        // asking it about the same two segments again with a looser threshold is a question that
+        // cannot fail once the first has passed.
+        //
+        // The merged edge runs from the last run's *first* segment, through the seam, to the first
+        // run's *last* one — so those are its ends, exactly as the loop above compares `from`
+        // against each candidate `to + 1`.
         if (edges.Count > 1
             && SameWay(segments[^1], segments[0], Straight)
-            && SameWay(segments[0], segments[^1], StraightOverall))
+            && SameWay(segments[spans[^1].From], segments[spans[0].To], StraightOverall))
         {
             var last = edges[^1];
             var first = edges[0];

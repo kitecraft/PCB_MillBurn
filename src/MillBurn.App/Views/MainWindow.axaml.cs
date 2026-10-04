@@ -608,6 +608,29 @@ public partial class MainWindow : Window
             _captureInstead = tabs;
         }
 
+        // The test-cut dialog, for a picture of whichever of the three tests is asked for.
+        //
+        // Needs no board, like the dialog itself, and takes the kind by name because what the three
+        // differ in is which rows they show and what the summary says — which is the whole of what
+        // a screenshot of this window is for.
+        if (Argument(args, "--testcut") is { } wanted)
+        {
+            var kind = wanted.StartsWith("copper", StringComparison.OrdinalIgnoreCase)
+                ? TestCutKind.Copper
+                : wanted.StartsWith("feed", StringComparison.OrdinalIgnoreCase)
+                    ? TestCutKind.Feed
+                    : TestCutKind.Depth;
+
+            var testcut = new TestCutWindow(vm.Library, vm.Settings.Machine)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            testcut.Show(this);
+            testcut.ShowKind(kind);
+            _captureInstead = testcut;
+        }
+
         // Opens the colour picker for a screenshot: it lives in a separate package with its own
         // theme resources, so "does it render at all" is a real question rather than a formality.
         if (args.Contains("--colour", StringComparer.OrdinalIgnoreCase) && vm.Layers.Count > 0)
@@ -1572,7 +1595,8 @@ public partial class MainWindow : Window
 
         var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
         {
-            SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+            SpacingMm = TestCut.ProbeSpacingMmFor(report),
+            OnCoupon = true,
             SafeHeightMm = vm.Settings.Machine.SafeZMm,
             MaxDepthMm = vm.Settings.Probe.MaxDepthMm,
             FeedMmPerMin = vm.Settings.Probe.FeedMmPerMin,

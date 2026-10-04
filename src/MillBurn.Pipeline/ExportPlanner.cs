@@ -2133,10 +2133,17 @@ public static class ExportPlanner
             TabWidthNm = setting.TabWidthNm,
             TabHeightNm = setting.TabHeightNm,
 
-            // `IsDefaultOrEmpty` rather than the array itself: an absent key in a project file
-            // gives the `= []` initialiser, but an explicit `"TabEdits": null` deserialises to a
-            // default `ImmutableArray`, whose `Count` throws through `IReadOnlyList` — in the
-            // middle of an export, where a refusal belongs rather than a NullReferenceException.
+            // `IsDefaultOrEmpty` rather than the array itself, because a default `ImmutableArray`
+            // is a struct wrapping a null and throws on every member it has — in the middle of an
+            // export, where a refusal belongs rather than a NullReferenceException.
+            //
+            // **The route an earlier comment here named does not exist**, which a later
+            // `/code-review` pass checked by running it: an explicit `"TabEdits": null` in a project
+            // file does not deserialise to a default array, it throws `JsonException` while the file
+            // is being read, which is a refusal in the right place. An absent key gives the `= []`
+            // initialiser. So this guard defends against a value the type permits and no caller
+            // currently produces — kept, because that is what `IsDefaultOrEmpty` is for and it costs
+            // nothing, but no longer claiming to have a reproduction behind it.
             TabEdits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             Keep = keep,
@@ -2185,9 +2192,9 @@ public static class ExportPlanner
         // is still working and the board is thrown — the exact thing tabs exist to prevent — and
         // the program said nothing about it. Advice rather than a refusal: thin stock and a light
         // touch are somebody’s own business, and the operator is the one holding the board.
-        // The same guard the options above apply, hoisted: an explicit `"TabEdits": null` in a
-        // project file deserialises to a default `ImmutableArray`, which throws when enumerated.
-        // A `/code-review` pass caught the two sites below reaching past the guard added for it.
+        // The same guard the options above apply, hoisted, and for the same reason: a default
+        // `ImmutableArray` throws on every member. See there for why the JSON story an earlier
+        // comment told about it is not true.
         var edits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits;
 
         var thin = edits

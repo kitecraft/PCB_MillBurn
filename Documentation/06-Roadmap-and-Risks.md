@@ -2394,6 +2394,15 @@ border and on a mirrored layer they were not mirrored — they go through the pl
 now. And the "were asked for" count scaled by the profiles that *received* a tab, so one too small to
 hold any was left out of the arithmetic.
 
+**A later `/code-review` pass found the seam's whole-edge check doing nothing**, having been added
+by the pass before it. `SameWay` is a normalised dot product and therefore symmetric in its
+arguments, so asking it about the same two segments a second time with a looser threshold always
+passes once the first has passed: the bound that stops two runs each within tolerance merging into an
+edge bending twice that was absent at the seam for as long as it looked present. The merged edge runs
+from the last run's *first* segment through the seam to the first run's *last*, so those are the two
+compared now. On a shallow arc whose start vertex falls mid-curve, the fault puts a tab on a 41.9 mm
+"straight" edge bending 2.40° end to end; the boards in the corpus are unchanged either way.
+
 **Still open, and why this entry is `partial`:**
 
 - **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
@@ -5967,7 +5976,7 @@ the six are now correct and the seventh is the one nobody has thought of yet.
 single most testable thing in the view model, and the six faults above would each have been a
 failing test rather than a bench report or a review.
 
-#### 6.52 A test cut that finds where the copper stops — **enhancement · open** — *asked for by the product owner*
+#### 6.52 A test cut that finds where the copper stops — **enhancement · fixed**
 
 From the product owner, 2026-09-27: *"A new test for copper thickness. This test will cut a series
 of ladders. Each ladder is x number of step-over passes. The first rung is very shallow and each
@@ -6063,6 +6072,48 @@ step 0.010 mm, the coupon is one ladder with the repeat at its far end, its prob
 than the board rule gives and says so on the guide page, the spacing rule lives in one place rather
 than two, the guide tells the operator what the two transitions mean and how to tell ribbing from
 thickness, and a test pins the emitted depths to the rungs they belong to.
+
+**Built as `TestCutKind.Copper`**, beside `Depth` and `Feed` in the dialog and as
+`millburn-cli testcut copper`. Twelve rungs from 0.010 mm, stepping 0.010, twenty overlapping passes
+each, no width ladder, and the repeat at the far end: a **19.0 x 47.5 mm** coupon and 214 seconds of
+cutting, which is the figure measured above, reproduced by the defaults rather than by seven flags.
+
+**Nothing on it asks for a caliper.** The depth series says *measure the band, then subtract
+1.501 mm* against every line, because that is how it is read; the same sentence here would send
+somebody looking for a width that answers no question they are being asked. A copper rung carries its
+depth, its pass count and `copper all gone? into the fibreglass?` — and the page is a tick list with
+a row per rung rather than a column of predicted widths.
+
+**The probing rule now lives in one place** — `TestCut.ProbeSpacingMmFor` — instead of being written
+out in `Program.cs` and again in `MainWindow.axaml.cs`. A coupon still gets a third of its narrow
+side floored at 4 mm; a *copper* coupon gets 3 mm, or the coupon rule where that is already finer.
+Measured on the default coupon: **96 touches against 21**, about six and a half minutes of probing
+against a minute and a half, for three and a half minutes of cutting. The global probing settings are
+untouched, and so are the other two tests. A coupon's probe program also stops saying "work zero is
+the board's lower-left corner, the same as every other file in this export", which was wrong in both
+halves on a piece of scrap.
+
+**The risk named above is on the page, in its own section.** The stepover comes from the width the
+library *predicts* at the shallowest rung, so a blunter tip than it believes leaves rows of copper
+between the passes — which looks exactly like copper that has not been cut through. The page
+separates them by the pattern: regular, evenly spaced ridges fading over several rungs are the
+stepover; patchy copper that goes away over one or two is the thickness. If the ridges are there, run
+the depth and width test first, because this one will give a confident answer anyway. The generator
+says the same thing when the predicted overlap is already marginal.
+
+**Checked by running it.** `millburn-cli testcut copper --probe --write` writes the program, the
+page, the setup and a 96-touch probe routine; the emitted Z values are the twelve rungs and the
+repeat; and the dialog was rendered headlessly on all three kinds with the new
+`--testcut [depth|feed|copper]` flag, which is how the rows each one shows were checked. The dialog
+calls them rungs where the program and the page do.
+
+**Two faults came out of `/code-review`, both about the kind being new rather than about the test.**
+`testcut copper --lines 0` — a combination the CLI's own help offers — had no width ladder to fall
+back on, so the report had no lines and the guide's facts strip took `Min` over nothing and came out
+as a stack trace. The CLI refuses an empty test now, with the reason, and the page guards its own
+facts. And `--step` was read against `Kind == Depth` rather than against *this test steps a depth*,
+so a step given on a copper coupon was accepted, dropped, and the rungs came out a hundredth apart
+anyway while the generator's own warning told the operator to step 0.010.
 
 **Not part of it.** Reading the answer back into the isolation depth. The test writes a number on a
 page and the operator types it into Settings; closing that loop means a project knowing which coupon

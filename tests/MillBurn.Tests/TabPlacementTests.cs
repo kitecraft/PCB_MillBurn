@@ -728,6 +728,38 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
     /// can ask whether the copper between them is straight without trusting anything the planner
     /// said about it.
     /// </summary>
+    /// <summary>Where a given distance along the contour lands, wrapping at the seam.</summary>
+    private static Point2 PointAlong(Path64 contour, double along)
+    {
+        var segments = IsolationOperation.ToSegments(contour);
+        var perimeter = segments.Sum(s => s.From.DistanceTo(s.To));
+
+        return Walk(segments, ((along % perimeter) + perimeter) % perimeter);
+    }
+
+    private static Point2 Walk(IReadOnlyList<ArtSegment> segments, double along)
+    {
+        var travelled = 0.0;
+
+        foreach (var segment in segments)
+        {
+            var length = segment.From.DistanceTo(segment.To);
+
+            if (length > 0 && along <= travelled + length)
+            {
+                var t = (along - travelled) / length;
+
+                return new Point2(
+                    segment.From.X + (long)Math.Round((segment.To.X - segment.From.X) * t),
+                    segment.From.Y + (long)Math.Round((segment.To.Y - segment.From.Y) * t));
+            }
+
+            travelled += length;
+        }
+
+        return segments[^1].To;
+    }
+
     private static (Point2 From, Point2 To) EitherSide(Path64 contour, PlacedTab tab)
     {
         var segments = IsolationOperation.ToSegments(contour);
@@ -881,6 +913,101 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         // pass by both profiles happening to agree.
         Assert.NotEqual(TabPlan.DefaultWidthFor(Rect(5, 5)), TabPlan.DefaultWidthFor(Rect(40, 30)));
         Assert.Equal(TabPlan.DefaultWidthFor(Rect(40, 30)), planning.DerivedWidthNm);
+    }
+
+    /// <summary>
+    /// A tab is not centred on the seam when the profile is curving through it.
+    ///
+    /// **Found by `/code-review`, and it is the second pass to look at this.** The first added an
+    /// overall-straightness check where the last run and the first are merged into one edge, because
+    /// the pairwise check alone would let two runs that each bend within tolerance join into an edge
+    /// bending twice that. The second found that the check it added could not fail: `SameWay` is a
+    /// normalised dot product, so it is symmetric in its arguments, and asking it about the same two
+    /// segments a second time with a looser threshold always passes once the first has passed.
+    ///
+    /// The fixture is a shallow arc with the path's start vertex in the middle of it — a swept edge
+    /// crossing the seam, which is what a rounded outline exported from a different tool looks like.
+    /// Each segment turns 1.2°, inside the pairwise bound, so the runs either side of the seam are
+    /// each straight enough; merged, their ends are three turns apart, which is not.
+    ///
+    /// Asserted on the contour itself rather than on the edge list: for every tab, the two points
+    /// half a tab-width either side of it and the tab's own centre have to be collinear. A tab
+    /// centred on a bend is not, and that is the fault in the terms the workshop would see it.
+    /// </summary>
+    [Fact]
+    public void ATabIsNotCentredOnASeamTheProfileCurvesThrough()
+    {
+        // 1.2° a segment: inside the 1.5° the pairwise check allows, so no single joint is a corner.
+        // Three of them is 3.6°, which is past the 2° the whole-run check allows.
+        var arc = new Path64();
+        const int Steps = 20;
+        const double Radius = 500;
+
+        for (var i = 0; i <= Steps; i++)
+        {
+            var angle = (90 - ((i - (Steps / 2.0)) * 1.2)) * Math.PI / 180;
+
+            arc.Add(new Point64(
+                Mm(Radius * Math.Cos(angle)),
+                Mm((Radius * Math.Sin(angle)) - Radius + 30)));
+        }
+
+        // Closed with a straight return along the bottom, so the shape is a shallow bow.
+        var profile = new Path64(arc)
+        {
+            new(arc[^1].X, 0),
+            new(arc[0].X, 0),
+        };
+
+        // **The seam put in the middle of the arc**, which is the whole point of the fixture: the
+        // start vertex is where Clipper's offset happens to begin, and nothing about a board says
+        // it will not land mid-curve.
+        var seam = Steps / 2;
+        Path64 rotated = [.. profile.Skip(seam), .. profile.Take(seam)];
+
+        var tabs = TabPlan.For(rotated, Options(2));
+
+        Assert.NotEmpty(tabs);
+        Assert.DoesNotContain(tabs, t => t.Spaced);
+
+        foreach (var tab in tabs)
+        {
+            // Across the whole edge, not across the tab. A tab is three millimetres wide and a
+            // segment here is ten, so a tab centred exactly on the seam still sits inside one
+            // straight piece — what is wrong is the *edge* it was centred on, which the planner
+            // called straight and which bends through the seam from end to end.
+            var half = tab.EdgeLengthNm / 2.0;
+            var a = PointAlong(rotated, tab.AlongNm - half);
+            var b = PointAlong(rotated, tab.AlongNm + half);
+
+            var turn = Angle(a, tab.At, b);
+
+            output.WriteLine(
+                $"tab on a {Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge "
+                + $"bending {turn:F2}° across it");
+
+            // Two degrees is what the planner's own whole-run bound allows; a tenth over it is for
+            // the rounding in walking the contour back to two points.
+            Assert.True(
+                turn < 2.1,
+                $"a tab sits on an edge bending {turn:F2}° from end to end, which is not a straight edge");
+        }
+    }
+
+    /// <summary>The angle, in degrees, that a path turns through at <paramref name="at"/>.</summary>
+    private static double Angle(Point2 from, Point2 at, Point2 to)
+    {
+        double ux = at.X - from.X;
+        double uy = at.Y - from.Y;
+        double vx = to.X - at.X;
+        double vy = to.Y - at.Y;
+
+        var lu = Math.Sqrt((ux * ux) + (uy * uy));
+        var lv = Math.Sqrt((vx * vx) + (vy * vy));
+
+        return lu <= 0 || lv <= 0
+            ? 0
+            : Math.Acos(Math.Clamp(((ux * vx) + (uy * vy)) / (lu * lv), -1, 1)) * 180 / Math.PI;
     }
 
     /// <summary>A path moved, for building a job out of two separate profiles.</summary>

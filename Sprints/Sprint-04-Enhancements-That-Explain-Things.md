@@ -862,6 +862,106 @@ ladder with the repeat at its far end, its probing is finer than the board rule 
 the page, the spacing rule lives in one place, the guide tells the operator what the two transitions
 mean and how to tell ribbing from thickness, and a test pins the emitted depths to their rungs.
 
+### Closed — 2026-10-03
+
+**`TestCutKind.Copper`, beside `Depth` and `Feed`.** Twelve rungs from 0.010 mm stepping 0.010,
+twenty overlapping passes each, no width ladder, the repeat at the far end: a 19.0 x 47.5 mm coupon
+and 214 seconds of cutting, which is the figure the entry measured — reproduced by the defaults
+rather than by seven flags. `TestCutOptions.For(kind, tool)` is where the kinds disagree about their
+own numbers, because a copper test that starts and steps where the depth series does *is* the depth
+series.
+
+**Nothing on the coupon asks for a caliper.** That turned out to be four separate sentences, each of
+which had to be found: the per-line comment telling the operator to subtract 1.501 mm, the predicted
+band in the line header, the repeat line's *both should measure the same*, and the CLI's own
+`measure` row. A copper rung carries its depth, its pass count and `copper all gone? into the
+fibreglass?` — and the guide page is a tick list with a row per rung and two columns to mark, rather
+than a column of predicted widths. Found by reading the emitted program and the page rather than by
+any test failing.
+
+**The probing rule has one home now.** `TestCut.ProbeSpacingMmFor` replaces the expression that was
+written out in `Program.cs` and again in `MainWindow.axaml.cs`. A coupon still gets a third of its
+narrow side floored at 4 mm; a copper coupon gets 3 mm, or the coupon rule where that is already
+finer. Measured: **96 touches against 21**, six and a half minutes of probing against a minute and a
+half, for three and a half minutes of cutting. `CouponSpacingMmFor` is public beside it so the page
+can say what the test asked for *and* what it would otherwise have had, without writing the rule out
+a third time.
+
+**And a coupon's probe program stopped lying about where work zero is.** It said *"the board's
+lower-left corner, the same as every other file in this export"* on a piece of scrap with no board
+and no export. `OnCoupon` says the scrap's corner and tells the operator not to re-zero between
+probing and cutting, which is the thing that would quietly undo the whole exercise.
+
+**The risk the entry named is a section of the page.** The stepover comes from the width the library
+*predicts* at the shallowest rung, so a blunter tip than it believes leaves rows of copper between
+the passes — which looks exactly like copper that has not been cut through. Regular, evenly spaced
+ridges fading over several rungs are the stepover; patchy copper that goes away over one or two is
+the thickness. If the ridges are there, the page says to run the depth and width test first, because
+this one will give a confident answer anyway.
+
+**The dialog needed more care than the kind did.** Eight `SelectedIndex == 0` comparisons meant *is
+this the depth test*, and `!= 0` meant *the feed test* — which with three kinds is no longer the same
+question. They go through one `Kind` property now. Switching the test reseeds the depth-ladder rows,
+because leaving 0.050 mm in the step box of a copper test is the depth series wearing its name. And
+the rows are relabelled: the program, the page and the summary all say rungs, so the dialog does too.
+
+**Checked by running it.** `--testcut [depth|feed|copper]` is a new headless flag — the dialog needs
+no board, so it renders on its own — and all three kinds were photographed to check which rows each
+shows. The emitted Z values are the twelve rungs and the repeat; `--probe` writes a 96-touch routine.
+
+**`/describe-test` found four things, one of them a comment claiming more than its assertion.** The
+probing test's own doc said the millimetre figure was pinned; it compared the answer with the
+constant it comes from, which cannot fail. Three millimetres is a literal in it now. The page test
+checked that a `<td>` existed for every rung's depth — but the repeat shares rung 1's depth, so a
+page printing one row per *distinct* depth would have passed with a row missing; the rows are counted
+now, and the blank cells exactly rather than halved, where 26 and 27 both used to pass. The repeat was
+evidenced only as a thirteenth plunge, so the plan's own flag is asserted too. And two absent column
+headings were matched case-sensitively, which "Measured band" would have walked straight past.
+
+1,305 tests and 28 goldens green.
+
+### What the code review found — 2026-10-04, medium
+
+Five, and the two that matter most are a crash the new kind made reachable and a check added by an
+earlier review that could not fail.
+
+**`testcut copper --lines 0` came out as a stack trace.** The CLI's own help offers it — *"either
+half can be left out: --rungs 0 or --lines 0"* — and a copper coupon has no width ladder to fall back
+on, so the report has no lines at all and the guide's facts strip takes `Min` over nothing. The same
+crash needed two flags before this story and one after it. The CLI refuses an empty test now, with
+the reason and *"Nothing was written"*, and the page guards its own facts so no caller can crash
+instead. The refusal is kind-aware: a copper test has no ladder to be told it is missing.
+
+**`--step` was silently ignored on a copper coupon.** The CLI read `kind == TestCutKind.Depth` where
+it meant *this test steps a depth* — one of the exact sites `StepsDepth` was introduced to catch, and
+missed. `--step 0.02` was accepted, dropped, and the rungs came out a hundredth apart anyway, while
+the generator's own warning told the operator to step 0.010. A number that shapes the cut is honoured
+or refused, never dropped.
+
+**And the seam check an earlier `/code-review` added did nothing at all.** It compared
+`SameWay(segments[^1], segments[0], Straight)` with `SameWay(segments[0], segments[^1],
+StraightOverall)` — but `SameWay` is a normalised dot product, so it is symmetric in its arguments:
+the second line asks about the same two segments as the first with a looser threshold, which cannot
+fail once the first has passed. The whole-edge bound was absent at the seam for as long as it had
+appeared to be there. The merged edge runs from the last run's *first* segment through the seam to
+the first run's *last*, so those are the two it compares now, exactly as the in-run loop does.
+`ATabIsNotCentredOnASeamTheProfileCurvesThrough` is a shallow arc with the path's start vertex in the
+middle of it: with the fault it puts a tab on a 41.9 mm "straight" edge bending 2.40° end to end, and
+the three real boards in the corpus are unchanged either way.
+
+And two smaller: the dialog's new copper branch would have thrown inside a keystroke handler on a
+cleared Rungs box, the same fault as the first through a different door; and the block generator
+reached `TabEdits.Length` without the `IsDefaultOrEmpty` guard its two neighbours use.
+
+**That last one turned out to be a comment telling a story that is not true.** The guard's stated
+reason — that `"TabEdits": null` in a project file deserialises to a default `ImmutableArray` — was
+checked by running it: `System.Text.Json` throws `JsonException` while the file is being read, which
+is a refusal in the right place, and an absent key gives the `= []` initialiser. So the guard defends
+against a value the type permits and no caller produces. All three sites have it now, and none of
+them claims a reproduction any more.
+
+1,306 tests and 28 goldens green.
+
 ---
 
 ## Story 6 — Say where the project came from

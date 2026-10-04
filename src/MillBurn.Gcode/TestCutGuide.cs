@@ -51,9 +51,12 @@ public static class TestCutGuide
         return page.ToString();
     }
 
-    private static string Title(TestCutKind kind) => kind == TestCutKind.Depth
-        ? "Depth and width test"
-        : "Feed rate test";
+    private static string Title(TestCutKind kind) => kind switch
+    {
+        TestCutKind.Copper => "Where the copper stops",
+        TestCutKind.Feed => "Feed rate test",
+        _ => "Depth and width test",
+    };
 
     // ------------------------------------------------------------------ the numbers at the top
 
@@ -65,12 +68,19 @@ public static class TestCutGuide
         Fact(page, "Stock", Invariant($"{report.StockWidthMm:F0} &times; {report.StockHeightMm:F0} mm"));
         Fact(page, "Time", Invariant($"{Math.Max(1, Math.Round(report.EstimatedSeconds / 5) * 5):F0} sec"));
 
-        Fact(
-            page,
-            options.Kind == TestCutKind.Depth ? "Depths" : "Feeds",
-            options.Kind == TestCutKind.Depth
-                ? Invariant($"{report.Lines.Min(l => l.DepthMm):F3}&ndash;{report.Lines.Max(l => l.DepthMm):F3} mm")
-                : Invariant($"{report.Lines.Min(l => l.FeedMmPerMin):F0}&ndash;{report.Lines.Max(l => l.FeedMmPerMin):F0} mm/min"));
+        // A test with nothing in it still has a page, and the page still has to render: `Min` over
+        // no lines throws, and `/code-review` found that `testcut copper --lines 0` — a combination
+        // the CLI's own help offers — reached it and came out as a stack trace. The callers refuse
+        // such a test now; this is so that none of them can crash instead.
+        if (report.Lines.Count > 0)
+        {
+            Fact(
+                page,
+                options.StepsDepth ? "Depths" : "Feeds",
+                options.StepsDepth
+                    ? Invariant($"{report.Lines.Min(l => l.DepthMm):F3}&ndash;{report.Lines.Max(l => l.DepthMm):F3} mm")
+                    : Invariant($"{report.Lines.Min(l => l.FeedMmPerMin):F0}&ndash;{report.Lines.Max(l => l.FeedMmPerMin):F0} mm/min"));
+        }
 
         page.Append("</div>\n");
     }
@@ -92,7 +102,9 @@ public static class TestCutGuide
         page.Append("<li><strong>Hold it down across its whole area</strong> &mdash; double-sided tape ")
             .Append("under all of it, or a vacuum bed. Not tape at the corners. A probe triggers at ")
             .Append("no force and a cutter does not, so an unsupported middle moves away from the ")
-            .Append("tool and every width on the coupon is wrong by an amount that varies along it.</li>\n");
+            .Append("tool and every ")
+            .Append(options.Kind == TestCutKind.Copper ? "rung" : "width")
+            .Append(" on the coupon is wrong by an amount that varies along it.</li>\n");
 
         page.Append("<li><strong>Work zero is the lower-left corner of the scrap, on the copper.</strong> ")
             .Append("Touch Z off on the copper itself, not on the table and not on the vice.</li>\n");
@@ -104,6 +116,23 @@ public static class TestCutGuide
         {
             page.Append("<li>Every line is the same depth. The only thing that changes is how fast ")
                 .Append("the tool crosses.</li>\n");
+        }
+
+        // What this test probes at, and why it is not what the coupon rule gives. Said here rather
+        // than only in the dialog, because the page is what is open when the probe is being run.
+        if (options.Kind == TestCutKind.Copper)
+        {
+            page.Append("<li><strong>Rungs are ")
+                .Append(Invariant($"{options.DepthStepMm:F3} mm apart"))
+                .Append(", so flatness is the whole game.</strong> If you probe this coupon, this ")
+                .Append("test asks for a touch every ")
+                .Append(Invariant($"{TestCut.ProbeSpacingMmFor(report):F1} mm"))
+                .Append(" rather than the ")
+                .Append(Invariant($"{TestCut.CouponSpacingMmFor(report):F1} mm"))
+                .Append(" a coupon this size would otherwise get. A map interpolated over eight ")
+                .Append("millimetres of clamped copper-clad can be out by several rungs, which does ")
+                .Append("not shift the reading so much as invent it. It costs a few more minutes, ")
+                .Append("and only this test asks for them.</li>\n");
         }
 
         page.Append("</ul>\n");
@@ -130,6 +159,14 @@ public static class TestCutGuide
 
         if (series.Count == 0)
         {
+            return;
+        }
+
+        // A copper coupon is read with a loupe, so its table is two columns to tick rather than
+        // one to measure. Nothing on it is a predicted width.
+        if (options.Kind == TestCutKind.Copper)
+        {
+            CopperTable(page, series);
             return;
         }
 
@@ -364,11 +401,49 @@ public static class TestCutGuide
 
     // ------------------------------------------------------------------ reading it
 
+    /// <summary>
+    /// The copper coupon's own table: two columns to tick rather than one to measure.
+    ///
+    /// The reading is two transitions found with a loupe, so what the page can do for it is give
+    /// every rung's depth and somewhere to record what that rung looked like: printed, at the
+    /// machine, with the coupon in hand.
+    /// </summary>
+    private static void CopperTable(StringBuilder page, IReadOnlyList<TestCutLine> series)
+    {
+        page.Append("<h2>Every rung, and what to write against it</h2>\n");
+        page.Append("<table>\n<tr><th>#</th><th>Depth</th><th>Copper all gone?</th>");
+        page.Append("<th>Into the fibreglass?</th><th>Y</th></tr>\n");
+
+        foreach (var line in series)
+        {
+            page.Append("<tr><td>").Append(line.Number);
+
+            if (line.IsRepeat)
+            {
+                page.Append(" <span class=\"tag\">repeat of 1</span>");
+            }
+
+            page.Append(Invariant($"</td><td>{line.DepthMm:F3} mm</td>"));
+            page.Append("<td class=\"blank\">&nbsp;</td><td class=\"blank\">&nbsp;</td>");
+            page.Append(Invariant($"<td>{line.YMm:F1} mm</td></tr>\n"));
+        }
+
+        page.Append("</table>\n");
+
+        page.Append("<p class=\"note\">Print this page and tick the two columns rung by rung, with a ")
+            .Append("loupe. Both answers are yes or no &mdash; you are not judging whether one rung ")
+            .Append("looks right, only finding where a row of them changes.</p>\n");
+    }
+
     private static void Analysis(StringBuilder page, TestCutOptions options, TestCutReport report)
     {
         page.Append("<h2>Reading the result</h2>\n");
 
-        if (options.Kind == TestCutKind.Depth)
+        if (options.Kind == TestCutKind.Copper)
+        {
+            CopperAnalysis(page, options, report);
+        }
+        else if (options.Kind == TestCutKind.Depth)
         {
             DepthAnalysis(page, options, report);
         }
@@ -377,6 +452,89 @@ public static class TestCutGuide
             FeedAnalysis(page, options);
         }
     }
+
+    /// <summary>
+    /// The two transitions, the gap between them, and the one way this coupon lies.
+    ///
+    /// **The lie is worth as much space as the answer.** The stepover is derived from the width the
+    /// tool library *predicts* at the shallowest rung, and the premise of the whole test is that the
+    /// library is not trusted. A blunter tip than it believes leaves rows of copper standing between
+    /// the passes, and rows of copper in a shallow band look exactly like copper that has not
+    /// been cut through yet. One says the stepover was too wide, the other says the foil is thicker;
+    /// they have opposite answers and the same appearance, so the page separates them or the test
+    /// answers the wrong question convincingly.
+    /// </summary>
+    private static void CopperAnalysis(
+        StringBuilder page, TestCutOptions options, TestCutReport report)
+    {
+        var series = report.Lines.Where(l => !l.IsLadder && !l.IsRepeat).ToList();
+
+        page.Append("<p><strong>Two rungs, found with a loupe.</strong> Work up the coupon from ")
+            .Append("rung 1 and find the first one with <em>no copper left anywhere in its band</em> ")
+            .Append("&mdash; not thinned, not patchy: gone. Keep going and find the first rung ")
+            .Append("visibly cut into the fibreglass underneath, which shows as a colour change and ")
+            .Append("a different surface rather than as a depth you can see.</p>\n");
+
+        page.Append("<p><strong>Cut between them.</strong> The first is the shallowest depth that ")
+            .Append("clears copper on this stock; the second is where you start paying for it in ")
+            .Append("tool life and ragged edges. Take a rung or two above the first and put that ")
+            .Append("number into <em>Settings &rsaquo; Milling</em>.</p>\n");
+
+        if (series.Count > 1)
+        {
+            page.Append("<p>These rungs are ")
+                .Append(Invariant($"{options.DepthStepMm:F3} mm apart, from {series[0].DepthMm:F3} to {series[^1].DepthMm:F3} mm"))
+                .Append(", so the answer comes out to the nearest ")
+                .Append(Invariant($"{options.DepthStepMm:F3} mm"))
+                .Append(" &mdash; finer than anything you could set by eye.</p>\n");
+        }
+
+        page.Append("<h2>How far apart they are is the other half of the reading</h2>\n");
+
+        page.Append("<p>One-ounce foil is about ")
+            .Append(Invariant($"{TestCut.FoilMm:F3} mm"))
+            .Append(" thick, so on flat stock with a sharp bit the two transitions should be a few ")
+            .Append("rungs apart. <strong>Adjacent rungs mean you have nothing in hand:</strong> any ")
+            .Append("wear on the tip, any tilt in the next piece of stock, and the same depth either ")
+            .Append("leaves copper or digs in. That is a fact about this stock and this setup rather ")
+            .Append("than a fault in the test, and it is worth knowing before you cut a board.</p>\n");
+
+        page.Append("<h2>Rows of copper are not the same as copper left</h2>\n");
+
+        page.Append("<p class=\"warn\"><strong>This is the one way this coupon will mislead you.</strong> ")
+            .Append("Each rung is ")
+            .Append(Invariant($"{Passes(series)} overlapping passes stepping {Stepover(series):F3} mm"))
+            .Append(", and that step was worked out from the ")
+            .Append(Invariant($"{Predicted(series):F3} mm"))
+            .Append(" the tool library predicts for the shallowest rung. If the real tip is blunter ")
+            .Append("than the library believes, the passes stop overlapping and leave <em>regular ")
+            .Append("ridges along the band, one per pass, evenly spaced</em>. That is a reading, but ")
+            .Append("what it says is that the stepover was too wide for this depth &mdash; not that ")
+            .Append("the copper is thicker.</p>\n");
+
+        page.Append("<ul>\n")
+            .Append("<li><strong>Regular, evenly spaced ridges running the length of the band</strong> ")
+            .Append("&mdash; the stepover. The same pattern appears on several rungs in a row, ")
+            .Append("fading as they deepen, because the cut widens with depth.</li>\n")
+            .Append("<li><strong>Patchy copper with no pattern to it</strong> &mdash; the thickness, ")
+            .Append("or stock that is not flat. It goes away over one or two rungs rather than ")
+            .Append("fading over several.</li>\n")
+            .Append("</ul>\n");
+
+        page.Append("<p>If you see the ridges, run the <em>depth and width</em> test and fix the tip ")
+            .Append("diameter in the tool library first. This test cannot find where the copper ")
+            .Append("stops while the stepover is wrong, and it will give you a confident answer ")
+            .Append("anyway.</p>\n");
+    }
+
+    private static int Passes(List<TestCutLine> series) =>
+        series.Count > 0 ? series[0].PassCount : 0;
+
+    private static double Stepover(List<TestCutLine> series) =>
+        series.Count > 0 ? series[0].StepoverMm : 0;
+
+    private static double Predicted(List<TestCutLine> series) =>
+        series.Count > 0 ? series[0].PredictedWidthMm : 0;
 
     private static void DepthAnalysis(StringBuilder page, TestCutOptions options, TestCutReport report)
     {
@@ -490,15 +648,24 @@ public static class TestCutGuide
 
         page.Append("<h2>Check this first</h2>\n");
 
+        // Compared rather than measured on a copper coupon: there is no number to take off it, and
+        // what a tilt does there is move the transition — two rungs that should look identical and
+        // do not.
+        var copper = options.Kind == TestCutKind.Copper;
+
         page.Append("<p><strong>Line ").Append(report.Lines[^1].Number)
             .Append(" is a repeat of line 1</strong>, cut last and at the far end of the coupon. ")
-            .Append("Measure both. If they do not match, something moved between one end of the ")
+            .Append(copper
+                ? "Look at both under the loupe: the same depth cut twice should look the same. "
+                : "Measure both. ")
+            .Append("If they do not match, something moved between one end of the ")
             .Append("stock and the other &mdash; it is tilted, it is not held down, or Z drifted ")
-            .Append("during the run &mdash; and every other number on the coupon is off by an ")
-            .Append("unknown, varying amount.</p>\n");
+            .Append("during the run &mdash; and every other ")
+            .Append(copper ? "rung" : "number")
+            .Append(" on the coupon is off by an unknown, varying amount.</p>\n");
 
         page.Append("<p>That check costs one line and about four seconds, and it is the difference ")
-            .Append("between a measurement and a guess.</p>\n");
+            .Append(copper ? "between a reading and a guess.</p>\n" : "between a measurement and a guess.</p>\n");
     }
 
     // ------------------------------------------------------------------ if the scrap is bowed
@@ -529,7 +696,7 @@ public static class TestCutGuide
             .Append(Invariant($"{report.StockHeightMm:F0} mm across that is a couple of hundredths out of flat "))
             .Append("shifts every line by about as much as ");
 
-        page.Append(options.Kind == TestCutKind.Depth
+        page.Append(options.StepsDepth
             ? Invariant($"the {options.DepthStepMm:F3} mm step between them")
             : "the depth you are testing at");
 
