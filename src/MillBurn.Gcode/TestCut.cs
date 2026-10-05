@@ -852,8 +852,12 @@ public static class TestCut
 
         if (options.Kind == TestCutKind.Copper)
         {
+            // The step as it is, not as it usually is. `/code-review` found this saying "a hundredth
+            // at a time" on a coupon cut with --step 0.02 — in the file an operator reads at the
+            // machine, where the only other place the real number appears is a note the program
+            // does not carry.
             yield return string.Empty;
-            yield return "Lines get deeper as they go, a hundredth at a time.";
+            yield return Invariant($"Lines get deeper as they go, {options.DepthStepMm:F3} mm at a time.");
             yield return "Under a loupe, find two rungs: the shallowest with";
             yield return "no copper left anywhere in its band, and the first";
             yield return "that is visibly into the fibreglass. Cut between";
@@ -903,7 +907,14 @@ public static class TestCut
         {
             yield return string.Empty;
             yield return "The last line repeats the first. If they do not";
-            yield return "measure the same, the stock is tilted or Z moved,";
+
+            // The per-line comment was changed to "look" for a copper coupon and the header was
+            // not, so the same file told the operator to measure a rung in one place and to look at
+            // it in another. Nothing on this coupon is measured.
+            yield return options.Kind == TestCutKind.Copper
+                ? "look the same, the stock is tilted or Z moved,"
+                : "measure the same, the stock is tilted or Z moved,";
+
             yield return "and nothing else here can be trusted.";
         }
     }

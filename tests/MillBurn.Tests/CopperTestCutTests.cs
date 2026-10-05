@@ -164,6 +164,42 @@ public sealed class CopperTestCutTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The program's own header says the step it is actually cutting, and asks for a look rather
+    /// than a measurement.
+    ///
+    /// **Both found by `/code-review`.** The header said "a hundredth at a time" whatever `--step`
+    /// was given, so a coupon cut at 0.020 mm told the operator 0.010 — in the file that is read at
+    /// the machine, where the note that would have contradicted it does not appear. And the repeat
+    /// line said "if they do not *measure* the same" on a coupon this kind went out of its way to
+    /// stop calling measurable: the per-line comment had been changed and the header had not.
+    /// </summary>
+    [Theory]
+    [InlineData(0.010)]
+    [InlineData(0.020)]
+    public void TheHeaderSaysTheStepItIsCutting(double stepMm)
+    {
+        var (program, _) = TestCut.Generate(Copper with { DepthStepMm = stepMm });
+
+        var header = string.Join(
+            "\n",
+            program.Split('\n').TakeWhile(l => l.StartsWith('(')));
+
+        output.WriteLine(header);
+
+        Assert.Contains(
+            FormattableString.Invariant($"{stepMm:F3} mm at a time"),
+            header,
+            StringComparison.Ordinal);
+
+        Assert.DoesNotContain("a hundredth at a time", header, StringComparison.Ordinal);
+
+        // And nothing in the header asks for a caliper, which is what the rest of this coupon
+        // already promises.
+        Assert.Contains("look the same", header, StringComparison.Ordinal);
+        Assert.DoesNotContain("measure the same", header, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A step as coarse as the copper is thick is refused in words, because it is the whole reason
     /// this kind exists.
     ///

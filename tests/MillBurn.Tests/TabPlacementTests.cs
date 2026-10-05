@@ -1010,6 +1010,46 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             : Math.Acos(Math.Clamp(((ux * vx) + (uy * vy)) / (lu * lv), -1, 1)) * 180 / Math.PI;
     }
 
+    /// <summary>
+    /// A per-tab size of nothing falls back to the tab's own, exactly as a board-wide one does.
+    ///
+    /// **Found by `/code-review` asking what a project file could hold.** The board-wide pair is
+    /// guarded in `For` — "this is geometry that cuts a real board, so it does not take anyone's
+    /// word for it" — and the per-tab edits were not, so a hand-edited `"WidthNm": 0` put two cut
+    /// runs end to end at that tab: the profile cut clean through while the program's own header
+    /// still counted it among the tabs holding the board in.
+    ///
+    /// The dialog cannot produce it, which is the point. An emptied box there reads as "no choice";
+    /// this is the route that does not go through the dialog at all.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void APerTabSizeOfNothingIsIgnoredLikeABoardWideOne(double givenMm)
+    {
+        var rect = Rect(40, 30);
+        var plain = TabPlan.For(rect, Options());
+
+        var edited = TabPlan.For(rect, Options() with
+        {
+            TabEdits = [new TabEdit { Index = 1, WidthNm = Mm(givenMm), HeightNm = Mm(givenMm) }],
+        });
+
+        Assert.Equal(4, edited.Count);
+
+        foreach (var tab in edited)
+        {
+            output.WriteLine($"{Nm.ToMillimetreString(tab.WidthNm, 2)} x {Nm.ToMillimetreString(tab.HeightNm, 2)} mm");
+
+            Assert.True(tab.WidthNm >= TabPlan.MinWidthNm, "a tab of no width is not a tab");
+            Assert.True(tab.HeightNm >= TabPlan.MinHeightNm, "a tab of no height is not a tab");
+        }
+
+        // And the edit changed nothing at all, which is the honest outcome: a size that is not a
+        // size is not an instruction.
+        Assert.Equal(plain, edited);
+    }
+
     /// <summary>A path moved, for building a job out of two separate profiles.</summary>
     private static Path64 Shifted(Path64 path, double xMm, double yMm) =>
         [.. path.Select(p => new Point64(p.X + Mm(xMm), p.Y + Mm(yMm)))];

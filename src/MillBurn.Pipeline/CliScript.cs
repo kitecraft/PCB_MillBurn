@@ -211,6 +211,7 @@ public static class CliScript
 
         flags.AddRange(Sets(context));
         Layers(plan, context, notes);
+        Companions(notes);
         Project(context, notes);
         Machine(context, notes);
 
@@ -363,17 +364,16 @@ public static class CliScript
         Agreed("--tabs", outlines.Select(o => (long)o.TabCount).Distinct().ToList(),
             n => n.ToString(CultureInfo.InvariantCulture), "tab(s)");
 
-        // Left off when they are null, because null is not a number here: it means the tab is sized
-        // from the board, and that is what somebody who never touched them has.
-        if (outlines.TrueForAll(o => o.TabWidthNm is not null))
-        {
-            Agreed("--tab-width", outlines.Select(o => o.TabWidthNm!.Value).Distinct().ToList(), Mm, "mm wide");
-        }
-
-        if (outlines.TrueForAll(o => o.TabHeightNm is not null))
-        {
-            Agreed("--tab-height", outlines.Select(o => o.TabHeightNm!.Value).Distinct().ToList(), Mm, "mm of material");
-        }
+        // Left off when they are all null, because null is not a number here: it means the tab is
+        // sized from the board, and that is what somebody who never touched them has.
+        //
+        // **Mixed is neither, and used to be silent**, which a `/code-review` pass caught: one
+        // outline layer with a width and another deriving one fell through the `TrueForAll` and
+        // through the note below it, so the rebuild derived a width for the layer that had one and
+        // nothing was said. A note is what `Agreed` already does when the values disagree; they
+        // disagree here too, one of them just disagrees by being absent.
+        Sized("--tab-width", [.. outlines.Select(o => o.TabWidthNm)], "mm wide");
+        Sized("--tab-height", [.. outlines.Select(o => o.TabHeightNm)], "mm of material");
 
         // `IsDefaultOrEmpty` as everywhere else that touches this array: a default
         // `ImmutableArray` throws on `Length`, and this runs on every export rather than only on
@@ -384,6 +384,27 @@ public static class CliScript
         {
             notes.Add(Invariant(
                 $"{edited} tab(s) were sized one at a time, in Tabs. The command line has one width and one height for all of them, so this export's tabs are not all the same as the ones above."));
+        }
+
+        // One flag when every outline layer gives the same answer — including when every one of
+        // them gives no answer at all, which is the ordinary case and wants no flag.
+        void Sized(string flag, List<long?> values, string what)
+        {
+            if (values.TrueForAll(v => v is null))
+            {
+                return;
+            }
+
+            if (values.Any(v => v is null))
+            {
+                notes.Add("one outline layer has a tab size set by hand and another takes the "
+                    + "board's, and " + flag + " is one number for all of them, so it is left off "
+                    + "and they come from the layers' own settings.");
+
+                return;
+            }
+
+            Agreed(flag, [.. values.Select(v => v!.Value).Distinct()], Mm, what);
         }
 
         void Agreed(string flag, List<long> values, Func<long, string> format, string what)
@@ -498,6 +519,26 @@ public static class CliScript
                 + string.Join("; ", carried) + ".");
         }
     }
+
+    /// <summary>
+    /// The files an export writes that the plan does not contain.
+    ///
+    /// **Found by `/code-review`, and it is this class's own standard turned on itself.** Dry runs,
+    /// a probing routine and a levelled copy are built by whoever runs the export, after the planner
+    /// has finished — so they are not in `plan.Items`, nothing here can see that they were asked
+    /// for, and the block came out silent about them while the folder beside it held twenty of
+    /// them. A block that leaves a setting out without saying so is worse than no block.
+    ///
+    /// Said unconditionally rather than threaded through, because the planner would have to be told
+    /// about three flags that have nothing to do with planning in order to repeat them back. One
+    /// sentence that is always true beats three parameters that are usually null.
+    /// </summary>
+    private static void Companions(List<string> notes) =>
+        notes.Add("the files that go beside the programs are asked for when the export is run "
+            + "rather than planned with it, so they are not in this command: --dry-run writes a "
+            + "*.dryrun.nc for each program, --probe writes a probing routine, and --level <log> "
+            + "bends the programs to one. If the folder this describes has any of those in it, add "
+            + "the flag that made them.");
 
     /// <summary>
     /// A project is read from the disk, not from the window.

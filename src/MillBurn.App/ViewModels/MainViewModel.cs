@@ -224,6 +224,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _project.OriginFolder is { } folder && Directory.Exists(folder) ? folder : null;
 
     /// <summary>
+    /// The folder the Gerbers were read from, in full.
+    ///
+    /// Asked for from the workshop — *"We should display the gerber folder somewhere so the user
+    /// knows where the project is from"* — because nothing in the window said it. The title carries
+    /// the folder's last segment alone, and this machine has two boards called
+    /// `Millburn_Test_Board` in different folders: a project opened from the wrong one looks exactly
+    /// like a project opened from the right one, right up until its programs are cut.
+    ///
+    /// **In full.** A first attempt elided the middle to keep the panel narrow, and the product
+    /// owner's answer to it was *"what I would like to know is where the source folder is"* — which
+    /// a path with its middle removed does not say. The view wraps it instead.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? SourceFolder { get; private set; }
+
+    /// <summary>
     /// The tabs this outline layer would be cut with as things stand.
     ///
     /// Asked of the planner rather than worked out here, and through the same options the export
@@ -3159,6 +3175,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         var name = _project.Sources.Length == 0 ? "PCB_MillBurn" : _project.DisplayName;
         WindowTitle = _project.IsDirty ? $"{name} * — PCB_MillBurn" : $"{name} — PCB_MillBurn";
+
+        // Beside the title rather than in it: the title bar is one line shared with the dirty mark
+        // and the application's own name, and a path is the thing that does not fit there.
+        // Absolute and in this platform's separators, because a path relative to a working
+        // directory the operator never sees cannot answer the question the line was added for: a
+        // board opened as `tests/boards/…` showed exactly that, forward slashes and all.
+        SourceFolder = _project.OriginFolder is { Length: > 0 } where ? ProjectOrigin.Full(where) : null;
     }
 
     /// <summary>

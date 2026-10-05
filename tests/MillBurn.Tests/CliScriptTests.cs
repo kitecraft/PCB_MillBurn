@@ -151,14 +151,7 @@ public sealed class CliScriptTests(ITestOutputHelper output)
         // would satisfy the check above and fail on the first line of the block. Read off the help
         // for `export`, which is the one list that distinguishes them — and which therefore cannot
         // fall behind the generator either.
-        var from = program.IndexOf("\"  export <folder-or-project>", StringComparison.Ordinal);
-        var to = program.IndexOf("\"  align <folder-or-project>", StringComparison.Ordinal);
-
-        // Asserted rather than left to throw: the slice is cut on two headings, and a reworded
-        // heading should say so rather than come out as an out-of-range argument.
-        Assert.True(from > 0 && to > from, "the help for `export` was not found in Program.cs");
-
-        var help = program[from..to];
+        var help = Export(program);
 
         foreach (var flag in flags)
         {
@@ -541,6 +534,55 @@ public sealed class CliScriptTests(ITestOutputHelper output)
             StringComparison.Ordinal);
 
         Assert.DoesNotContain(Path.GetDirectoryName(board.Source!)!, plan.Commands[0].Command, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The block says which files it will not write.
+    ///
+    /// **Found by `/code-review`, and it is this class's own standard turned on itself.** Dry runs,
+    /// a probing routine and a levelled copy are built by whoever runs the export rather than by the
+    /// planner, so they are not in the plan and nothing here can see that they were asked for — and
+    /// the block came out silent about them while the folder beside it held twenty. A block that
+    /// leaves something out without saying so is worse than no block.
+    /// </summary>
+    [Fact]
+    public void TheBlockNamesTheCompanionFilesItWillNotWrite()
+    {
+        var board = TestBoard();
+        var settings = SettingsFor(board);
+        var plan = ExportPlanner.Plan(board, settings, ToolLibrary.Default, Nm.FromMillimetres(0.8));
+
+        var notes = plan.Commands[0].Notes;
+
+        foreach (var note in notes)
+        {
+            output.WriteLine(note);
+        }
+
+        var named = Assert.Single(notes, n => n.Contains("--dry-run", StringComparison.Ordinal));
+
+        Assert.Contains("--probe", named, StringComparison.Ordinal);
+        Assert.Contains("--level", named, StringComparison.Ordinal);
+
+        // And the flags it names are flags: the same check the rest of this file makes of the
+        // command line, applied to a sentence that invites somebody to type one.
+        var help = Export(File.ReadAllText(CliSource()));
+
+        foreach (var flag in new[] { "--dry-run", "--probe", "--level" })
+        {
+            Assert.Matches(Regex.Escape(flag) + "(?![a-z-])", help);
+        }
+    }
+
+    /// <summary>The help for `export`, which is where a flag this block names has to be documented.</summary>
+    private static string Export(string program)
+    {
+        var from = program.IndexOf("\"  export <folder-or-project>", StringComparison.Ordinal);
+        var to = program.IndexOf("\"  align <folder-or-project>", StringComparison.Ordinal);
+
+        Assert.True(from > 0 && to > from, "the help for `export` was not found in Program.cs");
+
+        return program[from..to];
     }
 
     /// <summary>

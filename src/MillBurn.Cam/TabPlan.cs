@@ -279,10 +279,15 @@ public static class TabPlan
                 continue;
             }
 
+            // The same guard `For` applies to the board-wide pair, for the same reason and found
+            // by the same `/code-review` habit of asking what a project file could hold. The dialog
+            // cannot produce a zero — an emptied box reads as "no choice" — but a hand-edited
+            // `"WidthNm": 0` would put two cut runs end to end at that tab, which is the profile cut
+            // clean through while the program's header still counts it as a tab.
             tabs[edit.Index] = tabs[edit.Index] with
             {
-                WidthNm = edit.WidthNm ?? tabs[edit.Index].WidthNm,
-                HeightNm = edit.HeightNm ?? tabs[edit.Index].HeightNm,
+                WidthNm = edit.WidthNm is { } width and > 0 ? width : tabs[edit.Index].WidthNm,
+                HeightNm = edit.HeightNm is { } height and > 0 ? height : tabs[edit.Index].HeightNm,
             };
         }
 

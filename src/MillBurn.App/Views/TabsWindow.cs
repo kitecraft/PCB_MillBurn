@@ -333,6 +333,18 @@ public sealed class TabsWindow : Window
     {
         var stale = _width.Value != _openingWidth;
 
+        // **Snapshot on the way out, not once at the start**, which a `/code-review` pass caught:
+        // the rows were captured in the constructor, so a size set by hand *in this session* and
+        // then lost to a width change did not come back when the width was typed back — the method
+        // restored the state the window opened in, and its own doc claimed otherwise. Taken at the
+        // moment the rows stop being about the tabs below them, which is the last moment they are
+        // still the operator's.
+        if (stale && !_stale.IsVisible)
+        {
+            _opening.Clear();
+            _opening.AddRange(_rows.Select(r => (r.Width.Value, r.Height.Value)));
+        }
+
         for (var i = 0; i < _rows.Count; i++)
         {
             var (width, height) = _rows[i];

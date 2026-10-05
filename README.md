@@ -59,7 +59,8 @@ UGS, Candle, LightBurn and LinuxCNC already do that well.
    folder…`. Drill files come along with it. Exporting from KiCad? The
    [export guide](Help/guides/kicad-export.html) lists the settings that work best.
 3. **Set the board thickness** in Project info. Everything that cuts through uses it, and it is saved
-   with the project.
+   with the project. The top of that panel says which folder the Gerbers were read from, in full —
+   worth a glance when two of your folders share a name.
 4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG
    (laser)**, or **Not exported**. The pill on the collapsed row shows what you chose.
 5. **Press Preview** (F5). The programs are drawn back over your board.

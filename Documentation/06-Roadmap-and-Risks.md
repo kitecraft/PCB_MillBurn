@@ -2403,6 +2403,14 @@ from the last run's *first* segment through the seam to the first run's *last*, 
 compared now. On a shallow arc whose start vertex falls mid-curve, the fault puts a tab on a 41.9 mm
 "straight" edge bending 2.40° end to end; the boards in the corpus are unchanged either way.
 
+**And a third door onto the same hazard, from a later pass: changing the outline cutter.** The
+profile is offset by the cutter's radius before the tabs are placed, so a wider bit lengthens every
+straight edge, moves the derived width and changes which edges can hold how many — re-planning the
+tabs exactly as a change of count does. The hand-set sizes are cleared for it now, as they already
+were for the count and for the board-wide width. A per-tab edit of zero or less is ignored too: the
+board-wide pair was guarded and the per-tab ones were not, so a hand-edited project file could put
+two cut runs end to end and cut the profile clean through while the header still counted that tab.
+
 **Still open, and why this entry is `partial`:**
 
 - **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
@@ -3150,6 +3158,12 @@ break-through, pass count, cutter, mirror or per-tab size; a board placed off-ce
 stock; copper layers isolated to different widths; and Settings › Machine and the tool library,
 which shape every line of every program — the bit each layer is cut with is chosen out of that
 library — and belong to the machine that runs the block rather than to the export. "Byte for byte" is a claim about one machine, and the block says so.
+
+**It names the files it does not write.** Dry runs, a probing routine and a levelled copy are built
+by whoever runs the export rather than by the planner, so they are not in the plan and the generator
+cannot see that they were asked for — and a `--dry-run --probe` export put twenty of them in a folder
+whose page said nothing about either flag. One sentence names all three, which beats threading three
+flags through a planner that has nothing to do with them.
 
 **`export --commands` prints the block and writes nothing.** It is the same text the page carries,
 from the same renderer, so the two cannot drift; it is the only way to read the script for an
@@ -4245,7 +4259,7 @@ from that row, the choice is saved with the project and survives a refresh of th
 a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
 the test: it should be usable by hand even with every one of its files unrecognised.
 
-#### 6.32 Say where the project came from — **enhancement · open** — *asked for by the product owner*
+#### 6.32 Say where the project came from — **enhancement · fixed**
 
 From the product owner: *"We should display the gerber folder somewhere so the user knows where the
 project is from."*
@@ -4272,9 +4286,27 @@ Worth saying with it whether the project is a saved `.millburn` file or a folder
 since those behave differently on a refresh, and worth eliding the middle of a long path rather than
 letting it push the panel wide.
 
-**Done when** an open project shows the folder it was imported from, a long path is readable without
-resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
-projects whose folders share a name can be told apart at a glance.
+**Built at the head of Project info**, above the board's size and beside the Import folder button:
+`Gerbers`, and the folder's full path. Absolute, in this platform's separators, wrapping onto a
+second line when it is long, with the same path in a tooltip.
+
+**It was built elided first, and that was the wrong answer to the question.** The entry above talks
+about telling two folders of the same name apart, so the first version kept the root and the last two
+folders and took the middle out — `E:\…\A Rather Long Folder Name\Millburn_Test_Board`. The product
+owner's reply was *"what I would like to know is where the source folder is (where the gerber files
+are)"*, and a path with its middle removed does not say where anything is. It is shown whole now, and
+the view wraps it; a second line costs nothing, and a hidden middle costs the answer.
+
+**Labelled, for the same reason.** A bare path at the top of the panel was read as the project file's
+own location rather than the Gerbers'. The caption says which, and the panel says nothing about the
+`.millburn` file at all — that was offered and declined.
+
+**Two smaller things came from looking at it.** The path was shown exactly as the project recorded
+it, so a board opened as `tests/boards/Millburn_Test_Board` rendered with forward slashes in a window
+of backslashes, and relative to a working directory the operator never sees — which answers *where is
+it* with "it depends where you were standing". And `ProjectOrigin.Full` returns its argument rather
+than throwing when a path cannot be resolved, because it runs while a panel is drawing, off a string
+a project file supplied.
 
 #### 6.33 A superseded preview stops being watched, not stopped — **defect · fixed**
 
@@ -6114,6 +6146,12 @@ as a stack trace. The CLI refuses an empty test now, with the reason, and the pa
 facts. And `--step` was read against `Kind == Depth` rather than against *this test steps a depth*,
 so a step given on a copper coupon was accepted, dropped, and the rungs came out a hundredth apart
 anyway while the generator's own warning told the operator to step 0.010.
+
+**Two more came from a later pass, both in the file read at the machine.** The header said *"a
+hundredth at a time"* whatever `--step` was given, so a coupon cut at 0.020 mm told the operator
+0.010 — and the note that would have contradicted it is not in the program. And its repeat line still
+said *"if they do not measure the same"* on a coupon this entry went out of its way to stop calling
+measurable: the per-line comment had been changed and the header had not.
 
 **Not part of it.** Reading the answer back into the isolation depth. The test writes a number on a
 page and the operator types it into Settings; closing that loop means a project knowing which coupon

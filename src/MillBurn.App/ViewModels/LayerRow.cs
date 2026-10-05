@@ -445,6 +445,18 @@ public sealed partial class LayerRow : ObservableObject
         // A different bit cuts a different width, so the same moat takes a different number of
         // passes. Nothing the operator typed has changed and the answer has.
         RefreshIsolation();
+
+        // **And on an outline layer it re-plans the tabs, so the hand-set sizes go with it.** Found
+        // by `/code-review`, and it is the third door onto the same hazard: the count clears them
+        // just below, and the tabs window clears them when the board-wide width changes. The cutter
+        // is the one nobody had thought of — the profile is offset by its radius before the tabs are
+        // placed, so a wider bit lengthens every straight edge, moves `DefaultWidthFor`, and changes
+        // which edges can hold how many. An edit names a tab by its place in that order.
+        if (Operation == OperationKind.Outline)
+        {
+            TabEdits = [];
+        }
+
         _outputChanged?.Invoke();
     }
 

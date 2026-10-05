@@ -993,6 +993,88 @@ in the same place.
 the window, the full path is available somewhere in full, two projects whose folders share a name can
 be told apart at a glance, and there is a `--shot` of it.
 
+### Closed — 2026-10-05
+
+**At the head of Project info**, above the board's size, where the Import folder button already is:
+`Gerbers`, and the folder's full path. Absolute, in this platform's separators, wrapping when it is
+long, with the same path in a tooltip. Nothing about the `.millburn` file — that was offered and
+declined.
+
+**It was built elided first, and the product owner sent it back.** This story's own text says *"the
+folder the project was imported from, elided in the middle, with the full path available in a
+tooltip"*, and the roadmap entry it came from argues at length about telling two folders of the same
+name apart. So the first version kept the root and the last two folders and took the middle out:
+`E:\…\A Rather Long Folder Name\Millburn_Test_Board`. The reply was *"what I would like to know is
+where the source folder is (where the gerber files are)"* — and a path with its middle removed
+answers *which of the two is this* rather than *where is it*. Those are different questions and the
+plan had the elaboration, not the ask.
+
+**Worth keeping as a lesson rather than only as a fix.** The quoted request is the requirement, and
+everything written under it — here and in the roadmap — is one reading of it, written by whoever
+picked the entry up. This is the first story in the sprint to be sent back, and it was sent back for
+following the reading rather than the sentence. The sentence was the shorter of the two.
+
+**Labelled, because a bare path was read as the project file's own location.** The caption says which
+folder it is. And the path is normalised: a board opened from the command line as
+`tests/boards/Millburn_Test_Board` showed exactly that, forward slashes in a window of backslashes
+and relative to a working directory the operator never sees.
+
+**Four tests, and the one that matters is a negative.** `ADeepPathIsNotShortened` requires every
+segment of an eight-segment path to survive and no ellipsis of either spelling to appear — which is
+the thing that was wrong, asserted so it cannot come back.
+
+1,310 tests and 28 goldens green.
+
+### What the code review found — 2026-10-05, medium
+
+Six, and none of them in this story. The panel is four lines of XAML and one property; what the
+review spent itself on was stories 1, 4 and 5, which is where the code is.
+
+**Changing the outline cutter re-plans the tabs and kept the hand-set sizes.** The third door onto
+the same hazard: the tab count clears them, the tabs window clears them when the board-wide width
+changes, and the cutter — which nobody had thought of — did neither. The profile is offset by the
+cutter's radius *before* the tabs are placed, so a wider bit lengthens every straight edge, moves
+the derived width, and changes which edges can hold how many. An edit names a tab by its place in
+that order. It clears them now, on an outline layer, for the reason the other two do.
+
+**The command block was silent about the files it does not write.** Dry runs, a probing routine and
+a levelled copy are built by whoever runs the export rather than by the planner, so they are not in
+the plan and nothing in the generator can see they were asked for — and `export --dry-run --probe
+--write` put twenty of them in a folder whose page said nothing about either flag. That is this
+class's own standard turned on itself: *"a block that silently leaves a setting out is worse than no
+block, because somebody runs it and gets a different job with no sign that it differs."* It names all
+three now, in one sentence that is always true, rather than threading three flags through a planner
+that has nothing to do with them.
+
+**A per-tab edit of nothing was not a tab either.** `For` re-checks the board-wide sizes for being
+positive — *"this is geometry that cuts a real board, so it does not take anyone's word for it"* —
+and `Edited` applied the per-tab ones unconditionally, so a hand-edited `"WidthNm": 0` in a project
+file put two cut runs end to end and cut the profile clean through while the header still counted
+that tab. The dialog cannot produce it; the project file is the route that does not go through the
+dialog.
+
+**And three about words.** The copper coupon's header said *"a hundredth at a time"* whatever
+`--step` was given, so a coupon cut at 0.020 mm told the operator 0.010 — in the file that is read at
+the machine, where the note that would have contradicted it does not appear. Its repeat line still
+said *"if they do not **measure** the same"* on a coupon this sprint went out of its way to stop
+calling measurable: the per-line comment had been changed and the header had not. And two outline
+layers, one sized by hand and one taking the board's, fell through both the flag and the note, so a
+rebuild would have derived a width for the layer that had one with nothing said.
+
+**The tabs window discarded edits made since it opened.** `Replaced` restored the rows from a
+snapshot taken in the constructor, so a size set by hand and then lost to a width change did not come
+back when the width was typed back — which its own doc said it would. The snapshot is taken at the
+moment the rows stop being about the tabs below them, which is the last moment they are still the
+operator's.
+
+**Four of the six have a regression test that fails without its fix**, each checked by putting the
+fault back. The two that do not are the window and the layer row; nothing in this suite drives
+Avalonia. The mixed tab-size case has no test either, and for a different reason: it needs two
+board-outline programs, which needs two Outline-role layers both going to G-code, and no board in
+the corpus has them. The fix is defence, and this sentence is the record of that.
+
+1,315 tests and 28 goldens green, and the rebuild block still round-trips byte for byte.
+
 ---
 
 ## Story 7 — A tool library you can find a bit in
