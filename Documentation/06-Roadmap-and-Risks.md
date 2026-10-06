@@ -2526,7 +2526,7 @@ holes a millimetre apart each number sat between two of them and belonged to nei
 running left to right was labelled on its right, which put its number on its own arrowhead.
 
 
-#### 6.6 The tool library, once it has more than a handful in it — **enhancement · open**
+#### 6.6 The tool library, once it has more than a handful in it — **enhancement · fixed**
 
 Requested from the workshop: **filter by tool type, sorting, and copy a tool.** All three are the
 same symptom — the list was designed for the six tools it shipped with, and a library grows.
@@ -2569,9 +2569,58 @@ on, and a filter you cannot see is how somebody concludes their tools have vanis
 > and be selected anyway, or the button looks broken. The honest behaviour is to clear the filter
 > rather than to make an exception to it, so what is on screen always matches what the controls say.
 
-**Done when** a library of thirty tools can be sorted by diameter and filtered to end mills, a tool
-can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
-byte-identical after a session that only looked at it.
+**The row was built first, and it was worth more than expected.** A kind mark, the name, and the
+size in a column of its own: a V-bit's tip, an end mill's diameter, nothing for the shipped drill
+whose size comes from the drill file. On this machine's own nine tools that alone makes the list
+scannable — the kinds group visually without being filtered, and `1mm Corn Endmill` sits beside
+`1.2 mm end mill` with their sizes lined up where the names never will be.
+
+**What was left to want, in the order the row left them.** *Sorting by size* earns its place at nine
+tools, let alone thirty: the sizes as the library holds them run 0.13, 0.13, 0.80, 1.00, 2.00, 1.00,
+1.00, 1.20, 0.50, and finding "the 1.2" means reading every row. *Copy* was never about the row and
+is still the one with the most value for the least design. *Filtering* earns the least of the three —
+the kind marks already do its job by eye on a short library — and comes into its own at the thirty
+this entry is written for. All three are built; the ranking is what the row changed.
+
+**Sorted by the size a tool is known by**, which is `ToolView.SizeOf`: the tip for a V-bit, the
+diameter for anything else. A V-bit's `DiameterNm` is its shank — 3.175 mm on every one of them —
+so an order taken from that field would gather the V-bits in a block at a number nobody chose them
+for. The rule lives in `MillBurn.Core` beside the library rather than in the window, so a library of
+thirty can be arranged in a test; the window is the four controls over it.
+
+**The three rules hold.** `ToolView.Copy` gives the copy a new `Guid` and suffixes the name, with the
+name box focused and selected so the first keystroke renames it — and a test asserts the copy equals
+the original once the id and the name are put back, so a field added to `Tool` later is covered
+without anyone remembering to extend it. Nothing in the view writes: `Save` is called from Commit,
+Delete and Copy, all three behind click handlers, and from nowhere else in the application. (An
+earlier draft offered this machine's `tools.json` timestamp as evidence. It is not evidence — the
+operator added a drill to it the same afternoon, which is what the file is for.) New and Copy clear the filter rather than making an exception to
+it, so what is on screen always matches what the buttons say.
+
+**Two dialogs, asked for after the first look at it.** From the workshop: *"How about a confirm
+dialog when deleting a tool please. And when copying a tool, a small dialog for the user to enter the
+new name."*
+
+Delete is the one button in that window that cannot be undone — there is no history, the file is
+written immediately, and the only way back is to retype the tool. The question names the bit rather
+than saying "this tool", because the list and the form are both still on screen behind it and a
+question that does not name its subject is one somebody answers from memory. **And it says what the
+loss costs**: a layer that named the deleted tool falls back to a default the next time its project
+is opened — a different bit, chosen silently — so when the open project cuts with it, the dialog says
+so. The window is told which tools the open board is using for exactly that sentence.
+
+Copy asks first. The button used to make the copy and leave the name box selected, which works if you
+notice and leaves a "1.0 mm end mill (copy)" in the library if you do not. The suffixed name is the
+dialog's *proposal* now, selected so the first keystroke replaces it, and Cancel makes no copy at
+all. `NameWindow` sits beside `ConfirmWindow` rather than inside it: that one answers a question with
+a button and this one answers it with a string, and folding them together would give every
+confirmation an unused text box.
+
+**And a defect found while reading the form.** `Read()` rebuilt the tool from the boxes, and there
+are no boxes for `Flutes` or `FluteLengthNm` — so a tool whose flute count had been set by hand in
+`tools.json` lost it the moment it was saved in the window, silently, and `Flutes` is what the chip
+load is divided by. Nothing in the app can set them yet, so nothing has been lost; the window no
+longer unsets them.
 
 #### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **enhancement · open** — *needs research*
 

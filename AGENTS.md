@@ -51,7 +51,10 @@ sufficient.
   `--fold-checks`, `--settings [--settings-tab X]`, `--about`, `--machine-check [squareness]`, `--align`,
   `--tabs` (the outline's tab sizes, with every tab's place on the board),
   `--testcut [depth|feed|copper]` (the test-cut dialog on whichever of the three, which needs no
-  board),
+  board), `--tools` with `--tools-only [vbits|endmills|drills]` and `--tools-sort
+  [library|name|kind|size]` (the library, filtered and ordered), `--tool-prompt [delete|copy]` (the
+  two questions that window asks, for their wording), `--tools-from <file>` (a library from a path,
+  for photographing a long one without borrowing anybody's),
   `--change <output|thickness|tabs|sizes>` (makes that change the way a click would, so the
   `unsaved changes:` line below can print *yes* — it is the only way to check from a script that an
   edit marks the project changed, which is what decides whether the save/discard prompt appears),

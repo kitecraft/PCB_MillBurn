@@ -1111,6 +1111,127 @@ dropdown, because a filter you cannot see is how somebody concludes their tools 
 can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
 byte-identical after a session that only looked at it.
 
+### Closed — 2026-10-05
+
+**The row first, as the story asked, and it was worth more than expected.** A kind mark, the name,
+and the size in a column of its own — a V-bit's tip, an end mill's diameter, nothing for the shipped
+drill whose size comes from the drill file rather than from the library. On this machine's own nine
+tools that alone makes the list scannable: the kinds group by eye without being filtered, and
+`1mm Corn Endmill` sits beside `1.2 mm end mill` with their sizes lined up where their names never
+will be.
+
+**The judgement the story asked for.** *Sorting by size* earns its place at nine tools, let alone
+thirty — the sizes as the library holds them run 0.13, 0.13, 0.80, 1.00, 2.00, 1.00, 1.00, 1.20,
+0.50, and finding "the 1.2" means reading every row. *Copy* was never about the row and is still the
+one with the most value for the least design. *Filtering* earns the least of the three: the kind
+marks already do its job by eye on a short library, and it comes into its own at the thirty the entry
+is written for. All three are built; what the row changed is the ranking, not the list.
+
+**Sorted by the size a tool is known by.** `ToolView.SizeOf` is the tip for a V-bit and the diameter
+for anything else, because a V-bit's `DiameterNm` is its shank — 3.175 mm on every one of them — and
+an order taken from that field gathers the V-bits in a block at a number nobody chose them for.
+`ThirtyToolsSortByTheSizeTheyAreKnownBy` asserts the V-bits come out *spread through* the order
+rather than bunched, which is the shape of that fault rather than a remembered position.
+
+**The rule is in `MillBurn.Core`, not in the window.** `ToolView.Arrange` takes the library, a kind
+and a sort and returns a new list; the window is the four controls over it. That is what lets a
+library of thirty be arranged in a test, and it is why `ArrangingDoesNotTouchTheLibrary` can state
+the "sort the view, never the file" rule as a property rather than as a comment.
+
+**The three rules hold, and each has its own check.** The copy gets a new `Guid` and a suffixed name,
+and `ACopyCarriesEverythingButTheIdentity` asserts it equals the original once the id and the name are
+put back — so a field added to `Tool` later is covered without anyone remembering to extend the test.
+`Save` is called from Commit, Delete and Copy, all three behind click handlers, and from nowhere else
+in the application. (An earlier draft offered this machine's `tools.json` timestamp as evidence; it is
+not evidence, because the operator added a drill to it the same afternoon.) New and Copy clear the filter rather
+than making an exception to it.
+
+**Two dialogs, asked for after the first look at it.** From the workshop: *"How about a confirm
+dialog when deleting a tool please. And when copying a tool, a small dialog for the user to enter the
+new name."*
+
+Delete is the one button in that window that cannot be undone — there is no history, the file is
+written immediately, and the only way back is to retype the tool. The question names the bit rather
+than saying "this tool", because the list and the form are both still on screen behind it and a
+question that does not name its subject is one somebody answers from memory. **And it says what the
+loss costs**: a layer that named the deleted tool falls back to a default the next time its project
+is opened — a different bit, chosen silently — so when the open project cuts with it, the dialog says
+so. The window is told which tools the open board is using for exactly that sentence.
+
+Copy asks first. The button used to make the copy and leave the name box selected, which works if you
+notice and leaves a "1.0 mm end mill (copy)" in the library if you do not. The suffixed name is the
+dialog's *proposal* now, selected so the first keystroke replaces it, and Cancel makes no copy at
+all. `NameWindow` sits beside `ConfirmWindow` rather than inside it: that one answers a question with
+a button and this one answers it with a string, and folding them together would give every
+confirmation an unused text box.
+
+**A defect found while reading the form.** `Read()` rebuilds the tool from the boxes, and there are no
+boxes for `Flutes` or `FluteLengthNm` — so a tool whose flute count had been set by hand in
+`tools.json` lost it the moment it was saved here, silently, and `Flutes` is what the chip load is
+divided by. Nothing in the app can set them yet, so nothing has been lost; the window no longer
+unsets them. Absorbed into this branch rather than filed, as a defect found in the work is.
+
+**`--tools` grew two flags** — `--tools-only` and `--tools-sort` — so the filtered and sorted list
+can be photographed rather than only the buttons that would produce it.
+
+**`/describe-test` found a comment of mine that was arithmetically wrong, and two assertions weaker
+than they read.** The thirty-tool fixture's doc said its sizes repeat; seven and thirty are coprime,
+so the walk is a permutation and every size is distinct — which turns out to matter, because the sort
+is now asserted *strictly* increasing. Merely non-decreasing is also what a `SizeOf` returning a
+constant would produce, and a stable sort would then leave the insertion order and pass the "V-bits
+are spread, not bunched" check beside it; the two holes lined up. The composition test claimed in its
+own doc that filtering-then-sorting equals sorting-then-filtering and then made a single call, so it
+compares the two now; and it counted the end mills without checking *which* eighteen came back, which
+a filter that swapped one for another would have walked straight past.
+
+1,329 tests and 28 goldens green.
+
+### What the code review found — 2026-10-05, medium
+
+Six, all of them in this story's own window, and the first is the one worth the pass on its own.
+
+**The list stopped scrolling, in exactly the long-library case the story is for.** Putting the two
+new controls above the list made the sidebar a vertical `StackPanel`, which measures its children
+with infinite height — so the `ListBox` reported the height of every row it had and its own scroller
+never engaged. The review reasoned it from Avalonia's measure contract and said plainly that a shot
+of this machine's ten tools would not show it. Against a thirty-tool library it is worse than
+reasoned: the list runs straight off the bottom of the window, there is no scrollbar, and **sixteen
+tools cannot be reached at all**. The feature built for long libraries, broken by long libraries. The
+sidebar is a `Grid` now — two `Auto` rows and a `*` — and a screenshot of the same thirty scrolled to
+the end shows tool 29 and a scrollbar.
+
+**Saving a kind change made the tool vanish.** Filter to End mills, change a tool's Kind to V-bit,
+press Save: the file was written correctly and then the tool was no longer in the filtered list, so
+nothing could be selected, and the empty selection reset the form to a blank new tool. Three wrong
+signals from one correct write. New and Copy already cleared the filter for this reason; Commit was
+the hole in "what is on screen always matches what the buttons say".
+
+**Changing the sort discarded whatever was typed.** Reassigning the list's source clears the
+selection and the selection reloads the form, so a feed rate typed and not yet saved was gone the
+moment the operator sorted the list to find the next bit. Before this story `Refresh` only ran after
+a save, where that was harmless. It is guarded now, so a rebuild of the list does not reload the
+form.
+
+**And three smaller.** After a delete the form loaded the library's first tool rather than the
+list's, so with a filter on it could be editing something no row pointed at while Delete stayed live
+against it — a second click would have deleted a tool nobody selected, with the new confirmation the
+only thing in the way. Copy took the stored tool rather than the form, so edits typed before pressing
+it went into neither the copy nor anywhere else. And the private `Show(Tool?)` overloaded
+`Window.Show`: it bound correctly only because C# drops base-class candidates once a derived one
+applies, and it read at the call site as showing the window twice.
+
+**One claim in this story's own closure was wrong**, and the review did not find it — checking the
+library's timestamp did. The closure offered *"`tools.json` was last written on 26 September"* as
+evidence that looking at the window does not write it. The file was written at 18:48 that afternoon,
+because the operator added a 0.5 mm drill to it. The argument is unchanged and the evidence had to
+be: `Save` is reachable from three click handlers and from nothing else in the application.
+
+**`--tools-from <file>`** loads a library from a path for a screenshot, which is how the thirty-tool
+case was seen. Borrowing the operator's own file to make one is not a thing to do while they are
+using the app.
+
+1,329 tests and 28 goldens green.
+
 ---
 
 ## Story 8 — Rulers, and the pointer's own numbers

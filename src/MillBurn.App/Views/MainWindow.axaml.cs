@@ -369,7 +369,33 @@ public partial class MainWindow : Window
 
         if (args.Contains("--tools", StringComparer.OrdinalIgnoreCase))
         {
-            var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
+            // A library from a file rather than this machine's own, so the window can be
+            // photographed against a long one. The roadmap entry is written for thirty tools and
+            // nobody's real library is going to be thirty on demand — and borrowing the operator's
+            // own file to make it so is not a thing to do while they are using the app.
+            var shown = Argument(args, "--tools-from") is { } file
+                ? ToolLibrary.LoadOrDefault(file)
+                : vm.Library;
+
+            var editor = new ToolLibraryWindow(shown, InUse(vm)) { RequestedThemeVariant = ActualThemeVariant };
+
+            // The two controls the list's story is about, so a screenshot can show the sorted and
+            // filtered list rather than only the buttons that would do it.
+            editor.ShowOnly(
+                Argument(args, "--tools-only")?.ToLowerInvariant() switch
+                {
+                    "vbit" or "vbits" => ToolKind.VBit,
+                    "endmill" or "endmills" => ToolKind.EndMill,
+                    "drill" or "drills" => ToolKind.Drill,
+                    _ => null,
+                },
+                Argument(args, "--tools-sort")?.ToLowerInvariant() switch
+                {
+                    "name" => ToolSort.Name,
+                    "kind" => ToolSort.Kind,
+                    "size" => ToolSort.Size,
+                    _ => ToolSort.Library,
+                });
             editor.Show(this);
             _captureInstead = editor;
         }
@@ -675,6 +701,30 @@ public partial class MainWindow : Window
             }
 
             vm.OnlyToolpath(both);
+        }
+
+        // The two questions the tool library asks, so their wording can be read in a screenshot:
+        // one is only reachable by deleting a tool and the other by copying one, and neither is a
+        // thing to click through on the author's own library to see what it says.
+        if (Argument(args, "--tool-prompt") is { } prompting)
+        {
+            var prompt = prompting.StartsWith("copy", StringComparison.OrdinalIgnoreCase)
+                ? NameWindow.Preview(
+                    "Copy tool",
+                    "A copy of “1.0 mm end mill”, with its own feeds and notes. What is it called?",
+                    "1.0 mm end mill (copy)",
+                    "Copy")
+                : ConfirmWindow.Preview(
+                    "Delete tool",
+                    "Delete “1.0 mm end mill”? The open project cuts with it; those layers will "
+                        + "fall back to a default bit. This cannot be undone.",
+                    "Delete",
+                    null,
+                    canCancel: true);
+
+            prompt.RequestedThemeVariant = ActualThemeVariant;
+            prompt.Show(this);
+            _captureInstead = prompt;
         }
 
         // The confirmation for the reset, so the wording can be read in a screenshot.
@@ -1257,10 +1307,21 @@ public partial class MainWindow : Window
         }
 
         // A dialog is its own top level, so it does not inherit the variant the user chose.
-        var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
+        var editor = new ToolLibraryWindow(vm.Library, InUse(vm)) { RequestedThemeVariant = ActualThemeVariant };
         await editor.ShowDialog(this);
         vm.ReloadLibrary();
     }
+
+    /// <summary>
+    /// The tools the open board's layers are set to cut with.
+    ///
+    /// Passed to the library window so that deleting one can say what it costs: a layer whose saved
+    /// tool has gone falls back to a default the next time the project is opened, silently and to a
+    /// different bit. Empty when no board is open, which is also the honest answer — nothing on
+    /// screen is using anything.
+    /// </summary>
+    private static List<Guid> InUse(MainViewModel vm) =>
+        vm.Layers.Select(r => r.Tool.Id).Distinct().ToList();
 
     private async void OnPreviewClicked(object? sender, RoutedEventArgs e)
     {
