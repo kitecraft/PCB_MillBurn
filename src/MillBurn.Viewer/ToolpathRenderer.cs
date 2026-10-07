@@ -9,8 +9,6 @@ namespace MillBurn.Viewer;
 /// </summary>
 public static class ToolpathRenderer
 {
-    private static readonly float[] GridSteps = [0.1f, 0.5f, 1f, 5f, 10f, 25f, 50f, 100f, 250f];
-
     /// <summary>Travel first, so cut moves read on top of it.</summary>
     public static readonly SegmentStyle[] DrawOrder =
     [
@@ -32,7 +30,8 @@ public static class ToolpathRenderer
         IReadOnlyDictionary<SegmentStyle, SKColor> palette,
         SKColor background,
         SKColor gridColor,
-        RenderOptions? options = null)
+        RenderOptions? options = null,
+        bool ruler = false)
     {
         var opt = options ?? RenderOptions.Default;
         ArgumentNullException.ThrowIfNull(canvas);
@@ -43,7 +42,16 @@ public static class ToolpathRenderer
         canvas.ClipRect(viewport);
         canvas.Clear(background);
 
-        DrawGrid(canvas, viewport, view, gridColor);
+        // **Work zero is this world's own zero.** A toolpath is parsed out of emitted G-code, and
+        // every coordinate in an emitted program is already measured from work zero — so unlike the
+        // board view, whose world is the artwork's arbitrary origin, there is nothing to shift. (The
+        // only scene this view is handed today is the synthetic benchmark, which has no board at
+        // all; its own zero is the only honest answer there too.)
+        var origin = SKPoint.Empty;
+
+        var step = GridLadder.StepFor(view.Scale, 60f);
+
+        DrawGrid(canvas, viewport, view, gridColor, origin, step);
 
         var tier = ToolpathScene.TierForScale(view.Scale);
         var visibleWorld = opt.Cull
@@ -100,6 +108,19 @@ public static class ToolpathRenderer
         paint.PathEffect = null;
 
         canvas.Restore();
+
+        // Over the toolpaths, as the board view draws it over the copper and for the same reason:
+        // zoomed in far enough, the thing being measured fills the viewport.
+        if (ruler)
+        {
+            Ruler.Draw(
+                canvas,
+                viewport,
+                new RulerFrame(view.Scale, view.OffsetX, view.OffsetY),
+                step,
+                background);
+        }
+
         canvas.Restore();
 
         return new DrawResult(tier, inView, drawn);
@@ -130,21 +151,19 @@ public static class ToolpathRenderer
         return new SKRect(left, MathF.Min(a, b), right, MathF.Max(a, b));
     }
 
-    private static void DrawGrid(SKCanvas canvas, SKRect viewport, ViewTransform view, SKColor color)
+    private static void DrawGrid(
+        SKCanvas canvas, SKRect viewport, ViewTransform view, SKColor color, SKPoint origin,
+        float step)
     {
-        // Spacing snaps to a 1/5/10/50 mm ladder so it stays readable across the zoom range.
-        const float TargetPx = 60f;
-        var wanted = TargetPx / view.Scale;
-        var step = GridSteps[^1];
-        foreach (var candidate in GridSteps)
-        {
-            if (candidate >= wanted)
-            {
-                step = candidate;
-                break;
-            }
-        }
-
+        // `step` is handed in rather than worked out again, so the grid and the ruler over it
+        // cannot be drawn to different numbers.
+        //
+        // Its caller asks for sixty pixels rather than the board view's twelve, which is a
+        // difference the two have always had and which nothing said: the same nine spacings were
+        // declared in both files and read with different thresholds, so the two viewports drew
+        // grids of different densities at the same zoom. The ladder is shared now and the threshold
+        // is still each view's own — a toolpath is read for its shape and a dense grid competes
+        // with it.
         using var paint = new SKPaint
         {
             IsAntialias = false,
@@ -164,13 +183,15 @@ public static class ToolpathRenderer
             return;
         }
 
-        for (var x = MathF.Floor(worldLeft / step) * step; x <= worldRight; x += step)
+        // From work zero, as the board view does and for the same reason: the ruler's ticks have to
+        // land on these lines.
+        for (var x = origin.X + (MathF.Floor((worldLeft - origin.X) / step) * step); x <= worldRight; x += step)
         {
             var sx = (x * view.Scale) + view.OffsetX;
             canvas.DrawLine(sx, viewport.Top, sx, viewport.Bottom, paint);
         }
 
-        for (var y = MathF.Floor(worldBottom / step) * step; y <= worldTop; y += step)
+        for (var y = origin.Y + (MathF.Floor((worldBottom - origin.Y) / step) * step); y <= worldTop; y += step)
         {
             var sy = (-y * view.Scale) + view.OffsetY;
             canvas.DrawLine(viewport.Left, sy, viewport.Right, sy, paint);

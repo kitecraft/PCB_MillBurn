@@ -65,6 +65,15 @@ public sealed record AppSettings
     public string? LastExportFolder { get; init; }
 
     /// <summary>
+    /// Whether the viewport draws a scale along its top and left edges.
+    ///
+    /// Remembered beside the theme because it is the same kind of preference: how somebody likes to
+    /// look at a board, not anything about the board. On by default, because the reason it was asked
+    /// for is that the size of what is on screen was being guessed at.
+    /// </summary>
+    public bool ShowRuler { get; init; } = true;
+
+    /// <summary>
     /// Whether an export also writes a dry run of each program.
     ///
     /// Remembered because it is a habit rather than a decision: someone who wants to watch a job

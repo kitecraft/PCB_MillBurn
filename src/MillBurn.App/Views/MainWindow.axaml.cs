@@ -424,6 +424,13 @@ public partial class MainWindow : Window
 
                     break;
 
+                // Builds the job on stock, which moves work zero to the stock's corner. The one
+                // change that alters what the pointer readout calls zero, so it is the only way to
+                // photograph the other half of that line.
+                case "blank":
+                    vm.UseBlank = true;
+                    break;
+
                 // The tabs window's own route in, which is not a binding like the others.
                 case "sizes":
                     if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
@@ -701,6 +708,37 @@ public partial class MainWindow : Window
             }
 
             vm.OnlyToolpath(both);
+        }
+
+        // The View menu's toggle, without writing the preference to the real settings file.
+        //
+        // **It is what tells a working binding from a coincidence.** Both the setting and the
+        // control's own property default to on, so every shot of the ruler looks the same whether
+        // the binding reaches the viewport or not; this is the only one that would change if it
+        // did not. Set on the view model, so it travels the path the menu item travels.
+        if (args.Contains("--no-ruler", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.RememberRuler(false);
+        }
+
+        // Pixels per millimetre and the board point to centre, so a shot can be taken at the zoom
+        // a bridge is inspected at and not only at whole-board.
+        if (Argument(args, "--zoom") is { } zoom && Millimetres(zoom) is { Length: 3 } how
+            && !Viewport.ZoomTo((float)how[0], new Point(how[1], how[2])))
+        {
+            Console.WriteLine("zoom: ignored — there is no board laid out to zoom into.");
+        }
+
+        // The ruler's two live readings, which need a pointer and a drag and so cannot be reached
+        // headlessly any other way. Board millimetres, as the readout prints them.
+        if (Argument(args, "--pointer") is { } pointer && Millimetres(pointer) is { Length: 2 } at)
+        {
+            Viewport.PointerAt = new Point(at[0], at[1]);
+        }
+
+        if (Argument(args, "--measure") is { } measure && Millimetres(measure) is { Length: 4 } span)
+        {
+            Viewport.MeasureFrom(new Point(span[0], span[1]), new Point(span[2], span[3]));
         }
 
         // The two questions the tool library asks, so their wording can be read in a screenshot:
@@ -1310,6 +1348,24 @@ public partial class MainWindow : Window
         var editor = new ToolLibraryWindow(vm.Library, InUse(vm)) { RequestedThemeVariant = ActualThemeVariant };
         await editor.ShowDialog(this);
         vm.ReloadLibrary();
+    }
+
+    /// <summary>Comma-separated millimetres from a screenshot flag, or null if that is not what it is.</summary>
+    private static double[]? Millimetres(string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var values = new double[parts.Length];
+
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if (!double.TryParse(parts[i], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out values[i]))
+            {
+                return null;
+            }
+        }
+
+        return values;
     }
 
     /// <summary>

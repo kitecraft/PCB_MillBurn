@@ -65,7 +65,7 @@ laser's gantry, which is a frame to be shimmed and not a line of code.
 | [6.52](../Documentation/06-Roadmap-and-Risks.md#652-a-test-cut-that-finds-where-the-copper-stops--enhancement--open--asked-for-by-the-product-owner) | A test cut that finds where the copper stops | The product owner, 2026-09-27: *"A new test for copper thickness"* |
 | [6.32](../Documentation/06-Roadmap-and-Risks.md#632-say-where-the-project-came-from--enhancement--open--asked-for-by-the-product-owner) | Say where the project came from | The product owner: *"We should display the gerber folder somewhere"* |
 | [6.6](../Documentation/06-Roadmap-and-Risks.md#66-the-tool-library-once-it-has-more-than-a-handful-in-it--enhancement--open) | A tool library you can find a bit in | The workshop: filter by tool type, sorting, and copy a tool |
-| [6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--open) + [6.48](../Documentation/06-Roadmap-and-Risks.md#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--open--asked-for-in-the-workshop) | Rulers, and the pointer's own numbers | The workshop, twice: a scale down the edges, and *"display the coordinates"* |
+| [6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--fixed) + [6.48](../Documentation/06-Roadmap-and-Risks.md#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--fixed--asked-for-in-the-workshop) | Rulers, and the pointer's own numbers | The workshop, twice: a scale down the edges, and *"display the coordinates"* |
 | [6.56](../Documentation/06-Roadmap-and-Risks.md#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30) | A finding takes you to the copper it is about | The product owner, the day after the findings view shipped |
 
 **The order is the product owner's, with one insertion.** Seven of these were ranked on 2026-09-30
@@ -1238,10 +1238,10 @@ using the app.
 
 **Problem.** Asked for in the workshop twice, a week apart. A scale down the left edge and along the
 top of the viewport, so the size of what is on screen can be read rather than guessed at
-([6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--open)); and *"Put a small
+([6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--fixed)); and *"Put a small
 rectangular display in the top right corner of the UI and have it display the coordinates. Also, if
 possible turn the mouse into a crosshair"*
-([6.48](../Documentation/06-Roadmap-and-Risks.md#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--open--asked-for-in-the-workshop)).
+([6.48](../Documentation/06-Roadmap-and-Risks.md#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--fixed--asked-for-in-the-workshop)).
 
 **It has a reader now, which it did not have when it was written.** The findings view prints a
 coordinate for every place the copper stays joined — *"44.05, 30.31 mm"*, from the board's lower-left
@@ -1287,6 +1287,143 @@ throughout, and mixing units in one view is how a wrong number gets read confide
 pointer's position reads continuously with its origin named, the cursor is a crosshair over the
 canvas and an arrow everywhere else, the measuring drag gives dx, dy and the diagonal, the setting
 survives a restart, and a `--shot` at whole-board and at bridge zoom shows both.
+
+### Closed — 2026-10-06
+
+**One ladder, and it had already drifted into two.** `GridLadder.Steps` holds the nine spacings once;
+`BoardRenderer` and `ToolpathRenderer` each took their own copy before, one picking the first past
+twelve screen pixels and the other the first past sixty, so the two viewports drew grids of different
+densities at the same zoom and nothing said so. The ruler ticks against the number the grid was drawn
+with, which is what makes the agreement structural rather than a thing to keep checking.
+
+**The ladder behaved as the story predicted.** Whole-board on the Mega reads 0 to 100 in tens; at
+90 px/mm it reads 39.5, 40, 40.5 — the 0.5 mm majors the story wrote down in advance, out of the
+ladder rather than out of a second rule.
+
+**It was drawn under the board, and only a screenshot would ever have said so.** Under the board
+reads perfectly at whole-board zoom: the strips sit in the margin and nothing reaches them. At bridge
+zoom copper fills the viewport and the ruler disappeared completely — at exactly the zoom it is for.
+The mockup chosen on 2026-09-30 was B, floating over the board, and a thing that floats over the
+board has to be drawn after it. Both renderers now draw it last.
+
+**The frame, not the board.** Zero is the lower-left corner of the rectangle the emitted programs are
+referenced to, which is the stock's on a job built on stock and the board's otherwise — the same
+`Frame` the exporter shifts by and the preview draws over. So the line under the readout says *from
+the board's corner* or *from the stock's corner* according to what the open project actually has,
+rather than naming one and being wrong on the other. `--change blank` was added to photograph the
+second case: on `Millburn_Test_Board` with stock, the ruler runs 0 to 90 across the 88.63 mm blank
+and the readout says *from the stock's corner*, which is the corner the checks panel calls work zero
+three lines below it.
+
+**And photographing it found a defect that is not this story's — [6.57](../Documentation/06-Roadmap-and-Risks.md#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--open--found-while-building-61-2026-10-06).**
+With no preview built, ticking *Build on stock* does not rebuild the scene at all: `OnOutputChanged`
+returns early when nothing is drawn, so the viewport keeps the board's frame while the panel beside
+it already describes the stock. Press Preview and both correct themselves. The readout code is right
+— it reads whatever frame the scene was built to — and the frame is stale. Written up rather than
+fixed here, because the fix is in the preview-interruption guard and that is not this story.
+
+**It is a defect the ruler created the conditions to see.** Before this story nothing on screen said
+which corner the view was referenced to, so a stale frame showed only as a board that did not move.
+Now it is a number, and a wrong number is read and believed.
+
+**The readout clears when the pointer leaves the canvas.** Left at its last value it is a number that
+looks live and is not, which is the unnamed-origin fault wearing a different coat.
+
+**The measuring drag reports both sides as well as the hypotenuse.** Shift-drag, because the plain
+drag is pan and pan is what the hand does without thinking. dx and dy are what somebody moving a
+machine types; reading them off a diagonal is arithmetic. Backwards keeps the sign on each side and
+not on the distance.
+
+**`--shot` had no way to reach a zoom or a pointer, so three flags were added.** `--zoom` centres a
+board point at a given pixels-per-millimetre, `--pointer` places the readout, `--measure` runs a drag
+between two points, and `--change blank` builds the job on stock — the live readings cannot be reached headlessly any other way, and the
+story's own Done-when asks for a shot at bridge zoom.
+
+**`--zoom` was wrong on its first use, and the shot is what said so.** Asked for the bridge at
+y 30.31, it centred y 293: world y counts *against* board y from the frame's rectangle, which is the
+renderer's flip and the one sign here easy to get backwards. A board-height out and twice. Fixed, and
+`BoardYCountsUpTheScreen` states the two directions separately rather than as a round trip — a
+mapping that negated y in both directions would round-trip perfectly and still draw it upside down.
+
+**`--no-ruler` exists because every other shot proves nothing about the binding.** The setting and the
+control's property both default to on, so a broken binding would produce shots identical to a working
+one. That flag is the only one that changes if the toggle does not reach the viewport. It goes through
+`RememberRuler`, which keeps the value for the session without writing the file: a shot is taken
+against whatever settings file is on the machine and must not leave the operator's rulers switched
+off. The real file's checksum is unchanged across every run taken for this story.
+
+**The guide lines were invisible over copper.** The two sides of the measuring triangle were white at
+alpha 0x55, which reads on bare substrate and disappears on a trace — and a board is mostly trace. The
+first shot that showed them was over the one part of the Mega that is not copper. 0xAA now.
+
+**Remembered, and an upgrade does not take it away.** `View ▸ Show rulers`, a checked menu item bound
+two-way to the preference so the tick is the stored value rather than a copy of it.
+`TheRulerIsOnUnlessItWasTurnedOff` covers both halves: a settings file with no key for it reads back
+on, and one written off reads back off.
+
+**That test failed first, for the right reason.** The fixture was written in camelCase and the reader
+is case-sensitive, so the file did not parse at all — which returns defaults, which made the
+"defaults to on" assertion pass while proving nothing. The Theme assertion beside it is what caught
+that, and is why it is there.
+
+1,337 tests and 28 goldens green. Shots at whole-board, at 90 px/mm with a measuring drag, with the
+rulers off, and both stock cases are in `WorkingFolder/V0.5.0/Rulers`.
+
+### What the code review found — 2026-10-06, medium
+
+Eight findings, seven fixed and one already written up as 6.57.
+
+**The one that was already known, and the half of it that was not.** The readout's origin and the
+ruler's zero go stale when the frame changes without a preview — that is 6.57, found while
+photographing the stock case and recorded before the review ran. What the review added is that
+`OriginNameProperty` was missing from `AffectsRender`, so even once the frame is rebuilt the string
+changing on its own would not repaint. In the list now.
+
+**`--no-ruler` could have turned the operator's rulers off for good, and nearly proved it.** It went
+through `RememberSettings`, whose own doc comment says the quiet part: *"It still survives a restart,
+because closing the window saves the placement, and that goes through `SaveSettings` and writes the
+whole object — this value with it."* It did not happen, only because `SavePlacement` returns early
+when the window was given a `--shot` or a `--size` — a guard in another file, written for another
+reason, that this was leaning on without saying so.
+
+**And the hazard was not hypothetical: a run taken for this very story wrote that file.** The
+checksum was unchanged across the first few shots, which is what the closing note claimed; it changed
+later, over the `--change blank --preview` run, and `"ShowRuler": true` is in the author's settings
+now. True is the default and no harm was done — but had the flag been a `Settings` value at that
+moment it would have been written as false. It is a `bool?` field the settings record never sees now,
+and a run combining `--no-ruler` with a preview leaves the file byte-identical.
+
+**A hover re-rendered the whole board.** `PointerAt` was in `AffectsRender`, and
+`BoardDrawOperation.Equals` always returns false, so every mouse sample re-executed the draw — every
+layer path and the grid — including with the rulers switched off, where nothing on screen could
+change. Sweeping a dense board cost nothing before this feature and costs nothing again: the two
+handlers invalidate for themselves, and only when there is something to redraw.
+
+**"Letting go ends it" was only true of letting go.** `_measureFrom` was cleared in
+`OnPointerReleased` and nowhere else, so alt-tabbing mid-measure — or anything else that cancels a
+capture — left the dashed line and its dx/dy tracking the pointer on every later hover, forever.
+`OnPointerCaptureLost` ends it too.
+
+**A dash effect leaked once per frame of a drag.** `SKPaint.Dispose` does not dispose an attached
+path effect, which is why `BoardRenderer` disposes its own by hand; the measuring triangle's guides
+built a fresh one every frame. One static now.
+
+**The grid step was computed twice in each renderer** — once for the grid and once for the ruler.
+They agreed, which is exactly the state the two copies of the ladder were in before they drifted. It
+is passed in now, so a changed threshold cannot reach only one of them.
+
+**`--zoom` failed silently and did not clamp.** It is called during `OnOpened`, before any guaranteed
+layout pass, so the early return is reachable — and a shot that quietly came out at the whole-board
+fit would read as *the ladder gives 5 mm majors at bridge zoom*, a false claim in a picture. It
+returns a bool and the shot line says so. And `--zoom 100000` now lands at the wheel's own 8000
+px/mm, reading 44 to 44.1 in tenths, rather than a state no gesture could produce or undo.
+
+**The "mm" legend sat on top of the first left-hand number.** A label's baseline is three pixels
+above its tick, so a tick just under the top strip put its digits in the corner the legend occupies —
+and the legend, drawn last, showed the number through itself. Ten pixels of clearance.
+
+1,337 tests and 28 goldens still green, and the bridge, clamp and rulers-off shots were retaken after
+the fixes.
 
 ---
 

@@ -265,6 +265,14 @@
                         <MenuItem Header="_Expand all layer settings" Click="OnExpandLayersClicked" />
                         <MenuItem Header="_Collapse all layer settings" Click="OnCollapseLayersClicked" />
                         <Separator />
+                        <!--
+                            A ToggleMenuItem bound two-way rather than a Click handler: the tick is
+                            the stored preference rather than a copy of it, so it cannot drift from
+                            what the viewport is doing.
+                        -->
+                        <MenuItem Header="Show _rulers" ToggleType="CheckBox"
+                                  IsChecked="{Binding ShowRuler, Mode=TwoWay}" />
+                        <Separator />
                         <MenuItem Header="Toggle light / _dark" Click="OnToggleThemeClicked" />
                     </MenuItem>
 
@@ -1046,11 +1054,15 @@
             <GridSplitter Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
 
             <Panel Grid.Column="2">
-                <ctl:BoardView x:Name="Viewport" Scene="{Binding Scene}" />
+                <ctl:BoardView x:Name="Viewport"
+                               Scene="{Binding Scene}"
+                               ShowRuler="{Binding ShowRuler}"
+                               OriginName="{Binding OriginName}" />
 
                 <!-- Kept for the fpstest harness: it measures the real Phase 0 render loop. -->
                 <ctl:ToolpathView x:Name="ToolpathViewport"
                                   Scene="{Binding ToolpathScene}"
+                                  ShowRuler="{Binding ShowRuler}"
                                   IsVisible="False" />
 
                 <Border IsVisible="{Binding ShowingNothing}"

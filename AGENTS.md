@@ -58,6 +58,11 @@ sufficient.
   `--change <output|thickness|tabs|sizes>` (makes that change the way a click would, so the
   `unsaved changes:` line below can print *yes* — it is the only way to check from a script that an
   edit marks the project changed, which is what decides whether the save/discard prompt appears),
+  `--zoom <px-per-mm>,<x>,<y>` (centres a board point at a given zoom, so a shot can be taken at the
+  scale a single bridge is inspected at), `--pointer <x>,<y>` and `--measure <x1>,<y1>,<x2>,<y2>`
+  (the ruler's readout and its measuring drag, which need a pointer and a drag and so cannot be
+  reached headlessly any other way), `--no-ruler` (the View menu's toggle, for this run only — it is
+  what tells a working binding from the control's own default, since both are on),
   `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
   `--probe` are handled before the UI starts. `--check` runs *Job ▸ Check this board* and nothing
   else, so the checks panel can be photographed with **no export planned** — which `--preview`

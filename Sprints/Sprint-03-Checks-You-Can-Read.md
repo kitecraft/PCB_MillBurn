@@ -871,7 +871,7 @@ lands:
 | 4 | [6.52](../Documentation/06-Roadmap-and-Risks.md#652-a-test-cut-that-finds-where-the-copper-stops--enhancement--open--asked-for-by-the-product-owner) | Its guide page wants the builder items 2 and 3 will have been in; design questions already answered 2026-09-27 |
 | 5 | [6.32](../Documentation/06-Roadmap-and-Risks.md#632-say-where-the-project-came-from--enhancement--open--asked-for-by-the-product-owner) | The smallest item on the list |
 | 6 | [6.6](../Documentation/06-Roadmap-and-Risks.md#66-the-tool-library-once-it-has-more-than-a-handful-in-it--enhancement--open) · G21 | |
-| 7 | [6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--open) | |
+| 7 | [6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--fixed) | |
 
 **6.4 carries something closer to a bug than an enhancement, and it should not wait unnoticed
 inside a feature.** A pass counts as "tabbed" once it is deeper than

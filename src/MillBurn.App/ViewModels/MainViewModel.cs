@@ -51,7 +51,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _findingsRun.Dispose();
     }
 
+    // The readout's origin changes with the frame, and the frame is what the scene was built from,
+    // so the one notification covers both — a blank turned on rebuilds the scene.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OriginName))]
     public partial BoardScene? Scene { get; set; }
 
     [ObservableProperty]
@@ -322,6 +325,40 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Remembers light or dark, so the app opens the way it was closed.</summary>
     public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
+
+    /// <summary>
+    /// Whether the viewport carries its scale strips.
+    ///
+    /// Written through to the settings file on every change rather than on close, so a crash does
+    /// not lose it and the View menu's tick is the stored value rather than a copy of it.
+    /// </summary>
+    public bool ShowRuler
+    {
+        get => _rulerForThisSession ?? Settings.ShowRuler;
+        set
+        {
+            if (Settings.ShowRuler == value)
+            {
+                return;
+            }
+
+            SaveSettings(Settings with { ShowRuler = value });
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// What the pointer readout calls zero, in the operator's words.
+    ///
+    /// The frame every emitted file is referenced to is the stock's rectangle when the job is built
+    /// on stock and the board's otherwise, and the viewport measures from its lower-left corner. A
+    /// coordinate is only worth reading if its origin is stated, and on a job with a blank the
+    /// answer is not the one somebody would assume.
+    /// </summary>
+    public string OriginName =>
+        Frame.IsEmpty || _board is null || Frame == _board.Bounds
+            ? "from the board's corner"
+            : "from the stock's corner";
 
     /// <summary>
     /// Remembers how wide the board pane was left.
@@ -2144,6 +2181,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// trade against writing to disk twenty-eight times a drag.
     /// </summary>
     private void RememberSettings(AppSettings settings) => Settings = settings;
+
+    /// <summary>
+    /// Turns the rulers off for this session only, for the <c>--no-ruler</c> screenshot.
+    ///
+    /// Session-only on purpose: a shot is taken against whatever settings file is on the machine,
+    /// and taking one must not leave the operator's rulers turned off afterwards.
+    /// </summary>
+    public void RememberRuler(bool shown)
+    {
+        _rulerForThisSession = shown;
+        OnPropertyChanged(nameof(ShowRuler));
+    }
+
+    /// <summary>
+    /// The <c>--no-ruler</c> override, held apart from <see cref="Settings"/> on purpose.
+    ///
+    /// **It went through `RememberSettings` first, and that was wrong.** That method's own doc says
+    /// what the fault is: *"It still survives a restart, because closing the window saves the
+    /// placement, and that goes through `SaveSettings` and writes the whole object — this value with
+    /// it."* So a screenshot run would have turned the operator's rulers off for good. It did not,
+    /// only because `SavePlacement` returns early when the window was given a `--shot` or a
+    /// `--size` — a guard in a different file, for a different reason, that this was relying on
+    /// without saying so. A field the settings record never sees cannot be written out by anything.
+    /// </summary>
+    private bool? _rulerForThisSession;
 
     // ------------------------------------------------------------------ presenting
 

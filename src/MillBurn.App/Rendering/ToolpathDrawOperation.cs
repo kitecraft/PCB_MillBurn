@@ -21,6 +21,7 @@ internal sealed class ToolpathDrawOperation(
     IReadOnlyDictionary<SegmentStyle, SKColor> palette,
     SKColor background,
     SKColor gridColor,
+    bool ruler,
     Action<FrameStats> onFrameRendered) : ICustomDrawOperation
 {
     public Rect Bounds => bounds;
@@ -48,7 +49,9 @@ internal sealed class ToolpathDrawOperation(
             view,
             palette,
             background,
-            gridColor);
+            gridColor,
+            options: null,
+            ruler);
 
         var elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started)
             * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

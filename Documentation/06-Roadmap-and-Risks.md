@@ -2075,7 +2075,7 @@ somebody outside can report a fault. The product owner's own defects live here u
 development slows enough for a tracker to be worth the second place to look; when that changes, this
 note should change with it.
 
-#### 6.1 Rulers — **enhancement · open**
+#### 6.1 Rulers — **enhancement · fixed**
 
 Requested from the workshop: a scale down the left edge and along the top of the viewport, so the
 size of what is on screen can be read rather than guessed at.
@@ -2140,6 +2140,33 @@ worth keeping in mind is A, the opaque gutter, which never puts a tick over copp
 grid's step ladder gives 5 mm majors with 1 mm minors; zoomed to a single bridge it gives 0.5 mm
 majors with 0.1 mm minors. Both read well, and both come out of the existing ladder rather than a
 second rule — which is the point of reusing it.
+
+**Built, and the ladder behaved as predicted.** `GridLadder` holds the nine spacings once;
+`BoardRenderer` and `ToolpathRenderer` both take theirs from it, and the ruler ticks against the
+same number the grid drew with, so the two cannot disagree. On the Mega the whole-board shot reads
+0 to 100 in tens and the shot at 90 px/mm reads 39.5, 40, 40.5 — the 0.5 mm majors this paragraph
+predicted, from the ladder rather than from a second rule.
+
+**There were two of that ladder, and they had already drifted.** The same nine numbers were declared
+in `BoardRenderer` and again in `ToolpathRenderer`, one taking the first spacing past twelve screen
+pixels and the other the first past sixty, so the two viewports drew grids of different densities at
+the same zoom and nothing said so. Merging them is what this entry's own argument about disagreement
+asks for, one level down.
+
+**It was drawn under the board first, and a screenshot is the only thing that would have caught it.**
+Under the board reads perfectly on a whole board — the strips sit in the margin, nothing reaches them
+— and vanishes entirely at bridge zoom, where copper fills the viewport and the ruler is exactly what
+you want. Which is this entry's own mockup decision, arrived at from the other direction: B floats
+over the board, and a thing that floats over the board has to be drawn after it.
+
+**The readout and the measuring drag came with it**, both from
+[6.48](#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--fixed): the position in the
+top right with its origin named under it, and shift-drag for dx, dy and the diagonal. The drag
+reports both sides as well as the hypotenuse, because dx and dy are what somebody moving a machine
+types and reading them off a diagonal is arithmetic.
+
+**On and remembered**, under View ▸ Show rulers, stored beside the theme. A settings file written by
+an earlier build has no key for it and reads back on, so nobody loses their rulers to an upgrade.
 
 #### 6.2 Climb or conventional — **enhancement · open** — *low priority*
 
@@ -5919,7 +5946,7 @@ reasoning is in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria).
    from a memory of a format is worse than none. (The app itself never talks to a machine —
    [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
 
-#### 6.48 Where the pointer is, in the board's own numbers — **enhancement · open** — *asked for in the workshop*
+#### 6.48 Where the pointer is, in the board's own numbers — **enhancement · fixed** — *asked for in the workshop*
 
 From the bench, 2026-09-25: *"Put a small rectangular display in the top right corner of the UI and
 have it display the coordinates. Also, if possible turn the mouse into a crosshair."*
@@ -5944,6 +5971,23 @@ named beside the numbers rather than assumed.
 **Done when** the pointer's position shows continuously in board coordinates while it is over the
 canvas, the readout says which origin it is measured from, and the cursor is a crosshair over the
 canvas and an arrow everywhere else. A screenshot of a fault carries its own coordinate.
+
+**Built with [6.1](#61-rulers--enhancement--fixed), which is where the panel sits.** A box in the top
+right, two decimals — the resolution the findings view prints, so a reader comparing the two does not
+have to decide whether a difference is real — and under the numbers, in smaller text, what zero is.
+
+**The origin question was answered the way this entry guessed, and then made conditional.** The
+board's lower-left is right for most jobs, but a job built on stock is referenced to the stock's
+corner, and that is the frame the viewport draws in and the exporter shifts by. So the line reads
+*from the board's corner* or *from the stock's corner* according to which frame the open project
+actually has, rather than naming one of them and being wrong on the other.
+
+**Cleared when the pointer leaves the canvas**, rather than left at the last position. A readout
+frozen where the pointer was when it went to the menu bar is a number that looks live and is not,
+which is the same fault as an unnamed origin in a different coat.
+
+**The crosshair** is on `BoardView` itself, so it is the cursor over the canvas and the arrow
+everywhere else, as asked.
 
 #### 6.49 A slider drag writes the settings file on every tick — **defect · fixed**
 
@@ -6399,5 +6443,37 @@ nothing is measured from it, and calling it a selection would invite both. Measu
 copper is legible, the marker names what it is, and it clears by each of the routes above — with a
 `--shot` of the before and after.
 
-**Requires:** [6.1](#61-rulers--enhancement--open) is not a prerequisite, but the two were asked for
+**Requires:** [6.1](#61-rulers--enhancement--fixed) is not a prerequisite, but the two were asked for
 together and the ruler is what lets an operator confirm the view went where it said it would.
+
+#### 6.57 Ticking "Build on stock" does not move the viewport onto the stock — **defect · open** — *found while building 6.1, 2026-10-06*
+
+The board scene is built to the job's frame — `Frame.IsEmpty ? board.Bounds : Frame` — and that is
+the stock's rectangle when the job is built on stock. The comment above that call says so: *"Fitted
+to the stock rather than to the board, when there is stock … fitting to the board put the blank's own
+toolpath just off screen, which is the one thing you would want to look at before running it."*
+
+**It does not happen until something else rebuilds the scene.** Ticking the box calls `SaveBlank`,
+which calls `OnOutputChanged`, which returns early when `_backplot.Count == 0 && !stopped` — nothing
+is drawn, so there is nothing to clear. That guard is right for what it was written for and wrong
+here: the frame has changed, and the frame is what the scene is built to.
+
+**Seen because the ruler made it visible.** With a board loaded and no preview, ticking *Build on
+stock* on `Millburn_Test_Board` leaves the ruler reading 0 at the board's corner and the pointer
+readout saying *from the board's corner*, while the panel beside it already says the stock is
+88.63 × 86.09 mm and the checks say *"its lower-left corner is work zero for every other file in
+this export"*. Press Preview and both correct themselves: 0 to 90 across the stock, and *from the
+stock's corner*.
+
+**Why it is a defect rather than untidiness.** The window is stating a work zero that the files it
+would write do not use. Before 6.1 nothing on screen said which corner the view was referenced to,
+so the stale frame showed only as a board that did not move; now it is a number, and a number that
+is wrong is read and believed.
+
+**Half of it is already fixed.** `/code-review` found that `OriginNameProperty` was missing from
+`BoardView`'s `AffectsRender` list, so even once the frame *is* rebuilt the origin line changing on
+its own would not have repainted. That is in; what remains is the rebuild itself.
+
+**Done when** turning the blank on or off, or changing its size, moves the viewport onto the new
+frame with no preview built — and a `--shot` with `--change blank` and no `--preview` reads from the
+stock's corner.
