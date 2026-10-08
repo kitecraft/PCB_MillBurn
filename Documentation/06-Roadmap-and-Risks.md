@@ -6398,7 +6398,7 @@ elsewhere.
 whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
 window opens without a visible stall.
 
-#### 6.56 A finding takes you to the copper it is about — **enhancement · open** — *asked for by the product owner, 2026-09-30*
+#### 6.56 A finding takes you to the copper it is about — **enhancement · fixed** — *asked for by the product owner, 2026-09-30*
 
 From the product owner, the day after 6.44's findings view shipped: *"The Findings box is great,
 especially being non-modal. Having the rulers in the viewer so the user can find and zoom into the
@@ -6443,6 +6443,35 @@ nothing is measured from it, and calling it a selection would invite both. Measu
 copper is legible, the marker names what it is, and it clears by each of the routes above — with a
 `--shot` of the before and after.
 
+**Built, and the ruler is what confirms it went where it said.** Every coordinate in the list is a
+button; clicking one takes the viewport to that place at 14 mm across — the span
+`E-zoomed-to-finding.png` shows, reading 37.0 to 51.0 — and rings it. The ruler then reads 37 to 51
+with a pointer on the strip at 44 and another at 30, which is how the picture proves the view arrived
+rather than merely claiming it.
+
+**The mark is drawn twice, dark underneath.** It has one colour and the board has two extremes, bare
+substrate and bright copper, and a single stroke that reads on one disappears into the other. The
+first shot of it put a pink ring on orange copper that could barely be found — the same fault
+[6.1](#61-rulers--enhancement--fixed)'s measuring guides had, found the same way.
+
+**The label carries both lines in one box**, because closing the findings window does not clear the
+mark and a ring with nothing beside it names nothing. It was split at first, the coordinate boxed and
+the nets loose underneath in the mark's own colour, which is unreadable over copper; and the box was
+sized from the nets line while containing only the coordinate, so a long net name gave a box three
+times the width of its contents.
+
+**The coordinate is the button**, rather than a *go to* control beside it. The verb belongs on the
+noun, and the noun is already the only part of that line anybody reads twice.
+
+**`Marker.CoordinateOf` formats a place the way the findings view does**, so the ring and the line
+that was clicked cannot disagree about a rounding — two decimals in both, which is what lets a reader
+comparing them take a difference as real.
+
+**Clearing works as designed above.** Picking another place moves it; Escape clears it with the
+viewport focused, and the view stays where it is, because somebody who cleared the ring is looking at
+that copper on purpose; a new check, preview or export clears it; panning, zooming and closing the
+findings window do not.
+
 **Requires:** [6.1](#61-rulers--enhancement--fixed) is not a prerequisite, but the two were asked for
 together and the ruler is what lets an operator confirm the view went where it said it would.
 
@@ -6477,3 +6506,161 @@ its own would not have repainted. That is in; what remains is the rebuild itself
 **Done when** turning the blank on or off, or changing its size, moves the viewport onto the new
 frame with no preview built — and a `--shot` with `--change blank` and no `--preview` reads from the
 stock's corner.
+
+#### 6.58 Findings were reported from the board's corner on a job built on stock — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`BoardFindings.Shifted` moved every located gap so that zero was **`board.Bounds`**' lower-left. The
+exporter references its programs to the job's *frame*, which is the blank's rectangle when there is
+one — and the checks panel says so in words, three lines from the findings window: *"Cut the stock
+before anything else, and keep it the right way up — its lower-left corner is work zero for every
+other file in this export."*
+
+**So the list printed a number in one frame while naming another.** On the Mega with its default
+10 mm border, every coordinate in the findings view was 10 mm low in both axes against the work zero
+the emitted files use. An operator reading *"44.05, 30.31 mm"* off that list and driving there would
+have arrived 14 mm away, diagonally, on a board whose traces are 0.15 mm apart.
+
+**It had been on screen since [6.44](#644-where-the-copper-stays-joined--enhancement--fixed) and
+looked like a plausible coordinate.** Printed, nothing contradicts it. It took
+[6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--fixed), the first thing to
+consume these coordinates geometrically rather than print them, to put the error somewhere it could
+be seen: the ring landed ten millimetres from the bridge it was labelled with, which at the 14 mm
+zoom that feature goes to is most of the viewport.
+
+**And it took two other defects to make it visible at all.** The first attempt to photograph it
+looked correct, because [6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--open--found-while-building-61-2026-10-06)
+means ticking *Build on stock* does not move the viewport onto the stock — so both frames were still
+the board's and they agreed. A preview, which does rebuild, is what separated them.
+
+**Fixed by passing the frame in.** `BoardFindings.For` takes the rectangle the programs are
+referenced to; the view model hands it `Frame`, the same property the exporter shifts by and the
+viewport draws in. The same bridge now reads 44.05, 30.31 with no stock and 54.05, 40.31 with a
+10 mm border, and the ring lands on the same copper either way.
+
+**The sentinel was a trap of its own.** The parameter was written `Bounds frame = default`, meaning
+"no frame given". `default(Bounds)` is `(0, 0, 0, 0)` and `Bounds.IsEmpty` tests `MinX > MaxX`, so it
+reads as a real frame whose corner is the origin — and every existing caller silently got a shift of
+nothing. `AGapIsReportedInTheFrameTheMachineWorksIn` caught it, because it asserts a located gap
+lands inside the board rather than matching a remembered number. The parameter is `Bounds?` now, and
+`NoFrameMeansTheBoardsOwn` states the distinction.
+
+#### 6.59 The findings cancellation test stopped the run before it started — **defect · fixed** — *found by `/describe-test`, 2026-10-07*
+
+`BoardFindingsTests.ARunStoppedPartWayThroughSaysSo` passed `after: first.Index` to
+`CancelsAfterLayers` — the position of the first isolation layer in `board.Layers`, which on the
+Mega is **zero**. The wrapper cancels once its lookup count exceeds `after`, so the very first
+`TryGetValue` turned the token and the abandoned run reported **no layers at all**.
+
+Both of its assertions passed on that: the run was cancelled, and nought is fewer than two. So a
+test named *a run stopped part way through says so* was proving that a run stopped **before it
+started** says so — which a single check at the top of the method satisfies, and nothing in it would
+have failed if the per-layer cancellation it exists for had been removed.
+
+**This is the `LatestRun` fault again**, the one CLAUDE.md cites as the reason `/describe-test`
+exists, in a different file and found the same way. And `PlanningCancellationFixture` warns about
+exactly it, three files away: *"`Reached` counts lookups, not layers… A test that cancels after two
+and calls that 'two layers in' has actually stopped the run before it started planning anything."*
+The warning was written for the planner and the findings test did it anyway.
+
+**Fixed with `after: 1` and an `Assert.NotEmpty`.** The abandoned run now reports one layer of the
+two, so it has demonstrably finished a layer and then been stopped, and the new assertion is what
+says so. A literal rather than an index computed from the board, because the computed one is what
+made it depend on a layer ordering nobody was looking at.
+
+**Still not covered:** cancellation *inside* the gap search, which is the expensive part and, by
+`BoardFindings`' own comment, the reason the method takes a token at all. This test exercises the
+check between layers. Said here rather than left as a silence, because the gap between the two is
+what the entry above was hiding.
+
+#### 6.60 The findings window stays open over the next board — **defect · fixed** — *reported from the bench, 2026-10-07*
+
+From the product owner: *"The findings dialog is not closed when opening a recent project or upon
+close project."*
+
+**The property that makes it useful is what left it behind.** It is the only non-modal window the
+application opens from a real handler — every other is a `ShowDialog` — and non-modal is the thing
+the original request named first, because it lets the list sit beside the board while the view
+moves. But nothing held a reference to it, so nothing could shut it: it stayed up over the next
+board, listing places on the last one, with the old board's name in its own title bar.
+
+**Worse than a stale marker, which is the same fault one level down.** A marker that outlives its
+board at least sits on the board it is wrong about, so the mismatch is in front of you. This sits in
+a separate window where nothing contradicts it.
+
+**Closed from `Adopt`**, which is the one place a board is replaced: importing a folder, opening a
+project, and closing one — which is `NewProject`, which is `Adopt` with an empty project — all
+arrive there, and a layer edit, a preview or an export does not. One event, instead of five call
+sites each remembering to say so.
+
+**A list rather than a single reference**, because F7 opens another window every time it is pressed
+and nothing stops two being up at once. Holding only the latest would have left the earlier ones
+exactly as they are today, which is the reported fault still happening and harder to describe.
+
+**Both doors were photographed**, because the report named both. `--close-project` and
+`--open-project <path>` run those two after everything else, and the capture now prints
+`findings windows open: N` — the only way a script can see a window that should have gone, since it
+is its own top level and a shot of the main window cannot show what is behind it. Opening the
+findings and touching nothing prints 1; either door prints 0.
+
+#### 6.61 The pointer readout froze when the pointer left the canvas — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`OnPointerExited` set `PointerAt` to null and nothing redrew, so the coordinate box stayed on screen
+showing wherever the pointer was when it left — the exact *"number that looks live and is not"* the
+method's own doc comment says it exists to prevent.
+
+**It was correct when written and broken by the next fix.** `PointerAt` was in `AffectsRender`, so
+clearing it repainted for free. The review before this one found that this made every mouse sample
+re-render the whole board, including with the rulers off; taking the property out of that list was
+right, and it left this method setting a value nothing would draw. One fix, one regression, one
+review apart.
+
+It invalidates for itself now, and only when the strips are on — for the same reason the property
+came out of `AffectsRender` in the first place.
+
+#### 6.62 The rulers could not be turned back on after `--no-ruler` — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`MainViewModel.ShowRuler` reads `_rulerForThisSession ?? Settings.ShowRuler` and its setter compared
+the incoming value against `Settings.ShowRuler` alone. Launch with `--no-ruler` and no `--shot` — the
+flag is handled either way — and the override says off while the file says on: the View menu renders
+unticked, ticking it asks for `true`, the setter sees that equals the stored value, returns early,
+raises nothing, and the two-way binding snaps the tick straight back.
+
+**The session-only field was added by the previous review** to stop a screenshot run writing the
+preference to the operator's settings file, which it would have done through the window-placement
+save on close. Correct, and it introduced a second reader of the same preference without teaching
+the writer about it. The setter compares against the effective value now and clears the override,
+because the override has served its purpose the moment somebody uses the menu.
+
+#### 6.63 `--only stock --commands` said the export writes nothing — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`BlankOnlyPlan` builds its own `ExportPlan` and never filled `Commands`, which only
+`ExportPlanner.Plan` does. So `--commands` found an empty list and printed *"This export writes no
+files, so there is nothing to rebuild. Run it without --commands to see why."* with exit 1 — about an
+export that writes a stock-cutting program, as running the same command without `--commands` shows.
+
+A refusal that states something untrue about what it refused is worse than the missing feature behind
+it: the message sends somebody to look for a reason that is not there.
+
+**`--only stock` needed saying, and `OutputKind` cannot say it.** That enum has svg and gcode, which
+pick which outputs of the board to write; stock-only writes the stock and none of the board. A
+`StockOnly` flag on `CliScriptContext` rather than a new enum member, so no writer that switches on
+`OutputKind` gains a case that is not an output. The emitted command was run: one file,
+`Millburn_Test_Board.stock.nc`.
+
+#### 6.64 The tabs window named the board's corner on a job built on stock — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+The heading said *"measured from the board's lower-left corner — which is where the machine's
+zero is"* flatly, while `MainViewModel.PlannedTabs` shifts each position through
+`ExportPlanner.Placed(t.At, frame, …)` and `frame` is the blank's rectangle when there is one. So on
+a stock job every position listed was the stock's and the sentence said the board's.
+
+**The same defect as [6.58](#658-findings-were-reported-from-the-boards-corner-on-a-job-built-on-stock--defect--fixed--found-by-code-review-2026-10-07), in the next window along, found by the next review.**
+The class's own doc already stated the correct rule; the heading did not follow it. It takes
+`originName` now — the same `MainViewModel.OriginName` the pointer readout uses — rather than
+asserting one. On the test board the four tabs read 79.13, 30.34 with 10 mm of stock and 69.13,
+20.34 without, and the heading changes with them.
+
+**Worth noting what this says about the pattern.** Three windows in this sprint have printed a
+coordinate while naming the wrong origin, and each was found only when something else made the two
+disagree visibly. Anything that prints a position should take its origin's name from the frame it
+was shifted by, not state one.

@@ -77,7 +77,8 @@ public sealed class TabsWindow : Window
         long? widthNm,
         long? heightNm,
         long derivedWidthNm,
-        long derivedHeightNm)
+        long derivedHeightNm,
+        string originName)
     {
         ArgumentNullException.ThrowIfNull(tabs);
 
@@ -95,7 +96,7 @@ public sealed class TabsWindow : Window
         _width = Box(widthNm ?? derivedWidthNm, 0.5, 2, 0.5, 20);
         _height = Box(heightNm ?? derivedHeightNm, 0.05, 2, 0.05, 2);
 
-        Content = Body(boardLabel);
+        Content = Body(boardLabel, originName);
 
         // **Changing the box at the top moves the tabs that agreed with it**, and a `/code-review`
         // pass is why. Without this the control was inert and worse than inert: `Apply` decides a
@@ -159,7 +160,17 @@ public sealed class TabsWindow : Window
     private static long? Nanometres(NumericUpDown box) =>
         box.Value is { } value ? Nm.FromMillimetres((double)value) : null;
 
-    private Grid Body(string boardLabel)
+    /// <remarks>
+    /// `originName` is what zero is in the operator's words — the stock's corner on a job built on
+    /// stock, the board's otherwise — and it is **supplied rather than asserted**. The heading used
+    /// to say "the board's lower-left corner" flatly, while `MainViewModel.PlannedTabs` shifts each
+    /// position through `ExportPlanner.Placed(t.At, frame, …)`, and `frame` is the blank's
+    /// rectangle when there is one. So on a job built on stock the numbers were the stock's and the
+    /// sentence said the board's — the same mislabelled origin 6.58 had just been fixed for in the
+    /// findings view, found by the next review in the next window along. This class's own doc
+    /// already states the correct rule; the heading did not follow it.
+    /// </remarks>
+    private Grid Body(string boardLabel, string originName)
     {
         var root = new Grid
         {
@@ -182,8 +193,8 @@ public sealed class TabsWindow : Window
                 ? $"{boardLabel} has no tabs: either none were asked for, or they would take up the whole profile. "
                     + "The piece comes free on the last pass."
                 : $"{_tabs.Count} on {boardLabel}, one centred on each straight edge the profile has room for. "
-                    + "Each position is on the cut line, half a cutter outside the board, measured from the "
-                    + "board's lower-left corner — which is where the machine's zero is.",
+                    + $"Each position is on the cut line, half a cutter outside the board, {originName} "
+                    + "— which is where the machine's zero is.",
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
         }, "TextSecondary"));
@@ -463,11 +474,13 @@ public sealed class TabsWindow : Window
         long? widthNm,
         long? heightNm,
         long derivedWidthNm,
-        long derivedHeightNm)
+        long derivedHeightNm,
+        string originName)
     {
         ArgumentNullException.ThrowIfNull(owner);
 
-        var window = new TabsWindow(boardLabel, tabs, widthNm, heightNm, derivedWidthNm, derivedHeightNm)
+        var window = new TabsWindow(
+            boardLabel, tabs, widthNm, heightNm, derivedWidthNm, derivedHeightNm, originName)
         {
             RequestedThemeVariant = owner.ActualThemeVariant,
         };

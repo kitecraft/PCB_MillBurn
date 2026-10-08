@@ -20,6 +20,7 @@ internal sealed class BoardDrawOperation(
     bool ruler,
     RulerReadout? readout,
     RulerMeasure? measure,
+    BoardMarker? marker,
     Action<double, BoardRenderer.DrawResult> onFrameRendered) : ICustomDrawOperation
 {
     public Rect Bounds => bounds;
@@ -49,7 +50,8 @@ internal sealed class BoardDrawOperation(
             gridColor,
             ruler,
             readout,
-            measure);
+            measure,
+            marker);
 
         var elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started)
             * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

@@ -28,7 +28,8 @@ public static class BoardRenderer
         SKColor gridColor,
         bool ruler = false,
         RulerReadout? readout = null,
-        RulerMeasure? measure = null)
+        RulerMeasure? measure = null,
+        BoardMarker? marker = null)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(scene);
@@ -42,6 +43,13 @@ public static class BoardRenderer
         // rectangle's *bottom*.
         var origin = new SKPoint(scene.Bounds.Left, scene.Bounds.Bottom);
         var step = GridLadder.StepFor(view.Scale);
+
+        // One frame for the ruler and the marker both, so a mark cannot land somewhere the scale
+        // beside it disagrees with.
+        var frame = new RulerFrame(
+            view.Scale,
+            (origin.X * view.Scale) + view.OffsetX,
+            (origin.Y * view.Scale) + view.OffsetY);
 
         DrawGrid(canvas, viewport, view, gridColor, origin, step);
 
@@ -109,17 +117,14 @@ public static class BoardRenderer
         // are window furniture at a fixed size, not artwork that scales with the zoom.
         if (ruler)
         {
-            Ruler.Draw(
-                canvas,
-                viewport,
-                new RulerFrame(
-                    view.Scale,
-                    (origin.X * view.Scale) + view.OffsetX,
-                    (origin.Y * view.Scale) + view.OffsetY),
-                step,
-                background,
-                readout,
-                measure);
+            Ruler.Draw(canvas, viewport, frame, step, background, readout, measure);
+        }
+
+        // After the ruler, so the crosshairs and the two strip pointers land on top of the strips
+        // they are pointing at rather than under them.
+        if (marker is { } place)
+        {
+            Marker.Draw(canvas, viewport, frame, place, ruler);
         }
 
         canvas.Restore();

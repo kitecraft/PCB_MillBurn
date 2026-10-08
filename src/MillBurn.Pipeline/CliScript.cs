@@ -27,6 +27,16 @@ public sealed record CliScriptContext
 
     public OutputKind? Only { get; init; }
 
+    /// <summary>
+    /// True when this export was <c>--only stock</c>, which <see cref="Only"/> cannot say.
+    ///
+    /// **A separate flag because it is a separate kind of narrowing.** `--only svg` and
+    /// `--only gcode` pick which outputs of the board to write; `--only stock` writes the stock
+    /// and none of the board. `OutputKind` has no member for it, and inventing one would put a
+    /// non-output in an enum every writer switches on.
+    /// </summary>
+    public bool StockOnly { get; init; }
+
     public JobOptions Job { get; init; } = new();
 
     /// <summary>Set only for the aligned re-export, which is a second command.</summary>
@@ -204,7 +214,11 @@ public static class CliScript
             flags.Add("--svg-marks " + Word(context.Marks));
         }
 
-        if (context.Only is { } only)
+        if (context.StockOnly)
+        {
+            flags.Add("--only stock");
+        }
+        else if (context.Only is { } only)
         {
             flags.Add("--only " + Word(only));
         }

@@ -76,6 +76,23 @@ public sealed class BoardView : Control
         set => SetValue(OriginNameProperty, value);
     }
 
+    /// <summary>
+    /// The place a finding took the view to, or null when there is none.
+    ///
+    /// **Not a selection.** Nothing acts on it and nothing is measured from it; it answers "which
+    /// one did I click" and nothing else. It survives panning and zooming, because exploring around
+    /// the place is the entire point, and it survives the findings window closing, which is why it
+    /// carries its own label.
+    /// </summary>
+    public static readonly StyledProperty<BoardMarker?> MarkerProperty =
+        AvaloniaProperty.Register<BoardView, BoardMarker?>(nameof(Marker));
+
+    public BoardMarker? Marker
+    {
+        get => GetValue(MarkerProperty);
+        set => SetValue(MarkerProperty, value);
+    }
+
     /// <summary>Where a measuring drag started, in board millimetres, or null when none is running.</summary>
     private Point? _measureFrom;
 
@@ -112,7 +129,8 @@ public sealed class BoardView : Control
         //
         // `OriginName` is in, because the line under the readout is drawn from it: on a job built on
         // stock it changes without the scene's own reference changing.
-        AffectsRender<BoardView>(SceneProperty, ShowRulerProperty, OriginNameProperty);
+        AffectsRender<BoardView>(
+            SceneProperty, ShowRulerProperty, OriginNameProperty, MarkerProperty);
         FocusableProperty.OverrideDefaultValue<BoardView>(true);
     }
 
@@ -211,6 +229,83 @@ public sealed class BoardView : Control
         _fittedFor = scene;
         InvalidateVisual();
         return true;
+    }
+
+    /// <summary>
+    /// Goes to a place on the board and marks it.
+    ///
+    /// **Zooms as well as centres**, because a bridge is a fraction of a millimetre across: at
+    /// whole-board zoom it is smaller than a pixel, and centring alone would leave the operator
+    /// looking at the same board with a mark they cannot see.
+    /// </summary>
+    /// <param name="place">Where, and what to call it.</param>
+    /// <returns>False when there was nothing to go to — no scene, or no layout yet.</returns>
+    public bool GoTo(BoardMarker place)
+    {
+        if (!ZoomTo(
+            MillBurn.Viewer.Marker.ScaleFor((float)Bounds.Width, (float)Bounds.Height),
+            new Point(place.At.X, place.At.Y)))
+        {
+            return false;
+        }
+
+        Marker = place;
+        return true;
+    }
+
+    /// <summary>
+    /// Takes the mark off the board.
+    ///
+    /// The view stays where it is. Somebody who went to a finding and then cleared the ring is
+    /// looking at that copper on purpose, and moving them away again would undo the thing they
+    /// asked for.
+    /// </summary>
+    public void ClearMarker() => Marker = null;
+
+    /// <summary>
+    /// A mark means nothing once the rectangle its coordinates are measured from has moved.
+    ///
+    /// **The three handlers were not enough.** Check, preview and export clear it because the
+    /// findings it came from are stale, but the board can be replaced without any of them: Refresh
+    /// source re-reads the Gerbers, and opening or dropping a project swaps the board entirely. Go
+    /// to a finding, re-plot in KiCad, press Refresh, and the ring stayed where it was with the old
+    /// coordinate and the old net names over copper from a different board — the exact failure the
+    /// clearing rule was written to prevent, through the one door it did not cover.
+    ///
+    /// Keyed on the scene's extent rather than on the scene object, because that is the thing the
+    /// coordinates are relative to. Panning, zooming and hiding a layer leave it alone, which is
+    /// what the rule asks for; re-importing, opening another board, or turning stock on and moving
+    /// work zero do not.
+    /// </summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == SceneProperty
+            && Marker is not null
+            && (change.OldValue as BoardScene)?.Bounds != (change.NewValue as BoardScene)?.Bounds)
+        {
+            ClearMarker();
+        }
+    }
+
+    /// <summary>
+    /// Escape takes the mark off, when the viewport has focus.
+    ///
+    /// Handled only when there is one, so Escape keeps whatever other meaning it has everywhere
+    /// else — a key that silently swallows itself on a control that had nothing to dismiss is how a
+    /// dialog stops closing.
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && Marker is not null)
+        {
+            ClearMarker();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 
     /// <summary>
@@ -345,6 +440,20 @@ public sealed class BoardView : Control
     protected override void OnPointerExited(PointerEventArgs e)
     {
         PointerAt = null;
+
+        // **Clearing it is not enough on its own.** `PointerAt` was in `AffectsRender` when this
+        // was written, so setting it repainted for free; taking it out — to stop a bare hover
+        // redrawing the whole board — left this method setting a value nothing would draw. The
+        // readout then stayed on screen showing the last position, which is precisely the number
+        // that looks live and is not, this method's whole reason for existing.
+        //
+        // Only when the strips are on, for the same reason they came out of `AffectsRender`: with
+        // them off there is no readout to take away.
+        if (ShowRuler)
+        {
+            InvalidateVisual();
+        }
+
         base.OnPointerExited(e);
     }
 
@@ -378,6 +487,7 @@ public sealed class BoardView : Control
                     new SKPoint((float)first.X, (float)first.Y),
                     new SKPoint((float)now.X, (float)now.Y))
                 : null,
+            Marker,
             OnFrameRendered));
     }
 

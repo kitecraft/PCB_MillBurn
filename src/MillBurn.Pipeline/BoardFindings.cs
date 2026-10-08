@@ -118,10 +118,24 @@ public static class BoardFindings
     /// reason this needs one at all. A quarter of a second per layer is long enough that a window
     /// which cannot abandon an answer it no longer wants will be noticed.
     /// </param>
+    /// <param name="frame">
+    /// The rectangle the emitted programs are referenced to, whose lower-left corner every
+    /// coordinate in the result is measured from. Null means the board's own bounds, which is what
+    /// a job with no stock uses and what every caller that does not care should pass.
+    ///
+    /// **Nullable rather than defaulting to <see cref="Bounds.Empty"/>**, which an optional
+    /// parameter cannot do — it is not a compile-time constant. `default(Bounds)` looks like the
+    /// right sentinel and is not: it is `(0, 0, 0, 0)`, a zero-area rectangle at the origin, and
+    /// `IsEmpty` tests `MinX > MaxX`, so it reads as a real frame whose corner is zero. Written
+    /// that way first, and every three-argument caller silently got a shift of nothing — which the
+    /// suite caught, because `AGapIsReportedInTheFrameTheMachineWorksIn` asserts a located gap
+    /// lands inside the board rather than against a remembered number.
+    /// </param>
     public static Result For(
         Board board,
         IReadOnlyDictionary<string, LayerOutputSettings> settings,
         ToolLibrary library,
+        Bounds? frame = null,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(board);
@@ -157,7 +171,9 @@ public static class BoardFindings
             // on has no groups to point at, and paying a quarter of a second to find bridges nobody
             // can name would be spending the operator's time on an answer this view cannot use.
             var gaps = check.Ran
-                ? Shifted(ElectricalCheck.Gaps(layer.Area, layer.Nets, options, token), board.Bounds)
+                ? Shifted(
+                    ElectricalCheck.Gaps(layer.Area, layer.Nets, options, token),
+                    frame is { IsEmpty: false } f ? f : board.Bounds)
                 : [];
 
             // **`Gaps` hands back what it has when the token turns, so the check belongs here and
@@ -193,8 +209,21 @@ public static class BoardFindings
     }
 
     /// <summary>
-    /// Moves located gaps into the frame the operator's machine is in: the board's lower-left
-    /// corner as zero, which is where every emitted program puts work zero.
+    /// Moves located gaps into the frame the operator's machine is in: the lower-left corner of the
+    /// rectangle every emitted program is referenced to.
+    ///
+    /// **Which is not always the board's.** It was the board's unconditionally, and on a job built
+    /// on stock that is wrong by the border — ten millimetres on the Mega's default, in both axes.
+    /// The exporter shifts by the blank's rectangle when there is one, and the checks panel says so
+    /// in words three lines from this window: *"Cut the stock before anything else, and keep it the
+    /// right way up — its lower-left corner is work zero for every other file in this export."* So
+    /// the list was printing a number in one frame while naming another, and an operator typing it
+    /// into a controller would have driven to the wrong place.
+    ///
+    /// Found by 6.56, which is the first thing to consume these coordinates geometrically rather
+    /// than print them: the ring landed ten millimetres from the bridge it was labelled with, which
+    /// at the zoom it goes to is most of the viewport. Printed, the same error had been on screen
+    /// since 6.44 and looked like a plausible number.
     ///
     /// **Done here rather than in <see cref="ElectricalCheck"/>**, which knows about copper and
     /// nothing about boards. A shift applied down there would be a geometry module guessing at a

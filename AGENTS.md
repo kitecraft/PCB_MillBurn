@@ -59,7 +59,11 @@ sufficient.
   `unsaved changes:` line below can print *yes* — it is the only way to check from a script that an
   edit marks the project changed, which is what decides whether the save/discard prompt appears),
   `--zoom <px-per-mm>,<x>,<y>` (centres a board point at a given zoom, so a shot can be taken at the
-  scale a single bridge is inspected at), `--pointer <x>,<y>` and `--measure <x1>,<y1>,<x2>,<y2>`
+  scale a single bridge is inspected at), `--goto <n>` with `--findings` (presses the nth place in
+  the findings list, because a screenshot cannot click — and the shot is then of the board rather
+  than of the list, which is what that flag is for), `--clear-marker` (what Escape does to it), `--close-project` and
+  `--open-project <path>` (which run after every other flag, so what an open window does when its
+  board goes can be seen — the capture prints `findings windows open: N`), `--pointer <x>,<y>` and `--measure <x1>,<y1>,<x2>,<y2>`
   (the ruler's readout and its measuring drag, which need a pointer and a drag and so cannot be
   reached headlessly any other way), `--no-ruler` (the View menu's toggle, for this run only — it is
   what tells a working binding from the control's own default, since both are on),

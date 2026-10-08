@@ -319,6 +319,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Warnings.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ChecksSummary));
     }
 
+    /// <summary>
+    /// The board has been replaced or closed, so anything describing the old one is now wrong.
+    ///
+    /// **From the bench, 2026-10-07:** *"The findings dialog is not closed when opening a recent
+    /// project or upon close project."* It is not modal — which is the property that makes it
+    /// useful, so it can sit open beside the board — and nothing was holding it, so nothing could
+    /// shut it. It stayed up over the next board, listing places on the last one.
+    /// </summary>
+    public event EventHandler? BoardReplaced;
+
     /// <summary>Remembers where the window was, so it opens where it was left.</summary>
     public void SaveWindowPlacement(WindowPlacement placement) =>
         SaveSettings(Settings with { Window = placement });
@@ -337,10 +347,19 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         get => _rulerForThisSession ?? Settings.ShowRuler;
         set
         {
-            if (Settings.ShowRuler == value)
+            // **Against what the getter returns, not against the stored value.** Compared with the
+            // setting alone, a session started with `--no-ruler` could never turn them back on:
+            // the override says off, the file says on, so the menu renders unticked and ticking it
+            // asks for `true`, which equals the stored value, returns early, raises nothing — and
+            // the two-way binding snaps the tick straight back.
+            if (ShowRuler == value)
             {
                 return;
             }
+
+            // The override has served its purpose the moment somebody uses the menu; leaving it
+            // would make the stored value unreachable for the rest of the session.
+            _rulerForThisSession = null;
 
             SaveSettings(Settings with { ShowRuler = value });
             OnPropertyChanged();
@@ -1672,6 +1691,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return null;
         }
 
+        // Read on this thread before the work goes to the pool: `Frame` walks the layer rows and
+        // the project's settings, which belong to the UI.
+        var frame = Frame;
+
         var token = _findingsRun.Begin();
 
         if (token.IsCancellationRequested)
@@ -1686,7 +1709,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             result = await Task.Run(
-                () => BoardFindings.For(request.Board, request.Outputs, request.Library, token), token)
+                () => BoardFindings.For(
+                    request.Board, request.Outputs, request.Library, frame, token), token)
                 .ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -2213,6 +2237,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         // A program made from the previous board is not a program for this one.
         ForgetProgram();
+
+        // **Nor is a window describing it.** Raised here because this is the one place a board is
+        // replaced: importing a folder, opening a project, and closing one — which is
+        // `NewProject`, which is this with an empty project — all arrive through it, and a layer
+        // edit or a preview does not. Anything holding a view of the old board hears once, instead
+        // of five call sites each remembering to say so.
+        BoardReplaced?.Invoke(this, EventArgs.Empty);
 
         DetachProject(_project);
         _project = project;

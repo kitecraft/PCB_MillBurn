@@ -2213,7 +2213,31 @@ internal static class Program
                 : "Stock: this job is not built on stock. Add --stock, or tick Build on stock in Project info.");
         }
 
-        return new ExportPlan { Items = item is null ? [] : [item], Skipped = skipped, Blank = blank };
+        var plan = new ExportPlan { Items = item is null ? [] : [item], Skipped = skipped, Blank = blank };
+
+        // **Built here because nothing else does it for this plan.** `ExportPlanner.Plan` fills
+        // `Commands` at the end of its own run, and this path does not go through it — so
+        // `--only stock --commands` found an empty list and said *"This export writes no files, so
+        // there is nothing to rebuild"* about an export that writes a stock-cutting program. A
+        // refusal that states something untrue about what it refused is worse than the missing
+        // feature behind it.
+        var library = ToolLibrary.LoadOrDefault();
+
+        return plan with
+        {
+            Commands = CliScript.For(plan, new CliScriptContext
+            {
+                Source = Path.GetFileName(board.Source ?? "board"),
+                Board = board,
+                Settings = settings,
+                Library = library,
+                BoardThicknessNm = Nm.FromMillimetres(thicknessMm),
+                StockOnly = true,
+                Job = job,
+                Marks = app.Machine.SvgPlacingLayers,
+                Framing = framing ?? ProgramFraming.None,
+            }),
+        };
     }
 
     /// <summary>

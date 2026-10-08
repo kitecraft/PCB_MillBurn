@@ -14,7 +14,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 | [6.57](06-Roadmap-and-Risks.md#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--open--found-while-building-61-2026-10-06) | Ticking "Build on stock" does not move the viewport onto the stock | found while building 6.1, 2026-10-06 |
 
-## Enhancements (12)
+## Enhancements (11)
 
 Something new or better, which is not the same as something broken.
 
@@ -31,7 +31,6 @@ Something new or better, which is not the same as something broken.
 | [6.51](06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--open--six-paths-and-counting) | There is no single place that says "this picture is no longer true" | six paths and counting |
 | [6.54](06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | The checks panel cannot show a cancelled run | found by `/code-review`, 2026-09-29 |
 | [6.55](06-Roadmap-and-Risks.md#655-the-findings-view-costs-about-twice-what-it-needs-to-and-cannot-be-interrupted--enhancement--open--found-by-code-review-at-xhigh-2026-09-30) | The findings view costs about twice what it needs to, and cannot be interrupted | found by `/code-review` at xhigh, 2026-09-30 |
-| [6.56](06-Roadmap-and-Risks.md#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30) | A finding takes you to the copper it is about | asked for by the product owner, 2026-09-30 |
 
 ## Part-built (4)
 
@@ -61,4 +60,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**19 open**, of 57 entries in the roadmap.
+**18 open**, of 64 entries in the roadmap.

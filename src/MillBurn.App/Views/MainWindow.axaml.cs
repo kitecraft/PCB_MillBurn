@@ -11,9 +11,12 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using MillBurn.Align;
 using MillBurn.App.ViewModels;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
+using MillBurn.Viewer;
+using SkiaSharp;
 
 namespace MillBurn.App.Views;
 
@@ -47,6 +50,7 @@ public partial class MainWindow : Window
             if (DataContext is MainViewModel vm)
             {
                 vm.RedrawRequested += (_, _) => Viewport.InvalidateVisual();
+                vm.BoardReplaced += (_, _) => CloseFindings();
 
                 // Refilled each time the empty panel comes back, because opening or saving a
                 // project in between changes the list.
@@ -632,7 +636,8 @@ public partial class MainWindow : Window
                 outline.TabWidthNm,
                 outline.TabHeightNm,
                 planning.DerivedWidthNm,
-                planning.DerivedHeightNm)
+                planning.DerivedHeightNm,
+                vm.OriginName)
             {
                 RequestedThemeVariant = ActualThemeVariant,
             };
@@ -844,8 +849,49 @@ public partial class MainWindow : Window
                 RequestedThemeVariant = ActualThemeVariant,
             };
 
+            window.PlacePicked += GoToPlace;
+            Watch(window);
+
+            // Presses the nth place in the list, because clicking one is the whole of this story
+            // and a screenshot cannot click. Counted over the window's own order, so what it picks
+            // is what an operator reading top to bottom would pick.
             window.Show(this);
             _captureInstead = window;
+
+            // Presses the nth place in the list, because clicking one is the whole of this story
+            // and a screenshot cannot click. Counted from one, over the window's own order, so what
+            // it picks is what an operator reading top to bottom would pick.
+            //
+            // **And the shot is then of the board, not of the list.** What this flag is for is
+            // where the viewport went and what it marked; the list is already photographable with
+            // `--findings` alone, and it is still open behind — which is the non-modal property the
+            // request named first.
+            //
+            // **It says when it could not.** Silence here is the fault `--zoom` already guards
+            // against: a shot that quietly came out as the whole board with no ring is a false
+            // claim in a picture, and the first board tried for this — one whose copper comes
+            // apart cleanly — listed nothing at all and produced exactly that.
+            if (Argument(args, "--goto") is { } nth)
+            {
+                GoneTo(args, window, nth);
+            }
+        }
+
+        // Closes or replaces the project after everything above, so that what a findings window
+        // does when its board goes can be seen in a script: the count printed at capture must be
+        // nought. Both doors, because the bench report named both — *"opening a recent project or
+        // upon close project"* — and a fix argued to cover the second by reading the code is not
+        // the standard anything else here is held to.
+        if (args.Contains("--close-project", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.CloseProject();
+            _captureInstead = null;
+        }
+
+        if (Argument(args, "--open-project") is { } other)
+        {
+            vm.OpenProject(other);
+            _captureInstead = null;
         }
 
         // Folds the checks section, which is the half of it no screenshot could otherwise reach:
@@ -913,6 +959,11 @@ public partial class MainWindow : Window
                     {
                         Console.WriteLine($"unsaved changes: {(shown.Project.IsDirty ? "yes" : "no")}");
                     }
+
+                    // A findings window describes a board. Printed because it is the only way a
+                    // script can see one that should have gone: it is its own top level, so a shot
+                    // of the main window cannot show whether it is still up behind.
+                    Console.WriteLine($"findings windows open: {_findings.Count}");
                 }
                 catch (Exception ex) when (ex is IOException or InvalidOperationException)
                 {
@@ -1383,6 +1434,7 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel vm)
         {
+            Viewport.ClearMarker();
             await vm.PreviewAsync();
         }
     }
@@ -1391,6 +1443,7 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel vm)
         {
+            Viewport.ClearMarker();
             await vm.CheckBoardAsync();
         }
     }
@@ -1418,8 +1471,118 @@ public partial class MainWindow : Window
             RequestedThemeVariant = ActualThemeVariant,
         };
 
+        window.PlacePicked += GoToPlace;
+        Watch(window);
+
         window.Show(this);
         _captureInstead = window;
+    }
+
+    /// <summary>
+    /// Every findings window currently open, so they can be shut when their board goes.
+    ///
+    /// **A list rather than one reference**, because F7 opens another every time it is pressed and
+    /// nothing stops two being up at once. Holding only the latest would have left the earlier ones
+    /// exactly as they are today — open over the next board — which is the reported fault still
+    /// happening, just less often and harder to describe.
+    /// </summary>
+    private readonly List<FindingsWindow> _findings = [];
+
+    private void Watch(FindingsWindow window)
+    {
+        _findings.Add(window);
+
+        // Dropped when the operator shuts it themselves, so this does not accumulate every window
+        // the session has ever opened and try to close them all again later.
+        window.Closed += (_, _) => _findings.Remove(window);
+    }
+
+    /// <summary>
+    /// Shuts every open findings window.
+    ///
+    /// **From the bench, 2026-10-07:** *"The findings dialog is not closed when opening a recent
+    /// project or upon close project."* A list of places on a board that is no longer loaded is
+    /// the same fault as a marker that outlives its board, one level up — and worse, because the
+    /// marker at least sits on the board it is wrong about, while this sits in its own window with
+    /// the old board's name in the title bar.
+    ///
+    /// Over a copy, because closing each one raises `Closed`, which removes it from the list.
+    /// </summary>
+    private void CloseFindings()
+    {
+        foreach (var window in _findings.ToList())
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The <c>--goto</c> flag: presses one row and reports when it could not.
+    /// </summary>
+    private void GoneTo(string[] args, FindingsWindow window, string nth)
+    {
+        if (!int.TryParse(nth, NumberStyles.Integer, CultureInfo.InvariantCulture, out var which)
+            || which < 1)
+        {
+            // Counted from one. `Skip(-1)` is `Skip(0)` and would have handed back the first row
+            // for `--goto 0` and for every negative, which is a wrong answer wearing a right one.
+            Console.WriteLine($"goto: {nth} is not a place in the list — they are numbered from 1.");
+            return;
+        }
+
+        if (window.Listing.Skip(which - 1).FirstOrDefault() is not { } picked)
+        {
+            Console.WriteLine(
+                $"goto: ignored — this board lists {window.Listing.Count} place(s), so there is no {which}.");
+            return;
+        }
+
+        GoToPlace(window, picked);
+
+        if (Viewport.Marker is null)
+        {
+            Console.WriteLine("goto: ignored — there is no board laid out to go to.");
+            return;
+        }
+
+        _captureInstead = null;
+
+        // What Escape does, so the rule can be photographed: the ring goes and the view stays.
+        // Somebody who went to a finding and then cleared the mark is looking at that copper on
+        // purpose, and moving them away again would undo what they asked for.
+        if (args.Contains("--clear-marker", StringComparer.OrdinalIgnoreCase))
+        {
+            Viewport.ClearMarker();
+        }
+    }
+
+    /// <summary>
+    /// Takes the viewport to a place in the findings and marks it.
+    ///
+    /// **The window stays open and stays non-modal**, which is what the request named first: the
+    /// list sits beside the board while the view moves, so the next place is one click away rather
+    /// than a reopen.
+    /// </summary>
+    private void GoToPlace(object? sender, NetGap gap)
+    {
+        var x = (float)Nm.ToMillimetres(gap.At.X);
+        var y = (float)Nm.ToMillimetres(gap.At.Y);
+
+        // The nets as the list prints them, so the ring and the line that was clicked say the same
+        // thing. Empty when the copper carries no net attribute — which is a real case, and one the
+        // findings view is careful to distinguish, so the mark must not invent a name for it.
+        var nets = gap.Between.Count >= 2
+            ? string.Join(" and ", gap.Between)
+            : gap.Between.Count == 1 ? gap.Between[0] : string.Empty;
+
+        if (!Viewport.GoTo(new BoardMarker(new SKPoint(x, y), Marker.CoordinateOf(x, y), nets)))
+        {
+            return;
+        }
+
+        // So Escape reaches the viewport rather than the findings window, which is still open and
+        // still has focus from the click that got here.
+        Viewport.Focus();
     }
 
     /// <summary>
@@ -1429,8 +1592,24 @@ public partial class MainWindow : Window
     /// tool it assumes and how deep it goes are the facts that decide whether the right thing is
     /// about to be cut, and they are invisible once the files are on disk.
     /// </summary>
-    private async void OnExportClicked(object? sender, RoutedEventArgs e) =>
+    /// <remarks>
+    /// **A fresh run takes the mark off**, which is the rule sprint 3's story 5 already applies to
+    /// the checks panel's highlight, for the same reason: *"a mark that outlives the thing it
+    /// explains is worse than none, because it looks like a property of the check."* The ring means
+    /// *this is the finding you asked about*, and after a new check, preview or export there is no
+    /// such finding — the one it came from was computed against a board state that has gone.
+    ///
+    /// Panning and zooming do not clear it, and nor does closing the findings window. Exploring
+    /// around the place is the entire point, and the ring carries its own label so it can be read
+    /// after the list is shut. A board that is *replaced* rather than re-run clears it too, and
+    /// that lives in <see cref="Controls.BoardView.OnPropertyChanged"/> rather than here, because
+    /// there are four doors into it and only one of them is a button.
+    /// </remarks>
+    private async void OnExportClicked(object? sender, RoutedEventArgs e)
+    {
+        Viewport.ClearMarker();
         await ExportAsync(onlyLayer: null);
+    }
 
     /// <summary>
     /// The export window, for the whole board or for one layer of it.
@@ -1844,7 +2023,8 @@ public partial class MainWindow : Window
             row.TabWidthNm,
             row.TabHeightNm,
             planning.DerivedWidthNm,
-            planning.DerivedHeightNm);
+            planning.DerivedHeightNm,
+            vm.OriginName);
 
         if (chosen is not null)
         {

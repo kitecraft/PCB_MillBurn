@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
@@ -40,6 +41,28 @@ public sealed class FindingsWindow : Window
     /// what changes is where the limit sits.
     /// </summary>
     private const int MostPlaces = 40;
+
+    /// <summary>
+    /// Raised when a place in the list is clicked, so the viewport can go to it.
+    ///
+    /// **An event rather than a reference to the board**, because this window must stay non-modal
+    /// and must stay ignorant of what is listening: *"The Findings box is great, especially being
+    /// non-modal."* Non-modal is what lets the list sit open beside the board while the view moves,
+    /// and it is the property the request named first.
+    /// </summary>
+    public event EventHandler<NetGap>? PlacePicked;
+
+    /// <summary>
+    /// Every place this window listed, in the order it listed them.
+    ///
+    /// For the <c>--goto</c> screenshot flag, which has to press one and cannot click. Recorded as
+    /// the rows are built rather than recomputed from the findings, so "the third place in the
+    /// list" means the third row somebody reading top to bottom would reach — a second traversal
+    /// could group or cap differently and silently point at a different piece of copper.
+    /// </summary>
+    public IReadOnlyList<NetGap> Listing => _places;
+
+    private readonly List<NetGap> _places = [];
 
     public FindingsWindow(BoardFindings.Result findings, string board, Func<LayerRole, IBrush> colourOf)
     {
@@ -93,7 +116,7 @@ public sealed class FindingsWindow : Window
 
         foreach (var layer in findings.Layers)
         {
-            body.Children.Add(ForLayer(layer, colourOf));
+            body.Children.Add(ForLayer(layer, colourOf, Pick, Listed));
         }
 
         Content = new ScrollViewer
@@ -126,7 +149,13 @@ public sealed class FindingsWindow : Window
             : Invariant($"{layers} · {groups} group(s) left connected · {took}");
     }
 
-    private static StackPanel ForLayer(BoardFindings.Layer layer, Func<LayerRole, IBrush> colourOf)
+    private void Pick(NetGap gap) => PlacePicked?.Invoke(this, gap);
+
+    private void Listed(NetGap gap) => _places.Add(gap);
+
+    private static StackPanel ForLayer(
+        BoardFindings.Layer layer, Func<LayerRole, IBrush> colourOf, Action<NetGap> pick,
+        Action<NetGap> listed)
     {
         var panel = new StackPanel { Spacing = 0, Margin = new Thickness(0, 0, 0, 18) };
 
@@ -206,7 +235,7 @@ public sealed class FindingsWindow : Window
 
             foreach (var join in layer.Joins)
             {
-                panel.Children.Add(Group(join, layer.Shorts));
+                panel.Children.Add(Group(join, layer.Shorts, pick, listed));
             }
         }
 
@@ -222,7 +251,7 @@ public sealed class FindingsWindow : Window
                 + "matters: at least one side carries no net attribute to check against. Look at "
                 + "them — and at the ones where the other side is a net you can look up first."));
 
-            panel.Children.Add(Places(layer.Nameless));
+            panel.Children.Add(Places(layer.Nameless, pick, listed));
         }
 
         if (layer.SameNet.Count > 0)
@@ -234,14 +263,15 @@ public sealed class FindingsWindow : Window
                 + "was one conductor before the cut and is one after it. Listed because copper left "
                 + "where the design wanted none still matters for soldering and for probing."));
 
-            panel.Children.Add(Places(layer.SameNet));
+            panel.Children.Add(Places(layer.SameNet, pick, listed));
         }
 
         return panel;
     }
 
     /// <summary>One group of nets, and the places the copper holding them bridges.</summary>
-    private static StackPanel Group(NetJoin join, IReadOnlyList<NetGap> shorts)
+    private static StackPanel Group(
+        NetJoin join, IReadOnlyList<NetGap> shorts, Action<NetGap> pick, Action<NetGap> listed)
     {
         var panel = new StackPanel { Spacing = 1, Margin = new Thickness(12, 4, 0, 6) };
 
@@ -289,13 +319,15 @@ public sealed class FindingsWindow : Window
         // repeat: on "+5V · GND" every bridge is +5V and GND and saying so under each one is noise,
         // while on a group of twenty-three nets "which two meet here" is the question a bare
         // coordinate raises.
-        panel.Children.Add(Places(here, withNames: join.Nets.Count > 2));
+        panel.Children.Add(Places(here, pick, listed, withNames: join.Nets.Count > 2));
 
         return panel;
     }
 
     /// <summary>A list of coordinates, capped and counted.</summary>
-    private static StackPanel Places(IReadOnlyList<NetGap> gaps, bool withNames = false)
+    private static StackPanel Places(
+        IReadOnlyList<NetGap> gaps, Action<NetGap> pick, Action<NetGap> listed,
+        bool withNames = false)
     {
         var panel = new StackPanel { Spacing = 0, Margin = new Thickness(12, 1, 0, 2) };
 
@@ -308,13 +340,37 @@ public sealed class FindingsWindow : Window
                 ? Invariant($"{where}  ·  {string.Join(" and ", gap.Between)}")
                 : where;
 
-            panel.Children.Add(Token(new TextBlock
+            // **The coordinate is the thing to click**, so the coordinate is the button. A row with
+            // a "go to" control beside it would put the verb somewhere other than the noun, and the
+            // noun is already the only part of this line anybody reads twice.
+            //
+            // A Button rather than a handler on the TextBlock: it is focusable and reachable by
+            // keyboard for free, and it already knows how to look pressed.
+            var row = new Button
             {
-                Text = text,
-                FontSize = 11,
-                FontFamily = new FontFamily("Consolas, Menlo, monospace"),
-                TextWrapping = TextWrapping.Wrap,
-            }, "TextSecondary"));
+                Content = Token(new TextBlock
+                {
+                    Text = text,
+                    FontSize = 11,
+                    FontFamily = new FontFamily("Consolas, Menlo, monospace"),
+                    TextWrapping = TextWrapping.Wrap,
+                }, "TextSecondary"),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(4, 1),
+                Margin = new Thickness(-4, 0, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Cursor = new Cursor(StandardCursorType.Hand),
+            };
+
+            ToolTip.SetTip(row, "Go to this place on the board");
+
+            var here = gap;
+            row.Click += (_, _) => pick(here);
+            listed(here);
+
+            panel.Children.Add(row);
         }
 
         if (gaps.Count > MostPlaces)
