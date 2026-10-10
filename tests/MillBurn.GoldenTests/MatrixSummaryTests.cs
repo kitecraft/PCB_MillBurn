@@ -38,6 +38,22 @@ public sealed partial class MatrixSummaryTests
             $"only {sections.Count} sections of the matrix were recognised, so the heading or row "
             + "format has changed and this is now counting a document that no longer exists.");
 
+        // **A row this cannot parse is worse than a row it cannot find.** `Row()` wants a bare
+        // `**Status**` cell; V34's read `**Partial** — backlash and squareness built`, with the
+        // qualifier outside the bold and inside the cell, so it matched nothing and was dropped
+        // from the arithmetic — and the summary then sat one row and one Partial light for three
+        // sprints, agreeing with itself the whole time. Counting only what parses is how a count
+        // stays wrong quietly, which is the failure this whole test exists to prevent.
+        var unreadable = text.Split('\n')
+            .Where(l => LooksLikeARow().IsMatch(l) && !Row().IsMatch(l))
+            .ToList();
+
+        Assert.True(
+            unreadable.Count == 0,
+            "these lines begin like requirement rows and cannot be parsed, so they would be left "
+            + "out of the counts above without anything saying so. Put the status in a cell of its "
+            + "own and the qualifier in Evidence:\n  " + string.Join("\n  ", unreadable));
+
         var rebuilt = Replace(text, Render(sections));
 
         if (Rewriting)
@@ -243,6 +259,20 @@ public sealed partial class MatrixSummaryTests
     [GeneratedRegex(@"^## (?<name>\d.*)$", RegexOptions.Multiline)]
     private static partial Regex SectionHeading();
 
-    [GeneratedRegex(@"^\| [A-Z]+\d+ \|.*\| \*\*(?<status>[^*]+)\*\* \|")]
+    /// <summary>
+    /// A requirement row this can read: an ID, and somewhere a cell that is nothing but a bolded
+    /// status.
+    ///
+    /// **It gates the shape and nothing else.** The status used in the counts comes from the
+    /// bolded-cell scan in <see cref="Count"/>, not from here — this pattern once captured it into
+    /// a named group that nobody read, which invited the next reader to edit the wrong thing. What
+    /// the bolded part is really doing is refusing a row whose status carries a qualifier outside
+    /// the bold, and the assertion above says so out loud rather than dropping it.
+    /// </summary>
+    [GeneratedRegex(@"^\| [A-Z]+\d+ \|.*\| \*\*[^*]+\*\* \|")]
     private static partial Regex Row();
+
+    /// <summary>Anything shaped like a requirement row, parseable or not. See the assertion that uses it.</summary>
+    [GeneratedRegex(@"^\| [A-Z]+\d+ \|")]
+    private static partial Regex LooksLikeARow();
 }

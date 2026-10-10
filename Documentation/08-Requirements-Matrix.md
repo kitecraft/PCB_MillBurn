@@ -17,10 +17,47 @@ test, a measurement — so that "done" means something a reader can check.
 | **Not started** | No code |
 | **Superseded** | Replaced by something better, or deliberately dropped. The reason is the useful half |
 
-**Last audited:** 2026-09-20, before the performance sprint: V34 moved to Partial as the first two
+**Last audited:** 2026-10-10, after sprint 4 and the two fixes that followed it. **Three audits'
+worth of work had landed without this document moving**, which is the longest it has ever been
+left, and the rows said so plainly: G20, G21 and G23 all read *Not started* for features that
+shipped in sprint 4, and sprint 3 — which was one item, 6.44, from end to end — had never been
+recorded at all.
+
+**What moved.** G20 (the numbered picture), G21 (the tool library) and G23 (the CLI commands) to
+Done. Nine rows added for work that had no row: G24 tabs, M32 the copper test cut, and V37–V42 for
+the findings view, unnamed copper, the rulers, the pointer readout, finding-to-copper and the
+project's origin. Nothing moved the other way.
+
+**Two errors predating sprint 4**, found by counting rather than by reading: the summary claimed
+114 rows against 115, and 7 Partials against 8 — V11, V13, V16 and V34 are all Partial and only
+three were counted. They have one cause, and it is the next paragraph.
+
+**One row had been invisible to the test that counts them.** `MatrixSummaryTests` recomputes this
+summary and fails the build when it drifts, and its row pattern wants a bare `**Status**` cell.
+V34's read `**Partial** — backlash and squareness built`, with the qualifier outside the bold and
+inside the cell, so the row matched nothing and was dropped from the arithmetic entirely — which is
+why the summary said 114 rows and 7 Partials while the document held 115 and 8. The test's own
+notes warn about this exact shape: *"a Parked row vanished from the arithmetic entirely"*. V34 now
+carries its qualifier in the Evidence column like every other row, and a sweep for the pattern finds
+no others.
+
+**And two rows described a tree that no longer exists.** A2 said *"13 projects; `MillBurn.Mcp`
+declared, not built"* — there is no such project and no solution entry for one, so the parenthetical
+was describing an intention rather than the tree, which is the exact failure this document opens by
+naming. C7's reason for being unmeasured was *"depends on A4/A5, which do not exist"*; both landed
+in sprint 1 and the row was never revisited, so the only thing standing between that criterion and
+a number is somebody measuring it.
+
+**The roadmap-phases table lost its 6.x half.** It listed 6.1 to 6.24 by hand, duplicating 06, and
+every error in this document that was not a missing row was in that block: 6.19 and 6.24 both read
+*Not started* while V31 and V36 in this same file recorded them Done with evidence. The roadmap now
+runs to 6.68, so maintaining that list by hand is a standing invitation to the rot it already
+produced. It points at [11](11-Backlog.md) instead, which `BacklogTests` regenerates and fails the
+build over.
+
+The rest of this note is the 2026-09-20 audit it replaces: V34 moved to Partial as the first two
 checks landed, V35 added for the About window, and the not-started rows were read through to pick
-the five that sprint is made of (06, *The next sprint*). The rest of this note is the 2026-09-18
-audit it replaces.
+the five that sprint is made of (06, *The next sprint*).
 
 **Last audited before that:** 2026-09-18, after 6.15 was requested. The previous audit fixed counts that had drifted rather than
 rows — twelve rows added or changed after v0.1.0 while the summary still described a document of 92.
@@ -40,25 +77,32 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | Section | Rows | Done | Done — used on metal | Not started | Parked | Partial | Superseded |
 |---|---|---|---|---|---|---|---|
 | 01 Architecture | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
-| 02 Gerber & geometry pipeline | 23 | 15 | 0 | 6 | 1 | 0 | 1 |
+| 02 Gerber & geometry pipeline | 24 | 18 | 0 | 3 | 1 | 1 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
-| 04 Machines, laser & mixed workflows | 31 | 10 | 1 | 15 | 0 | 4 | 1 |
-| 05 Viewer & export | 35 | 19 | 0 | 11 | 0 | 3 | 2 |
-| **Requirements** | **114** | **65** | **1** | **34** | **2** | **7** | **5** |
+| 04 Machines, laser & mixed workflows | 32 | 11 | 1 | 15 | 0 | 4 | 1 |
+| 05 Viewer & export | 42 | 25 | 0 | 11 | 0 | 4 | 2 |
+| **Requirements** | **123** | **75** | **1** | **31** | **2** | **9** | **5** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
 **07 Physically verified on a machine** — 17 rows: 1 partial, 13 proven, 3 untested.
 
-**The shape of that table is the finding.** Documents 01–03 are largely built; document 04 is 15
-not-started rows out of 29, nearly all of them the alignment and Job-model half of Phase 5. That one
-block is still most of what is left, and 6.14 was the first cut into it: the stock's waste holes, a
-two-point rigid fit and a correction kept with the project are M16, M17 and M20 in their smallest
-useful form. What those rows still want is fiducials in copper, a fit from three or more points, and
-a residual threshold that refuses an export rather than reporting it.
+**The shape of that table is the finding, and it has not changed.** Documents 01–03 are largely
+built; document 04 is **15 not-started rows out of 32**, nearly all of them the alignment and
+Job-model half of Phase 5. That one block is still most of what is left, and 6.14 was the first cut
+into it: the stock's waste holes, a two-point rigid fit and a correction kept with the project are
+M16, M17 and M20 in their smallest useful form. What those rows still want is fiducials in copper,
+a fit from three or more points, and a residual threshold that refuses an export rather than
+reporting it.
 
-Document 05 has grown fastest, and all of it from the workshop: every row from V17 on came from a
-board being cut rather than from a document.
+**Document 05 has grown fastest and is now the largest section** — 42 rows against document 04's
+32, having been the smaller of the two at the first audit. All of that growth came from the
+workshop: every row from V17 on came from a board being cut rather than from a document, and the
+six added in this audit are no exception.
+
+**Of the 31 rows still not started, 15 are in that one Phase 5 block.** The other 16 are spread
+across the laser's second flavour, the MCP server, solder paste and the mill posts — four separate
+pieces of new capability, none of which the workshop has asked for.
 
 ---
 
@@ -67,7 +111,7 @@ board being cut rather than from a document.
 | ID | Requirement | Source | Status | Evidence |
 |---|---|---|---|---|
 | A1 | Writes files, never drives a machine — no serial, no jogging, no streaming | §1.1 | **Done** | no I/O port code anywhere in `src/` |
-| A2 | `src/` + `tests/` layout, strictly downward dependency graph | §2 | **Done** | 13 projects; `MillBurn.Mcp` declared, not built |
+| A2 | `src/` + `tests/` layout, strictly downward dependency graph | §2 | **Done** | 13 under `src/`, 2 under `tests/`; `MillBurn.Post` is wired and empty. `MillBurn.Mcp` is **not** declared — it was named here as "declared, not built" and no such project or solution entry exists |
 | A3 | Permissive dependencies only; no copyleft in the graph | §3, §9 | **Done** | `THIRD-PARTY-NOTICES.md` |
 | A4 | Incremental pipeline: memoised stages keyed by structural hash | §4 | **Done** | `RealisedLayers.Get` keyed on bytes, role and options; stamps `Fingerprint`. Sprint 1 story 2 |
 | A5 | Cancellable: one `CancellationTokenSource` per edit, UI never blocks | §4 | **Done** | `LatestRun`, `PreviewBuild`; one source per edit by design, not sprinkled. Sprint 1 story 1 |
@@ -105,10 +149,11 @@ board being cut rather than from a document.
 | G17 | Mill-drill: a hole too big for any drill, spiralled out | 06 §5.5.3 | **Done** | `SlotOperation.Holes`; off unless the project asks |
 | G18 | Job-level options, carried in the project | 06 §5.5.3 | **Done** | `JobOptions`; Project info, and `--mill-holes` on the CLI |
 | G19 | A companion page for the routing program | workshop | **Done** | `RoutingGuide`; names the cutter, and what will not be cut |
-| G20 | A numbered picture of the holes and slots on each companion page | 06 §6.5 | **Not started** | inline SVG; refusals hatched, which is the point |
-| G21 | Tool library: filter by kind, sort, copy a tool | 06 §6.6 | **Not started** | a scannable row may be worth more than all three |
+| G20 | A numbered picture of the holes and slots on each companion page | 06 §6.5 | **Done** | `GuideFigure`; inline SVG, every feature numbered in the order the program visits it, refusals hatched. `GuideFigureTests`. Sprint 4 story 3 |
+| G21 | Tool library: filter by kind, sort, copy a tool | 06 §6.6 | **Done** | `ToolView.Arrange`, `ToolSort`, `ToolView.Copy`; a kind mark, name and size per row, with a confirm on delete and a name prompt on copy. `ToolViewTests`. Sprint 4 story 7 — and the scannable row did turn out to be worth more than the three, which the closure records |
 | G22 | Coachmarks and a first-run walkthrough | 06 §6.7 | **Not started** | needs research; the walkthrough wants the test board to point at |
-| G23 | The project page lists the CLI commands that would rebuild the export | 06 §6.15 | **Not started** | derived from the emitted plan, not the settings, or it would name flags the export ignored |
+| G23 | The project page lists the CLI commands that would rebuild the export | 06 §6.15 | **Done** | `CliScript.For(plan, context)`, derived from the emitted plan rather than the settings, so it cannot name a flag the export ignored; `--commands` prints it alone. `CliScriptTests`. Sprint 4 story 4 |
+| G24 | Tabs: placed where a hand would put them, sized from the board, and movable one at a time | 06 §6.4 | **Partial** | `TabPlan` centres one on each straight edge the profile has room for and sizes both numbers from the board; the tabs window lists every position and lets each be overridden. `TabPlacementTests`, `OutlineTabTests`. Sprint 4 story 1. **Dragging a tab on the board is not built** |
 
 ## 03 — Toolpath optimization
 
@@ -160,6 +205,7 @@ board being cut rather than from a document.
 | M25 | Candle and bCNC grid-matrix log formats | Phase 5 | **Not started** | deliberately waiting on a real file |
 | M26 | Reuse one height map across a Setup's operations | Phase 5 | **Not started** | — |
 | M27 | Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3 | Phase 6 | **Not started** | `MillBurn.Post` is an empty project with Scriban wired |
+| M32 | A test cut that finds where the copper stops on this piece of laminate | 06 §6.52 | **Done** | `TestCutKind.Copper`, `TestCutOptions.For`; twelve lines from 0.01 mm in 0.01 mm steps, spaced for the bit, with the step named in the header. `CopperTestCutTests`. Sprint 4 story 5. **Not yet cut on metal** |
 
 ## 05 — Viewer & export
 
@@ -198,9 +244,15 @@ board being cut rather than from a document.
 | V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Done** | move-for-move identical to the real program with every Z lifted; refuses on depth, on a program that commands no Z at all, on `G92`, `G10`, `G38`, `G43`/`G49` and their decimal variants, and on a machine-referenced Z (`G53`, `G28`, `G30`); the flat run is a choice in Settings and `--dry-run-height`. Sprint 2 story 8 |
 | V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180° |
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
-| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** — backlash and squareness built | `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`; axis scale, cutter diameter, return to zero and tram not started |
+| V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** | backlash and squareness built: `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`. Axis scale, cutter diameter, return to zero and tram not started |
 | V35 | About window: version, build date, and a manual check for a newer release | 06 §6.23 | **Done** | `ReleaseCheck` (parse + compare, no network), `AboutWindow`, `TravelDemo`; `ReleaseCheckTests` |
 | V36 | The outline drops straight to the next lap, and hops tabs at the tab's own height | 06 §6.24 | **Done** | 45.4 mm of vertical motion down to 27.4 on the test board; about eight minutes off a 66-up panel. Sprint 1 story 6 |
+| V37 | The checks become something you can read: a non-modal findings view naming every place the copper stays joined | 06 §6.44 | **Done** | `BoardFindings`, `FindingsWindow`, *Job › Findings* (F7); a coordinate and the nets for each place, capped and counted. `BoardFindingsTests`. Sprint 3 — **the whole of it** |
+| V38 | Copper with no net name is called unnamed wherever it is reported | 06 §6.53 | **Done** | `ElectricalCheck.NamedSides`; a region sharing one named net is no longer reported as safe. `ElectricalCheckTests`. Sprint 4 story 2 |
+| V39 | A scale along the top and left of both viewports, agreeing with the grid at every zoom | 06 §6.1 | **Done** | `GridLadder`, `RulerFrame`, `Ruler.Draw`, called by `BoardRenderer` and `ToolpathRenderer` from one ladder; toggled by *View › Show rulers* and remembered. `RulerTests`, `AppSettingsTests.TheRulerIsOnUnlessItWasTurnedOff`. Sprint 4 story 8 |
+| V40 | The pointer's position, continuously, in the board's own numbers with its origin named | 06 §6.48 | **Done** | `RulerReadout`, `BoardView.PointerAt`/`OriginName`; reads from the stock's corner on a job built on stock and the board's otherwise, cleared when the pointer leaves. Shift-drag measures: `RulerMeasure` gives dx, dy and the diagonal. Sprint 4 story 8 |
+| V41 | A finding takes you to the copper it is about | 06 §6.56 | **Done** | `Marker`, `BoardView.GoTo`; every coordinate in the findings list is a button, the view goes to it at 14 mm across and rings it, and the mark clears by each of the five routes the entry names. `MarkerTests`. Sprint 4 story 9 |
+| V42 | The window says which folder the Gerbers came from | 06 §6.32 | **Done** | `ProjectOrigin.Full`, at the head of *Project info*; the full path, normalised, labelled `Gerbers`. `ProjectOriginTests`. Sprint 4 story 6 |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 
@@ -212,7 +264,7 @@ board being cut rather than from a document.
 | C4 | Rapid travel, outline operations | below the NN baseline | **Met** | gated per board |
 | C5 | Estimated cut time vs pcb2gcode | ≥ 20% reduction | **Superseded** | pcb2gcode has never been run |
 | C6 | Optimizer, Balanced, 5000 paths | < 500 ms | **Superseded** | budget is steps; ms *was* the non-determinism bug |
-| C7 | Preview latency, parameter change to redraw | < 200 ms | **Not measured** | depends on A4/A5, which do not exist |
+| C7 | Preview latency, parameter change to redraw | < 200 ms | **Not measured** | the blocker named here — *"depends on A4/A5, which do not exist"* — has gone: both landed in sprint 1 and this row was never revisited. Nothing now stands between this and a number |
 | C8 | Time estimate vs wall clock | the actual falls inside the bracket | **Met so far** | 4 of 4; the bracket is ±3× and wants narrowing |
 | C9 | Cross-machine registration | ≤ 50 µm | **Not measured** | needs M9–M20 |
 
@@ -254,35 +306,12 @@ The phases as [06](06-Roadmap-and-Risks.md) declares them, against where the wor
 | 1 Read and draw a board | — | **Done** |
 | 1.5 Projects | — | **Done** |
 | 2 Mill toolpaths, G-code, backplot | — | **Done** |
-| 3 The optimizer | — | **Done**, O6 open |
-| 4 Laser output (SVG) | in progress | **Parked** — M4, V11, V12, M7 outstanding |
-| 5 Jobs, setups, alignment | started | **Partial** — levelling done, M9–M20 untouched |
+| 3 The optimizer | — | **Done** — O6 parked, measured and not needed on any committed board |
+| 4 Laser output (SVG) | in progress | **Parked** — M4, M7, V11, V12 outstanding |
+| 5 Jobs, setups, alignment | started | **Partial** — levelling, the stock's waste holes, the two-point fit and the saved record are in (M16, M17, M20); the Job/Step/Setup model (M9) and most of §3 are not |
 | 5.5 Drilling, finished | scheduled | **Done — jumped the queue** |
 | 5.6 The blank ("stock" in the app) | scheduled | **Built** — 5.6.5 laser verification open |
-| 6.1 Rulers | scheduled | **Not started** |
-| 6.2 Climb or conventional | scheduled | **Not started** |
-| 6.3 Staying down between passes | scheduled | **Done — jumped the queue** |
-| 6.4 Tabs: where, how many, how big | scheduled | **Not started** |
-| 6.5 A picture on the companion pages | scheduled | **Not started** |
-| 6.6 Tool library: filter, sort, copy | scheduled | **Not started** |
-| 6.7 Coachmarks and a first-run walkthrough | scheduled | **Not started** — needs research |
-| 6.8 The viewer's gap in every outline ring | workshop | **Done** |
-| 6.9 Open recent | workshop | **Done** |
-| 6.10 Drill hits drawn as an X | workshop | **Superseded** — drill map layers cover it |
-| 6.11 Bit changes: one file per bit, or custom tool-change G-code | workshop | **Partial** — one file per bit built; the choice and the custom block are not |
-| 6.12 Drill alignment | workshop | **Done** |
-| 6.13 Routing holes and slots: one ramp, no lifts, settings | workshop | **Done** |
-| 6.14 Stock alignment holes and two-hole rotation alignment | workshop | **Done** — the holes are cut, and two of them give the turn |
-| 6.15 The project page names the commands that would rebuild the export | workshop | **Not started** |
-| 6.16 A re-measured stock keeps its alignment holes | workshop | **Parked** — built on a branch, not merged |
-| 6.17 The stock's alignment holes marked in the SVGs | workshop | **Partial** — placing layers built; Print and Cut not tried |
-| 6.18 A paste stencil to 3D-print | workshop | **Not started** |
-| 6.19 A dry run that is the real run, raised | workshop | **Not started** |
-| 6.20 Which way up is this stock? | workshop | **Not started** |
-| 6.21 Every hole approached from the same side | workshop | **Not started** |
-| 6.22 Machine checks: measure the machine, not only the bit | workshop | **Partial** — backlash and squareness built |
-| 6.23 About, and a check for updates | workshop | **Done** |
-| 6.24 The outline lifts to the sky between laps, and over every tab | workshop | **Not started** |
+| 6.x The numbered roadmap items | — | **See [11](11-Backlog.md)** — generated from 06, so it cannot drift |
 | 7 User documentation | started | **Partial** — generated reference sections not built |
 | 8 MCP server | scheduled | **Not started** |
 | 9 Solder paste | scheduled | **Not started** |
