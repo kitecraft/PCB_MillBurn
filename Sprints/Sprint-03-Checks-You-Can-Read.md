@@ -871,7 +871,7 @@ lands:
 | 4 | [6.52](../Documentation/06-Roadmap-and-Risks.md#652-a-test-cut-that-finds-where-the-copper-stops--enhancement--open--asked-for-by-the-product-owner) | Its guide page wants the builder items 2 and 3 will have been in; design questions already answered 2026-09-27 |
 | 5 | [6.32](../Documentation/06-Roadmap-and-Risks.md#632-say-where-the-project-came-from--enhancement--open--asked-for-by-the-product-owner) | The smallest item on the list |
 | 6 | [6.6](../Documentation/06-Roadmap-and-Risks.md#66-the-tool-library-once-it-has-more-than-a-handful-in-it--enhancement--open) · G21 | |
-| 7 | [6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--open) | |
+| 7 | [6.1](../Documentation/06-Roadmap-and-Risks.md#61-rulers--enhancement--fixed) | |
 
 **6.4 carries something closer to a bug than an enhancement, and it should not wait unnoticed
 inside a feature.** A pass counts as "tabbed" once it is deeper than
@@ -937,7 +937,7 @@ depend on each other in order and only the seventh stands alone.
 **But the decision should be revisited at story 1's close, deliberately and in writing.** By then
 the new model exists and the question is concrete rather than theoretical: if the checks have
 become the most testable thing in the view model and nothing can reach them, that is the argument
-for 6.50 next, and the closure is where to say so. [6.51](../Documentation/06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--open--six-paths-and-counting)
+for 6.50 next, and the closure is where to say so. [6.51](../Documentation/06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting)
 travels with it.
 
 **6.2, 6.16 and 6.46**, all parked or low priority with reasons, and none of the reasons has

@@ -44,6 +44,38 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     /// <summary>
+    /// The ruler is on until somebody turns it off, and stays off once they have.
+    ///
+    /// Both halves matter and they fail differently. A settings file written before this preference
+    /// existed has no key for it, and reading that back as "off" would quietly take the rulers away
+    /// from every existing installation on the first run of the new build. Writing "off" and
+    /// reading back "on" would mean the toggle does nothing across a restart, which is what the
+    /// story asks for in so many words.
+    /// </summary>
+    [Fact]
+    public void TheRulerIsOnUnlessItWasTurnedOff()
+    {
+        // A file from before the preference existed: every other key present, this one absent.
+        // Written by hand rather than through Save, which is the only way to leave a key out — and
+        // in the casing the real file uses, since the reader is case-sensitive and a mis-cased
+        // fixture would be a file that fails to parse at all, which defaults to true for the wrong
+        // reason. The thickness is 0.8 rather than the 1.6 default precisely so that reading it
+        // back proves the file parsed; both other values here differ from their defaults too.
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path_, """{"SchemaVersion":1,"BoardThicknessMm":0.8,"Theme":"Dark"}""");
+        Assert.True(AppSettings.LoadOrDefault(Path_).ShowRuler);
+
+        (AppSettings.LoadOrDefault(Path_) with { ShowRuler = false }).Save(Path_);
+        Assert.False(AppSettings.LoadOrDefault(Path_).ShowRuler);
+
+        // And what it was saved beside is still there, so this did not come at the cost of
+        // rewriting the file with defaults — and 0.8 is not a default, so it also says the
+        // hand-written fixture above was read rather than silently discarded.
+        Assert.Equal(0.8, AppSettings.LoadOrDefault(Path_).BoardThicknessMm);
+        Assert.Equal("Dark", AppSettings.LoadOrDefault(Path_).Theme);
+    }
+
+    /// <summary>
     /// The drill alignment's own folder, kept apart from the export's.
     ///
     /// The alignment files are written over and over during one session, usually into a folder of

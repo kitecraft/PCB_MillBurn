@@ -49,6 +49,30 @@ sufficient.
 - `dotnet run --project src/MillBurn.App -- <board> --shot out.png` renders the real window and
   exits. Useful flags: `--size WxH`, `--theme`, `--preview`, `--check`, `--findings`,
   `--fold-checks`, `--settings [--settings-tab X]`, `--about`, `--machine-check [squareness]`, `--align`,
+  `--tabs` (the outline's tab sizes, with every tab's place on the board),
+  `--testcut [depth|feed|copper]` (the test-cut dialog on whichever of the three, which needs no
+  board), `--tools` with `--tools-only [vbits|endmills|drills]` and `--tools-sort
+  [library|name|kind|size]` (the library, filtered and ordered), `--tool-prompt [delete|copy]` (the
+  two questions that window asks, for their wording), `--tools-from <file>` (a library from a path,
+  for photographing a long one without borrowing anybody's),
+  `--change <output|thickness|tabs|sizes|blank>` and `--then-change <same>` (makes that change the
+  way a click would — `--change` before the preview and `--then-change` over a drawn one, which is
+  the only way to photograph an edit that invalidates something, and is what 6.33 is. Either makes
+  the `unsaved changes:` line below print *yes*, which is how a script checks that an edit marks
+  the project changed, and that is what decides whether the save/discard prompt appears),
+  `--open-program <file>` (a `.nc` opened over the board that is already loaded; the two share the
+  backplot and that state was otherwise unreachable in a shot),
+  `--zoom <px-per-mm>,<x>,<y>` (centres a board point at a given zoom, so a shot can be taken at the
+  scale a single bridge is inspected at), `--goto <n>` with `--findings` (presses the nth place in
+  the findings list, because a screenshot cannot click — and the shot is then of the board rather
+  than of the list, which is what that flag is for), `--clear-marker` (what Escape does to it),
+  `--stock-border <mm>` (nudges the stock's border the way the slider does), `--close-project` and
+  `--open-project <path>` (which run after every other flag, so what an open window does when its
+  board goes can be seen — the capture prints `findings windows open: N`),
+  `--pointer <x>,<y>` and `--measure <x1>,<y1>,<x2>,<y2>`
+  (the ruler's readout and its measuring drag, which need a pointer and a drag and so cannot be
+  reached headlessly any other way), `--no-ruler` (the View menu's toggle, for this run only — it is
+  what tells a working binding from the control's own default, since both are on),
   `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
   `--probe` are handled before the UI starts. `--check` runs *Job ▸ Check this board* and nothing
   else, so the checks panel can be photographed with **no export planned** — which `--preview`

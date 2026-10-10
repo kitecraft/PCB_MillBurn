@@ -265,6 +265,14 @@
                         <MenuItem Header="_Expand all layer settings" Click="OnExpandLayersClicked" />
                         <MenuItem Header="_Collapse all layer settings" Click="OnCollapseLayersClicked" />
                         <Separator />
+                        <!--
+                            A ToggleMenuItem bound two-way rather than a Click handler: the tick is
+                            the stored preference rather than a copy of it, so it cannot drift from
+                            what the viewport is doing.
+                        -->
+                        <MenuItem Header="Show _rulers" ToggleType="CheckBox"
+                                  IsChecked="{Binding ShowRuler, Mode=TwoWay}" />
+                        <Separator />
                         <MenuItem Header="Toggle light / _dark" Click="OnToggleThemeClicked" />
                     </MenuItem>
 
@@ -402,6 +410,30 @@
                             <!-- PROJECT INFO -->
                             <Expander Header="Project info" IsExpanded="True" IsVisible="{Binding HasBoard}">
                                 <StackPanel Spacing="6" Margin="0,4">
+                                    <!--
+                                        WHERE THE GERBERS ARE, first, because it is the one fact that
+                                        says whether the rest of the panel is about the board you meant.
+                                        The title shows the folder's last segment alone, and this machine
+                                        has two boards sharing one.
+
+                                        In full and wrapping, never elided: the first attempt shortened
+                                        the middle out of it to keep the panel narrow, which answers
+                                        "which of the two is this" and not "where is it" — and *where*
+                                        is what was asked for. A second line costs nothing; a hidden
+                                        middle costs the answer.
+
+                                        Labelled, because a bare path at the top of Project info was
+                                        read as the project file's own location.
+                                    -->
+                                    <Grid ColumnDefinitions="Auto,*"
+                                          IsVisible="{Binding SourceFolder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                        <TextBlock Grid.Column="0" Classes="caption" Width="56"
+                                                   VerticalAlignment="Top" Text="Gerbers" />
+                                        <TextBlock Grid.Column="1" Classes="fact"
+                                                   Text="{Binding SourceFolder}"
+                                                   ToolTip.Tip="{Binding SourceFolder}" />
+                                    </Grid>
+
                                     <ItemsControl ItemsSource="{Binding Facts}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="x:String">
@@ -759,7 +791,7 @@
                                                                        ToolTip.Tip="How far past the underside to go. Stopping exactly at the nominal thickness leaves a skin that tears." />
                                                     </Grid>
 
-                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0"
                                                           IsVisible="{Binding NeedsTabs}">
                                                         <TextBlock Grid.Column="0" Classes="caption" Width="78"
                                                                    VerticalAlignment="Center" Text="Tabs" />
@@ -767,7 +799,11 @@
                                                                        Minimum="0" Maximum="12" Increment="1"
                                                                        FormatString="0"
                                                                        Value="{Binding TabCount, Mode=TwoWay}"
-                                                                       ToolTip.Tip="Uncut bridges holding the board in the stock. Zero cuts it fully free, and the last pass throws it." />
+                                                                       ToolTip.Tip="How many bridges hold the board in the stock, one to a straight edge, longest first. Zero cuts it fully free, and the last pass throws it." />
+                                                        <Button Grid.Column="2" Content="Sizes…"
+                                                                Margin="6,0,0,0" Padding="8,2"
+                                                                Click="OnTabsClicked"
+                                                                ToolTip.Tip="Where each tab is, how wide it is, and how much it leaves. Every one starts at the size the board gives it." />
                                                     </Grid>
 
                                                     <CheckBox Content="Drilling guide"
@@ -1018,11 +1054,15 @@
             <GridSplitter Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
 
             <Panel Grid.Column="2">
-                <ctl:BoardView x:Name="Viewport" Scene="{Binding Scene}" />
+                <ctl:BoardView x:Name="Viewport"
+                               Scene="{Binding Scene}"
+                               ShowRuler="{Binding ShowRuler}"
+                               OriginName="{Binding OriginName}" />
 
                 <!-- Kept for the fpstest harness: it measures the real Phase 0 render loop. -->
                 <ctl:ToolpathView x:Name="ToolpathViewport"
                                   Scene="{Binding ToolpathScene}"
+                                  ShowRuler="{Binding ShowRuler}"
                                   IsVisible="False" />
 
                 <Border IsVisible="{Binding ShowingNothing}"

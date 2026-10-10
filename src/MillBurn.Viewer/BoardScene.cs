@@ -154,6 +154,30 @@ public sealed class BoardScene : IDisposable
         return scene;
     }
 
+    /// <summary>
+    /// Moves the rectangle this scene is measured from, without touching the geometry.
+    ///
+    /// **Because the extent and the paths are independent, and the extent is the cheap half.**
+    /// Building a scene walks every ring of every layer into an `SKPath`; the extent is one
+    /// assignment at the end of it. Changing the stock's border moves the extent and nothing else,
+    /// and rebuilding the whole scene for it costs **about 7 ms on the Mega** against a reframe too
+    /// small to time — per tick of a slider. Measured by
+    /// `ReframingIsOrdersOfMagnitudeCheaperThanRebuilding`, best of five, which prints both.
+    ///
+    /// The caller keeps the same scene object, so a view that re-fits whenever it meets a new
+    /// scene will not re-fit on this; whether to fit again is the caller's to say, and it has more
+    /// to go on than this does.
+    /// </summary>
+    public void Reframe(Bounds extent)
+    {
+        if (extent.IsEmpty)
+        {
+            return;
+        }
+
+        Bounds = new SKRect(ToMm(extent.MinX), -ToMm(extent.MaxY), ToMm(extent.MaxX), -ToMm(extent.MinY));
+    }
+
     public BoardSceneLayer? Layer(string id) =>
         _layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.Ordinal));
 

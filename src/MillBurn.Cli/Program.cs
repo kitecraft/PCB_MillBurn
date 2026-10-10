@@ -32,6 +32,9 @@ internal static class Program
             Console.WriteLine("                                 --dry-run-rise <mm>   the real program lifted (default 3)");
             Console.WriteLine("                                 --dry-run-height <mm> or held flat at one height (5)");
             Console.WriteLine("                                 --set <layer>=<svg|gcode|none> overrides one layer");
+            Console.WriteLine("                                 --isolation-width <mm> how wide to clear round every track (0: the cutter's own)");
+            Console.WriteLine("                                 --tabs <n> tabs holding the board in, on every outline layer");
+            Console.WriteLine("                                 --tab-width <mm> --tab-height <mm> their size (default: from the board)");
             Console.WriteLine("                                 --start-gcode <file|text> your own lines at the top");
             Console.WriteLine("                                 --end-gcode <file|text> your own lines before M30");
             Console.WriteLine("                                 --stock <l,b,r,t mm> cut the stock to size too, this much bigger than the board");
@@ -50,6 +53,7 @@ internal static class Program
             Console.WriteLine("                                 --align-turn <deg> --align-about <x,y mm> turned as well, about that hole");
             Console.WriteLine("                                 --align-outline the board outline too");
             Console.WriteLine("                                 --align-moves <names> exactly these programs instead, e.g. drilling,\"bottom copper\"");
+            Console.WriteLine("                                 --commands print the commands that would rebuild this export, and write nothing");
             Console.WriteLine("  align <folder-or-project>      Hover a bit over one hole to check drill alignment:");
             Console.WriteLine("                                 --file <part of a name> --hole <n> --hover <mm> -o <file>");
             Console.WriteLine("                                 --at <x,y mm> where the hole really is, as the machine shows it; or --offset <x,y mm>");
@@ -60,7 +64,7 @@ internal static class Program
             Console.WriteLine("                                 --axis x|y which axis a backlash check measures");
             Console.WriteLine("                                 --span <mm> between the holes of a pair; squareness wants this long");
             Console.WriteLine("                                 --tool <name> --overshoot <mm> --depth <mm> --pecks <n> -o <file>");
-            Console.WriteLine("  testcut [depth|feed]           Lines on scrap for dialling a bit in, plus a page on reading them");
+            Console.WriteLine("  testcut [depth|feed|copper]    Lines on scrap for dialling a bit in, plus a page on reading them");
             Console.WriteLine("                                 --tool <name> -o <file> --lines <n> --length <mm> --spacing <mm>");
             Console.WriteLine("                                 depth: --from <mm> --step <mm>   feed: --depth <mm> --step <mm/min>");
             Console.WriteLine("                                 --probe writes a probing routine for the coupon; --level <log> uses one");
@@ -68,6 +72,8 @@ internal static class Program
             Console.WriteLine("                                 depth: --passes <n> --stepover <mm> widen each line to a measurable band");
             Console.WriteLine("                                 depth: --rungs <n> a width ladder at --depth, for the tip width");
             Console.WriteLine("                                 either half can be left out: --rungs 0 or --lines 0");
+            Console.WriteLine("                                 copper: 12 rungs from 0.010 mm, stepping 0.010 — where the copper stops");
+            Console.WriteLine("                                 copper: probes finer than a coupon this size would otherwise get");
             Console.WriteLine("  probe <folder-or-project>      A G38.2 grid over the board: run it, keep your sender's log");
             Console.WriteLine("                                 -o <file> --spacing <mm> --depth <mm> --feed <mm/min> --max <n>");
             Console.WriteLine("  level <program.nc> --map <log> Bend any G-code to follow a probed surface");
@@ -77,6 +83,7 @@ internal static class Program
             Console.WriteLine("                                 --isolation-tool <name> --outline-tool <name> pick from the library");
             Console.WriteLine("                                 --isolation-width <mm> how wide a moat to clear around each trace");
             Console.WriteLine("                                 --depth --passes --angle --tip --tool --tabs --thickness --bottom");
+            Console.WriteLine("                                 --tab-width <mm> --tab-height <mm> override what the board would give");
             Console.WriteLine("                                 --png <path> draws the emitted program over the board");
             Console.WriteLine("  project save <folder> [-o p]   Build a .millburn project from an export folder");
             Console.WriteLine("                                 --stock / --stock-size / --stock-have / --stock-holes / --mill-holes / --mill-tool / --mill-above / --thickness as for export");
@@ -1151,6 +1158,10 @@ internal static class Program
         var bitDescribed = false;
         var cutterDescribed = false;
         var tabs = 4;
+
+        // Null means "sized from the board", which is the default and not a number.
+        double? tabWidthMm = null;
+        double? tabHeightMm = null;
         var thicknessMm = 0.0; // not given: resolved once the input is known
         var side = BoardSide.Top;
         string? png = null;
@@ -1218,6 +1229,21 @@ internal static class Program
                         return Bad(flag);
                     }
 
+                    i++;
+                    break;
+
+                // Both of these are left unset by default, which is not the same as zero: unset means
+                // the tab is sized from the board — a tenth of its narrow side, a third of its
+                // thickness — and that is what somebody who does not pass them wants.
+                case "--tab-width" when value is not null:
+                    if (!TryMm(value, out var tabWidth) || tabWidth <= 0) { return Bad(flag); }
+                    tabWidthMm = tabWidth;
+                    i++;
+                    break;
+
+                case "--tab-height" when value is not null:
+                    if (!TryMm(value, out var tabHeight) || tabHeight <= 0) { return Bad(flag); }
+                    tabHeightMm = tabHeight;
                     i++;
                     break;
 
@@ -1365,6 +1391,8 @@ internal static class Program
             {
                 BoardThicknessNm = Nm.FromMillimetres(thicknessMm),
                 TabCount = tabs,
+                TabWidthNm = tabWidthMm is { } w ? Nm.FromMillimetres(w) : null,
+                TabHeightNm = tabHeightMm is { } h ? Nm.FromMillimetres(h) : null,
             },
         };
 
@@ -1708,6 +1736,77 @@ internal static class Program
             }
         }
 
+        // Board-wide numbers the window had and this command did not.
+        //
+        // Found by writing the project page's command block: the block is meant to rebuild an
+        // export byte for byte, and without these four it could not say how wide the copper was
+        // isolated or how big the tabs are — which are the two things most often changed from
+        // their defaults, and the two whose absence would be read as agreement. They are spelled
+        // as `mill` spells them, because somebody who knows one should not have to learn the other.
+        //
+        // The isolation width goes on every layer, exactly as the app's own default does above:
+        // each setting is only read by the operation it belongs to. The tabs go on the outline
+        // layers alone, so a board with two of them gets both and nothing else is touched.
+        void Apply(Func<LayerOutputSettings, LayerOutputSettings> change, LayerRole? role = null)
+        {
+            foreach (var layer in board.Layers.Where(l => role is null || l.Role == role))
+            {
+                if (settings.TryGetValue(layer.FileName, out var current))
+                {
+                    settings[layer.FileName] = change(current);
+                }
+            }
+        }
+
+        if (Argument(args, "--isolation-width") is { } isolationText)
+        {
+            if (!double.TryParse(isolationText, NumberStyles.Float, CultureInfo.InvariantCulture, out var isolationMm)
+                || isolationMm < 0)
+            {
+                Console.Error.WriteLine("--isolation-width needs a width in millimetres, or 0 for the cutter's own width.");
+                return 1;
+            }
+
+            Apply(s => s with { IsolationWidthNm = Nm.FromMillimetres(isolationMm) });
+        }
+
+        if (Argument(args, "--tabs") is { } tabsText)
+        {
+            if (!int.TryParse(tabsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tabs) || tabs < 0)
+            {
+                Console.Error.WriteLine("--tabs needs a count, 0 or more.");
+                return 1;
+            }
+
+            Apply(s => s with { TabCount = tabs }, LayerRole.Outline);
+        }
+
+        // Unset is not zero: it means the tab is sized from the board — a tenth of its narrow side,
+        // a third of its thickness — which is what somebody who does not pass them wants.
+        if (Argument(args, "--tab-width") is { } tabWidthText)
+        {
+            if (!double.TryParse(tabWidthText, NumberStyles.Float, CultureInfo.InvariantCulture, out var tabWidthMm)
+                || tabWidthMm <= 0)
+            {
+                Console.Error.WriteLine("--tab-width needs a positive width in millimetres.");
+                return 1;
+            }
+
+            Apply(s => s with { TabWidthNm = Nm.FromMillimetres(tabWidthMm) }, LayerRole.Outline);
+        }
+
+        if (Argument(args, "--tab-height") is { } tabHeightText)
+        {
+            if (!double.TryParse(tabHeightText, NumberStyles.Float, CultureInfo.InvariantCulture, out var tabHeightMm)
+                || tabHeightMm <= 0)
+            {
+                Console.Error.WriteLine("--tab-height needs a positive height in millimetres.");
+                return 1;
+            }
+
+            Apply(s => s with { TabHeightNm = Nm.FromMillimetres(tabHeightMm) }, LayerRole.Outline);
+        }
+
         // The project's own lines where it has them, the machine's where it does not. A project
         // carries what it was cut with, so one that needed something unusual keeps it when it is
         // opened on another machine or a year later.
@@ -1838,6 +1937,27 @@ internal static class Program
         if (alignment is not null)
         {
             plan = plan with { Items = [.. plan.Items.Where(alignment.Moves)], Page = null };
+        }
+
+        // The script and nothing else, so it can be redirected into a file and run.
+        //
+        // The same text the project page carries, from the same renderer — and the only way to see
+        // it for an aligned export, which writes the moved programs and no page.
+        if (args.Contains("--commands", StringComparer.OrdinalIgnoreCase))
+        {
+            // An export that writes nothing has no commands to print, and printing nothing with a
+            // zero exit would look like a block that came out empty. Said, on stderr, so a
+            // redirected script file is either a script or absent rather than silently blank.
+            if (plan.Commands.Count == 0)
+            {
+                Console.Error.WriteLine(
+                    "This export writes no files, so there is nothing to rebuild. Run it without --commands to see why.");
+
+                return 1;
+            }
+
+            Console.Write(CliScript.Text(plan.Commands));
+            return 0;
         }
 
         // Companion programs that trace the same path in the air. Built here rather than at write
@@ -2093,7 +2213,31 @@ internal static class Program
                 : "Stock: this job is not built on stock. Add --stock, or tick Build on stock in Project info.");
         }
 
-        return new ExportPlan { Items = item is null ? [] : [item], Skipped = skipped, Blank = blank };
+        var plan = new ExportPlan { Items = item is null ? [] : [item], Skipped = skipped, Blank = blank };
+
+        // **Built here because nothing else does it for this plan.** `ExportPlanner.Plan` fills
+        // `Commands` at the end of its own run, and this path does not go through it — so
+        // `--only stock --commands` found an empty list and said *"This export writes no files, so
+        // there is nothing to rebuild"* about an export that writes a stock-cutting program. A
+        // refusal that states something untrue about what it refused is worse than the missing
+        // feature behind it.
+        var library = ToolLibrary.LoadOrDefault();
+
+        return plan with
+        {
+            Commands = CliScript.For(plan, new CliScriptContext
+            {
+                Source = Path.GetFileName(board.Source ?? "board"),
+                Board = board,
+                Settings = settings,
+                Library = library,
+                BoardThicknessNm = Nm.FromMillimetres(thicknessMm),
+                StockOnly = true,
+                Job = job,
+                Marks = app.Machine.SvgPlacingLayers,
+                Framing = framing ?? ProgramFraming.None,
+            }),
+        };
     }
 
     /// <summary>
@@ -2235,9 +2379,12 @@ internal static class Program
 
     private static int TestCutCommand(string[] args)
     {
-        var kind = args.Length >= 2 && args[1].StartsWith("feed", StringComparison.OrdinalIgnoreCase)
-            ? TestCutKind.Feed
-            : TestCutKind.Depth;
+        var kind = args.Length < 2 ? TestCutKind.Depth : args[1].ToLowerInvariant() switch
+        {
+            var a when a.StartsWith("feed", StringComparison.Ordinal) => TestCutKind.Feed,
+            var a when a.StartsWith("copper", StringComparison.Ordinal) => TestCutKind.Copper,
+            _ => TestCutKind.Depth,
+        };
 
         var library = ToolLibrary.LoadOrDefault();
         var app = AppSettings.LoadOrDefault();
@@ -2280,7 +2427,7 @@ internal static class Program
         }
 
         var defaults = saved is null
-            ? new TestCutOptions { Tool = tool, Kind = kind }
+            ? TestCutOptions.For(kind, tool)
             : new TestCutOptions
             {
                 Tool = tool,
@@ -2318,12 +2465,32 @@ internal static class Program
             StartDepthMm = Number("--from", defaults.StartDepthMm),
             DepthMm = Number("--depth", defaults.DepthMm),
 
-            // One --step, meaning whichever quantity this test is stepping.
-            DepthStepMm = kind == TestCutKind.Depth ? Number("--step", defaults.DepthStepMm) : defaults.DepthStepMm,
+            // One --step, meaning whichever quantity this test is stepping — which is the depth for
+            // both of the kinds that step a depth. `/code-review` caught this reading `== Depth`
+            // after the copper test was added: `--step 0.02` on a copper coupon was taken, ignored,
+            // and the rungs came out a hundredth apart anyway, while the generator's own warnings
+            // told the operator to step 0.010. A number that shapes the cut is honoured or refused,
+            // never dropped.
+            DepthStepMm = kind != TestCutKind.Feed ? Number("--step", defaults.DepthStepMm) : defaults.DepthStepMm,
             FeedStepMmPerMin = kind == TestCutKind.Feed ? Number("--step", defaults.FeedStepMmPerMin) : defaults.FeedStepMmPerMin,
         };
 
         var (text, report) = TestCut.Generate(options);
+
+        // A test with no lines in it is not a test, and writing an empty program beside a page
+        // about it would be worse than saying so. `/code-review` found this coming out as an
+        // unhandled exception from the guide generator instead.
+        if (report.Lines.Count == 0)
+        {
+            foreach (var why in report.Warnings)
+            {
+                Console.Error.WriteLine(why);
+            }
+
+            Console.Error.WriteLine("Nothing was written.");
+            return 1;
+        }
+
         var levelled = string.Empty;
 
         // The coupon's own log, never the board's map. Two passes: write the probe, run it, then
@@ -2390,7 +2557,19 @@ internal static class Program
         if (seriesLines.Count > 0 && seriesLines[0].PassCount > 1)
         {
             Line($"  each line   {seriesLines[0].PassCount} passes stepping {seriesLines[0].StepoverMm:F3} mm");
-            Line($"  measure     the band, then subtract {seriesLines[0].SteppedMm:F3} mm");
+
+            // A copper coupon is not measured, so it must not be told to subtract anything: what it
+            // wants is two rungs found with a loupe, which is a different instruction entirely.
+            if (kind == TestCutKind.Copper)
+            {
+                Line($"  rungs       {seriesLines.Count(l => !l.IsRepeat)} from {seriesLines[0].DepthMm:F3} to {seriesLines.Where(l => !l.IsRepeat).Max(l => l.DepthMm):F3} mm, stepping {options.DepthStepMm:F3}");
+                Line($"  read it     with a loupe: the first rung with no copper left, and the first into the fibreglass");
+                Line($"  probe       --probe touches every {TestCut.ProbeSpacingMmFor(report):F1} mm here, not the {TestCut.CouponSpacingMmFor(report):F1} mm a coupon this size would get");
+            }
+            else
+            {
+                Line($"  measure     the band, then subtract {seriesLines[0].SteppedMm:F3} mm");
+            }
         }
 
         if (ladderRungs.Count > 1)
@@ -2419,7 +2598,8 @@ internal static class Program
 
             var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
             {
-                SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+                SpacingMm = TestCut.ProbeSpacingMmFor(report),
+                OnCoupon = true,
                 SafeHeightMm = app.Machine.SafeZMm,
                 MaxDepthMm = app.Probe.MaxDepthMm,
                 FeedMmPerMin = app.Probe.FeedMmPerMin,

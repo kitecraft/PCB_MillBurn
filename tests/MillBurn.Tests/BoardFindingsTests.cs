@@ -62,6 +62,93 @@ public sealed class BoardFindingsTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// On a job built on stock, a gap is reported from the stock's corner — because that is where
+    /// work zero is.
+    ///
+    /// **Found by 6.56, which is the first thing to consume these coordinates geometrically.** The
+    /// shift was the board's bounds unconditionally, so on a stock job the list printed a number in
+    /// one frame while the checks panel three lines below said work zero was another: *"Cut the
+    /// stock before anything else, and keep it the right way up — its lower-left corner is work
+    /// zero for every other file in this export."* Printed, the error looked like a plausible
+    /// coordinate and had been on screen since the findings view shipped. Rung on the board, it put
+    /// the mark ten millimetres from the bridge it named.
+    ///
+    /// The border is asserted as a difference rather than as a remembered pair of numbers, so this
+    /// catches a missing shift, a doubled one and a sign error, and does not have to be edited when
+    /// the Mega's copper changes.
+    /// </summary>
+    [Fact]
+    public void OnStockAGapIsReportedFromTheStocksCorner()
+    {
+        var (board, settings) = Load(RealBoards.ArduinoMega);
+
+        var border = Nm.FromMillimetres(10);
+        var stock = new Bounds(
+            board.Bounds.MinX - border,
+            board.Bounds.MinY - border,
+            board.Bounds.MaxX + border,
+            board.Bounds.MaxY + border);
+
+        var plain = BoardFindings.For(board, settings, ToolLibrary.Default);
+        var onStock = BoardFindings.For(board, settings, ToolLibrary.Default, stock);
+
+        // Flattened in layer order and walked in lockstep, which assumes the two runs find the same
+        // gaps in the same order. They do — the same board, the same settings, the same bit, and
+        // the shift is the last thing applied — and the count check below is what would catch it if
+        // that ever stopped being true.
+        var from = plain.Layers.SelectMany(l => l.Gaps).ToList();
+        var to = onStock.Layers.SelectMany(l => l.Gaps).ToList();
+
+        Assert.NotEmpty(from);
+        Assert.Equal(from.Count, to.Count);
+
+        foreach (var (a, b) in from.Zip(to))
+        {
+            Assert.Equal(a.At.X + border, b.At.X);
+            Assert.Equal(a.At.Y + border, b.At.Y);
+        }
+    }
+
+    /// <summary>
+    /// No frame given means the board's own, which is what a job with no stock uses.
+    ///
+    /// **`default(Bounds)` is not the sentinel it looks like**, and that is what this guards. It is
+    /// `(0, 0, 0, 0)` — a zero-area rectangle at the origin — and `Bounds.IsEmpty` tests
+    /// `MinX > MaxX`, so it reads as a real frame whose corner happens to be zero. Written as
+    /// `Bounds frame = default` first, which silently gave every existing caller a shift of
+    /// nothing; the parameter is nullable for that reason and this says so.
+    /// </summary>
+    [Fact]
+    public void NoFrameMeansTheBoardsOwn()
+    {
+        var (board, settings) = Load(RealBoards.ArduinoMega);
+
+        // **This board's artwork does not start at the origin, and the last assertion needs that.**
+        // Shifting by `default(Bounds)` means shifting by nothing, which is only distinguishable
+        // from shifting by the board's corner when that corner is somewhere else. Stated rather
+        // than assumed, so a fixture change breaks it here with a reason rather than three lines
+        // down with none.
+        Assert.True(
+            board.Bounds.MinX != 0 || board.Bounds.MinY != 0,
+            "this board is drawn from the origin, so it cannot tell the two shifts apart");
+
+        var implied = BoardFindings.For(board, settings, ToolLibrary.Default);
+        var stated = BoardFindings.For(board, settings, ToolLibrary.Default, board.Bounds);
+
+        var a = implied.Layers.SelectMany(l => l.Gaps).Select(g => g.At).ToList();
+        var b = stated.Layers.SelectMany(l => l.Gaps).Select(g => g.At).ToList();
+
+        Assert.NotEmpty(a);
+        Assert.Equal(a, b);
+
+        // And it is not the zero-area rectangle at the origin, which would shift by nothing and
+        // hand back the artwork's own coordinates.
+        var wrong = BoardFindings.For(board, settings, ToolLibrary.Default, default(Bounds));
+
+        Assert.NotEqual(a, wrong.Layers.SelectMany(l => l.Gaps).Select(g => g.At).ToList());
+    }
+
+    /// <summary>
     /// A gap is reported where the operator's machine can be sent, not where the Gerber was drawn.
     ///
     /// **Caught by looking at a screenshot, and nothing else would have caught it.** The first
@@ -261,19 +348,30 @@ public sealed class BoardFindingsTests(ITestOutputHelper output)
 
         using var stop = new CancellationTokenSource();
 
-        var first = board.Layers
-            .Select((l, i) => (Layer: l, Index: i))
-            .First(x => settings.TryGetValue(x.Layer.FileName, out var s)
-                && LayerOperations.For(x.Layer.Role, s.Output) == OperationKind.Isolation);
+        // **Cancel after the first layer's lookup, not before it.**
+        //
+        // This used to pass `after: first.Index` — the position of the first isolation layer in
+        // `board.Layers`, which on the Mega is zero. `CancelsAfterLayers` cancels once `Reached`
+        // exceeds `after`, so the very first lookup turned the token and the abandoned run reported
+        // **no layers at all**. Both assertions below passed on that: it was cancelled, and zero is
+        // fewer than two. A test called *a run stopped part way through says so* was proving that a
+        // run stopped before it started says so, which a single check at the top of the method
+        // satisfies — the same fault `LatestRun` had, and the one `PlanningCancellationFixture`
+        // warns about in so many words: *"A test that cancels after two and calls that 'two layers
+        // in' has actually stopped the run before it started planning anything."*
+        //
+        // One is the number that means something here: the run must have finished a layer and then
+        // been stopped. `Assert.NotEmpty` below is what says so, and is why `after` is a literal
+        // rather than an index computed from the board.
+        var abandoned = new CancelsAfterLayers(settings, after: 1, stop);
 
-        var abandoned = new CancelsAfterLayers(settings, after: first.Index, stop);
-
-        var result = BoardFindings.For(board, abandoned, ToolLibrary.Default, stop.Token);
+        var result = BoardFindings.For(board, abandoned, ToolLibrary.Default, token: stop.Token);
 
         output.WriteLine(
             $"whole run reported on {whole.Layers.Count} layer(s); the abandoned one on {result.Layers.Count}");
 
         Assert.True(result.Cancelled, "a run that stopped part way reported itself complete");
+        Assert.NotEmpty(result.Layers);
         Assert.True(result.Layers.Count < whole.Layers.Count, "the run was not actually stopped");
     }
 }

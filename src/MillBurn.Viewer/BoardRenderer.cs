@@ -8,8 +8,6 @@ namespace MillBurn.Viewer;
 /// </summary>
 public static class BoardRenderer
 {
-    private static readonly float[] GridSteps = [0.1f, 0.5f, 1f, 5f, 10f, 25f, 50f, 100f, 250f];
-
     public readonly record struct DrawResult(int LayersDrawn, int VerticesDrawn);
 
     public static SKRect VisibleWorldRect(SKRect viewport, ViewTransform view)
@@ -27,7 +25,11 @@ public static class BoardRenderer
         BoardScene scene,
         ViewTransform view,
         SKColor background,
-        SKColor gridColor)
+        SKColor gridColor,
+        bool ruler = false,
+        RulerReadout? readout = null,
+        RulerMeasure? measure = null,
+        BoardMarker? marker = null)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(scene);
@@ -36,8 +38,27 @@ public static class BoardRenderer
         canvas.ClipRect(viewport);
         canvas.Clear(background);
 
-        DrawGrid(canvas, viewport, view, gridColor);
+        // Work zero in this view's world coordinates: the frame's lower-left corner, which the
+        // scene was built around. World y is the board's negated, so the corner's y is the
+        // rectangle's *bottom*.
+        // Read once. `BoardScene.Reframe` assigns this from the UI thread while a slider is being
+        // dragged, and two reads of it on the render thread could mix an old x with a new y — one
+        // frame with its ruler origin in a place neither frame had. The same care `Rebuild` takes
+        // swapping the scene before disposing the old one.
+        var extent = scene.Bounds;
+        var origin = new SKPoint(extent.Left, extent.Bottom);
+        var step = GridLadder.StepFor(view.Scale);
 
+        // One frame for the ruler and the marker both, so a mark cannot land somewhere the scale
+        // beside it disagrees with.
+        var frame = new RulerFrame(
+            view.Scale,
+            (origin.X * view.Scale) + view.OffsetX,
+            (origin.Y * view.Scale) + view.OffsetY);
+
+        DrawGrid(canvas, viewport, view, gridColor, origin, step);
+
+        canvas.Save();
         canvas.Translate(view.OffsetX, view.OffsetY);
         canvas.Scale(view.Scale);
 
@@ -89,6 +110,29 @@ public static class BoardRenderer
         stroke.PathEffect = null;
 
         canvas.Restore();
+
+        // **Over the board, which is what an overlay means.** It was under it, and that reads fine
+        // on a whole board — the strips sit in the margin and nothing reaches them — but a shot at
+        // bridge zoom showed no ruler at all, because at that zoom copper fills the viewport and the
+        // ruler is exactly what you want. The mockup chosen on 2026-09-30 was the translucent strip
+        // floating over the board for this reason; the cost is the outermost millimetre or so, and
+        // only where the board is panned right to the edge.
+        //
+        // After the restore, so the readout and the measuring line can work in screen pixels: both
+        // are window furniture at a fixed size, not artwork that scales with the zoom.
+        if (ruler)
+        {
+            Ruler.Draw(canvas, viewport, frame, step, background, readout, measure);
+        }
+
+        // After the ruler, so the crosshairs and the two strip pointers land on top of the strips
+        // they are pointing at rather than under them.
+        if (marker is { } place)
+        {
+            Marker.Draw(canvas, viewport, frame, place, ruler);
+        }
+
+        canvas.Restore();
         return new DrawResult(layersDrawn, verticesDrawn);
     }
 
@@ -96,21 +140,17 @@ public static class BoardRenderer
     /// A millimetre grid whose spacing steps up as you zoom out, so it stays readable and never
     /// degenerates into a solid wash of lines at low zoom.
     /// </summary>
-    private static void DrawGrid(SKCanvas canvas, SKRect viewport, ViewTransform view, SKColor color)
+    private static void DrawGrid(
+        SKCanvas canvas, SKRect viewport, ViewTransform view, SKColor color, SKPoint origin,
+        float step)
     {
+        // `step` is handed in rather than worked out again. This and the ruler asked `GridLadder`
+        // separately and agreed — but two call sites agreeing today is exactly the state the two
+        // copies of the ladder were in before they drifted, and a ruler ticking against a grid it
+        // did not see drawn is the disagreement this whole feature is built to rule out.
         if (color.Alpha == 0)
         {
             return;
-        }
-
-        var step = GridSteps[^1];
-        foreach (var candidate in GridSteps)
-        {
-            if (candidate * view.Scale >= 12f)
-            {
-                step = candidate;
-                break;
-            }
         }
 
         var world = VisibleWorldRect(viewport, view);
@@ -123,14 +163,18 @@ public static class BoardRenderer
             Style = SKPaintStyle.Stroke,
         };
 
-        var startX = MathF.Floor(world.Left / step) * step;
+        // **From work zero, not from the artwork's own origin.** The grid used to step from world
+        // zero, which is wherever the EDA tool happened to put the board, so its lines fell on no
+        // number anybody cares about — and the ruler's ticks would then have sat between them.
+        // Stepping from the frame's corner puts a line on every round millimetre the ruler labels.
+        var startX = origin.X + (MathF.Floor((world.Left - origin.X) / step) * step);
         for (var x = startX; x <= world.Right; x += step)
         {
             var sx = (x * view.Scale) + view.OffsetX;
             canvas.DrawLine(sx, viewport.Top, sx, viewport.Bottom, paint);
         }
 
-        var startY = MathF.Floor(world.Top / step) * step;
+        var startY = origin.Y + (MathF.Floor((world.Top - origin.Y) / step) * step);
         for (var y = startY; y <= world.Bottom; y += step)
         {
             var sy = (y * view.Scale) + view.OffsetY;

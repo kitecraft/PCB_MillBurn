@@ -379,4 +379,131 @@ public sealed class MachineSettingsTests(ITestOutputHelper output)
             File.Delete(path);
         }
     }
+
+    /// <summary>
+    /// The default tab sizes: zero means "from the board", and a number means that number.
+    ///
+    /// **Asked for from the workshop**, 2026-10-01, the day after the tabs were made to size
+    /// themselves: *"add some options to the settings → new board tab for default tab width and
+    /// thickness."* The derived rule is right for most boards and is nobody's decision; an operator
+    /// who knows what their stock and their hands want should be able to say so once rather than on
+    /// every board.
+    ///
+    /// Zero as "let the board decide" is the same idiom the isolation width beside it uses for "one
+    /// lap, whatever the tool cuts" — and the reason it is zero rather than a nullable is that this
+    /// record is a settings file somebody can open in an editor.
+    /// </summary>
+    [Fact]
+    public void ZeroTabSizesMeanTheBoardDecides()
+    {
+        var derived = new MillingDefaults();
+
+        output.WriteLine($"out of the box: width {derived.TabWidthMm} mm, left {derived.TabHeightMm} mm");
+
+        Assert.Equal(0, derived.TabWidthMm);
+        Assert.Equal(0, derived.TabHeightMm);
+        Assert.Null(derived.TabWidthNm);
+        Assert.Null(derived.TabHeightNm);
+
+        var set = new MillingDefaults { TabWidthMm = 2.5, TabHeightMm = 0.35 };
+
+        Assert.Equal(Nm.FromMillimetres(2.5), set.TabWidthNm);
+        Assert.Equal(Nm.FromMillimetres(0.35), set.TabHeightNm);
+    }
+
+    /// <summary>
+    /// A tab size that cannot mean anything is refused rather than clamped, and says which tab of
+    /// the settings window it is on.
+    ///
+    /// Only the negatives: zero is the derived case, and there is no upper bound to check without a
+    /// board — whether 1.5 mm of material left is absurd depends on a thickness this record does not
+    /// hold, and the program already says plainly when a tab is taller than the whole cut.
+    /// </summary>
+    [Fact]
+    public void ANegativeTabSizeIsRefused()
+    {
+        var found = SettingsCheck.Found(
+            new MachineSettings(),
+            new DryRunSettings(),
+            new ProbeSettings(),
+            new LevelSettings(),
+            new MillingDefaults { TabWidthMm = -1, TabHeightMm = -0.5 });
+
+        output.WriteLine(string.Join("\n", found.Select(p => $"{p.Section}: {p.Text}")));
+
+        // **New boards, not Milling**, because that is the tab the two boxes are on. The window
+        // marks the tab a problem belongs to, and marking the wrong one sends the operator looking
+        // for a number that is not there — which a `/code-review` pass caught: the isolation width
+        // these are modelled on lives on Milling, and the section was copied with the rule.
+        Assert.Contains(found, p => p.Section == SettingsSection.NewBoards
+            && p.Text.StartsWith("Tab width", StringComparison.Ordinal));
+
+        Assert.Contains(found, p => p.Section == SettingsSection.NewBoards
+            && p.Text.StartsWith("The material left under a tab", StringComparison.Ordinal));
+
+        // And the ordinary pair is accepted, so the rule is about negatives rather than about tabs.
+        Assert.Empty(SettingsCheck.Problems(
+            new MachineSettings(),
+            new DryRunSettings(),
+            new ProbeSettings(),
+            new LevelSettings(),
+            new MillingDefaults { TabWidthMm = 3, TabHeightMm = 0.5 }));
+
+        // **And so is zero, which is the pair every install ships with.** A `/describe-test` pass
+        // noticed that nothing here put a zero through the validator: a rule written as "not
+        // positive" rather than "negative" would have refused to save the settings of every
+        // machine that had never touched a tab.
+        Assert.Empty(SettingsCheck.Problems(
+            new MachineSettings(),
+            new DryRunSettings(),
+            new ProbeSettings(),
+            new LevelSettings(),
+            new MillingDefaults()));
+    }
+
+    /// <summary>
+    /// They survive the settings file, including a settings file written before they existed.
+    ///
+    /// The second half is the one that matters: every board the author has already set up was saved
+    /// by a build with no tab defaults in it, and reading one of those must give "from the board"
+    /// rather than a tab 0 mm wide.
+    /// </summary>
+    [Fact]
+    public void TabDefaultsSurviveTheSettingsFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "millburn-tabs-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+
+        try
+        {
+            new AppSettings
+            {
+                Milling = new MillingDefaults { TabWidthMm = 2.5, TabHeightMm = 0.35 },
+            }.Save(path);
+
+            var back = AppSettings.LoadOrDefault(path);
+
+            output.WriteLine(File.ReadAllText(path));
+
+            Assert.Equal(2.5, back.Milling.TabWidthMm);
+            Assert.Equal(0.35, back.Milling.TabHeightMm);
+
+            // A file from before this existed.
+            // **0.25, not the 0.4 this record defaults to.** A `/describe-test` pass pointed out
+            // that asserting the default back proves nothing: a loader that ignored the whole
+            // nested object would have produced 0.4 just as happily.
+            File.WriteAllText(path, """
+                { "SchemaVersion": 1, "Milling": { "IsolationWidthMm": 0.25 } }
+                """);
+
+            var older = AppSettings.LoadOrDefault(path);
+
+            Assert.Equal(0.25, older.Milling.IsolationWidthMm);
+            Assert.Null(older.Milling.TabWidthNm);
+            Assert.Null(older.Milling.TabHeightNm);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

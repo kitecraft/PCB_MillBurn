@@ -45,8 +45,23 @@ public sealed record SlotOptions
     public long TotalDepthNm => BoardThicknessNm + BreakThroughNm;
 }
 
-/// <summary>One slot that will not be cut, and why.</summary>
-public readonly record struct SlotRefusal(long WidthNm, int Count, string Reason);
+/// <summary>One group of slots that will not be cut, why, and where they would have been.</summary>
+/// <param name="WidthNm">How wide they are, which is why the library has nothing for them.</param>
+/// <param name="Count">How many features of that width.</param>
+/// <param name="Reason">What to tell the operator.</param>
+/// <param name="Where">
+/// Their centrelines, in the artwork's own coordinates.
+///
+/// **Carried so the companion page can draw them**, which is 06 §6.5's strongest argument: a refused
+/// slot is invisible — not in the program, and the board renders exactly as the EDA tool drew it —
+/// so prose is the only thing that can report it, and a shape somebody recognises beats a sentence
+/// they skim. Empty for a refusal that is about a file rather than about a feature.
+/// </param>
+public readonly record struct SlotRefusal(
+    long WidthNm,
+    int Count,
+    string Reason,
+    IReadOnlyList<(Point2 From, Point2 To)> Where);
 
 /// <summary>What the slots in a file turned into.</summary>
 public sealed record SlotPlan
@@ -160,7 +175,11 @@ public static class SlotOperation
 
             if (choice.Tool is not { } tool)
             {
-                refusals.Add(new SlotRefusal(width, group.Count(), choice.Refusal!));
+                refusals.Add(new SlotRefusal(
+                    width,
+                    group.Count(),
+                    choice.Refusal!,
+                    [.. group.Select(s => (s.From, s.To))]));
                 continue;
             }
 

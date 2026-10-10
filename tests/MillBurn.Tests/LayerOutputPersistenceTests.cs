@@ -1,3 +1,4 @@
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Pipeline;
 
@@ -51,6 +52,7 @@ public sealed class LayerOutputPersistenceTests : IDisposable
                 ToolId = tool,
                 DepthNm = Nm.FromMillimetres(0.08),
                 Passes = 3,
+                IsolationWidthNm = Nm.FromMillimetres(0.4),
                 Mirrored = true,
             })
             .WithOutput(new LayerOutputSettings
@@ -64,7 +66,17 @@ public sealed class LayerOutputPersistenceTests : IDisposable
                 FileName = "PogoTest1-Edge_Cuts.gbr",
                 Output = OutputKind.Gcode,
                 TabCount = 6,
+                TabWidthNm = Nm.FromMillimetres(2.5),
+                TabHeightNm = Nm.FromMillimetres(0.35),
+
+                // One tab set by hand, sparsely: the shape the tabs window writes, and the one that
+                // exercises a record with a required member through the serialiser.
+                TabEdits = [new TabEdit { Index = 2, WidthNm = Nm.FromMillimetres(4.0) }],
                 BreakThroughNm = Nm.FromMillimetres(0.45),
+
+                // Off, and off is the interesting direction: a bool that failed to round-trip would
+                // come back at its default, which is on.
+                WriteDrillGuide = false,
             });
 
         ProjectFile.Save(project, Path_);
@@ -76,6 +88,7 @@ public sealed class LayerOutputPersistenceTests : IDisposable
         Assert.Equal(tool, copper.ToolId);
         Assert.Equal(Nm.FromMillimetres(0.08), copper.DepthNm);
         Assert.Equal(3, copper.Passes);
+        Assert.Equal(Nm.FromMillimetres(0.4), copper.IsolationWidthNm);
         Assert.True(copper.Mirrored);
 
         var mask = reopened.Settings.OutputFor("PogoTest1-F_Mask.gbr");
@@ -87,6 +100,17 @@ public sealed class LayerOutputPersistenceTests : IDisposable
         Assert.NotNull(outline);
         Assert.Equal(6, outline.TabCount);
         Assert.Equal(Nm.FromMillimetres(0.45), outline.BreakThroughNm);
+        Assert.False(outline.WriteDrillGuide);
+        Assert.Equal(Nm.FromMillimetres(2.5), outline.TabWidthNm);
+        Assert.Equal(Nm.FromMillimetres(0.35), outline.TabHeightNm);
+
+        // The edit, whole: which tab it names, the size it sets, and the size it leaves alone. A
+        // serialiser that dropped the null would be indistinguishable from one that dropped the
+        // edit until a board came out with the wrong web under one tab.
+        var edit = Assert.Single(outline.TabEdits);
+        Assert.Equal(2, edit.Index);
+        Assert.Equal(Nm.FromMillimetres(4.0), edit.WidthNm);
+        Assert.Null(edit.HeightNm);
     }
 
     /// <summary>
@@ -165,23 +189,60 @@ public sealed class LayerOutputPersistenceTests : IDisposable
     }
 
     /// <summary>
-    /// Two projects configured the same way must save the same bytes, whatever order the layers
-    /// were touched in — a manifest that depends on click order cannot be diffed.
+    /// Two projects configured the same way save the same manifest, whatever order the layers were
+    /// touched in — a file that depends on click order cannot be diffed.
+    ///
+    /// **It used to prove that in memory and not in the file**, which a `/describe-test` pass pointed
+    /// out: it compared two `ProjectSettings` built in the two orders and never saved anything, under
+    /// a name and a comment that both talked about the file. Two empty collections would have
+    /// satisfied it as happily. It now writes both projects and compares the manifests that come out.
     /// </summary>
     [Fact]
     public void TheOrderLayersWereTouchedInDoesNotReachTheFile()
     {
-        var forwards = new ProjectSettings()
-            .WithOutput(new LayerOutputSettings { FileName = "a.gbr", Output = OutputKind.Svg })
-            .WithOutput(new LayerOutputSettings { FileName = "b.gbr", Output = OutputKind.Gcode });
+        var forwards = Imported();
+        forwards.Settings = forwards.Settings
+            .WithOutput(new LayerOutputSettings { FileName = "PogoTest1-F_Cu.gbr", Output = OutputKind.Gcode })
+            .WithOutput(new LayerOutputSettings { FileName = "PogoTest1-F_Mask.gbr", Output = OutputKind.Svg });
 
-        var backwards = new ProjectSettings()
-            .WithOutput(new LayerOutputSettings { FileName = "b.gbr", Output = OutputKind.Gcode })
-            .WithOutput(new LayerOutputSettings { FileName = "a.gbr", Output = OutputKind.Svg });
+        var backwards = Imported();
+        backwards.Settings = backwards.Settings
+            .WithOutput(new LayerOutputSettings { FileName = "PogoTest1-F_Mask.gbr", Output = OutputKind.Svg })
+            .WithOutput(new LayerOutputSettings { FileName = "PogoTest1-F_Cu.gbr", Output = OutputKind.Gcode });
 
-        Assert.Equal(
-            forwards.LayerOutputs.Select(o => o.FileName),
-            backwards.LayerOutputs.Select(o => o.FileName));
+        var first = Path.Combine(_folder, "forwards" + ProjectFile.Extension);
+        var second = Path.Combine(_folder, "backwards" + ProjectFile.Extension);
+
+        ProjectFile.Save(forwards, first);
+        ProjectFile.Save(backwards, second);
+
+        var a = Manifest(first);
+        var b = Manifest(second);
+
+        // Both of them really carry the two layers, so the comparison is of something rather than of
+        // two absences.
+        Assert.Contains("PogoTest1-F_Cu.gbr", a, StringComparison.Ordinal);
+        Assert.Contains("PogoTest1-F_Mask.gbr", a, StringComparison.Ordinal);
+
+        Assert.Equal(a, b, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The manifest inside a saved project, as text.
+    ///
+    /// Found by extension rather than by name: the entry's name is the file format's business, and
+    /// there is exactly one JSON entry beside the Gerbers.
+    /// </summary>
+    private static string Manifest(string path)
+    {
+        using var archive = System.IO.Compression.ZipFile.OpenRead(path);
+
+        var entry = archive.Entries.Single(e => e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+
+        using var stream = entry.Open();
+        using var reader = new StreamReader(stream);
+
+        return reader.ReadToEnd();
     }
 
     /// <summary>

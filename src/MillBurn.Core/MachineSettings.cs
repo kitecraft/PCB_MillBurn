@@ -261,6 +261,37 @@ public sealed record MillingDefaults
 
     [JsonIgnore]
     public long IsolationWidthNm => Nm.FromMillimetres(IsolationWidthMm);
+
+    /// <summary>
+    /// How wide every tab should be on a board that has just been imported, in millimetres.
+    ///
+    /// **Zero means "from the board"**, which is the default and the better answer for most work: a
+    /// tab is a tenth of the board's narrow side, so a 21 mm connector strip gets 2.0 mm and a panel
+    /// gets 5.0 mm without anybody choosing. The number is here for the operator who knows what their
+    /// stock and their hands want and would rather not have it derived — the same shape as the
+    /// isolation width above, where zero means the old one-lap behaviour.
+    ///
+    /// Applied when a folder is imported, like every other default on this record. A board already
+    /// set up keeps what it was set up with.
+    /// </summary>
+    public double TabWidthMm { get; init; }
+
+    /// <summary>
+    /// How much material every tab should leave under it, in millimetres. Zero takes a third of the
+    /// board's thickness.
+    ///
+    /// This is the number that decides whether the board snaps out or has to be sawn: too thick and
+    /// it tears the laminate, too thin and the tab breaks while the cutter is still working.
+    /// </summary>
+    public double TabHeightMm { get; init; }
+
+    /// <summary>The tab width to start a layer at, or null to size it from the board.</summary>
+    [JsonIgnore]
+    public long? TabWidthNm => TabWidthMm > 0 ? Nm.FromMillimetres(TabWidthMm) : null;
+
+    /// <summary>The material under a tab to start a layer at, or null to take it from the thickness.</summary>
+    [JsonIgnore]
+    public long? TabHeightNm => TabHeightMm > 0 ? Nm.FromMillimetres(TabHeightMm) : null;
 }
 
 public sealed record LevelSettings
@@ -296,6 +327,9 @@ public enum SettingsSection
     DryRun,
     Probing,
     Levelling,
+
+    /// <summary>What a freshly imported board starts out doing — including its tabs.</summary>
+    NewBoards,
 }
 
 /// <summary>One thing wrong with the settings, and the section it is in.</summary>
@@ -354,6 +388,29 @@ public static class SettingsCheck
             {
                 problems.Add(new SettingsProblem(SettingsSection.Milling, "Isolation width above 5 mm would clear most of the copper off the board."));
             }
+
+            // Zero is how both of these say "let the board decide", so only a negative is wrong —
+            // and a negative tab is not a narrow tab, it is a gap the splitter would open backwards.
+            // **On the New boards section, where the boxes are.** The isolation width above is on
+            // the Milling tab and these two are not, and a problem that marks the wrong tab sends
+            // the operator looking for a number that is not there — which is the whole reason a
+            // problem carries a section at all.
+            if (mill.TabWidthMm < 0)
+            {
+                problems.Add(new SettingsProblem(SettingsSection.NewBoards, "Tab width cannot be negative. Zero sizes each tab from the board."));
+            }
+
+            if (mill.TabHeightMm < 0)
+            {
+                problems.Add(new SettingsProblem(SettingsSection.NewBoards, "The material left under a tab cannot be negative. Zero takes a third of the board's thickness."));
+            }
+
+            // **No upper bound on either**, deliberately, where the isolation width has one. That
+            // check can be made without a board: five millimetres of moat is wrong whatever is being
+            // cut. A tab is not — whether 1.5 mm of material left is absurd depends on a thickness
+            // this record does not know, and the outline already says plainly in the program when a
+            // tab is taller than the whole cut. Refusing to save would be the app second-guessing a
+            // number it cannot evaluate.
         }
 
         if (machine.SafeZMm <= 0)

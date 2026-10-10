@@ -260,6 +260,15 @@ public sealed record ExportPlan
     public ExportCompanion? Page { get; init; }
 
     /// <summary>
+    /// The CLI commands that would write this export again, in the order they have to be run.
+    ///
+    /// On the plan rather than only on the page because an aligned export has no page — it writes
+    /// the moved programs and nothing else — and because <c>export --commands</c> prints these
+    /// without writing anything at all.
+    /// </summary>
+    public IReadOnlyList<CliStep> Commands { get; init; } = [];
+
+    /// <summary>
     /// The rectangle every program in this plan is referenced to: the blank's, or the board's when
     /// there is no blank.
     ///
@@ -532,28 +541,52 @@ public static class ExportPlanner
 
         var plan = new ExportPlan { Items = items, Skipped = skipped, Blank = blank };
 
+        if (items.Count == 0)
+        {
+            return plan;
+        }
+
+        // Worked out from the plan that was just built, because the plan is the only thing here that
+        // knows what the export did rather than what it was asked for: a stock that was refused, or
+        // a layer whose role cannot do what it was set to, is in the settings and not in these.
+        plan = plan with
+        {
+            Commands = CliScript.For(plan, new CliScriptContext
+            {
+                Source = Path.GetFileName(board.Source ?? "board"),
+                Board = board,
+                Settings = settings,
+                Library = library,
+                BoardThicknessNm = boardThicknessNm,
+                Only = only,
+                Job = options,
+                Alignment = alignment,
+                Marks = (machineSettings ?? new MachineSettings()).SvgPlacingLayers,
+                Framing = framing ?? ProgramFraming.None,
+            }),
+        };
+
         // One page for the whole export, written last because it describes everything above it.
         //
         // Every fact on it is said somewhere already — in the export window, in a program's
         // comments, on a drilling page — and each of those is a different place, none of which is
         // open when somebody opens the folder next week.
-        return items.Count == 0
-            ? plan
-            : plan with
-            {
-                Page = new ExportCompanion(
-                    Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".project.html",
-                    ProjectPage.Build(plan, new ProjectPageContext
-                    {
-                        BoardName = Path.GetFileName(board.Source ?? "board"),
-                        Board = board.Bounds,
-                        BoardThicknessNm = boardThicknessNm,
-                        Blank = blank,
-                        OutlineCutter = OutlineCutter(board, settings, library).Name,
-                        Skipped = skipped,
-                    }),
-                    Invariant($"{items.Count} file(s), a suggested running order, and where work zero is")),
-            };
+        return plan with
+        {
+            Page = new ExportCompanion(
+                Path.GetFileNameWithoutExtension(board.Source ?? "board") + ".project.html",
+                ProjectPage.Build(plan, new ProjectPageContext
+                {
+                    BoardName = Path.GetFileName(board.Source ?? "board"),
+                    Board = board.Bounds,
+                    BoardThicknessNm = boardThicknessNm,
+                    Blank = blank,
+                    OutlineCutter = OutlineCutter(board, settings, library).Name,
+                    Skipped = skipped,
+                    Commands = plan.Commands,
+                }),
+                Invariant($"{items.Count} file(s), a suggested running order, and where work zero is")),
+        };
     }
 
     /// <summary>
@@ -778,7 +811,7 @@ public static class ExportPlanner
 
         // One page for the layer, beside its first file, describing every file in the order they run.
         var guide = GuideFor(
-            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame != board.Bounds, aligned);
+            board, layer, setting, target, files, boardThicknessNm, files[0].Warnings, repeated, frame, aligned);
 
         return guide is null ? files : [files[0] with { Companion = guide }, .. files.Skip(1)];
     }
@@ -1096,6 +1129,8 @@ public static class ExportPlanner
         // The page that travels with the files. It carries the refusals, which is the one thing on
         // it that cannot be recovered from a program: a file cannot describe what is absent from it,
         // and the export window is not what anybody has open at the machine.
+        var (rings, figureBounds) = Figure(board, frame, setting.MirrorFor(layer.Role), alignment);
+
         var (html, report) = RoutingGuide.Build(
             [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
             new RoutingGuideContext
@@ -1107,6 +1142,15 @@ public static class ExportPlanner
                 BreakThroughNm = setting.BreakThroughNm,
                 Refusals = [.. plan.Refusals.Select(Worded)],
                 RefusedCount = plan.RefusedCount,
+                Outline = rings,
+                Bounds = figureBounds,
+
+                // The shapes of what is not being made, in the frame the program works in. Drawn
+                // hatched on every cutter's picture: a refused feature is a hole in the board that
+                // nothing is going to make, not something a particular bit skips.
+                Refused = [.. plan.Refusals.SelectMany(r => r.Where.Select(w => new RefusedFeature(
+                    [Placed(w.From, frame, setting.MirrorFor(layer.Role), alignment), Placed(w.To, frame, setting.MirrorFor(layer.Role), alignment)],
+                    r.WidthNm)))],
                 // Still matched on the sentence, and left that way on purpose. The page lists the
                 // refusals itself in `Refusals` directly above, so these would appear twice; what
                 // is being excluded is that one wording and not refusals in general, which a
@@ -1686,6 +1730,96 @@ public static class ExportPlanner
     }
 
     /// <summary>
+    /// A point as the emitted program has it: mirrored if the layer is, shifted into the frame, and
+    /// turned by the drill alignment if there is one.
+    ///
+    /// **The same three steps `AssembleEach` applies, in the same order**, and a `/code-review` pass
+    /// is why they are all here. The marks on a companion page's picture are read back out of the
+    /// program, so a backdrop that was only translated would sit under marks that had also been
+    /// mirrored: on an asymmetric board the holes would land off the profile, and on a symmetric one
+    /// they would look plausible and be wrong, which is the worse of the two.
+    ///
+    /// Public because the tabs window asks the same question of the same code: it shows where each
+    /// tab is, and "where" has to mean the coordinate in the file.
+    /// </summary>
+    public static Point2 Placed(Point2 at, Bounds frame, bool mirrored, DrillAlignment? alignment)
+    {
+        var point = mirrored
+            ? new Point2(frame.MinX + frame.MaxX - at.X, at.Y)
+            : at;
+
+        point = new Point2(point.X - frame.MinX, point.Y - frame.MinY);
+
+        return alignment is null ? point : alignment.Apply(point);
+    }
+
+    /// <summary>
+    /// The board's profile and extent as a companion page's picture needs them: polylines in the
+    /// frame the programs are written in, and simplified enough to travel inside an HTML file.
+    ///
+    /// **Shifted by the frame rather than by the board**, because that is what every emitted
+    /// coordinate is measured from — on a blank, work zero is the stock's corner and the board sits
+    /// somewhere inside it. The marks on the picture come out of the program, so the backdrop has to
+    /// be in the program's own frame or the two would not line up.
+    ///
+    /// **Thinned to a tenth of a millimetre**, which is finer than any line this is drawn at and
+    /// turns the panel's tessellated outline from tens of thousands of points into hundreds. The
+    /// pages are self-contained by rule, so every point in them is bytes somebody has to open on a
+    /// phone in a workshop.
+    /// </summary>
+    private static (IReadOnlyList<IReadOnlyList<Point2>> Rings, Bounds Bounds) Figure(
+        Board board,
+        Bounds frame,
+        bool mirrored,
+        DrillAlignment? alignment)
+    {
+        var outline = board.Layers.FirstOrDefault(l => l.Role == LayerRole.Outline);
+
+        if (outline is null || board.Bounds.IsEmpty)
+        {
+            return ([], Bounds.Empty);
+        }
+
+        var enough = Nm.FromMillimetres(0.1);
+        var rings = new List<IReadOnlyList<Point2>>();
+
+        foreach (var ring in outline.Area)
+        {
+            if (ring.Count < 3)
+            {
+                continue;
+            }
+
+            var points = new List<Point2>(ring.Count);
+
+            foreach (var point in ring)
+            {
+                var at = Placed(new Point2(point.X, point.Y), frame, mirrored, alignment);
+
+                if (points.Count == 0 || at.DistanceTo(points[^1]) >= enough)
+                {
+                    points.Add(at);
+                }
+            }
+
+            if (points.Count >= 3)
+            {
+                rings.Add(points);
+            }
+        }
+
+        // From the rings themselves rather than from the board's own box: once they can be mirrored
+        // and turned, the box that holds them is whatever they came out as.
+        var bounds = Bounds.Empty;
+
+        foreach (var at in rings.SelectMany(r => r))
+        {
+            bounds = bounds.Include(at);
+        }
+
+        return (rings, bounds);
+    }
+    /// <summary>
     /// The page that explains how to run a layer's drilling files.
     ///
     /// Built from the emitted text rather than from the toolpaths, like everything else here that
@@ -1701,9 +1835,11 @@ public static class ExportPlanner
         long thicknessNm,
         IReadOnlyList<Check> warnings,
         int repeats,
-        bool onBlank,
+        Bounds frame,
         DrillAlignment? alignment)
     {
+        var (rings, bounds) = Figure(board, frame, setting.MirrorFor(layer.Role), alignment);
+
         var (html, report) = DrillGuide.Build(
             [.. files.Select(f => new GuideProgram(f.TargetName, f.Content))],
             new DrillGuideContext
@@ -1715,7 +1851,9 @@ public static class ExportPlanner
                 BreakThroughNm = setting.BreakThroughNm,
                 RepeatedPositions = repeats,
                 Warnings = [.. warnings.Select(w => w.Line)],
-                OnBlank = onBlank,
+                OnBlank = frame != board.Bounds,
+                Outline = rings,
+                Bounds = bounds,
             });
 
         if (report.Steps.Count == 0)
@@ -1934,15 +2072,43 @@ public static class ExportPlanner
     private static IReadOnlyList<Toolpath> Only(Toolpath? toolpath) =>
         toolpath is null ? [] : [toolpath];
 
-    private static Toolpath BuildOutline(
+    /// <summary>
+    /// The profiles an outline layer is cut from.
+    ///
+    /// **Positive rings only, and public for the same reason the options are.** A stroked Edge_Cuts
+    /// realises as an annulus per outline — a positive ring around the outside of the pen and a
+    /// negative one inside it — and the negative ones are the inside of the stroke rather than real
+    /// cutouts. The tabs window plans from this too: planning from the raw area would hand the
+    /// planner a different set of paths from the one the program is built on, so the nesting, the
+    /// contour order and therefore the numbering of the tabs an operator edits would all be answers
+    /// about a board nobody is cutting.
+    /// </summary>
+    public static Paths64 OutlineProfiles(BoardLayer layer)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+
+        return new Paths64(layer.Area.Where(r => Clipper.Area(r) > 0));
+    }
+
+    /// <summary>
+    /// How this board's outline will be cut, from its settings.
+    ///
+    /// **Public so that the window can ask instead of guessing.** The tabs dialog has to show where
+    /// the tabs are going to be before anything is written, and the only way for the picture and the
+    /// file to agree is for both to be built from the same options — the same thickness, the same
+    /// break-through, the same bit, and the same idea of what counts as a piece. A second copy of
+    /// this in the view model would be a board nobody is going to cut.
+    /// </summary>
+    public static OutlineOptions OutlineOptionsFor(
         Board board,
-        BoardLayer layer,
         LayerOutputSettings setting,
         Tool tool,
-        long thicknessNm,
-        List<string> summary,
-        List<Check> warnings)
+        long thicknessNm)
     {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(setting);
+        ArgumentNullException.ThrowIfNull(tool);
+
         // Everything on the board except the outline itself, so the cut knows a piece from a void.
         //
         // A profile with none of this inside it encloses nothing worth keeping, which is what a
@@ -1958,15 +2124,42 @@ public static class ExportPlanner
             .SelectMany(l => l.Area)
             .Where(r => Clipper.Area(r) > 0));
 
-        var options = new OutlineOptions
+        return new OutlineOptions
         {
             Tool = tool,
             BoardThicknessNm = thicknessNm,
             BreakThroughNm = setting.BreakThroughNm,
             TabCount = setting.TabCount,
+            TabWidthNm = setting.TabWidthNm,
+            TabHeightNm = setting.TabHeightNm,
+
+            // `IsDefaultOrEmpty` rather than the array itself, because a default `ImmutableArray`
+            // is a struct wrapping a null and throws on every member it has — in the middle of an
+            // export, where a refusal belongs rather than a NullReferenceException.
+            //
+            // **The route an earlier comment here named does not exist**, which a later
+            // `/code-review` pass checked by running it: an explicit `"TabEdits": null` in a project
+            // file does not deserialise to a default array, it throws `JsonException` while the file
+            // is being read, which is a refusal in the right place. An absent key gives the `= []`
+            // initialiser. So this guard defends against a value the type permits and no caller
+            // currently produces — kept, because that is what `IsDefaultOrEmpty` is for and it costs
+            // nothing, but no longer claiming to have a reproduction behind it.
+            TabEdits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             Keep = keep,
         };
+    }
+
+    private static Toolpath BuildOutline(
+        Board board,
+        BoardLayer layer,
+        LayerOutputSettings setting,
+        Tool tool,
+        long thicknessNm,
+        List<string> summary,
+        List<Check> warnings)
+    {
+        var options = OutlineOptionsFor(board, setting, tool, thicknessNm);
 
         var cutter = Nm.ToMillimetreString(tool.DiameterNm, 2);
         var total = Nm.ToMillimetreString(options.TotalDepthNm, 2);
@@ -1974,18 +2167,74 @@ public static class ExportPlanner
         summary.Add(Invariant(
             $"{cutter} mm cutter outside the profile · {total} mm deep in {perPass} mm passes"));
 
+        // The height a tab will actually have, which is the settings' number when there is one and
+        // the derived one when there is not. Resolved here rather than read off the options, because
+        // an unset height is not a zero-height tab.
+        var tabHeightNm = setting.TabHeightNm ?? TabPlan.DefaultHeightFor(thicknessNm);
+
         if (setting.TabCount == 0)
         {
             warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program,
                 "No tabs: the board comes free on the last pass and will be thrown by the cutter."));
         }
-        else if (options.TotalDepthNm - options.TabHeightNm - setting.BreakThroughNm <= 0)
+        else if (options.TotalDepthNm - tabHeightNm - setting.BreakThroughNm <= 0)
         {
             // Nothing can be cut away at the tab, so the piece stays attached by its full thickness.
             // Worth a line in the report as well as in the program: at the machine it looks like a
             // cut that simply did not work.
             warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
-                $"The tabs are {Nm.ToMillimetreString(options.TabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board.")));
+                $"The tabs are {Nm.ToMillimetreString(tabHeightNm, 2)} mm tall and the cut is {total} mm deep, so nothing is cut away at them: they will hold the full thickness of the board.")));
+        }
+
+        // **And the other end of it, which nothing said.** The planner clamps a *derived* size to
+        // what a tab can be and still be a tab; a number typed into the dialog, the settings or
+        // `--tab-width` goes through untouched. A web of five hundredths breaks while the cutter
+        // is still working and the board is thrown — the exact thing tabs exist to prevent — and
+        // the program said nothing about it. Advice rather than a refusal: thin stock and a light
+        // touch are somebody’s own business, and the operator is the one holding the board.
+        // The same guard the options above apply, hoisted, and for the same reason: a default
+        // `ImmutableArray` throws on every member. See there for why the JSON story an earlier
+        // comment told about it is not true.
+        var edits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits;
+
+        var thin = edits
+            .Where(e => e.HeightNm is { } h && h < TabPlan.MinHeightNm)
+            .Select(e => e.HeightNm!.Value)
+            .Append(tabHeightNm < TabPlan.MinHeightNm ? tabHeightNm : long.MaxValue)
+            .Min();
+
+        if (setting.TabCount > 0 && thin < TabPlan.MinHeightNm)
+        {
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"A tab here leaves {Nm.ToMillimetreString(thin, 2)} mm of material, under the {Nm.ToMillimetreString(TabPlan.MinHeightNm, 2)} mm a tab needs to survive the rest of the cut.")));
+        }
+
+        var narrow = edits
+            .Where(e => e.WidthNm is { } w && w < TabPlan.MinWidthNm)
+            .Select(e => e.WidthNm!.Value)
+            .Append(setting.TabWidthNm is { } set && set < TabPlan.MinWidthNm ? set : long.MaxValue)
+            .Min();
+
+        if (setting.TabCount > 0 && narrow < TabPlan.MinWidthNm)
+        {
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"A tab here is {Nm.ToMillimetreString(narrow, 2)} mm wide, under the {Nm.ToMillimetreString(TabPlan.MinWidthNm, 1)} mm below which a tab is a nick rather than a bridge.")));
+        }
+
+        // **And the other end of the range**, which nothing said either. A tab wider than the
+        // planner would ever derive is the input that can run two tabs into each other, and the
+        // splitter answers that by leaving no run between them — a wider gap than anybody asked
+        // for, in a place the picture shows and the header did not mention.
+        var wide = edits
+            .Where(e => e.WidthNm is { } w && w > TabPlan.MaxWidthNm)
+            .Select(e => e.WidthNm!.Value)
+            .Append(setting.TabWidthNm is { } asked && asked > TabPlan.MaxWidthNm ? asked : 0)
+            .Max();
+
+        if (setting.TabCount > 0 && wide > TabPlan.MaxWidthNm)
+        {
+            warnings.Add(Check.Advice(SourceFor(layer), CheckKind.Program, Invariant(
+                $"A tab here is {Nm.ToMillimetreString(wide, 1)} mm wide, over the {Nm.ToMillimetreString(TabPlan.MaxWidthNm, 1)} mm past which a tab stops being something a hand can break. Two that wide on one edge run into each other and leave one gap.")));
         }
 
         if (tool.Kind == ToolKind.VBit)
@@ -2002,7 +2251,7 @@ public static class ExportPlanner
         // cut the frame and left every board attached, and it would drop an interior slot the
         // same way. The negative rings are the inside of the pen stroke rather than real cutouts,
         // so they are not profiles and are left alone.
-        var profiles = new Paths64(layer.Area.Where(r => Clipper.Area(r) > 0));
+        var profiles = OutlineProfiles(layer);
 
         if (profiles.Count == 0)
         {
@@ -2025,7 +2274,9 @@ public static class ExportPlanner
         // This is worth a line of its own because it is the difference between a panel that comes
         // apart and one that is quietly destroyed: a routed channel cut on the outside takes a
         // cutter-radius off the boards on both sides and leaves the channel itself standing.
-        var cutInside = OutlineOperation.PiecesAmong(profiles, keep, tool.DiameterNm).Count(p => !p);
+        var cutInside = OutlineOperation
+            .PiecesAmong(profiles, options.Keep, tool.DiameterNm)
+            .Count(p => !p);
 
         if (cutInside > 0)
         {

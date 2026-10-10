@@ -2024,7 +2024,7 @@ than discovered after.
 - **Drill alignment**: hover a bit over a real hole, find the origin shift by eye, write the drilling and routing files again with it — built. See 6.12.
 - **Routing holes and slots properly** — done. Four laps and a lift between each on a 0.8 mm board; one continuous ramp and no floor lap on a through cut (both fixed after v0.1.0), and settings of its own. See 6.13.
 - **Alignment holes in the stock, and a two-hole alignment that finds rotation** — to be built together. See 6.14.
-- **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline. See 6.15.
+- **The companion page names the commands that would rebuild the export**, as a head start on a scripted pipeline — built, and `export --commands` prints the same block. See 6.15.
 - **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction — built, then parked. See 6.16.
 - **The stock's alignment holes marked in the SVGs**, on a layer of their own, so a burn can be registered on the holes the mill made. See 6.17.
 - Material-removal simulation as a first-class view and test oracle.
@@ -2075,7 +2075,7 @@ somebody outside can report a fault. The product owner's own defects live here u
 development slows enough for a tracker to be worth the second place to look; when that changes, this
 note should change with it.
 
-#### 6.1 Rulers — **enhancement · open**
+#### 6.1 Rulers — **enhancement · fixed**
 
 Requested from the workshop: a scale down the left edge and along the top of the viewport, so the
 size of what is on screen can be read rather than guessed at.
@@ -2140,6 +2140,33 @@ worth keeping in mind is A, the opaque gutter, which never puts a tick over copp
 grid's step ladder gives 5 mm majors with 1 mm minors; zoomed to a single bridge it gives 0.5 mm
 majors with 0.1 mm minors. Both read well, and both come out of the existing ladder rather than a
 second rule — which is the point of reusing it.
+
+**Built, and the ladder behaved as predicted.** `GridLadder` holds the nine spacings once;
+`BoardRenderer` and `ToolpathRenderer` both take theirs from it, and the ruler ticks against the
+same number the grid drew with, so the two cannot disagree. On the Mega the whole-board shot reads
+0 to 100 in tens and the shot at 90 px/mm reads 39.5, 40, 40.5 — the 0.5 mm majors this paragraph
+predicted, from the ladder rather than from a second rule.
+
+**There were two of that ladder, and they had already drifted.** The same nine numbers were declared
+in `BoardRenderer` and again in `ToolpathRenderer`, one taking the first spacing past twelve screen
+pixels and the other the first past sixty, so the two viewports drew grids of different densities at
+the same zoom and nothing said so. Merging them is what this entry's own argument about disagreement
+asks for, one level down.
+
+**It was drawn under the board first, and a screenshot is the only thing that would have caught it.**
+Under the board reads perfectly on a whole board — the strips sit in the margin, nothing reaches them
+— and vanishes entirely at bridge zoom, where copper fills the viewport and the ruler is exactly what
+you want. Which is this entry's own mockup decision, arrived at from the other direction: B floats
+over the board, and a thing that floats over the board has to be drawn after it.
+
+**The readout and the measuring drag came with it**, both from
+[6.48](#648-where-the-pointer-is-in-the-boards-own-numbers--enhancement--fixed): the position in the
+top right with its origin named under it, and shift-drag for dx, dy and the diagonal. The drag
+reports both sides as well as the hypotenuse, because dx and dy are what somebody moving a machine
+types and reading them off a diagonal is arithmetic.
+
+**On and remembered**, under View ▸ Show rulers, stored beside the theme. A settings file written by
+an earlier build has no key for it and reads back on, so nobody loses their rulers to an upgrade.
 
 #### 6.2 Climb or conventional — **enhancement · open** — *low priority*
 
@@ -2269,15 +2296,16 @@ depth rather than the two neighbouring passes. It would pick up links across gro
 in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
 a strict subset of it, so nothing has to be undone to get there.
 
-#### 6.4 Tabs: where, how many, how big — **enhancement · open**
+#### 6.4 Tabs: where, how many, how big — **enhancement · partial** — *placed and sized from the board in sprint 4; moving one by hand is not built*
 
 Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
 put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
 locations."*
 
-Both observations are right, and both follow from the same thing: tabs today are **count plus two
-global numbers**. `TabCount` are spaced by equal arc length from an arbitrary seam, every one is
-`TabWidthNm` wide and leaves `TabHeightNm` of material. Nothing looks at the board.
+Both observations are right, and both follow from the same thing: a tab was **a count plus two
+global numbers**. `TabCount` of them were spaced by equal arc length from an arbitrary seam, every
+one `TabWidthNm` wide and leaving `TabHeightNm` of material. Nothing looked at the board. What
+follows is the list as it was written; *Built in sprint 4* below says which of it now exists.
 
 What that gets wrong:
 
@@ -2303,14 +2331,19 @@ which vertices happen to exist.
 
 ##### Found since, and waiting for this
 
-- **The tab height in the program's comment can be false.** A pass counts as "tabbed" once it is
-  deeper than `total − TabHeightNm − BreakThroughNm`, and a tabbed pass jumps the tab entirely.
-  Nothing ever cuts the tab region down to the tab's top. So when *every* pass is tabbed — a thin
-  board, a big stepdown — the tab is left the full board thickness. Measured on the test board: 0.8 mm
-  board, 0.5 mm stepdown, 0.1 mm through, so the threshold is 0.3 mm and both passes (0.5 and 0.9 mm)
-  jump the tab. The program says `0.50 mm of material left under each`; 0.8 mm is left. It is the
-  same rule in the blank (`BlankOperation`) and the board outline (`OutlineOperation`). The fix is a
-  pass over each tab at exactly the tab's top, and a comment built from what was emitted.
+- **The tab height in the program's comment was false, and has not been since v0.1.2.** A pass
+  counts as "tabbed" once it is deeper than `total − TabHeightNm − BreakThroughNm`, and a tabbed pass
+  jumps the tab entirely — so where no pass landed on the tab's top, nothing ever cut the tab region
+  down to it and the tab held the full thickness of the board. A 1.6 mm board in 0.4 mm steps left
+  1.10 mm under a tab whose header promised `0.50 mm of material left`, and a 0.8 mm board with a
+  1.00 mm stepdown would not come free at all. **Fixed 2026-09-18** in `61a47b3`: `OutlineOperation`
+  and `BlankOperation` both add a pass at exactly the tab's top whenever the stepdown does not land
+  there, both say in the program that they did, and both state plainly when a tab is taller than the
+  whole cut instead of emitting a board that will not come out.
+  > **This bullet read as open until sprint 4 was planned**, eleven days and three releases after it
+  > was fixed, and it was quoted as a reason to put tabs first. Corrected on 2026-09-30 against the
+  > code rather than against the entry. It stays here because the placement work below has to keep
+  > that pass: whatever chooses where a tab goes, the depth its top sits at is still always cut.
 - **The blank's tabs are on the top and right edges only**, two per edge, by design: the bottom and
   left are the datum and must be cut clean. Workshop, on seeing them: *"We can deal with that when
   we get to the tabs upgrades."* Whatever placement this phase adds has to keep that rule for the
@@ -2320,7 +2353,102 @@ which vertices happen to exist.
 moved and resized individually, the emitted gaps land where the picture says they will, and the
 material left under a tab is the height the program says it is.
 
-#### 6.5 A picture on the companion pages — **enhancement · open**
+##### Built in sprint 4 story 1 — placement and sizes
+
+**Where they go.** `TabPlan` walks the offset profile, groups its segments into straight edges, and
+gives one tab to each — longest edge first, centred — before any edge gets a second. A tab therefore
+lands where anybody would draw one, and never on a corner: not by a rule about corners, but because a
+corner offset by the cutter's radius is a fan of segments a few tenths of a millimetre long and no
+tab fits on one with clearance either side. The count stays a count — six on a rectangle is two on
+each long side and one on each short one — and a profile with no straight edge long enough falls back
+to the old even spacing and says in the program that nothing chose the positions.
+
+> **The "one each before any gets two" rule came out of a golden file.** The first version allocated
+> purely by length per tab, which put both of the connector strip's spare tabs on its long sides and
+> left both ends free — half of forty beats all of seven. The snapshot showed it as *"Centred on 2
+> straight edge(s)"*, which is exactly what a fingerprint of the programs is for.
+
+**What size.** Both defaults now come off the board rather than out of the code: a tab is **a tenth
+of the board's narrow side**, clamped to 1.5–5.0 mm and rounded to the nearest half millimetre, and
+it leaves **a third of the thickness**, clamped to 0.2–0.6 mm and rounded down to five hundredths.
+The workshop's 21 x 37 mm board gets 2.0 mm tabs where it used to get 3.0; a 30 x 50 mm board still
+gets exactly 3.0, and 1.6 mm laminate still leaves exactly 0.50 mm, so the ordinary case is unmoved.
+
+**And each tab can be set by hand**, width and height independently, in *Tabs ▸ Sizes…* beside the
+count. An edit names a tab by its place in the planned order and changes that tab alone — applied
+after the positions are settled, because width decides how many tabs an edge can hold and an edit
+applied before placement would let one widened tab move every other tab on the board. A tab's own
+height gets its own pass at its own depth, so a board with a 0.50 mm tab and a 0.30 mm tab is cut
+down to each of them in turn.
+
+**And a default, asked for the next morning.** From the product owner, 2026-10-01: *"add some
+options to the settings → new board tab for default tab width and thickness."* `MillingDefaults`
+gains `TabWidthMm` and `TabHeightMm`, shown under *Settings › New boards › Tabs* and applied to the
+layers of a board as it is imported — exactly where the isolation width beside them is applied, and
+with the same idiom for "leave it alone": **zero means the board decides**, which is the shipped
+default. An operator who knows what their stock and their hands want says it once instead of on
+every board; everybody else gets a tab sized from the board and never sees the setting.
+
+**The dialog asks the planner rather than working it out.** `OutlineOperation.PlanTabs` and
+`ExportPlanner.OutlineOptionsFor` are public for that reason: the window shows the board that is
+about to be cut, from the same options, or it shows a second opinion about it. Positions are shifted
+into the frame the machine works in, the same move `BoardFindings` makes — the first screenshot read
+*"183.41, -124.47 mm"*, which is right about the Gerber and useless at the machine.
+
+**Measured.** The full laps now start at the near side of the first tab instead of at whatever vertex
+Clipper's offset began on, which removes a climb to the safe height and a traverse between the last
+lap and the first tabbed run — 309 mm of rapid on the panel. Ending at the *far* side would have been
+cheaper still, and was rejected: the emitter then carries straight on without lifting, the backplot
+classifies a run by its deepest point, and the shallow lap would be drawn in the full-depth colour
+over the very gaps the tabs leave. That is the workshop's own complaint
+from v0.1.2 ("the outline's cut line stopped showing where the tabs were") reintroduced to save a few millimetres. Against the previous release, over the corpus: the panel's
+outline loses 24 mm of cutting and gains 184 mm of rapid, and its estimate moves by one second;
+PogoTest1 gains 12 mm of cutting and 7 mm of rapid on narrower tabs.
+
+**Six faults came out of a later `/code-review` pass, all in how a tab's size is chosen rather than
+where it goes.** Clearing the Width box in Tabs and pressing Enter wrote a width of *zero*, which is
+not a tab: the board came fully free while the program's header said "4 tabs, 0.0 mm wide" — an empty
+box means "as the board gives it" now, and `TabPlan.For` ignores a non-positive size as a last line.
+A change to the board-wide width re-places every tab, because the width decides how many an edge can
+hold, so per-tab edits made against the old list landed on whichever tab then sorted third; the rows
+now follow the board-wide pair and close until the window is reopened, reversibly. A per-tab edit was
+being handed to *every* outermost profile and applied by index inside each, so an edit chosen from
+one board's list also widened a tab on a second board in the same Edge_Cuts. The derived width came
+from the first profile that *could* have held tabs rather than the one that got them, which made
+every row in the window read as hand-set and turned a Save with no changes into an explicit edit per
+tab. The window's coordinates shifted by the board's corner alone, so on stock they were out by the
+border and on a mirrored layer they were not mirrored — they go through the planner's own `Placed`
+now. And the "were asked for" count scaled by the profiles that *received* a tab, so one too small to
+hold any was left out of the arithmetic.
+
+**A later `/code-review` pass found the seam's whole-edge check doing nothing**, having been added
+by the pass before it. `SameWay` is a normalised dot product and therefore symmetric in its
+arguments, so asking it about the same two segments a second time with a looser threshold always
+passes once the first has passed: the bound that stops two runs each within tolerance merging into an
+edge bending twice that was absent at the seam for as long as it looked present. The merged edge runs
+from the last run's *first* segment through the seam to the first run's *last*, so those are the two
+compared now. On a shallow arc whose start vertex falls mid-curve, the fault puts a tab on a 41.9 mm
+"straight" edge bending 2.40° end to end; the boards in the corpus are unchanged either way.
+
+**And a third door onto the same hazard, from a later pass: changing the outline cutter.** The
+profile is offset by the cutter's radius before the tabs are placed, so a wider bit lengthens every
+straight edge, moves the derived width and changes which edges can hold how many — re-planning the
+tabs exactly as a change of count does. The hand-set sizes are cleared for it now, as they already
+were for the count and for the board-wide width. A per-tab edit of zero or less is ignored too: the
+board-wide pair was guarded and the per-tab ones were not, so a hand-edited project file could put
+two cut runs end to end and cut the profile clean through while the header still counted that tab.
+
+**Still open, and why this entry is `partial`:**
+
+- **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
+  best locations"* completely. It needs the viewport to hit-test the profile, which nothing does;
+  [6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30)
+  gives the viewport a marker, which is not the same as a pick.
+- **Keep-out from features** — item 4. No tab within *n* mm of a hole or a pad.
+- **The blank still places its own**, two to an edge on the top and right only. That rule is right and
+  was kept; what it does not yet share is the sizing.
+
+#### 6.5 A picture on the companion pages — **enhancement · fixed**
 
 Requested from the workshop: *"in the companion html for drills and routing, include images of the
 layer with the holes/slots numbered in the order of drilling/routing."*
@@ -2376,8 +2504,56 @@ a number. They are the only thing on the page that cannot be checked against the
 order, a routing page shows its slots with direction and its refusals hatched, the Mega's 44-hole
 step degrades to dots without becoming unreadable, and every page is still one file that opens with
 no network.
+**Fixed 2026-10-02**, sprint 4 story 3.
 
-#### 6.6 The tool library, once it has more than a handful in it — **enhancement · open**
+**One drawing per bit, under its row**, with that bit's holes numbered from one in the order the
+program drills them — read off the emitted file, like everything else on these pages, so the picture
+can be checked against the machine rather than against what somebody meant. A hole is drawn at the
+diameter its own bit makes: a 3.5 mm hole and a 0.3 mm one as equal dots is half of what a reader is
+checking for.
+
+**The routing page draws each run with an arrow at its far end** and numbers it at the end the cutter
+enters from, so the two together read as *in at this one, out at that one*. Arcs are opened out
+rather than drawn as their chords, because a slot ends in the half-circle the cutter sweeps and a
+chord would draw a stadium as a rectangle.
+
+**A refused feature is drawn as the shape it would have been**, hatched and dashed and labelled with
+its width instead of a number — it has no place in the running order because it is not in the
+program. `SlotRefusal` now carries the centrelines it refused: it had a width, a count and a reason
+and no geometry, so a refused slot could only ever be prose. That was this entry's strongest
+argument, and it could not be acted on until the refusal knew where it was.
+
+**Above forty marks the drawing stops numbering**: dots, the travel between them, and a ring on the
+first. The Mega's 1.00 mm bit drills 98 holes and its 0.41 mm bit 104; both come out as a readable
+run rather than as spaghetti, and the caption says which kind of drawing it is, because the count is
+in the text and the text is the authority.
+
+**Inline SVG with no namespace attribute**, which the page's own self-contained test caught: `xmlns`
+declares a `http://` URL, and these pages carry no URLs at all so that nothing in them can look like
+something to fetch. An inline SVG in HTML needs none — the parser puts it in the right namespace —
+and the attribute is only required by a standalone `.svg` file. A figure is about four kilobytes.
+
+**And the backdrop is the outline alone, in the frame the program works in.** Not the copper, which
+would run to hundreds of kilobytes on the panel and answer nothing; shifted by the stock's corner
+rather than the board's, because that is what every emitted coordinate is measured from; and thinned
+to a tenth of a millimetre, which is finer than the line it is drawn with and turns the panel's
+tessellated profile from tens of thousands of points into hundreds.
+
+**A number beside a mark on the board's edge was drawn outside the frame**, found by a later
+`/code-review` pass. The frame has a millimetre of margin and a label can be pushed `font * 2.1` from
+its mark — about 5.8 mm on a 100 mm board — so a hole on the edge had its number outside the
+`viewBox`, where a browser clips the root SVG: the mark drawn, the number simply missing, on a
+drawing whose whole job is to say which hole is which. Holes do sit on the edge, because a
+castellation is one. Candidates inside the frame are preferred now, and the chosen spot is pulled in
+as a backstop.
+
+**Two faults were found by rendering the figures and looking at them**, neither of which the markup
+would have shown: the numbers were placed above and to the right of their holes, so on a column of
+holes a millimetre apart each number sat between two of them and belonged to neither; and a slot
+running left to right was labelled on its right, which put its number on its own arrowhead.
+
+
+#### 6.6 The tool library, once it has more than a handful in it — **enhancement · fixed**
 
 Requested from the workshop: **filter by tool type, sorting, and copy a tool.** All three are the
 same symptom — the list was designed for the six tools it shipped with, and a library grows.
@@ -2420,9 +2596,58 @@ on, and a filter you cannot see is how somebody concludes their tools have vanis
 > and be selected anyway, or the button looks broken. The honest behaviour is to clear the filter
 > rather than to make an exception to it, so what is on screen always matches what the controls say.
 
-**Done when** a library of thirty tools can be sorted by diameter and filtered to end mills, a tool
-can be copied and renamed without retyping its feeds, the copy has its own id, and `tools.json` is
-byte-identical after a session that only looked at it.
+**The row was built first, and it was worth more than expected.** A kind mark, the name, and the
+size in a column of its own: a V-bit's tip, an end mill's diameter, nothing for the shipped drill
+whose size comes from the drill file. On this machine's own nine tools that alone makes the list
+scannable — the kinds group visually without being filtered, and `1mm Corn Endmill` sits beside
+`1.2 mm end mill` with their sizes lined up where the names never will be.
+
+**What was left to want, in the order the row left them.** *Sorting by size* earns its place at nine
+tools, let alone thirty: the sizes as the library holds them run 0.13, 0.13, 0.80, 1.00, 2.00, 1.00,
+1.00, 1.20, 0.50, and finding "the 1.2" means reading every row. *Copy* was never about the row and
+is still the one with the most value for the least design. *Filtering* earns the least of the three —
+the kind marks already do its job by eye on a short library — and comes into its own at the thirty
+this entry is written for. All three are built; the ranking is what the row changed.
+
+**Sorted by the size a tool is known by**, which is `ToolView.SizeOf`: the tip for a V-bit, the
+diameter for anything else. A V-bit's `DiameterNm` is its shank — 3.175 mm on every one of them —
+so an order taken from that field would gather the V-bits in a block at a number nobody chose them
+for. The rule lives in `MillBurn.Core` beside the library rather than in the window, so a library of
+thirty can be arranged in a test; the window is the four controls over it.
+
+**The three rules hold.** `ToolView.Copy` gives the copy a new `Guid` and suffixes the name, with the
+name box focused and selected so the first keystroke renames it — and a test asserts the copy equals
+the original once the id and the name are put back, so a field added to `Tool` later is covered
+without anyone remembering to extend it. Nothing in the view writes: `Save` is called from Commit,
+Delete and Copy, all three behind click handlers, and from nowhere else in the application. (An
+earlier draft offered this machine's `tools.json` timestamp as evidence. It is not evidence — the
+operator added a drill to it the same afternoon, which is what the file is for.) New and Copy clear the filter rather than making an exception to
+it, so what is on screen always matches what the buttons say.
+
+**Two dialogs, asked for after the first look at it.** From the workshop: *"How about a confirm
+dialog when deleting a tool please. And when copying a tool, a small dialog for the user to enter the
+new name."*
+
+Delete is the one button in that window that cannot be undone — there is no history, the file is
+written immediately, and the only way back is to retype the tool. The question names the bit rather
+than saying "this tool", because the list and the form are both still on screen behind it and a
+question that does not name its subject is one somebody answers from memory. **And it says what the
+loss costs**: a layer that named the deleted tool falls back to a default the next time its project
+is opened — a different bit, chosen silently — so when the open project cuts with it, the dialog says
+so. The window is told which tools the open board is using for exactly that sentence.
+
+Copy asks first. The button used to make the copy and leave the name box selected, which works if you
+notice and leaves a "1.0 mm end mill (copy)" in the library if you do not. The suffixed name is the
+dialog's *proposal* now, selected so the first keystroke replaces it, and Cancel makes no copy at
+all. `NameWindow` sits beside `ConfirmWindow` rather than inside it: that one answers a question with
+a button and this one answers it with a string, and folding them together would give every
+confirmation an unused text box.
+
+**And a defect found while reading the form.** `Read()` rebuilt the tool from the boxes, and there
+are no boxes for `Flutes` or `FluteLengthNm` — so a tool whose flute count had been set by hand in
+`tools.json` lost it the moment it was saved in the window, silently, and `Flutes` is what the chip
+load is divided by. Nothing in the app can set them yet, so nothing has been lost; the window no
+longer unsets them.
 
 #### 6.7 Teaching the conventions: coachmarks and a first-run walkthrough — **enhancement · open** — *needs research*
 
@@ -2961,7 +3186,7 @@ board's rotation. Three drilling files, two routing files and the outline all ra
 0.3 mm vias landed inside their pads. *"The test will not only compensate for any rotation of the
 placement, but will also fix the not-perfect X/Y origin setting."*
 
-#### 6.15 The companion page names the commands that would rebuild it — **enhancement · open**
+#### 6.15 The companion page names the commands that would rebuild it — **enhancement · fixed**
 
 Requested from the workshop: *"in the project html companion file that is written on export, can we
 add a new section at the bottom for the cli command used to create the export... or maybe, a list of
@@ -2972,33 +3197,77 @@ those power users a big head start on setting up their own pipelines."*
 a command was run, and most exports come from the window, where there was none. Deriving the
 commands that *would* reproduce this export works either way, and is more useful in the case that
 matters: somebody who has set the job up by clicking, likes the result, and now wants it repeatable.
-That is exactly the move from the app to a pipeline, and today it means reading the CLI's help and
-guessing which flags correspond to what they ticked.
 
-**It is the same principle the rest of the export already follows** — derive the description from
-what was emitted, never from what was intended. The commands come off the finished plan: the layer
-settings it used, the thickness, the stock, the alignment. A block written from the *settings* could
-name flags the export ignored, which is worse than no block at all, because it would be tried.
+**Derived from the finished plan, never from the settings** — the same principle the rest of the
+export follows. The settings hold what was asked for; the plan holds what happened. A stock that was
+refused, or a layer whose role cannot do what it was set to, is in the settings and not in the
+block. The stock is written as the four borders the plan resolved rather than as the size it was
+asked for, because a stated size centres the board and the command line cannot say otherwise: four
+borders carry the size and the placement together, and resolve back to the same rectangle.
 
-**Expect it to be a short script, not one line.** A double-sided job with stock, a probe and an
-alignment is several invocations in an order that matters, and the order is half the value. So the
-section is the sequence, with a line of prose before each saying what it produces — close to what
-"Suggested running order" already does for the files, which is the section it should sit beside in
-tone.
+**One pasteable block, not a section of prose with commands in it.** The description of each command
+is a `#` comment above it, so what somebody copies is the whole script including its warnings — and
+the comments are hard-wrapped by the generator, because a comment left for the browser to wrap
+pastes as one line and would run its own tail as a command.
 
-**Every path has to be quoted and relative**, because board names have spaces in them (`Arduino Mega
-2560`) and an absolute path from the machine that exported is wrong on the machine that runs it.
-`--set` values need the same care: layer names have spaces too.
+**Every path is quoted and relative.** The folder is named, never its path: an absolute path from
+the machine that exported is wrong on the machine that runs it. `--set` values are quoted for the
+same reason — layer names have spaces in them, and a split there would be silent.
 
-**It must be honest about what it cannot express.** Anything the window can do that the CLI cannot —
-if such a gap exists when this is built — gets named in the block as a comment rather than quietly
-omitted, so a script that does less than the export is not handed over as if it did the same. Worth
-checking both ways while building it: this is the kind of feature that finds missing CLI flags, and
-those are worth fixing rather than papering over.
+**A project needs nothing but itself.** `millburn-cli export "Board.millburn" -o "out" --write
+--svg-marks stock` and that is the whole command: the project carries the thickness, the job, the
+stock and every layer's output, depth, cutter and tabs. Naming any one of them would have been worse
+than noise, because naming a single job flag makes the CLI build the whole job from flags, and the
+flags cannot express a board placed off-centre on its stock. A folder of Gerbers is the other
+extreme — every layer named with its own `--set`, because the defaults belong to whichever machine
+runs the block, and a mask left unnamed becomes whatever that machine's Settings › Import says a
+mask is.
 
-**Done when** an export of the test board writes a block that, pasted into a shell in a fresh folder
-with the Gerbers, produces the same programs byte for byte — checked for a single-sided job, for a
-double-sided one with stock and alignment, and for a board whose name has a space in it.
+**It grew four flags.** `export` had no `--isolation-width`, `--tabs`, `--tab-width` or
+`--tab-height`, all four of which `mill` already had, so a block that rebuilt an export could not
+say how wide the copper was cleared or how big the tabs are — the two settings most often changed
+from their defaults, and the two whose absence would have been read as agreement. They are spelled
+as `mill` spells them.
+
+**And it names what no flag can carry**, as comments rather than by omission: a per-layer depth,
+break-through, pass count, cutter, mirror or per-tab size; a board placed off-centre on a stated
+stock; copper layers isolated to different widths; and Settings › Machine and the tool library,
+which shape every line of every program — the bit each layer is cut with is chosen out of that
+library — and belong to the machine that runs the block rather than to the export. "Byte for byte" is a claim about one machine, and the block says so.
+
+**It names the files it does not write.** Dry runs, a probing routine and a levelled copy are built
+by whoever runs the export rather than by the planner, so they are not in the plan and the generator
+cannot see that they were asked for — and a `--dry-run --probe` export put twenty of them in a folder
+whose page said nothing about either flag. One sentence names all three, which beats threading three
+flags through a planner that has nothing to do with them.
+
+**`export --commands` prints the block and writes nothing.** It is the same text the page carries,
+from the same renderer, so the two cannot drift; it is the only way to read the script for an
+aligned export, which writes the moved programs and no page; and it is how all of this was checked.
+
+**Checked by running it**, five ways. A single-sided export of the test board; a double-sided one
+with stock, milled holes and an alignment, where the block is two commands and the second writes the
+`.aligned` programs; a board whose folder and layer names all have spaces in them; a laser-only job
+with two inverted layers; and the author's own saved project. Each block was piped to a file, pasted
+into a shell in a fresh folder holding the Gerbers, and the two folders compared file by file —
+identical in every case, in bash and again in PowerShell.
+
+**A project source pins the flags too, which `/code-review` is the reason for.** It used to be left
+to carry its own settings — one short command — and that made it wrong: the window exports what is
+on screen and nothing stops that being an unsaved change, so a board whose tab count had just been
+raised from four to six wrote `export "Board.millburn"`, which rebuilds the *saved* four-tab job.
+The flags are the authority whatever the source now, and the file is named as being read as last
+saved. The three tab flags also hold off when a board has two outline layers set differently, since
+one number for all of them would reproduce half the export and silently change the other half.
+
+**The project was what found the bug.** Routed slots are written as an outline operation on a drill
+layer, so taking the first outline item out of the plan picked the test board's plated slots rather
+than its Edge_Cuts, and read the tab count off a layer nobody had touched: a project with three tabs
+rebuilt with four — a different count, different tab positions and one extra retract in the outline
+program. `IsBoardOutline` already existed for exactly this and says so in its own doc comment.
+Nothing on the page looked wrong, and no test failed; it took rebuilding a real project and diffing
+the programs.
+
 
 #### 6.16 A re-measured stock keeps the holes it was cut with — **enhancement · parked**
 
@@ -4066,7 +4335,7 @@ from that row, the choice is saved with the project and survives a refresh of th
 a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
 the test: it should be usable by hand even with every one of its files unrecognised.
 
-#### 6.32 Say where the project came from — **enhancement · open** — *asked for by the product owner*
+#### 6.32 Say where the project came from — **enhancement · fixed**
 
 From the product owner: *"We should display the gerber folder somewhere so the user knows where the
 project is from."*
@@ -4093,9 +4362,27 @@ Worth saying with it whether the project is a saved `.millburn` file or a folder
 since those behave differently on a refresh, and worth eliding the middle of a long path rather than
 letting it push the panel wide.
 
-**Done when** an open project shows the folder it was imported from, a long path is readable without
-resizing the window, the full path is available in full somewhere (a tooltip is enough), and two
-projects whose folders share a name can be told apart at a glance.
+**Built at the head of Project info**, above the board's size and beside the Import folder button:
+`Gerbers`, and the folder's full path. Absolute, in this platform's separators, wrapping onto a
+second line when it is long, with the same path in a tooltip.
+
+**It was built elided first, and that was the wrong answer to the question.** The entry above talks
+about telling two folders of the same name apart, so the first version kept the root and the last two
+folders and took the middle out — `E:\…\A Rather Long Folder Name\Millburn_Test_Board`. The product
+owner's reply was *"what I would like to know is where the source folder is (where the gerber files
+are)"*, and a path with its middle removed does not say where anything is. It is shown whole now, and
+the view wraps it; a second line costs nothing, and a hidden middle costs the answer.
+
+**Labelled, for the same reason.** A bare path at the top of the panel was read as the project file's
+own location rather than the Gerbers'. The caption says which, and the panel says nothing about the
+`.millburn` file at all — that was offered and declined.
+
+**Two smaller things came from looking at it.** The path was shown exactly as the project recorded
+it, so a board opened as `tests/boards/Millburn_Test_Board` rendered with forward slashes in a window
+of backslashes, and relative to a working directory the operator never sees — which answers *where is
+it* with "it depends where you were standing". And `ProjectOrigin.Full` returns its argument rather
+than throwing when a path cannot be resolved, because it runs while a panel is drawing, off a string
+a project file supplied.
 
 #### 6.33 A superseded preview stops being watched, not stopped — **defect · fixed**
 
@@ -5659,7 +5946,7 @@ reasoning is in [03 §8](03-Toolpath-Optimization.md#8-acceptance-criteria).
    from a memory of a format is worse than none. (The app itself never talks to a machine —
    [01 §1.1](01-Architecture.md#11-scope-boundary--pcb_millburn-writes-files-it-does-not-drive-machines).)
 
-#### 6.48 Where the pointer is, in the board's own numbers — **enhancement · open** — *asked for in the workshop*
+#### 6.48 Where the pointer is, in the board's own numbers — **enhancement · fixed** — *asked for in the workshop*
 
 From the bench, 2026-09-25: *"Put a small rectangular display in the top right corner of the UI and
 have it display the coordinates. Also, if possible turn the mouse into a crosshair."*
@@ -5684,6 +5971,23 @@ named beside the numbers rather than assumed.
 **Done when** the pointer's position shows continuously in board coordinates while it is over the
 canvas, the readout says which origin it is measured from, and the cursor is a crosshair over the
 canvas and an arrow everywhere else. A screenshot of a fault carries its own coordinate.
+
+**Built with [6.1](#61-rulers--enhancement--fixed), which is where the panel sits.** A box in the top
+right, two decimals — the resolution the findings view prints, so a reader comparing the two does not
+have to decide whether a difference is real — and under the numbers, in smaller text, what zero is.
+
+**The origin question was answered the way this entry guessed, and then made conditional.** The
+board's lower-left is right for most jobs, but a job built on stock is referenced to the stock's
+corner, and that is the frame the viewport draws in and the exporter shifts by. So the line reads
+*from the board's corner* or *from the stock's corner* according to which frame the open project
+actually has, rather than naming one of them and being wrong on the other.
+
+**Cleared when the pointer leaves the canvas**, rather than left at the last position. A readout
+frozen where the pointer was when it went to the menu bar is a number that looks live and is not,
+which is the same fault as an unnamed origin in a different coat.
+
+**The crosshair** is on `BoardView` itself, so it is the cursor over the canvas and the arrow
+everywhere else, as asked.
 
 #### 6.49 A slider drag writes the settings file on every tick — **defect · fixed**
 
@@ -5764,7 +6068,27 @@ would have been a unit test under that shape.
 badly would be worse than the gap. It belongs in a sprint that has room for it, and the argument
 for it is the table above rather than a principle.
 
-#### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · open** — *six paths and counting*
+**One row of that table is done, 2026-10-09.** The decision in the middle row — what an edit
+invalidates — is behind a seam and unit-tested, which is
+[6.51](#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting).
+`StaleBecause` and `Staleness.Of` have no Avalonia in them; `MainViewModel.Invalidate` is the
+twenty-five lines of mutation left over. Both 6.33 and the missing property notifications were
+re-introduced deliberately and failed by name.
+
+**The shape works, which was the open question.** The entry guessed at *"a seam rather than a test
+project that references the app"*, and that guess holds: the part that keeps going wrong is a
+decision, the part that needs a window is a handful of assignments, and they separate cleanly. The
+largest file lost about forty lines and gained no indirection worth the name.
+
+**What is left.** *When a setting is persisted* — twenty settings writes across nineteen handlers,
+and the most recent fault there was mine: a session-only override added for a screenshot flag made
+the stored value unreachable, because the setter compared against the file rather than against
+what the getter returns ([6.62](#662-the-rulers-could-not-be-turned-back-on-after---no-ruler--defect--fixed--found-by-code-review-2026-10-07)).
+*When a preview is cancelled* is now mostly covered by the above, since stopping the run is one of
+the five things a reason decides. The remaining row is the smaller of the two and the same shape,
+which is the argument for doing it next rather than for doing it now.
+
+#### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · fixed** — *six paths and counting*
 
 Six methods in `MainViewModel` have to notice that an edit has made the drawn programs wrong, and
 each does it by hand:
@@ -5793,11 +6117,56 @@ every one of the six calls it, and what it does is stated once. It is a small re
 value is that the seventh path cannot be written wrong — which matters more than the six, because
 the six are now correct and the seventh is the one nobody has thought of yet.
 
-**Depends on nothing**, but is worth far more with [6.50](#): behind a seam, this method is the
+**Depends on nothing**, but is worth far more with [6.50](#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint): behind a seam, this method is the
 single most testable thing in the view model, and the six faults above would each have been a
 failing test rather than a bench report or a review.
 
-#### 6.52 A test cut that finds where the copper stops — **enhancement · open** — *asked for by the product owner*
+**Built as a seam, which is what made it worth doing now.** `StaleBecause` names every edit that
+can make the drawn programs wrong, and `Staleness.Of` says what each one means as one table:
+whether to stop a run in flight, clear the programs, forget a standalone one that was opened off
+disk, rebuild the scene, and whether to skip all of it when nothing was drawn. None of that has a
+window in it, so it is a unit test. `MainViewModel.Invalidate` is the part that cannot be — it
+touches bound properties — and it is now about twenty-five linear lines with no decisions left in
+it.
+
+**Seven paths by the time it was done, not six.** `OnOutputChanged` grew one more during
+[6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06),
+which is the entry's own argument arriving on schedule: the value was never the six that were
+already correct.
+
+**Each of the listed faults is now a named test.** `EveryReasonStopsARunInFlight` is the one that
+was missed in four separate places. `ARunInFlightCountsEvenWithNothingDrawn` is 6.33 stated as an
+assertion — that guard asked whether anything was drawn and returned before it could stop a run,
+and a run in flight is exactly when nothing is drawn, because the edit that started it cleared the
+last picture. `OnlyAReplacedBoardForgetsAnOpenedProgram` covers the missing property notifications.
+Both were re-introduced deliberately and both tests failed by name before being put back.
+
+**And `EveryReasonHasARule` is the point of the whole entry.** A new kind of edit has to be added
+to the enum, and the moment it is, that test fails until somebody has decided what it clears. The
+seventh path cannot be written wrong because there is nowhere to write it. Checked by adding an
+eighth reason with no rule: **six of the eleven tests failed**, by name.
+
+**`/describe-test` found that three of the five decisions had no such sweep.** `StopRun` and
+`ForgetOpenedProgram` were pinned across the whole enum from the start; `ClearPrograms`, `Rebuild`
+and the guard were only checked for named reasons — so a new reason could have joined with the
+wrong answer on any of those three and nothing would have said so, in the one file whose entire
+purpose is that it would. Two partitions added. It also found that three of the sweeps would pass
+having asserted nothing if the enum were ever empty, and that the skip in `ClearingThePicturePutsOneBack`
+is computed from a production value, so that loop could empty itself; both are guarded now.
+
+**One behaviour was nearly changed by accident in the doing**, which is worth recording. The
+rewritten `OnOutputChanged` read "was anything drawn" *after* invalidating — and clearing the
+backplot is what makes that false, so it would have taken the early return on precisely the path
+that had just done the work, and stopped saying *"Output changed"*. Caught by reasoning through it
+rather than by the suite, which still cannot see that method.
+
+**`--then-change <what>` was added to reach the scenario at all.** Every other screenshot flag runs
+before the first preview, so `--change` could only ever exercise the empty case — an edit *over a
+drawn preview*, which is what 6.33 is, had never been photographable. It is now: with a preview
+drawn the status reads *"Output changed. Preview again to see the new programs."* and the toolpaths
+go; with nothing drawn the guard skips and the status still says *"Loaded Millburn_Test_Board."*
+
+#### 6.52 A test cut that finds where the copper stops — **enhancement · fixed**
 
 From the product owner, 2026-09-27: *"A new test for copper thickness. This test will cut a series
 of ladders. Each ladder is x number of step-over passes. The first rung is very shallow and each
@@ -5894,11 +6263,59 @@ than the board rule gives and says so on the guide page, the spacing rule lives 
 than two, the guide tells the operator what the two transitions mean and how to tell ribbing from
 thickness, and a test pins the emitted depths to the rungs they belong to.
 
+**Built as `TestCutKind.Copper`**, beside `Depth` and `Feed` in the dialog and as
+`millburn-cli testcut copper`. Twelve rungs from 0.010 mm, stepping 0.010, twenty overlapping passes
+each, no width ladder, and the repeat at the far end: a **19.0 x 47.5 mm** coupon and 214 seconds of
+cutting, which is the figure measured above, reproduced by the defaults rather than by seven flags.
+
+**Nothing on it asks for a caliper.** The depth series says *measure the band, then subtract
+1.501 mm* against every line, because that is how it is read; the same sentence here would send
+somebody looking for a width that answers no question they are being asked. A copper rung carries its
+depth, its pass count and `copper all gone? into the fibreglass?` — and the page is a tick list with
+a row per rung rather than a column of predicted widths.
+
+**The probing rule now lives in one place** — `TestCut.ProbeSpacingMmFor` — instead of being written
+out in `Program.cs` and again in `MainWindow.axaml.cs`. A coupon still gets a third of its narrow
+side floored at 4 mm; a *copper* coupon gets 3 mm, or the coupon rule where that is already finer.
+Measured on the default coupon: **96 touches against 21**, about six and a half minutes of probing
+against a minute and a half, for three and a half minutes of cutting. The global probing settings are
+untouched, and so are the other two tests. A coupon's probe program also stops saying "work zero is
+the board's lower-left corner, the same as every other file in this export", which was wrong in both
+halves on a piece of scrap.
+
+**The risk named above is on the page, in its own section.** The stepover comes from the width the
+library *predicts* at the shallowest rung, so a blunter tip than it believes leaves rows of copper
+between the passes — which looks exactly like copper that has not been cut through. The page
+separates them by the pattern: regular, evenly spaced ridges fading over several rungs are the
+stepover; patchy copper that goes away over one or two is the thickness. If the ridges are there, run
+the depth and width test first, because this one will give a confident answer anyway. The generator
+says the same thing when the predicted overlap is already marginal.
+
+**Checked by running it.** `millburn-cli testcut copper --probe --write` writes the program, the
+page, the setup and a 96-touch probe routine; the emitted Z values are the twelve rungs and the
+repeat; and the dialog was rendered headlessly on all three kinds with the new
+`--testcut [depth|feed|copper]` flag, which is how the rows each one shows were checked. The dialog
+calls them rungs where the program and the page do.
+
+**Two faults came out of `/code-review`, both about the kind being new rather than about the test.**
+`testcut copper --lines 0` — a combination the CLI's own help offers — had no width ladder to fall
+back on, so the report had no lines and the guide's facts strip took `Min` over nothing and came out
+as a stack trace. The CLI refuses an empty test now, with the reason, and the page guards its own
+facts. And `--step` was read against `Kind == Depth` rather than against *this test steps a depth*,
+so a step given on a copper coupon was accepted, dropped, and the rungs came out a hundredth apart
+anyway while the generator's own warning told the operator to step 0.010.
+
+**Two more came from a later pass, both in the file read at the machine.** The header said *"a
+hundredth at a time"* whatever `--step` was given, so a coupon cut at 0.020 mm told the operator
+0.010 — and the note that would have contradicted it is not in the program. And its repeat line still
+said *"if they do not measure the same"* on a coupon this entry went out of its way to stop calling
+measurable: the per-line comment had been changed and the header had not.
+
 **Not part of it.** Reading the answer back into the isolation depth. The test writes a number on a
 page and the operator types it into Settings; closing that loop means a project knowing which coupon
 it was calibrated against, and that is its own argument.
 
-#### 6.53 Copper with no net name is reported as safe when one named net shares its region — **defect · open** — *found by `/code-review`, 2026-09-29*
+#### 6.53 Copper with no net name is reported as safe when one named net shares its region — **defect · fixed**
 
 Story 3 of sprint 3 split the residual gaps into the two things it had been covering: copper carrying
 **no net name**, which might be a short and which nothing can decide about, and two pieces of the
@@ -5954,6 +6371,39 @@ set of regions rather than two.
 **Done when** a merge with unnamed copper on either side is reported as nameless wherever it is
 reported — the panel, the companion page, the CLI and the findings view — and a test covers a region
 holding one named net beside unnamed copper.
+**Fixed 2026-10-02**, sprint 4 story 2, and the fix is the one this entry said it would cost.
+
+**A name now belongs to a piece, not to a region.** `Isolation` already located every piece of
+artwork in the grown region it merged into; it now locates every *net point* in the piece it sits on
+and reads the region off that. A region is called same-net only when every piece that merged there
+carries a name of its own and they agree; one named net beside unnamed copper is nameless, which is
+the bucket that says somebody should look.
+
+**And the findings view by its own route.** `NetGap` carries `NamedSides`, counted from the two
+pieces rather than from the union of their names, and `IsSameNet` is now *both sides named and named
+the same*. The union could never tell one named side from two, which is how the window came to print
+*"Nothing is shorted by these"* over a bridge to copper carrying no net at all.
+
+**Both halves place their points against the same geometry**, which was the third fault this entry
+records: `Isolation` used the copper grown by the cut and `Gaps` the raw artwork, so a pad centre a
+nanometre outside its island was named by one and dropped by the other. Both use the artwork now,
+with the grown region kept as a fallback for a point that lands on a boundary — and a region holding
+such a point is never called wholly named, because nothing can say which piece the name was on.
+
+**What it cost, which is what this entry asked to be measured.** The work snapshot counts
+point-in-polygon tests, and they are the whole of the extra work: the Arduino Mega goes from 13,740
+to 14,060 (+2.3 %) and the Uno from 5,222 to 5,370 (+2.8 %). Export wall-clock is unchanged within
+the noise of a cold start — the Mega at 4.86 s before and 4.94 s after, the panel at 2.94 s and
+2.85 s. No second offset and no second separation: the expensive halves are untouched.
+
+**No board in the corpus changes.** The test board still reports 25 nameless gaps and no same-net
+ones at 0.75 mm; the Uno still reports its one genuine same-net merge at the default cut, both of
+whose pieces are named; the Mega's 240 merges are still all explained by a named group. That is the
+honest result and it is why nothing caught this: the fault needs a region holding exactly one named
+net *and* unnamed copper, and none of the five boards has one. The case is covered by three
+synthetic tests instead — three squares, two of them named — and the first of them fails against the
+old code with `Nameless` at 0 where it should be 1.
+
 
 #### 6.54 The checks panel cannot show a cancelled run — **enhancement · open** — *found by `/code-review`, 2026-09-29*
 
@@ -6013,7 +6463,7 @@ elsewhere.
 whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
 window opens without a visible stall.
 
-#### 6.56 A finding takes you to the copper it is about — **enhancement · open** — *asked for by the product owner, 2026-09-30*
+#### 6.56 A finding takes you to the copper it is about — **enhancement · fixed** — *asked for by the product owner, 2026-09-30*
 
 From the product owner, the day after 6.44's findings view shipped: *"The Findings box is great,
 especially being non-modal. Having the rulers in the viewer so the user can find and zoom into the
@@ -6058,5 +6508,345 @@ nothing is measured from it, and calling it a selection would invite both. Measu
 copper is legible, the marker names what it is, and it clears by each of the routes above — with a
 `--shot` of the before and after.
 
-**Requires:** [6.1](#61-rulers--enhancement--open) is not a prerequisite, but the two were asked for
+**Built, and the ruler is what confirms it went where it said.** Every coordinate in the list is a
+button; clicking one takes the viewport to that place at 14 mm across — the span
+`E-zoomed-to-finding.png` shows, reading 37.0 to 51.0 — and rings it. The ruler then reads 37 to 51
+with a pointer on the strip at 44 and another at 30, which is how the picture proves the view arrived
+rather than merely claiming it.
+
+**The mark is drawn twice, dark underneath.** It has one colour and the board has two extremes, bare
+substrate and bright copper, and a single stroke that reads on one disappears into the other. The
+first shot of it put a pink ring on orange copper that could barely be found — the same fault
+[6.1](#61-rulers--enhancement--fixed)'s measuring guides had, found the same way.
+
+**The label carries both lines in one box**, because closing the findings window does not clear the
+mark and a ring with nothing beside it names nothing. It was split at first, the coordinate boxed and
+the nets loose underneath in the mark's own colour, which is unreadable over copper; and the box was
+sized from the nets line while containing only the coordinate, so a long net name gave a box three
+times the width of its contents.
+
+**The coordinate is the button**, rather than a *go to* control beside it. The verb belongs on the
+noun, and the noun is already the only part of that line anybody reads twice.
+
+**`Marker.CoordinateOf` formats a place the way the findings view does**, so the ring and the line
+that was clicked cannot disagree about a rounding — two decimals in both, which is what lets a reader
+comparing them take a difference as real.
+
+**Clearing works as designed above.** Picking another place moves it; Escape clears it with the
+viewport focused, and the view stays where it is, because somebody who cleared the ring is looking at
+that copper on purpose; a new check, preview or export clears it; panning, zooming and closing the
+findings window do not.
+
+**Requires:** [6.1](#61-rulers--enhancement--fixed) is not a prerequisite, but the two were asked for
 together and the ruler is what lets an operator confirm the view went where it said it would.
+
+#### 6.57 Ticking "Build on stock" does not move the viewport onto the stock — **defect · fixed** — *found while building 6.1, 2026-10-06*
+
+The board scene is built to the job's frame — `Frame.IsEmpty ? board.Bounds : Frame` — and that is
+the stock's rectangle when the job is built on stock. The comment above that call says so: *"Fitted
+to the stock rather than to the board, when there is stock … fitting to the board put the blank's own
+toolpath just off screen, which is the one thing you would want to look at before running it."*
+
+**It does not happen until something else rebuilds the scene.** Ticking the box calls `SaveBlank`,
+which calls `OnOutputChanged`, which returns early when `_backplot.Count == 0 && !stopped` — nothing
+is drawn, so there is nothing to clear. That guard is right for what it was written for and wrong
+here: the frame has changed, and the frame is what the scene is built to.
+
+**Seen because the ruler made it visible.** With a board loaded and no preview, ticking *Build on
+stock* on `Millburn_Test_Board` leaves the ruler reading 0 at the board's corner and the pointer
+readout saying *from the board's corner*, while the panel beside it already says the stock is
+88.63 × 86.09 mm and the checks say *"its lower-left corner is work zero for every other file in
+this export"*. Press Preview and both correct themselves: 0 to 90 across the stock, and *from the
+stock's corner*.
+
+**Why it is a defect rather than untidiness.** The window is stating a work zero that the files it
+would write do not use. Before 6.1 nothing on screen said which corner the view was referenced to,
+so the stale frame showed only as a board that did not move; now it is a number, and a number that
+is wrong is read and believed.
+
+**Half of it is already fixed.** `/code-review` found that `OriginNameProperty` was missing from
+`BoardView`'s `AffectsRender` list, so even once the frame *is* rebuilt the origin line changing on
+its own would not have repainted. That is in; what remains is the rebuild itself.
+
+**Done when** turning the blank on or off, or changing its size, moves the viewport onto the new
+frame with no preview built — and a `--shot` with `--change blank` and no `--preview` reads from the
+stock's corner.
+
+**The guard was right about its own question and silent about a different one.** It asks whether
+there is a drawn preview to clear; with none there is nothing to clear and skipping the rebuild is
+correct. What it never asked is whether the change moved the rectangle the scene itself was built
+to. `OnOutputChanged` now tests that as well, against the frame the picture was last drawn to —
+recorded where the scene is built, because the question is what the picture *was* referenced to.
+
+**Tested on the frame, not on the blank's settings.** `Frame` also moves when a layer is mirrored
+and when the outline's bit changes, because both feed `Blanks.Resolve`. Watching the blank's own
+fields would have fixed the reported case and left those two.
+
+**Reframed rather than rebuilt, because the border is a slider.** The geometry does not change when
+the frame moves — only what it is measured from — and a scene's extent is one assignment at the end
+of a build that walks every ring of every layer into a path. Measured on the Mega:
+**about 7 ms to rebuild, too small to time to reframe** — best of five, because a single timed
+build read 16.5 ms and then 7.4 ms on the same machine. Rebuilding per tick of a slider drag is
+[6.49](#649-a-slider-drag-writes-the-settings-file-on-every-tick--defect--fixed) in a different
+coat. `ReframingLandsWhereRebuildingWouldHave` is what lets the cheap path be trusted: it compares
+against a scene built the expensive way rather than against a remembered rectangle, so it cannot
+drift from whatever `Build` decides the extent means.
+
+**Re-fitted every time the frame moves, and fitting only on the appearance was tried first.** The
+theory was that a border nudged by a millimetre is not worth the view jumping — and it is wrong for
+the same reason the scene is fitted to the blank at all: *"the cut that makes it lies outside the
+board — so fitting to the board put the blank's own toolpath just off screen, which is the one thing
+you would want to look at before running it."* Grow the border past the viewport without re-fitting
+and that cut goes off screen again. On a slider it reads as the board shrinking smoothly as the
+stock grows, which is feedback rather than a jump.
+
+**The re-fit is asked for, not performed.** `FitToContent` gives up when the control has no layout
+yet, which is exactly the state a `--shot` is in while its flags run — so the first attempt did
+nothing and said nothing, and the shot came out correctly labelled and wrongly scaled. `BoardView`
+already fits lazily when it meets a scene it has not fitted; `RefitWhenDrawn` forgets which that was
+and lets that path do the work once the control has a size. Needed at all because reframing keeps
+the same scene object, which is the point of it and also why the lazy check cannot notice alone.
+
+**Shot on the test board with no preview:** ticking stock gives a ruler of 0 to 90 with the board's
+corner at 10, 10 and the readout reading *from the stock's corner*; `--stock-border 20` gives 0 to
+110 with the corner at 20, 20, and the panel's 108.63 × 106.09 mm agrees with the scale beside it.
+
+#### 6.58 Findings were reported from the board's corner on a job built on stock — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`BoardFindings.Shifted` moved every located gap so that zero was **`board.Bounds`**' lower-left. The
+exporter references its programs to the job's *frame*, which is the blank's rectangle when there is
+one — and the checks panel says so in words, three lines from the findings window: *"Cut the stock
+before anything else, and keep it the right way up — its lower-left corner is work zero for every
+other file in this export."*
+
+**So the list printed a number in one frame while naming another.** On the Mega with its default
+10 mm border, every coordinate in the findings view was 10 mm low in both axes against the work zero
+the emitted files use. An operator reading *"44.05, 30.31 mm"* off that list and driving there would
+have arrived 14 mm away, diagonally, on a board whose traces are 0.15 mm apart.
+
+**It had been on screen since [6.44](#644-where-the-copper-stays-joined--enhancement--fixed) and
+looked like a plausible coordinate.** Printed, nothing contradicts it. It took
+[6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--fixed), the first thing to
+consume these coordinates geometrically rather than print them, to put the error somewhere it could
+be seen: the ring landed ten millimetres from the bridge it was labelled with, which at the 14 mm
+zoom that feature goes to is most of the viewport.
+
+**And it took two other defects to make it visible at all.** The first attempt to photograph it
+looked correct, because [6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06)
+means ticking *Build on stock* does not move the viewport onto the stock — so both frames were still
+the board's and they agreed. A preview, which does rebuild, is what separated them.
+
+**Fixed by passing the frame in.** `BoardFindings.For` takes the rectangle the programs are
+referenced to; the view model hands it `Frame`, the same property the exporter shifts by and the
+viewport draws in. The same bridge now reads 44.05, 30.31 with no stock and 54.05, 40.31 with a
+10 mm border, and the ring lands on the same copper either way.
+
+**The sentinel was a trap of its own.** The parameter was written `Bounds frame = default`, meaning
+"no frame given". `default(Bounds)` is `(0, 0, 0, 0)` and `Bounds.IsEmpty` tests `MinX > MaxX`, so it
+reads as a real frame whose corner is the origin — and every existing caller silently got a shift of
+nothing. `AGapIsReportedInTheFrameTheMachineWorksIn` caught it, because it asserts a located gap
+lands inside the board rather than matching a remembered number. The parameter is `Bounds?` now, and
+`NoFrameMeansTheBoardsOwn` states the distinction.
+
+#### 6.59 The findings cancellation test stopped the run before it started — **defect · fixed** — *found by `/describe-test`, 2026-10-07*
+
+`BoardFindingsTests.ARunStoppedPartWayThroughSaysSo` passed `after: first.Index` to
+`CancelsAfterLayers` — the position of the first isolation layer in `board.Layers`, which on the
+Mega is **zero**. The wrapper cancels once its lookup count exceeds `after`, so the very first
+`TryGetValue` turned the token and the abandoned run reported **no layers at all**.
+
+Both of its assertions passed on that: the run was cancelled, and nought is fewer than two. So a
+test named *a run stopped part way through says so* was proving that a run stopped **before it
+started** says so — which a single check at the top of the method satisfies, and nothing in it would
+have failed if the per-layer cancellation it exists for had been removed.
+
+**This is the `LatestRun` fault again**, the one CLAUDE.md cites as the reason `/describe-test`
+exists, in a different file and found the same way. And `PlanningCancellationFixture` warns about
+exactly it, three files away: *"`Reached` counts lookups, not layers… A test that cancels after two
+and calls that 'two layers in' has actually stopped the run before it started planning anything."*
+The warning was written for the planner and the findings test did it anyway.
+
+**Fixed with `after: 1` and an `Assert.NotEmpty`.** The abandoned run now reports one layer of the
+two, so it has demonstrably finished a layer and then been stopped, and the new assertion is what
+says so. A literal rather than an index computed from the board, because the computed one is what
+made it depend on a layer ordering nobody was looking at.
+
+**Still not covered:** cancellation *inside* the gap search, which is the expensive part and, by
+`BoardFindings`' own comment, the reason the method takes a token at all. This test exercises the
+check between layers. Said here rather than left as a silence, because the gap between the two is
+what the entry above was hiding.
+
+#### 6.60 The findings window stays open over the next board — **defect · fixed** — *reported from the bench, 2026-10-07*
+
+From the product owner: *"The findings dialog is not closed when opening a recent project or upon
+close project."*
+
+**The property that makes it useful is what left it behind.** It is the only non-modal window the
+application opens from a real handler — every other is a `ShowDialog` — and non-modal is the thing
+the original request named first, because it lets the list sit beside the board while the view
+moves. But nothing held a reference to it, so nothing could shut it: it stayed up over the next
+board, listing places on the last one, with the old board's name in its own title bar.
+
+**Worse than a stale marker, which is the same fault one level down.** A marker that outlives its
+board at least sits on the board it is wrong about, so the mismatch is in front of you. This sits in
+a separate window where nothing contradicts it.
+
+**Closed from `Adopt`**, which is the one place a board is replaced: importing a folder, opening a
+project, and closing one — which is `NewProject`, which is `Adopt` with an empty project — all
+arrive there, and a layer edit, a preview or an export does not. One event, instead of five call
+sites each remembering to say so.
+
+**A list rather than a single reference**, because F7 opens another window every time it is pressed
+and nothing stops two being up at once. Holding only the latest would have left the earlier ones
+exactly as they are today, which is the reported fault still happening and harder to describe.
+
+**Both doors were photographed**, because the report named both. `--close-project` and
+`--open-project <path>` run those two after everything else, and the capture now prints
+`findings windows open: N` — the only way a script can see a window that should have gone, since it
+is its own top level and a shot of the main window cannot show what is behind it. Opening the
+findings and touching nothing prints 1; either door prints 0.
+
+#### 6.61 The pointer readout froze when the pointer left the canvas — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`OnPointerExited` set `PointerAt` to null and nothing redrew, so the coordinate box stayed on screen
+showing wherever the pointer was when it left — the exact *"number that looks live and is not"* the
+method's own doc comment says it exists to prevent.
+
+**It was correct when written and broken by the next fix.** `PointerAt` was in `AffectsRender`, so
+clearing it repainted for free. The review before this one found that this made every mouse sample
+re-render the whole board, including with the rulers off; taking the property out of that list was
+right, and it left this method setting a value nothing would draw. One fix, one regression, one
+review apart.
+
+It invalidates for itself now, and only when the strips are on — for the same reason the property
+came out of `AffectsRender` in the first place.
+
+#### 6.62 The rulers could not be turned back on after `--no-ruler` — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`MainViewModel.ShowRuler` reads `_rulerForThisSession ?? Settings.ShowRuler` and its setter compared
+the incoming value against `Settings.ShowRuler` alone. Launch with `--no-ruler` and no `--shot` — the
+flag is handled either way — and the override says off while the file says on: the View menu renders
+unticked, ticking it asks for `true`, the setter sees that equals the stored value, returns early,
+raises nothing, and the two-way binding snaps the tick straight back.
+
+**The session-only field was added by the previous review** to stop a screenshot run writing the
+preference to the operator's settings file, which it would have done through the window-placement
+save on close. Correct, and it introduced a second reader of the same preference without teaching
+the writer about it. The setter compares against the effective value now and clears the override,
+because the override has served its purpose the moment somebody uses the menu.
+
+#### 6.63 `--only stock --commands` said the export writes nothing — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+`BlankOnlyPlan` builds its own `ExportPlan` and never filled `Commands`, which only
+`ExportPlanner.Plan` does. So `--commands` found an empty list and printed *"This export writes no
+files, so there is nothing to rebuild. Run it without --commands to see why."* with exit 1 — about an
+export that writes a stock-cutting program, as running the same command without `--commands` shows.
+
+A refusal that states something untrue about what it refused is worse than the missing feature behind
+it: the message sends somebody to look for a reason that is not there.
+
+**`--only stock` needed saying, and `OutputKind` cannot say it.** That enum has svg and gcode, which
+pick which outputs of the board to write; stock-only writes the stock and none of the board. A
+`StockOnly` flag on `CliScriptContext` rather than a new enum member, so no writer that switches on
+`OutputKind` gains a case that is not an output. The emitted command was run: one file,
+`Millburn_Test_Board.stock.nc`.
+
+#### 6.64 The tabs window named the board's corner on a job built on stock — **defect · fixed** — *found by `/code-review`, 2026-10-07*
+
+The heading said *"measured from the board's lower-left corner — which is where the machine's
+zero is"* flatly, while `MainViewModel.PlannedTabs` shifts each position through
+`ExportPlanner.Placed(t.At, frame, …)` and `frame` is the blank's rectangle when there is one. So on
+a stock job every position listed was the stock's and the sentence said the board's.
+
+**The same defect as [6.58](#658-findings-were-reported-from-the-boards-corner-on-a-job-built-on-stock--defect--fixed--found-by-code-review-2026-10-07), in the next window along, found by the next review.**
+The class's own doc already stated the correct rule; the heading did not follow it. It takes
+`originName` now — the same `MainViewModel.OriginName` the pointer readout uses — rather than
+asserting one. On the test board the four tabs read 79.13, 30.34 with 10 mm of stock and 69.13,
+20.34 without, and the heading changes with them.
+
+**Worth noting what this says about the pattern.** Three windows in this sprint have printed a
+coordinate while naming the wrong origin, and each was found only when something else made the two
+disagree visibly. Anything that prints a position should take its origin's name from the frame it
+was shifted by, not state one.
+
+#### 6.65 Reframing moved work zero without clearing the marker — **defect · fixed** — *found by `/code-review`, 2026-10-08*
+
+`BoardView.OnPropertyChanged` is the one place a mark is cleared when the board under it changes,
+and its own comment names this very case: *"re-importing, opening another board, **or turning stock
+on and moving work zero**"*. It does that by comparing the extent across an assignment to `Scene` —
+and [6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06)'s
+fix deliberately keeps the same scene object and moves the extent in place, which is the whole point
+of reframing rather than rebuilding. So the rule was right, its one implementation could not see
+this, and the fix for one defect re-opened the symptom of another.
+
+**Reproduced in a shot.** Go to a finding on a job with 10 mm of stock, then widen the border to 20:
+the ring stays at 54.05, 40.31 with that coordinate on its label, while the bridge it names has
+moved to 64.05, 50.31. Ten millimetres of copper away, pointing at the wrong trace, with a number
+beside it that is right about nothing.
+
+**It needed the border to move *after* the mark was placed**, which is why nothing caught it sooner:
+every other screenshot flag runs before the first frame, so `--change blank` and `--findings` always
+agreed. `--stock-border` is the only one that lands afterwards.
+
+**The event is named for what happened, not for one of its consequences.** It was `FitRequested`,
+and a signal named after the fit is a signal whose second consequence is easy to forget — which is
+exactly what happened. It is `FrameMoved` now, and the window answers it by clearing the mark and
+asking for a fit.
+
+#### 6.66 `--stock-border` failed silently in three ways — **defect · fixed** — *found by `/code-review`, 2026-10-08*
+
+A value that does not parse, a value equal to the one already set — the generated setter drops equal
+assignments, so `--stock-border 10` against a 10 mm border does nothing — and a project with *Build
+on stock* off, where there is no blank to resize. In all three the capture came out on the board's
+own frame and looked like a successful demonstration of the opposite claim.
+
+This is the third screenshot flag in three reviews to be caught doing this, after `--zoom` and
+`--goto`. The standard is written down in both of their messages and it is the same one each time:
+a shot that quietly came out wrong is a false claim in a picture. It is also clamped to the
+slider's 3–30 mm, for the reason `ZoomTo` clamps its scale — a flag should not put the project in a
+state no gesture can produce or undo.
+
+**And its comment said the opposite of what the code did.** It described the rejected first design,
+in which a border being moved did not re-fit the view. A shot captioned from that comment would have
+asserted something false about the very behaviour it was taken to show.
+
+#### 6.67 A layer edit threw away a program opened off disk — **defect · fixed** — *found by `/code-review`, 2026-10-10*
+
+A board and a standalone `.nc` can be on screen together, and they share one backplot — opening a
+program replaces whatever was drawn, and only one of the two is ever held at a time. So clearing
+the backplot on a layer edit threw away a program nobody had asked to close, while `_programPath`
+survived: the toolpath and the whole *"Millburn_Test_Board-F_Cu.nc · 5573 mm cut · 368 mm travel ·
+262 plunges"* status line went, and **Close program** stayed enabled over nothing.
+
+**Pre-existing, and found the moment the rule had one place to be stated in.** The six hand-written
+branches did the same thing, and nobody noticed because there was nothing to read it against.
+[6.51](#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting)
+put the rule in a table whose own words are *"a settings change leaves an opened program alone,
+because it came off disk and was not made from these settings"* — and the next review read the
+table against the code. A stated rule that is false is worse than six unstated ones, which is the
+risk that entry took on; this is that risk being paid down on the first pass rather than later.
+
+**Clearing now means the *previewed* programs.** A reason that clears without also forgetting an
+opened one leaves it alone, which is what the sentence claimed all along.
+
+**`--open-program <file>` was added to see it**, because a board with a program over it was not a
+state any flag could produce. Both sides were photographed: with the fix the toolpath and its
+status line survive a layer change, and with the one condition reverted they both vanish.
+
+#### 6.68 A source refresh rebuilt the scene twice — **defect · fixed** — *found by `/code-review`, 2026-10-10*
+
+Introduced by 6.51 and caught on its first review. `ApplyRefresh` stops and clears before
+`ProjectRefresh.Apply` swaps the source bytes — it must, because a run in flight is reading the
+project that is about to be mutated — and then rebuilds afterwards. Giving `SourceRefreshed` a
+`Rebuild: true` meant the rebuild also happened inside the stop, against the bytes about to be
+discarded: `ToBoard`, `BoardSceneBuilder.Build`, the rows, the facts and the warnings, all for a
+picture thrown away microseconds later. The comment written beside it claimed the opposite of what
+the table did.
+
+**Two reasons now defer their rebuild, and it is the same reason twice:** replacing the project and
+re-reading the source bytes both have a caller that swaps the thing a scene is built *from*. Stated
+that way in `Staleness.Of` rather than as two unrelated exceptions.
+
+**The test caught the correction, which is the right way round.** `ClearingThePicturePutsOneBack`
+failed the moment `Rebuild` went false, and in being fixed it became a partition over the whole
+enum — closing the last of the five decisions that had no sweep pinning it.

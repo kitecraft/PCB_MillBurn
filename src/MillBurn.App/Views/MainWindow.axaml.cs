@@ -11,9 +11,12 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using MillBurn.Align;
 using MillBurn.App.ViewModels;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
+using MillBurn.Viewer;
+using SkiaSharp;
 
 namespace MillBurn.App.Views;
 
@@ -47,6 +50,24 @@ public partial class MainWindow : Window
             if (DataContext is MainViewModel vm)
             {
                 vm.RedrawRequested += (_, _) => Viewport.InvalidateVisual();
+                vm.BoardReplaced += (_, _) => CloseFindings();
+
+                // The frame moved under the picture, so what was a good fit for the board is not
+                // one for the stock around it — and a marker placed in the old frame is now a ring
+                // over the wrong copper.
+                //
+                // **The second half is the rule `BoardView.OnPropertyChanged` already states**, and
+                // it names this very case: *"re-importing, opening another board, or turning stock
+                // on and moving work zero"*. That check compares the extent across an assignment to
+                // `Scene`, and reframing deliberately keeps the same scene object — so the rule was
+                // true and its one implementation could not see this. Found by `/code-review`: go
+                // to a finding on a job with 10 mm of stock and widen the border to 20, and the
+                // ring stayed at 54.05, 40.31 while the bridge it names moved to 64.05, 50.31.
+                vm.FrameMoved += (_, _) =>
+                {
+                    Viewport.ClearMarker();
+                    Viewport.RefitWhenDrawn();
+                };
 
                 // Refilled each time the empty panel comes back, because opening or saving a
                 // project in between changes the list.
@@ -369,9 +390,48 @@ public partial class MainWindow : Window
 
         if (args.Contains("--tools", StringComparer.OrdinalIgnoreCase))
         {
-            var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
+            // A library from a file rather than this machine's own, so the window can be
+            // photographed against a long one. The roadmap entry is written for thirty tools and
+            // nobody's real library is going to be thirty on demand — and borrowing the operator's
+            // own file to make it so is not a thing to do while they are using the app.
+            var shown = Argument(args, "--tools-from") is { } file
+                ? ToolLibrary.LoadOrDefault(file)
+                : vm.Library;
+
+            var editor = new ToolLibraryWindow(shown, InUse(vm)) { RequestedThemeVariant = ActualThemeVariant };
+
+            // The two controls the list's story is about, so a screenshot can show the sorted and
+            // filtered list rather than only the buttons that would do it.
+            editor.ShowOnly(
+                Argument(args, "--tools-only")?.ToLowerInvariant() switch
+                {
+                    "vbit" or "vbits" => ToolKind.VBit,
+                    "endmill" or "endmills" => ToolKind.EndMill,
+                    "drill" or "drills" => ToolKind.Drill,
+                    _ => null,
+                },
+                Argument(args, "--tools-sort")?.ToLowerInvariant() switch
+                {
+                    "name" => ToolSort.Name,
+                    "kind" => ToolSort.Kind,
+                    "size" => ToolSort.Size,
+                    _ => ToolSort.Library,
+                });
             editor.Show(this);
             _captureInstead = editor;
+        }
+
+        // Changes something the way a click would, so that "unsaved changes" below can print yes.
+        //
+        // **The other half of a diagnostic that was only ever able to say no.** The line this run
+        // prints at the end exists to catch a project that marks itself changed when nobody touched
+        // it; nothing headless could make the opposite mistake visible — a change that does *not*
+        // mark the project — which is the one an operator meets as a prompt that never comes and
+        // work quietly replaced. Reported from the workshop, 2026-10-01: "the app no longer asks me
+        // to save/discard when I have changes to a project and then open a recent one."
+        if (Argument(args, "--change") is { } what && vm.Layers.Count > 0)
+        {
+            Change(vm, what);
         }
 
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
@@ -398,6 +458,27 @@ public partial class MainWindow : Window
             // Awaited, not started: everything below and the screenshot itself would otherwise
             // capture the window before the preview it was asked for had arrived in it.
             await vm.PreviewAsync();
+        }
+
+        // A program off disk, opened over the board that is already loaded. The two can coexist
+        // and share the backplot, and there was no way to reach that state in a shot — so what an
+        // edit does to a program nobody asked to close could not be looked at.
+        if (Argument(args, "--open-program") is { } ncPath && vm.OpenProgram(ncPath))
+        {
+            Viewport.FitToContent();
+        }
+
+        // The same edits as `--change`, made *after* the preview rather than before it.
+        //
+        // **This is the one scenario that has bitten four times and could not be photographed.**
+        // 6.33 is "an edit while programs are drawn, or while a run is still building"; every
+        // other flag here runs before the first preview, so `--change` could only ever exercise
+        // the empty case. What it proves is in the status line: an edit over a drawn preview says
+        // *"Output changed. Preview again to see the new programs."* and an edit over nothing says
+        // whatever was there before, because the guard skipped it.
+        if (Argument(args, "--then-change") is { } later && vm.Layers.Count > 0)
+        {
+            Change(vm, later);
         }
 
         // Job ▸ Check this board, so the panel can be photographed with the electrical findings in
@@ -542,6 +623,54 @@ public partial class MainWindow : Window
             _captureInstead = editor;
         }
 
+        // The tabs on the board's outline, for a picture of where they landed.
+        //
+        // Worth a flag of its own because the list is the only place the planner's answer can be read
+        // as a whole — the program's comment says how many and how wide, and this says which edge each
+        // one is on and at what coordinate.
+        if (args.Contains("--tabs", StringComparer.OrdinalIgnoreCase)
+            && vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } outline
+            && vm.PlannedTabs(outline) is { } planning)
+        {
+            var tabs = new TabsWindow(
+                outline.Label,
+                planning.Tabs,
+                outline.TabWidthNm,
+                outline.TabHeightNm,
+                planning.DerivedWidthNm,
+                planning.DerivedHeightNm,
+                vm.OriginName)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            tabs.Show(this);
+            _captureInstead = tabs;
+        }
+
+        // The test-cut dialog, for a picture of whichever of the three tests is asked for.
+        //
+        // Needs no board, like the dialog itself, and takes the kind by name because what the three
+        // differ in is which rows they show and what the summary says — which is the whole of what
+        // a screenshot of this window is for.
+        if (Argument(args, "--testcut") is { } wanted)
+        {
+            var kind = wanted.StartsWith("copper", StringComparison.OrdinalIgnoreCase)
+                ? TestCutKind.Copper
+                : wanted.StartsWith("feed", StringComparison.OrdinalIgnoreCase)
+                    ? TestCutKind.Feed
+                    : TestCutKind.Depth;
+
+            var testcut = new TestCutWindow(vm.Library, vm.Settings.Machine)
+            {
+                RequestedThemeVariant = ActualThemeVariant,
+            };
+
+            testcut.Show(this);
+            testcut.ShowKind(kind);
+            _captureInstead = testcut;
+        }
+
         // Opens the colour picker for a screenshot: it lives in a separate package with its own
         // theme resources, so "does it render at all" is a real question rather than a formality.
         if (args.Contains("--colour", StringComparer.OrdinalIgnoreCase) && vm.Layers.Count > 0)
@@ -586,6 +715,61 @@ public partial class MainWindow : Window
             }
 
             vm.OnlyToolpath(both);
+        }
+
+        // The View menu's toggle, without writing the preference to the real settings file.
+        //
+        // **It is what tells a working binding from a coincidence.** Both the setting and the
+        // control's own property default to on, so every shot of the ruler looks the same whether
+        // the binding reaches the viewport or not; this is the only one that would change if it
+        // did not. Set on the view model, so it travels the path the menu item travels.
+        if (args.Contains("--no-ruler", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.RememberRuler(false);
+        }
+
+        // Pixels per millimetre and the board point to centre, so a shot can be taken at the zoom
+        // a bridge is inspected at and not only at whole-board.
+        if (Argument(args, "--zoom") is { } zoom && Millimetres(zoom) is { Length: 3 } how
+            && !Viewport.ZoomTo((float)how[0], new Point(how[1], how[2])))
+        {
+            Console.WriteLine("zoom: ignored — there is no board laid out to zoom into.");
+        }
+
+        // The ruler's two live readings, which need a pointer and a drag and so cannot be reached
+        // headlessly any other way. Board millimetres, as the readout prints them.
+        if (Argument(args, "--pointer") is { } pointer && Millimetres(pointer) is { Length: 2 } at)
+        {
+            Viewport.PointerAt = new Point(at[0], at[1]);
+        }
+
+        if (Argument(args, "--measure") is { } measure && Millimetres(measure) is { Length: 4 } span)
+        {
+            Viewport.MeasureFrom(new Point(span[0], span[1]), new Point(span[2], span[3]));
+        }
+
+        // The two questions the tool library asks, so their wording can be read in a screenshot:
+        // one is only reachable by deleting a tool and the other by copying one, and neither is a
+        // thing to click through on the author's own library to see what it says.
+        if (Argument(args, "--tool-prompt") is { } prompting)
+        {
+            var prompt = prompting.StartsWith("copy", StringComparison.OrdinalIgnoreCase)
+                ? NameWindow.Preview(
+                    "Copy tool",
+                    "A copy of “1.0 mm end mill”, with its own feeds and notes. What is it called?",
+                    "1.0 mm end mill (copy)",
+                    "Copy")
+                : ConfirmWindow.Preview(
+                    "Delete tool",
+                    "Delete “1.0 mm end mill”? The open project cuts with it; those layers will "
+                        + "fall back to a default bit. This cannot be undone.",
+                    "Delete",
+                    null,
+                    canCancel: true);
+
+            prompt.RequestedThemeVariant = ActualThemeVariant;
+            prompt.Show(this);
+            _captureInstead = prompt;
         }
 
         // The confirmation for the reset, so the wording can be read in a screenshot.
@@ -667,8 +851,62 @@ public partial class MainWindow : Window
                 RequestedThemeVariant = ActualThemeVariant,
             };
 
+            window.PlacePicked += GoToPlace;
+            Watch(window);
+
+            // Presses the nth place in the list, because clicking one is the whole of this story
+            // and a screenshot cannot click. Counted over the window's own order, so what it picks
+            // is what an operator reading top to bottom would pick.
             window.Show(this);
             _captureInstead = window;
+
+            // Presses the nth place in the list, because clicking one is the whole of this story
+            // and a screenshot cannot click. Counted from one, over the window's own order, so what
+            // it picks is what an operator reading top to bottom would pick.
+            //
+            // **And the shot is then of the board, not of the list.** What this flag is for is
+            // where the viewport went and what it marked; the list is already photographable with
+            // `--findings` alone, and it is still open behind — which is the non-modal property the
+            // request named first.
+            //
+            // **It says when it could not.** Silence here is the fault `--zoom` already guards
+            // against: a shot that quietly came out as the whole board with no ring is a false
+            // claim in a picture, and the first board tried for this — one whose copper comes
+            // apart cleanly — listed nothing at all and produced exactly that.
+            if (Argument(args, "--goto") is { } nth)
+            {
+                GoneTo(args, window, nth);
+            }
+        }
+
+        // Nudges the stock's border the way the slider does, so that a frame moving *after* the
+        // picture exists can be photographed — which is the case the other flags cannot reach,
+        // because they all run before the first frame.
+        //
+        // **The comment here used to say the opposite**: that the stock appearing re-fits the view
+        // and a border being moved does not. That was the first design, and it was rejected for
+        // the reason `Reframe` now gives — a shot captioned from it would have asserted something
+        // false in a picture, which is the fault this whole family of flags exists to prevent.
+        if (Argument(args, "--stock-border") is { } border)
+        {
+            Nudged(vm, border);
+        }
+
+        // Closes or replaces the project after everything above, so that what a findings window
+        // does when its board goes can be seen in a script: the count printed at capture must be
+        // nought. Both doors, because the bench report named both — *"opening a recent project or
+        // upon close project"* — and a fix argued to cover the second by reading the code is not
+        // the standard anything else here is held to.
+        if (args.Contains("--close-project", StringComparer.OrdinalIgnoreCase))
+        {
+            vm.CloseProject();
+            _captureInstead = null;
+        }
+
+        if (Argument(args, "--open-project") is { } other)
+        {
+            vm.OpenProject(other);
+            _captureInstead = null;
         }
 
         // Folds the checks section, which is the half of it no screenshot could otherwise reach:
@@ -736,6 +974,11 @@ public partial class MainWindow : Window
                     {
                         Console.WriteLine($"unsaved changes: {(shown.Project.IsDirty ? "yes" : "no")}");
                     }
+
+                    // A findings window describes a board. Printed because it is the only way a
+                    // script can see one that should have gone: it is its own top level, so a shot
+                    // of the main window cannot show whether it is still up behind.
+                    Console.WriteLine($"findings windows open: {_findings.Count}");
                 }
                 catch (Exception ex) when (ex is IOException or InvalidOperationException)
                 {
@@ -1168,15 +1411,45 @@ public partial class MainWindow : Window
         }
 
         // A dialog is its own top level, so it does not inherit the variant the user chose.
-        var editor = new ToolLibraryWindow(vm.Library) { RequestedThemeVariant = ActualThemeVariant };
+        var editor = new ToolLibraryWindow(vm.Library, InUse(vm)) { RequestedThemeVariant = ActualThemeVariant };
         await editor.ShowDialog(this);
         vm.ReloadLibrary();
     }
+
+    /// <summary>Comma-separated millimetres from a screenshot flag, or null if that is not what it is.</summary>
+    private static double[]? Millimetres(string text)
+    {
+        var parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var values = new double[parts.Length];
+
+        for (var i = 0; i < parts.Length; i++)
+        {
+            if (!double.TryParse(parts[i], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out values[i]))
+            {
+                return null;
+            }
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// The tools the open board's layers are set to cut with.
+    ///
+    /// Passed to the library window so that deleting one can say what it costs: a layer whose saved
+    /// tool has gone falls back to a default the next time the project is opened, silently and to a
+    /// different bit. Empty when no board is open, which is also the honest answer — nothing on
+    /// screen is using anything.
+    /// </summary>
+    private static List<Guid> InUse(MainViewModel vm) =>
+        vm.Layers.Select(r => r.Tool.Id).Distinct().ToList();
 
     private async void OnPreviewClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm)
         {
+            Viewport.ClearMarker();
             await vm.PreviewAsync();
         }
     }
@@ -1185,6 +1458,7 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel vm)
         {
+            Viewport.ClearMarker();
             await vm.CheckBoardAsync();
         }
     }
@@ -1212,8 +1486,210 @@ public partial class MainWindow : Window
             RequestedThemeVariant = ActualThemeVariant,
         };
 
+        window.PlacePicked += GoToPlace;
+        Watch(window);
+
         window.Show(this);
         _captureInstead = window;
+    }
+
+    /// <summary>
+    /// Every findings window currently open, so they can be shut when their board goes.
+    ///
+    /// **A list rather than one reference**, because F7 opens another every time it is pressed and
+    /// nothing stops two being up at once. Holding only the latest would have left the earlier ones
+    /// exactly as they are today — open over the next board — which is the reported fault still
+    /// happening, just less often and harder to describe.
+    /// </summary>
+    private readonly List<FindingsWindow> _findings = [];
+
+    private void Watch(FindingsWindow window)
+    {
+        _findings.Add(window);
+
+        // Dropped when the operator shuts it themselves, so this does not accumulate every window
+        // the session has ever opened and try to close them all again later.
+        window.Closed += (_, _) => _findings.Remove(window);
+    }
+
+    /// <summary>
+    /// Shuts every open findings window.
+    ///
+    /// **From the bench, 2026-10-07:** *"The findings dialog is not closed when opening a recent
+    /// project or upon close project."* A list of places on a board that is no longer loaded is
+    /// the same fault as a marker that outlives its board, one level up — and worse, because the
+    /// marker at least sits on the board it is wrong about, while this sits in its own window with
+    /// the old board's name in the title bar.
+    ///
+    /// Over a copy, because closing each one raises `Closed`, which removes it from the list.
+    /// </summary>
+    private void CloseFindings()
+    {
+        foreach (var window in _findings.ToList())
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// Makes one change the way a click would, for <c>--change</c> and <c>--then-change</c>.
+    ///
+    /// Shared so the two flags cannot drift: the only difference between them is *when* they run,
+    /// which is the whole point — before the first preview, or over a drawn one.
+    /// </summary>
+    private static void Change(MainViewModel vm, string what)
+    {
+        switch (what.ToLowerInvariant())
+        {
+            case "thickness":
+                vm.BoardThicknessMm = Math.Round(vm.BoardThicknessMm + 0.1, 2);
+                break;
+
+            case "tabs":
+                if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } outlineRow)
+                {
+                    outlineRow.TabCount = outlineRow.TabCount == 4 ? 6 : 4;
+                }
+
+                break;
+
+            // Builds the job on stock, which moves work zero to the stock's corner. The one
+            // change that alters what the pointer readout calls zero, so it is the only way to
+            // photograph the other half of that line.
+            case "blank":
+                vm.UseBlank = true;
+                break;
+
+            // The tabs window's own route in, which is not a binding like the others.
+            case "sizes":
+                if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
+                {
+                    sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), []);
+                }
+
+                break;
+
+            default:
+                var row = vm.Layers.First(r => r.Layer is not null);
+                row.SelectedOutput = row.Outputs.First(o => o.Kind != row.Output);
+                break;
+        }
+
+        Console.WriteLine($"changed: {what}");
+    }
+
+    /// <summary>
+    /// The <c>--stock-border</c> flag: moves the border, and says when it did not.
+    ///
+    /// **Three ways it used to pass silently**, each leaving a capture on the board's own frame
+    /// that looks like a successful demonstration of the opposite claim: a value that does not
+    /// parse, a value equal to the one already set — the generated setter drops equal assignments,
+    /// so `--stock-border 10` against a 10 mm border is a no-op — and a project with *Build on
+    /// stock* off, where there is no blank to resize and the frame stays the board's.
+    ///
+    /// Clamped to the slider's own range, for the reason `ZoomTo` gives for clamping its scale: a
+    /// flag should not put the project in a state no gesture can produce or undo.
+    /// </summary>
+    private static void Nudged(MainViewModel vm, string border)
+    {
+        if (!double.TryParse(border, NumberStyles.Float, CultureInfo.InvariantCulture, out var mm))
+        {
+            Console.WriteLine($"stock-border: {border} is not a number of millimetres.");
+            return;
+        }
+
+        if (!vm.UseBlank)
+        {
+            Console.WriteLine(
+                "stock-border: ignored — this job is not built on stock, so there is no border. "
+                    + "Add --change blank.");
+            return;
+        }
+
+        var wanted = Math.Clamp(mm, 3, 30);
+
+        if (Math.Abs(wanted - vm.BlankBorderMm) < 0.0001)
+        {
+            Console.WriteLine(
+                $"stock-border: ignored — the border is already {wanted:0.##} mm, so nothing moved.");
+            return;
+        }
+
+        if (wanted != mm)
+        {
+            Console.WriteLine($"stock-border: {mm:0.##} clamped to {wanted:0.##} mm, the slider's range.");
+        }
+
+        vm.BlankBorderMm = wanted;
+    }
+
+    /// <summary>
+    /// The <c>--goto</c> flag: presses one row and reports when it could not.
+    /// </summary>
+    private void GoneTo(string[] args, FindingsWindow window, string nth)
+    {
+        if (!int.TryParse(nth, NumberStyles.Integer, CultureInfo.InvariantCulture, out var which)
+            || which < 1)
+        {
+            // Counted from one. `Skip(-1)` is `Skip(0)` and would have handed back the first row
+            // for `--goto 0` and for every negative, which is a wrong answer wearing a right one.
+            Console.WriteLine($"goto: {nth} is not a place in the list — they are numbered from 1.");
+            return;
+        }
+
+        if (window.Listing.Skip(which - 1).FirstOrDefault() is not { } picked)
+        {
+            Console.WriteLine(
+                $"goto: ignored — this board lists {window.Listing.Count} place(s), so there is no {which}.");
+            return;
+        }
+
+        GoToPlace(window, picked);
+
+        if (Viewport.Marker is null)
+        {
+            Console.WriteLine("goto: ignored — there is no board laid out to go to.");
+            return;
+        }
+
+        _captureInstead = null;
+
+        // What Escape does, so the rule can be photographed: the ring goes and the view stays.
+        // Somebody who went to a finding and then cleared the mark is looking at that copper on
+        // purpose, and moving them away again would undo what they asked for.
+        if (args.Contains("--clear-marker", StringComparer.OrdinalIgnoreCase))
+        {
+            Viewport.ClearMarker();
+        }
+    }
+
+    /// <summary>
+    /// Takes the viewport to a place in the findings and marks it.
+    ///
+    /// **The window stays open and stays non-modal**, which is what the request named first: the
+    /// list sits beside the board while the view moves, so the next place is one click away rather
+    /// than a reopen.
+    /// </summary>
+    private void GoToPlace(object? sender, NetGap gap)
+    {
+        var x = (float)Nm.ToMillimetres(gap.At.X);
+        var y = (float)Nm.ToMillimetres(gap.At.Y);
+
+        // The nets as the list prints them, so the ring and the line that was clicked say the same
+        // thing. Empty when the copper carries no net attribute — which is a real case, and one the
+        // findings view is careful to distinguish, so the mark must not invent a name for it.
+        var nets = gap.Between.Count >= 2
+            ? string.Join(" and ", gap.Between)
+            : gap.Between.Count == 1 ? gap.Between[0] : string.Empty;
+
+        if (!Viewport.GoTo(new BoardMarker(new SKPoint(x, y), Marker.CoordinateOf(x, y), nets)))
+        {
+            return;
+        }
+
+        // So Escape reaches the viewport rather than the findings window, which is still open and
+        // still has focus from the click that got here.
+        Viewport.Focus();
     }
 
     /// <summary>
@@ -1223,8 +1699,24 @@ public partial class MainWindow : Window
     /// tool it assumes and how deep it goes are the facts that decide whether the right thing is
     /// about to be cut, and they are invisible once the files are on disk.
     /// </summary>
-    private async void OnExportClicked(object? sender, RoutedEventArgs e) =>
+    /// <remarks>
+    /// **A fresh run takes the mark off**, which is the rule sprint 3's story 5 already applies to
+    /// the checks panel's highlight, for the same reason: *"a mark that outlives the thing it
+    /// explains is worse than none, because it looks like a property of the check."* The ring means
+    /// *this is the finding you asked about*, and after a new check, preview or export there is no
+    /// such finding — the one it came from was computed against a board state that has gone.
+    ///
+    /// Panning and zooming do not clear it, and nor does closing the findings window. Exploring
+    /// around the place is the entire point, and the ring carries its own label so it can be read
+    /// after the list is shut. A board that is *replaced* rather than re-run clears it too, and
+    /// that lives in <see cref="Controls.BoardView.OnPropertyChanged"/> rather than here, because
+    /// there are four doors into it and only one of them is a button.
+    /// </remarks>
+    private async void OnExportClicked(object? sender, RoutedEventArgs e)
+    {
+        Viewport.ClearMarker();
         await ExportAsync(onlyLayer: null);
+    }
 
     /// <summary>
     /// The export window, for the whole board or for one layer of it.
@@ -1506,7 +1998,8 @@ public partial class MainWindow : Window
 
         var (probe, _) = ProbeRoutine.Generate(region, new ProbeRoutineOptions
         {
-            SpacingMm = Math.Max(4, Math.Min(report.StockWidthMm, report.StockHeightMm) / 3),
+            SpacingMm = TestCut.ProbeSpacingMmFor(report),
+            OnCoupon = true,
             SafeHeightMm = vm.Settings.Machine.SafeZMm,
             MaxDepthMm = vm.Settings.Probe.MaxDepthMm,
             FeedMmPerMin = vm.Settings.Probe.FeedMmPerMin,
@@ -1607,6 +2100,42 @@ public partial class MainWindow : Window
         else if (colour is { } picked)
         {
             vm.SetColour(row, picked);
+        }
+    }
+
+    /// <summary>
+    /// The tabs on one outline layer: where they are, and what size each of them is.
+    ///
+    /// The plan comes from the planner rather than from anything worked out here, so the list is the
+    /// board that is about to be cut. Saving rebuilds the preview, because the tab sizes change the
+    /// program.
+    /// </summary>
+    private async void OnTabsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm
+            || sender is not Control { DataContext: LayerRow row })
+        {
+            return;
+        }
+
+        if (vm.PlannedTabs(row) is not { } planning)
+        {
+            return;
+        }
+
+        var chosen = await TabsWindow.AskAsync(
+            this,
+            row.Label,
+            planning.Tabs,
+            row.TabWidthNm,
+            row.TabHeightNm,
+            planning.DerivedWidthNm,
+            planning.DerivedHeightNm,
+            vm.OriginName);
+
+        if (chosen is not null)
+        {
+            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits);
         }
     }
 

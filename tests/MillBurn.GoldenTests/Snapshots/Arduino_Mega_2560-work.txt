@@ -18,5 +18,5 @@ planning
   offsets       1,323
   searches      12
   search steps  1,930
-  point tests   13,740
+  point tests   14,060
   vertices      1,273,512

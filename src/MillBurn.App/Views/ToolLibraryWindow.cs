@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -24,7 +25,7 @@ namespace MillBurn.App.Views;
 /// </summary>
 public sealed class ToolLibraryWindow : Window
 {
-    private readonly ListBox _list = new() { Width = 220 };
+    private readonly ListBox _list = new() { Width = 250 };
     private readonly StackPanel _form = new() { Spacing = 6, MinWidth = 300 };
     private readonly TextBlock _effect = new() { TextWrapping = TextWrapping.Wrap };
 
@@ -45,11 +46,44 @@ public sealed class ToolLibraryWindow : Window
 
     private readonly List<(Control Row, ToolKind? OnlyFor)> _rows = [];
 
-    public ToolLibraryWindow(ToolLibrary library)
+    /// <summary>
+    /// Which kinds the list is showing, and how it is ordered. Neither is saved and neither touches
+    /// `tools.json`: a sort is a way of looking at the library, not a fact about it.
+    /// </summary>
+    private ToolKind? _only;
+    private ToolSort _sort = ToolSort.Library;
+
+    /// <summary>
+    /// Set while the list is being rebuilt, so the selection it loses and regains does not reload
+    /// the form.
+    ///
+    /// **Changing the sort used to discard whatever was typed**, which a `/code-review` pass caught:
+    /// reassigning `ItemsSource` clears the selection, the empty selection reloads the form from
+    /// nothing, and the reselection reloads it from the stored tool — so a feed rate typed and not
+    /// yet saved was gone the moment the operator sorted the list to find the next bit. Before the
+    /// sort and the filter existed, `Refresh` only ran after a save, where that was harmless.
+    /// </summary>
+    private bool _rebuilding;
+
+    private readonly List<(ToggleButton Button, ToolKind? Kind)> _filters = [];
+    private readonly ComboBox _order = new() { FontSize = 11, Width = 104 };
+
+    /// <summary>
+    /// The tools the open project cuts with, so Delete can say what it is about to cost.
+    ///
+    /// A layer whose saved tool is gone falls back to a default the next time the project is
+    /// opened — silently, and to a different bit. Knowing *that this one* is in use turns a general
+    /// warning into a specific one, which is the difference between a dialog somebody reads and a
+    /// dialog somebody learns to dismiss.
+    /// </summary>
+    private readonly IReadOnlyCollection<Guid> _inUse;
+
+    public ToolLibraryWindow(ToolLibrary library, IReadOnlyCollection<Guid>? inUse = null)
     {
         ArgumentNullException.ThrowIfNull(library);
 
         _library = library;
+        _inUse = inUse ?? [];
 
         Title = "Tools";
         AppIcon.Apply(this);
@@ -66,9 +100,14 @@ public sealed class ToolLibraryWindow : Window
         MinHeight = 620;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        _list.SelectionChanged += (_, _) => Load(_list.SelectedItem as Tool);
-        _list.ItemTemplate = new FuncDataTemplate<Tool>((tool, _) =>
-            new TextBlock { Text = tool?.Name ?? string.Empty, Margin = new Thickness(4, 3) });
+        _list.SelectionChanged += (_, _) =>
+        {
+            if (!_rebuilding)
+            {
+                Load(_list.SelectedItem as Tool);
+            }
+        };
+        _list.ItemTemplate = new FuncDataTemplate<Tool>((tool, _) => Row(tool));
 
         foreach (var box in new[] { _diameter, _tip, _angle, _maxDepth, _stepdown, _feed, _plunge, _rpm })
         {
@@ -83,14 +122,31 @@ public sealed class ToolLibraryWindow : Window
 
         BuildForm();
 
+        _order.ItemsSource = new[] { "Library", "Name", "Kind", "Size" };
+        _order.SelectedIndex = 0;
+        _order.SelectionChanged += (_, _) =>
+        {
+            _sort = (ToolSort)Math.Max(0, _order.SelectedIndex);
+            Refresh();
+        };
+
         var add = new Button { Content = "New" };
-        add.Click += (_, _) => Load(null);
+        add.Click += (_, _) =>
+        {
+            Reveal(null);
+            Load(null);
+        };
+
+        // Copy, which the workshop asked for and which is the one of the three with no design to it:
+        // tools come in families, and entering the second from scratch is retyping the first.
+        var copy = new Button { Content = "Copy" };
+        copy.Click += async (_, _) => await CopyAsync();
 
         var save = new Button { Content = "Save", IsDefault = true };
         save.Click += (_, _) => Commit();
 
         var remove = new Button { Content = "Delete" };
-        remove.Click += (_, _) => Remove();
+        remove.Click += async (_, _) => await RemoveAsync();
 
         var close = new Button { Content = "Close", IsCancel = true };
         close.Click += (_, _) => Close();
@@ -114,7 +170,7 @@ public sealed class ToolLibraryWindow : Window
             ColumnDefinitions = new ColumnDefinitions("Auto,*"),
             Children =
             {
-                Place(_list, 0, 0),
+                Place(Sidebar(), 0, 0),
                 Place(new ScrollViewer { Content = _form, Margin = new Thickness(16, 0, 0, 0) }, 0, 1),
                 Place(effectPanel, 1, 1),
                 Place(
@@ -124,7 +180,7 @@ public sealed class ToolLibraryWindow : Window
                         Spacing = 8,
                         Margin = new Thickness(0, 14, 0, 0),
                         HorizontalAlignment = HorizontalAlignment.Right,
-                        Children = { add, remove, save, close },
+                        Children = { add, copy, remove, save, close },
                     },
                     2,
                     1),
@@ -135,6 +191,280 @@ public sealed class ToolLibraryWindow : Window
         Load(_library.Tools.FirstOrDefault());
     }
 
+    /// <summary>
+    /// The list, with the two controls that decide what is in it and in what order.
+    ///
+    /// **The filter is buttons rather than a dropdown**, because a dropdown hides which filter is
+    /// on, and a filter you cannot see is how somebody concludes their tools have vanished. All
+    /// four are on screen with the active one pressed, so the list always has its explanation
+    /// beside it.
+    /// </summary>
+    private Grid Sidebar()
+    {
+        var filters = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+        };
+
+        void Filter(string label, ToolKind? kind)
+        {
+            var button = new ToggleButton
+            {
+                Content = label,
+                FontSize = 11,
+                Padding = new Thickness(8, 3),
+                IsChecked = kind == _only,
+            };
+
+            button.Click += (_, _) =>
+            {
+                _only = kind;
+                ShowFilter();
+                Refresh();
+            };
+
+            _filters.Add((button, kind));
+            filters.Children.Add(button);
+        }
+
+        Filter("All", null);
+        Filter("V-bits", ToolKind.VBit);
+        Filter("End mills", ToolKind.EndMill);
+        Filter("Drills", ToolKind.Drill);
+
+        var sort = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(0, 6),
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Sort",
+                    FontSize = 11,
+                    Opacity = 0.75,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+                _order,
+            },
+        };
+
+        // **A Grid, not a StackPanel**, and a `/code-review` pass is why — then a screenshot, which
+        // showed it was worse than the review had reasoned. A vertical `StackPanel` measures its
+        // children with infinite height, so the `ListBox` reported the height of every row it had
+        // and its own scroller never engaged: on a thirty-tool library the list ran straight off the
+        // bottom of the window with no scrollbar and sixteen tools unreachable. The one case this
+        // whole story exists for, broken by the layout it was given.
+        //
+        // The two controls take their own `Auto` rows and the list takes the `*`, so it is measured
+        // against what is left and scrolls inside it.
+        var sidebar = new Grid
+        {
+            Width = 250,
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+        };
+
+        sidebar.Children.Add(Place(filters, 0, 0));
+        sidebar.Children.Add(Place(sort, 1, 0));
+        sidebar.Children.Add(Place(_list, 2, 0));
+
+        return sidebar;
+    }
+
+    /// <summary>
+    /// Sets the filter and the sort, for a screenshot.
+    ///
+    /// Both are private and deliberately so; this is the one way in from outside, and it goes
+    /// through the same refresh a click does rather than round it.
+    /// </summary>
+    internal void ShowOnly(ToolKind? only, ToolSort sort)
+    {
+        _only = only;
+        _sort = sort;
+        _order.SelectedIndex = (int)sort;
+
+        ShowFilter();
+        Refresh();
+    }
+
+    /// <summary>Which filter button looks pressed. Exactly one, always.</summary>
+    private void ShowFilter()
+    {
+        foreach (var (button, kind) in _filters)
+        {
+            button.IsChecked = kind == _only;
+        }
+    }
+
+    /// <summary>
+    /// Shows a tool that a filter would otherwise hide, by turning the filter off.
+    ///
+    /// Not called `Show`: that overloads `Window.Show`, and `Show(null)` bound to this one only
+    /// because C# drops base-class candidates once a derived one applies. It read as showing the
+    /// window twice at the call site, and any future `Show(x)` in this class would have been one
+    /// implicit conversion from binding to the wrong method.
+    ///
+    /// **A new or copied tool has to appear**, or the button looks broken. Clearing the filter is
+    /// the honest way to do that: an exception to the filter would leave the list showing something
+    /// the buttons say is not there, which is the same confusion one step further in.
+    /// </summary>
+    private void Reveal(Tool? tool)
+    {
+        if (_only is { } kind && (tool is null || tool.Kind != kind))
+        {
+            _only = null;
+            ShowFilter();
+            Refresh();
+        }
+    }
+
+    /// <summary>
+    /// A copy of the selected tool, with its own id.
+    ///
+    /// **The id is the whole risk.** `Tool.Id` is what a project stores, so two tools sharing one
+    /// are the same tool to everything downstream — a job naming the copy would cut with the
+    /// original, and nothing anywhere would say so. A new `Guid`, a suffixed name, and the name box
+    /// focused and selected so the first keystroke renames it.
+    ///
+    /// Saved immediately, because a copy that exists only in the form is indistinguishable from an
+    /// edit of the tool it came from: pressing Save would be the first moment the two were separate,
+    /// and until then Delete would be aimed at the wrong one.
+    /// </summary>
+    private async Task CopyAsync()
+    {
+        if (_editing is not { } original)
+        {
+            return;
+        }
+
+        // **Asked for before the copy exists**, which the workshop asked for: the button used to
+        // make the copy and leave the name box selected, which works if you notice and leaves a
+        // "1.0 mm end mill (copy)" in the library if you do not. The proposal is still the suffixed
+        // name, selected, so the first keystroke replaces it.
+        var name = await NameWindow.AskAsync(
+            this,
+            "Copy tool",
+            $"A copy of “{original.Name}”, with its own feeds and notes. What is it called?",
+            original.Name + " (copy)",
+            "Copy");
+
+        if (name is null)
+        {
+            return;
+        }
+
+        // **What is on screen, not what was last loaded.** A `/code-review` pass found the copy
+        // taken from the stored tool, so feeds typed and not yet saved went into neither the copy
+        // nor anywhere else: the operator adjusts the 0.8 mm mill, presses Copy meaning "and one
+        // like this", and gets the old numbers twice. `Read` is the form as it stands; the id it
+        // carries is the original's and `Copy` replaces it regardless.
+        //
+        // The original keeps its saved values — the edits go to the copy, which is where the
+        // operator was looking when they pressed the button.
+        var copy = ToolView.Copy(Read() ?? original, name);
+
+        _library = _library.With(copy);
+        _library.Save();
+
+        Reveal(copy);
+        Refresh();
+
+        _list.SelectedItem = _library.Tools.FirstOrDefault(t => t.Id == copy.Id);
+
+        _name.Focus();
+        _name.SelectAll();
+    }
+
+    /// <summary>
+    /// One tool in the list: what it is, what it is called, and how big it is.
+    ///
+    /// **Built before the sorting and the filtering, deliberately.** The entry was the name alone,
+    /// and a name is whatever somebody typed — this machine's own library has `1mm Corn Endmill`
+    /// and `1.2 mm end mill` three rows apart, with no common shape to scan down. A kind and a size
+    /// in columns of their own make the list readable without reordering it, and the two features
+    /// that reorder it are then for a library that is genuinely long rather than merely untidy.
+    ///
+    /// The size is the number somebody would say out loud about the bit: a V-bit's tip, an end
+    /// mill's diameter. A drill's diameter comes from the drill file rather than from the library,
+    /// so the shipped drill has none and the column is left empty rather than showing 0.00.
+    /// </summary>
+    private static Control Row(Tool? tool)
+    {
+        if (tool is null)
+        {
+            return new TextBlock();
+        }
+
+        var size = ToolView.SizeOf(tool);
+
+        return new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            Margin = new Thickness(4, 3),
+            Children =
+            {
+                Place(Mark(tool.Kind), 0, 0),
+                Place(
+                    new TextBlock
+                    {
+                        Text = tool.Name,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(6, 0, 6, 0),
+                    },
+                    0,
+                    1),
+                Place(
+                    new TextBlock
+                    {
+                        Text = size > 0 ? Nm.ToMillimetreString(size, 2) : string.Empty,
+                        FontSize = 11,
+                        Opacity = 0.75,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    0,
+                    2),
+            },
+        };
+    }
+
+    /// <summary>
+    /// A letter in a box, coloured by kind.
+    ///
+    /// One glyph rather than a word: the word is longer than most of the names it would sit beside,
+    /// and the three kinds are few enough to learn in one look at the filter buttons above, which
+    /// spell them out.
+    /// </summary>
+    private static Border Mark(ToolKind kind)
+    {
+        var (letter, colour) = kind switch
+        {
+            ToolKind.VBit => ("V", Color.FromRgb(0xE8, 0x8A, 0x3C)),
+            ToolKind.EndMill => ("E", Color.FromRgb(0x5A, 0xA9, 0xF5)),
+            _ => ("D", Color.FromRgb(0x8A, 0xC9, 0x6A)),
+        };
+
+        return new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(3),
+            Background = new SolidColorBrush(colour, 0.22),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = letter,
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = new SolidColorBrush(colour),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+    }
+
     private static Control Place(Control control, int row, int column)
     {
         Grid.SetRow(control, row);
@@ -142,11 +472,29 @@ public sealed class ToolLibraryWindow : Window
         return control;
     }
 
+    /// <summary>
+    /// The list, filtered and ordered.
+    ///
+    /// The rule is <see cref="ToolView.Arrange"/>, in Core beside the library it describes — a
+    /// library of thirty can be arranged in a test, and this window is the four controls over it.
+    /// </summary>
     private void Refresh()
     {
         var selected = (_list.SelectedItem as Tool)?.Id;
-        _list.ItemsSource = _library.Tools.ToList();
-        _list.SelectedItem = _library.Tools.FirstOrDefault(t => t.Id == selected);
+
+        var shown = ToolView.Arrange(_library.Tools, _only, _sort);
+
+        _rebuilding = true;
+
+        try
+        {
+            _list.ItemsSource = shown;
+            _list.SelectedItem = shown.FirstOrDefault(t => t.Id == selected);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
     }
 
     private void Load(Tool? tool)
@@ -286,6 +634,14 @@ public sealed class ToolLibraryWindow : Window
             FeedMmPerMin = (long)Number(_feed, 200),
             PlungeMmPerMin = (long)Number(_plunge, 60),
             SpindleRpm = (int)Number(_rpm, 10_000),
+
+            // **Carried rather than defaulted**, which is a defect found while adding Copy: the
+            // form has no field for either, so a tool whose `Flutes` had been set by hand in
+            // `tools.json` lost it the moment it was saved here — and `Flutes` is what the chip
+            // load is divided by, so the number would have come back wrong rather than absent.
+            // Nothing in the app can set them yet; this stops the window from unsetting them.
+            Flutes = _editing?.Flutes ?? 2,
+            FluteLengthNm = _editing?.FluteLengthNm ?? 0,
             Notes = string.IsNullOrWhiteSpace(_notes.Text) ? null : _notes.Text!.Trim(),
         };
     }
@@ -301,22 +657,68 @@ public sealed class ToolLibraryWindow : Window
         _library.Save();
 
         _editing = tool;
+
+        // **The filter has to give way here as it does for New and Copy**, which a `/code-review`
+        // pass caught. Change a tool's kind while filtered to the kind it used to be, press Save,
+        // and the tool was written correctly and then vanished: it was no longer in the filtered
+        // list, so nothing could be selected, and the empty selection reset the form to a blank new
+        // tool. Saved, gone from the list, and the form apparently cleared — three wrong signals
+        // from one correct write.
+        Reveal(tool);
         Refresh();
+
         _list.SelectedItem = _library.Tools.FirstOrDefault(t => t.Id == tool.Id);
     }
 
-    private void Remove()
+    /// <summary>
+    /// Deletes the selected tool, after asking.
+    ///
+    /// **Asked for from the workshop**, and it is the one button in this window that cannot be
+    /// undone: there is no history, the file is written immediately, and the only way back is to
+    /// retype the tool. The question names the bit rather than saying "this tool", because the
+    /// list and the form are both still on screen behind the dialog and a question that does not
+    /// name its subject is one somebody answers from memory.
+    ///
+    /// **And it says what the loss costs.** A layer that named this tool falls back to a default
+    /// the next time its project is opened — a different bit, chosen silently — so when the open
+    /// project cuts with it, the dialog says so.
+    /// </summary>
+    private async Task RemoveAsync()
     {
-        if (_editing is null)
+        if (_editing is not { } doomed)
         {
             return;
         }
 
-        _library = _library.Without(_editing.Id);
+        var used = _inUse.Contains(doomed.Id)
+            ? " The open project cuts with it; those layers will fall back to a default bit."
+            : string.Empty;
+
+        var answer = await ConfirmWindow.AskAsync(
+            this,
+            "Delete tool",
+            $"Delete “{doomed.Name}”?{used} This cannot be undone.",
+            "Delete",
+            discardText: null);
+
+        if (answer != ConfirmResult.Save)
+        {
+            return;
+        }
+
+        _library = _library.Without(doomed.Id);
         _library.Save();
 
         Refresh();
-        Load(_library.Tools.FirstOrDefault());
+
+        // The first tool *in the list*, not in the library: with a filter on, the library's first
+        // tool may not be shown, and loading it left the form editing something no row pointed at
+        // while Delete stayed live against it. A second click would then have deleted a tool the
+        // operator never selected — the confirmation names it, which was the only thing in the way.
+        var next = _list.Items.OfType<Tool>().FirstOrDefault();
+
+        _list.SelectedItem = next;
+        Load(next);
     }
 
     private static string Mm(long nm) => Nm.ToMillimetreString(nm, 3);

@@ -59,12 +59,14 @@ UGS, Candle, LightBurn and LinuxCNC already do that well.
    folder…`. Drill files come along with it. Exporting from KiCad? The
    [export guide](Help/guides/kicad-export.html) lists the settings that work best.
 3. **Set the board thickness** in Project info. Everything that cuts through uses it, and it is saved
-   with the project.
+   with the project. The top of that panel says which folder the Gerbers were read from, in full —
+   worth a glance when two of your folders share a name.
 4. **Tell each layer what it becomes.** Open a layer row and pick **G-code (mill)**, **SVG
    (laser)**, or **Not exported**. The pill on the collapsed row shows what you chose.
 5. **Press Preview** (F5). The programs are drawn back over your board.
 6. **Press Export…** (Ctrl+E). Read the list. Choose a folder. Open `YourBoard.project.html` beside
-   the files for the run order.
+   the files for the run order — and, at its foot, the CLI commands that would write that same
+   folder again.
 
 Press **F1** at any point. The help, the questions-and-answers page and the step-by-step guides ship
 with the app and work with no network, which is the condition a workshop is usually in.
@@ -313,8 +315,11 @@ millburn-cli export  <folder-or-project> --write -o out/       # every layer, on
 millburn-cli export  <folder> --set F_Cu.gbr=svg- --write      # svg- inverts
 millburn-cli export  <folder> --dry-run --write                # + a .dryrun.nc beside each program
 millburn-cli export  <folder> --stock 10,10,10,10 --write      # cut the stock to size, 10 mm border
+millburn-cli export  <folder> --isolation-width 0.4 --tabs 3   # as the window sets them, per export
+millburn-cli export  <folder> --commands > rebuild.sh          # the commands that rebuild that export
 
 millburn-cli testcut depth --tool "30°" --from 0.02 --step 0.02
+millburn-cli testcut copper --probe                            # where the copper stops, probed finely
 millburn-cli probe   <folder> --spacing 8                      # a G38.2 grid to run and log
 millburn-cli export  <folder> --level probe.log --write        # bend every program to the surface
 millburn-cli level   anyones.nc --map probe.log                # works on any G-code, not just ours

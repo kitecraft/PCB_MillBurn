@@ -10,6 +10,102 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
+## [0.5.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.5.0) — 2026-10-10
+
+**Enhancements that explain things.** Nine stories, and every one of them is the application saying
+out loud something it already knew and kept to itself. Where the tabs will be, before the board is
+in the machine. Which of the gaps in the copper nobody can vouch for. Which six holes the 1.00 mm
+bit is about to visit. What to type to get this export again. Where the copper stops on *this*
+piece of laminate. Which folder this board came out of. What kind of bit that row is. How big the
+thing on screen is, and where the pointer is in the board's own numbers. And which piece of copper
+a finding is about.
+
+[Sprint 4 — Enhancements that explain things](Sprints/Sprint-04-Enhancements-That-Explain-Things.md).
+Nine stories, all closed, plus two fixes taken before sprint 5 was picked.
+
+**Not breaking.** Nothing changed shape: every saved artefact still reads and writes format 1, and
+no CLI flag changed meaning or went away. One number moved, and it is the next paragraph.
+
+**A finding's coordinates were measured from the wrong corner on a job built on stock.** The
+findings list said where a gap was, counted from the board's lower-left — while every file the same
+export writes is referenced to the *stock's* corner when the job is built on stock. On a 10 mm
+border that is 10 mm out in both axes, so a coordinate read off that list and driven to would put
+you 14 mm away, diagonally, on a board whose traces are 0.15 mm apart. It had been that way since
+the findings view shipped in 0.4.0, and nothing on screen contradicted it. **If you wrote a
+finding's position down from a job built on stock, it was measured from the board.** See
+[06 §6.58](Documentation/06-Roadmap-and-Risks.md).
+
+**Rulers, and the pointer's own numbers.** A scale along the top and left of the viewport, reading
+in the board's own millimetres, from the same corner the machine calls zero. The spacing comes from
+the grid's own ladder rather than a second rule, so the two cannot disagree: 5 mm majors over a
+whole board, 0.5 mm zoomed to a single bridge. A box in the top right gives the pointer's position
+continuously, and says underneath which corner it is measured from — the stock's on a job built on
+stock, the board's otherwise, because a coordinate whose origin is a guess is worse than none.
+Shift-drag measures: dx, dy and the diagonal. *View ▸ Show rulers*, remembered between sessions.
+
+**A finding takes you to the copper it is about.** Every coordinate in the findings list is now a
+button. Click one and the viewport goes to that place at a zoom where the copper is legible — 14 mm
+across — and rings it, with the coordinate and the nets beside the ring. The window stays open
+beside the board while the view moves. The mark clears when you pick another, when you press
+Escape, when a new check or preview or export makes the finding stale, and when the board under it
+is replaced; panning and zooming leave it alone, because exploring around the place is the point.
+
+**Tabs where you would put them by hand.** One centred on each straight edge the profile has room
+for, with both numbers worked out from the board rather than typed: the width from the outline, the
+thickness left from the material. *Job ▸ Tabs…* lists every position in millimetres and lets each
+be overridden on its own.
+
+**A numbered picture on every companion page.** The holes and slots drawn as an inline SVG, each
+numbered in the order the program actually visits it, with anything the export refused hatched
+rather than omitted. The page is a file you can open in a browser and hold next to the machine.
+
+**The commands that would rebuild the export.** The project page now lists the `millburn-cli`
+invocations that would produce the same files, derived from the plan that was emitted rather than
+from the settings — so it cannot name a flag the export ignored. `export --commands` prints the
+script alone, for redirecting into a file.
+
+**A test cut that finds where the copper stops.** Twelve lines, starting at 0.01 mm and stepping
+0.01 mm deeper, spaced for the bit, with the real step named in the program header. Cut it on the
+piece of laminate you are about to use and read off where the copper gives way, rather than
+trusting a figure from a different sheet.
+
+**A tool library you can find a bit in.** Each row now shows a kind mark, the name, and the size in
+a column of its own — a V-bit's tip, an end mill's diameter — so the kinds group by eye. Filter by
+kind, sort by library order, name, kind or size, and copy a tool with its feeds to make a variant.
+Deleting asks first and says what the open project loses; copying asks what to call it.
+
+**The window says where the Gerbers came from.** The full path to the source folder, at the head of
+*Project info*, labelled so it is not mistaken for the project file's own location.
+
+**Unnamed copper is called unnamed everywhere.** Copper carrying no net name that shares a region
+with exactly one named net was reported as safe. It is a gap nothing here can vouch for, and it now
+says so in the checks, in the findings and in the CLI alike.
+
+**The viewport follows the stock.** Ticking *Build on stock* used to leave the picture referenced
+to the board's corner until something else forced a redraw — so the ruler and the readout described
+a work zero the job no longer used, while the panel beside them already gave the stock's size. The
+frame moving now moves the view with it, and the scene is re-measured rather than rebuilt, so
+dragging the border stays smooth: about 7 ms of work avoided per tick on a board the size of the
+Mega.
+
+**And the findings window closes with its board.** Reported from the bench: *"The findings dialog
+is not closed when opening a recent project or upon close project."* It is the one non-modal window
+the application opens, which is what makes it useful and also what left it behind, listing places
+on a board that was no longer loaded.
+
+**Smaller things.** `export --only stock --commands` printed *"this export writes no files"* about
+an export that writes one. The tabs window named the board's corner on a job built on stock. The
+pointer readout kept showing its last position after the pointer had left the canvas. The rulers
+could not be turned back on in a session started with `--no-ruler`. A layer edit threw away a
+program you had opened off disk, while leaving *Close program* enabled over nothing.
+
+**Known limitation, unchanged from 0.4.0.** Isolation still cuts inside holes the same export is
+about to drill. The fix was built and withdrawn, because stopping the moat at the hole makes the
+copper's separation depend on the drill finishing what the isolation started. The measurements and
+the shape a replacement needs are in [06 §6.47](Documentation/06-Roadmap-and-Risks.md).
+
+---
+
 ## [0.4.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.4.0) — 2026-09-30
 
 **Checks you can read.** One sprint on one item, because five separate requests turned out to be

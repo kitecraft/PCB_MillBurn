@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -85,6 +86,9 @@ public sealed partial class LayerRow : ObservableObject
         DepthMm = Nm.ToMillimetres(settings.DepthFor(Operation));
         _depthDefaultedFor = Operation;
         TabCount = settings.TabCount;
+        TabWidthNm = settings.TabWidthNm;
+        TabHeightNm = settings.TabHeightNm;
+        TabEdits = settings.TabEdits;
         DrillGuide = settings.WriteDrillGuide;
         Passes = settings.Passes;
         IsolationWidthMm = Nm.ToMillimetres(settings.IsolationWidthNm);
@@ -212,6 +216,37 @@ public sealed partial class LayerRow : ObservableObject
 
     [ObservableProperty]
     public partial int TabCount { get; set; }
+
+    /// <summary>
+    /// Outline only: the gap each tab leaves, or null to size it from the board.
+    ///
+    /// Not an <c>ObservableProperty</c> and not bound to anything: these three are set together by
+    /// the tabs window, through <see cref="SetTabs"/>, and a half-applied trio would plan a board
+    /// nobody asked for.
+    /// </summary>
+    public long? TabWidthNm { get; private set; }
+
+    /// <summary>Outline only: the material left under each tab, or null to take it from the thickness.</summary>
+    public long? TabHeightNm { get; private set; }
+
+    /// <summary>Outline only: the tabs whose size was set by hand, by their place in the planned order.</summary>
+    public ImmutableArray<TabEdit> TabEdits { get; private set; } = [];
+
+    /// <summary>
+    /// Takes what the tabs window chose.
+    ///
+    /// All three at once, and one notification: the preview is rebuilt from this, and rebuilding it
+    /// three times to arrive at the same board is the drag-rebuild fault sprint 2 story 6 fixed.
+    /// </summary>
+    public void SetTabs(long? widthNm, long? heightNm, ImmutableArray<TabEdit> edits)
+    {
+        TabWidthNm = widthNm;
+        TabHeightNm = heightNm;
+        TabEdits = edits;
+
+        OnPropertyChanged(nameof(Detail));
+        _outputChanged?.Invoke();
+    }
 
     /// <summary>Drilling only: write the page that explains how to run the program.</summary>
     [ObservableProperty]
@@ -410,6 +445,18 @@ public sealed partial class LayerRow : ObservableObject
         // A different bit cuts a different width, so the same moat takes a different number of
         // passes. Nothing the operator typed has changed and the answer has.
         RefreshIsolation();
+
+        // **And on an outline layer it re-plans the tabs, so the hand-set sizes go with it.** Found
+        // by `/code-review`, and it is the third door onto the same hazard: the count clears them
+        // just below, and the tabs window clears them when the board-wide width changes. The cutter
+        // is the one nobody had thought of — the profile is offset by its radius before the tabs are
+        // placed, so a wider bit lengthens every straight edge, moves `DefaultWidthFor`, and changes
+        // which edges can hold how many. An edit names a tab by its place in that order.
+        if (Operation == OperationKind.Outline)
+        {
+            TabEdits = [];
+        }
+
         _outputChanged?.Invoke();
     }
 
@@ -437,6 +484,19 @@ public sealed partial class LayerRow : ObservableObject
     partial void OnTabCountChanged(int value)
     {
         _ = value;
+
+        // **A change of count throws the sizes set by hand away**, and a `/code-review` pass is
+        // why. An edit names a tab by its place in the planned order, and the order is a function
+        // of the count: the planner gives one tab to each edge before any edge gets a second, so
+        // going from four to six re-plans every position. The edit then lands on whichever tab now
+        // sorts third — an unexplained wide tab somewhere nobody chose — and going the other way
+        // drops it silently.
+        //
+        // Keeping them would need a tab to have an identity that survives re-planning, which is
+        // 06 §6.4's "move a tab by hand" and is not built. Until it is, the honest answer is that
+        // asking for a different number of tabs is asking for a different set of tabs.
+        TabEdits = [];
+
         OnPropertyChanged(nameof(Detail));
         _outputChanged?.Invoke();
     }
@@ -573,6 +633,9 @@ public sealed partial class LayerRow : ObservableObject
         BreakThroughNm = Nm.FromMillimetres(BreakThroughMm),
         DepthNm = Nm.FromMillimetres(DepthMm),
         TabCount = TabCount,
+        TabWidthNm = TabWidthNm,
+        TabHeightNm = TabHeightNm,
+        TabEdits = TabEdits,
         WriteDrillGuide = DrillGuide,
         Passes = Passes,
         IsolationWidthNm = Nm.FromMillimetres(IsolationWidthMm),

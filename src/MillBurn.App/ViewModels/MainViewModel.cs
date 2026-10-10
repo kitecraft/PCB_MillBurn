@@ -4,6 +4,7 @@ using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MillBurn.Align;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Gcode;
 using MillBurn.Pipeline;
@@ -50,7 +51,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _findingsRun.Dispose();
     }
 
+    // The readout's origin changes with the frame, and the frame is what the scene was built from,
+    // so the one notification covers both — a blank turned on rebuilds the scene.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OriginName))]
     public partial BoardScene? Scene { get; set; }
 
     [ObservableProperty]
@@ -222,6 +226,84 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public string? RefreshSource =>
         _project.OriginFolder is { } folder && Directory.Exists(folder) ? folder : null;
 
+    /// <summary>
+    /// The folder the Gerbers were read from, in full.
+    ///
+    /// Asked for from the workshop — *"We should display the gerber folder somewhere so the user
+    /// knows where the project is from"* — because nothing in the window said it. The title carries
+    /// the folder's last segment alone, and this machine has two boards called
+    /// `Millburn_Test_Board` in different folders: a project opened from the wrong one looks exactly
+    /// like a project opened from the right one, right up until its programs are cut.
+    ///
+    /// **In full.** A first attempt elided the middle to keep the panel narrow, and the product
+    /// owner's answer to it was *"what I would like to know is where the source folder is"* — which
+    /// a path with its middle removed does not say. The view wraps it instead.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? SourceFolder { get; private set; }
+
+    /// <summary>
+    /// The tabs this outline layer would be cut with as things stand.
+    ///
+    /// Asked of the planner rather than worked out here, and through the same options the export
+    /// builds — so the tabs window shows the board that is going to be cut and not a second opinion
+    /// about it. Empty when there is no board, when the layer is not being cut out, or when the tabs
+    /// asked for would take up the whole profile.
+    /// </summary>
+    public TabPlanning? PlannedTabs(LayerRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        if (_board is null || row.Operation != OperationKind.Outline)
+        {
+            return null;
+        }
+
+        var layer = _board.Layers.FirstOrDefault(l => string.Equals(l.FileName, row.FileName, StringComparison.Ordinal));
+
+        if (layer is null)
+        {
+            return null;
+        }
+
+        var options = ExportPlanner.OutlineOptionsFor(
+            _board, row.ToSettings(), row.Tool, Nm.FromMillimetres(BoardThicknessMm));
+
+        // **The profiles the export cuts, not the layer’s raw area.** The planner is shaped by
+        // what it is given: a stroked Edge_Cuts realises as an annulus per outline, and handing it
+        // the negative rings as well would nest and order the contours differently from the
+        // program — so the tab an operator edited as "3" in this list would not be the third tab
+        // in the file. Shaped once here and used for both questions.
+        var profiles = ExportPlanner.OutlineProfiles(layer);
+
+        var planned = OutlineOperation.PlanTabs(profiles, options);
+        var tabs = planned.Tabs;
+
+        // **Into the frame the machine works in.** The planner answers in the artwork's own
+        // coordinates, and on this board that reads "183.41, -124.47 mm": right about the Gerber and
+        // useless at the machine, where nothing is negative and nothing is at 183.
+        //
+        // Through the planner's own `Placed`, which a `/code-review` pass is the reason for: this
+        // used to shift by the board's corner alone. On stock, work zero is the *stock's* corner and
+        // every coordinate in the file is measured from there, so the window was out by the border;
+        // and a mirrored outline layer has its x flipped about the frame's centreline in the file
+        // and was not here. The one step left out is a drill alignment, which is a correction
+        // measured later against copper already on the board rather than part of where the tabs are.
+        var frame = Frame.IsEmpty ? _board.Bounds : Frame;
+
+        if (!frame.IsEmpty)
+        {
+            var mirrored = row.ToSettings().MirrorFor(layer.Role);
+
+            tabs = [.. tabs.Select(t => t with
+            {
+                At = ExportPlanner.Placed(t.At, frame, mirrored, alignment: null),
+            })];
+        }
+
+        return planned with { Tabs = tabs };
+    }
+
     public MainViewModel()
     {
         // Restoring a saved preference is not the user changing anything, so it must not mark the
@@ -237,12 +319,65 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Warnings.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ChecksSummary));
     }
 
+    /// <summary>
+    /// The board has been replaced or closed, so anything describing the old one is now wrong.
+    ///
+    /// **From the bench, 2026-10-07:** *"The findings dialog is not closed when opening a recent
+    /// project or upon close project."* It is not modal — which is the property that makes it
+    /// useful, so it can sit open beside the board — and nothing was holding it, so nothing could
+    /// shut it. It stayed up over the next board, listing places on the last one.
+    /// </summary>
+    public event EventHandler? BoardReplaced;
+
     /// <summary>Remembers where the window was, so it opens where it was left.</summary>
     public void SaveWindowPlacement(WindowPlacement placement) =>
         SaveSettings(Settings with { Window = placement });
 
     /// <summary>Remembers light or dark, so the app opens the way it was closed.</summary>
     public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
+
+    /// <summary>
+    /// Whether the viewport carries its scale strips.
+    ///
+    /// Written through to the settings file on every change rather than on close, so a crash does
+    /// not lose it and the View menu's tick is the stored value rather than a copy of it.
+    /// </summary>
+    public bool ShowRuler
+    {
+        get => _rulerForThisSession ?? Settings.ShowRuler;
+        set
+        {
+            // **Against what the getter returns, not against the stored value.** Compared with the
+            // setting alone, a session started with `--no-ruler` could never turn them back on:
+            // the override says off, the file says on, so the menu renders unticked and ticking it
+            // asks for `true`, which equals the stored value, returns early, raises nothing — and
+            // the two-way binding snaps the tick straight back.
+            if (ShowRuler == value)
+            {
+                return;
+            }
+
+            // The override has served its purpose the moment somebody uses the menu; leaving it
+            // would make the stored value unreachable for the rest of the session.
+            _rulerForThisSession = null;
+
+            SaveSettings(Settings with { ShowRuler = value });
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// What the pointer readout calls zero, in the operator's words.
+    ///
+    /// The frame every emitted file is referenced to is the stock's rectangle when the job is built
+    /// on stock and the board's otherwise, and the viewport measures from its lower-left corner. A
+    /// coordinate is only worth reading if its origin is stated, and on a job with a blank the
+    /// answer is not the one somebody would assume.
+    /// </summary>
+    public string OriginName =>
+        Frame.IsEmpty || _board is null || Frame == _board.Bounds
+            ? "from the board's corner"
+            : "from the stock's corner";
 
     /// <summary>
     /// Remembers how wide the board pane was left.
@@ -294,10 +429,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // **A preview still building captured the old numbers and has to go.** It read the machine
         // profile when its request was built, so left alone it finishes and publishes programs cut
         // to the safe height, decimals and rapid rate that were just replaced — and writes its own
-        // status over the confirmation below. The branch further down does not cover it: a run in
-        // flight has `Gcode == null`, so the condition it tests is false exactly when a run is
-        // outstanding. Same fault as 6.33, in a path its sweep did not reach.
-        var interrupted = StopPreview();
+        // status over the confirmation below. This reason does not clear the backplot, because the
+        // branch below re-previews and the new run replaces it; see `Staleness.Of`.
+        var interrupted = Invalidate(StaleBecause.MachineChanged);
 
         var confirmation = string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
@@ -353,16 +487,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         // Framing is read when a request is built, so a preview in flight is writing the old
         // header and footer into every program — and a finished one is showing them. Both stop
-        // being true the moment this returns, so neither may stay on screen. 6.33 again.
-        var stopped = StopPreview();
-
-        if (_backplot.Count > 0 || stopped)
-        {
-            _backplot = [];
-            Gcode = null;
-            GcodeSummary = string.Empty;
-            Rebuild(TimeSpan.Zero);
-        }
+        // being true the moment this returns, so neither may stay on screen.
+        Invalidate(StaleBecause.FramingChanged);
 
         StatusMessage = framing.IsEmpty
             ? "Start and end G-code cleared. Preview again to see the programs without it."
@@ -629,38 +755,74 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // this just cleared — so say so. Losing one silently is the same complaint as a preview
         // that completes when it should not have: the operator is owed an account of what the
         // window did, not just of what they asked for.
-        var stopped = ForgetProgram();
+        var stopped = Invalidate(StaleBecause.ProgramClosed);
 
-        Rebuild(TimeSpan.Zero);
-        OnPropertyChanged(nameof(HasProgram));
-        OnPropertyChanged(nameof(ShowingNothing));
         StatusMessage = stopped
             ? "Closed the program, and stopped the preview that was building. Preview again when you want it."
             : "Closed the program.";
     }
 
+    /// <summary>
+    /// The programs on screen are no longer of this job. Says so once, for every reason there is.
+    ///
+    /// **The one method 6.51 asks for.** Six paths used to decide this for themselves and the
+    /// decisions had drifted; what each reason means now lives in
+    /// <see cref="Staleness.Of"/>, which has no window in it and can be read back in a test. This
+    /// is the part that cannot: it touches bound properties and the scene.
+    ///
+    /// The status line stays with the caller. Each has something different to say, and several
+    /// say it differently depending on whether a run was interrupted — which is why that is
+    /// returned rather than announced here.
+    /// </summary>
+    /// <param name="why">What changed.</param>
     /// <returns>True if a preview was still building and has been stopped.</returns>
-    private bool ForgetProgram()
+    private bool Invalidate(StaleBecause why)
     {
-        // Opening another project is the same situation as editing this one, and worse: a preview
-        // of the board being replaced would finish and draw itself over the board that replaced it.
-        // `Adopt` calls this before it swaps the project, which is why the stop belongs here.
-        var stopped = StopPreview();
+        var rule = Staleness.Of(why);
 
-        _backplot = [];
-        _programBounds = null;
-        _programPath = null;
-        Gcode = null;
-        GcodeSummary = string.Empty;
-        Warnings.Clear();
+        // Asked before anything is cleared, because clearing is what makes the answer false.
+        var drawn = _backplot.Count > 0 || Gcode is not null;
 
-        // `HasProgram` and `ShowingNothing` are computed from `_programPath` and the backplot, and
-        // both just changed. `CloseProgram` raised them itself; `Adopt` and `ApplyRefresh` did not,
-        // so a refresh left the close-program button enabled over a program that had gone and the
-        // empty-state panels showing the wrong thing. Raised here, where the fields are cleared,
-        // so a caller cannot forget.
-        OnPropertyChanged(nameof(HasProgram));
-        OnPropertyChanged(nameof(ShowingNothing));
+        if (!rule.Applies(drawn, _previewRun.IsRunning))
+        {
+            return false;
+        }
+
+        var stopped = rule.StopRun && StopPreview();
+
+        // **Not a program that was opened off disk, unless this reason is forgetting it too.**
+        // The backplot holds either a preview or an opened program — never both, since opening one
+        // replaces it — so clearing it for a layer edit threw away a program nobody asked to
+        // close, while `_programPath` survived and left *Close program* enabled over nothing
+        // drawn. The rule's own words are that a settings change leaves an opened program alone,
+        // and this is what makes them true. Pre-existing, and found by `/code-review` reading the
+        // table against the code the moment the rule had one place to be stated in.
+        if (rule.ClearPrograms && (rule.ForgetOpenedProgram || !HasProgram))
+        {
+            _backplot = [];
+            Gcode = null;
+            GcodeSummary = string.Empty;
+        }
+
+        if (rule.ForgetOpenedProgram)
+        {
+            _programBounds = null;
+            _programPath = null;
+            Warnings.Clear();
+
+            // `HasProgram` and `ShowingNothing` are computed from `_programPath` and the backplot,
+            // and both just changed. Two callers used to raise these and two did not, so a refresh
+            // left the close-program button enabled over a program that had gone and the
+            // empty-state panels showing the wrong thing. Raised where the fields are cleared, so
+            // a caller cannot forget.
+            OnPropertyChanged(nameof(HasProgram));
+            OnPropertyChanged(nameof(ShowingNothing));
+        }
+
+        if (rule.Rebuild)
+        {
+            Rebuild(TimeSpan.Zero);
+        }
 
         return stopped;
     }
@@ -1556,6 +1718,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return null;
         }
 
+        // Read on this thread before the work goes to the pool: `Frame` walks the layer rows and
+        // the project's settings, which belong to the UI.
+        var frame = Frame;
+
         var token = _findingsRun.Begin();
 
         if (token.IsCancellationRequested)
@@ -1570,7 +1736,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         try
         {
             result = await Task.Run(
-                () => BoardFindings.For(request.Board, request.Outputs, request.Library, token), token)
+                () => BoardFindings.For(
+                    request.Board, request.Outputs, request.Library, frame, token), token)
                 .ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1851,7 +2018,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // describing copper that no longer exists. Left running it publishes the old board's
         // programs against the new geometry and takes the status line with them — and unlike a
         // settings change, nothing here was clearing the backplot either.
-        var stopped = ForgetProgram();
+        //
+        // **Stopped and cleared before the swap, rebuilt after it.** That split is why this reason
+        // carries `Rebuild: false`: a run in flight is reading the project `Apply` is about to
+        // mutate, so the stop cannot wait — and a rebuild before the swap would draw the bytes
+        // being discarded, then be thrown away by the real one below.
+        var stopped = Invalidate(StaleBecause.SourceRefreshed);
 
         ProjectRefresh.Apply(_project, plan, taking);
         Rebuild(TimeSpan.Zero);
@@ -2066,12 +2238,46 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void RememberSettings(AppSettings settings) => Settings = settings;
 
+    /// <summary>
+    /// Turns the rulers off for this session only, for the <c>--no-ruler</c> screenshot.
+    ///
+    /// Session-only on purpose: a shot is taken against whatever settings file is on the machine,
+    /// and taking one must not leave the operator's rulers turned off afterwards.
+    /// </summary>
+    public void RememberRuler(bool shown)
+    {
+        _rulerForThisSession = shown;
+        OnPropertyChanged(nameof(ShowRuler));
+    }
+
+    /// <summary>
+    /// The <c>--no-ruler</c> override, held apart from <see cref="Settings"/> on purpose.
+    ///
+    /// **It went through `RememberSettings` first, and that was wrong.** That method's own doc says
+    /// what the fault is: *"It still survives a restart, because closing the window saves the
+    /// placement, and that goes through `SaveSettings` and writes the whole object — this value with
+    /// it."* So a screenshot run would have turned the operator's rulers off for good. It did not,
+    /// only because `SavePlacement` returns early when the window was given a `--shot` or a
+    /// `--size` — a guard in a different file, for a different reason, that this was relying on
+    /// without saying so. A field the settings record never sees cannot be written out by anything.
+    /// </summary>
+    private bool? _rulerForThisSession;
+
     // ------------------------------------------------------------------ presenting
 
     private void Adopt(MillBurnProject project, TimeSpan elapsed)
     {
-        // A program made from the previous board is not a program for this one.
-        ForgetProgram();
+        // A program made from the previous board is not a program for this one. No rebuild asked
+        // for here: this swaps the project and rebuilds below with `fresh: true`, because the rows
+        // on screen still belong to the project being replaced.
+        Invalidate(StaleBecause.BoardReplaced);
+
+        // **Nor is a window describing it.** Raised here because this is the one place a board is
+        // replaced: importing a folder, opening a project, and closing one — which is
+        // `NewProject`, which is this with an empty project — all arrive through it, and a layer
+        // edit or a preview does not. Anything holding a view of the old board hears once, instead
+        // of five call sites each remembering to say so.
+        BoardReplaced?.Invoke(this, EventArgs.Empty);
 
         DetachProject(_project);
         _project = project;
@@ -2170,9 +2376,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // answer still: it is the piece on the table, and the cut that makes it lies outside the
         // board — so fitting to the board put the blank's own toolpath just off screen, which is
         // the one thing you would want to look at before running it.
+        _sceneFrame = Frame.IsEmpty ? board.Bounds : Frame;
+
         var scene = BoardSceneBuilder.Build(
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
-            Frame.IsEmpty ? board.Bounds : Frame,
+            _sceneFrame.Value,
             Palette,
             _backplot.Count > 0 ? Recoloured(_backplot) : null,
             SceneStyle(BoardSceneBuilder.SubstrateId, BoardPalette.Substrate));
@@ -2266,6 +2474,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                     FileName = layer.Id,
                     Output = LayerOperations.DefaultFor(source.Role, Settings.Import),
                     IsolationWidthNm = Settings.Milling.IsolationWidthNm,
+
+                    // Null unless the operator set a figure, in which case it is theirs and the
+                    // board stops deriving one. Carried on every layer, like the isolation
+                    // width, because only the outline reads it and a settings record that
+                    // applied to some layers and not others would be a second rule to remember.
+                    TabWidthNm = Settings.Milling.TabWidthNm,
+                    TabHeightNm = Settings.Milling.TabHeightNm,
                 };
 
             var row = new LayerRow(
@@ -2503,6 +2718,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 FileName = layer.FileName,
                 Output = LayerOperations.DefaultFor(layer.Role, Settings.Import),
                 IsolationWidthNm = Settings.Milling.IsolationWidthNm,
+                TabWidthNm = Settings.Milling.TabWidthNm,
+                TabHeightNm = Settings.Milling.TabHeightNm,
             });
         }
 
@@ -2510,18 +2727,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _project.Touch();
 
         // The programs were made from the settings that just changed, so they are no longer a
-        // picture of anything. Cleared rather than left to look current — and a preview still
-        // building is making another one, which would publish itself over this the moment it
-        // finished and overwrite the message below with its own. This path clears the backplot by
-        // hand instead of going through <see cref="OnOutputChanged"/>, which is how it came to be
-        // missing the stop that one grew. See 6.33.
-        var stopped = StopPreview();
-
-        _backplot = [];
-        Gcode = null;
-        GcodeSummary = string.Empty;
-
-        Rebuild(TimeSpan.Zero);
+        // picture of anything. Unconditional, unlike an output change: this is one button press
+        // rather than a slider tick, so the guard that reason carries would buy nothing.
+        var stopped = Invalidate(StaleBecause.LayersReset);
 
         StatusMessage = stopped
             ? "Every layer is back to what a freshly imported board starts with, and the preview that was building has stopped."
@@ -2595,17 +2803,41 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // method returned before it could stop anything. From the bench: *"if I change a setting,
         // click preview, then change the setting back, the preview completes instead of being
         // interrupted on the setting change."*
-        var stopped = StopPreview();
+        // **Invalidating is about a drawn preview; a moved frame is a different question.** With
+        // nothing drawn there is nothing to clear, so `OutputChanged` carries a guard and does
+        // nothing — except that the change may have moved the rectangle the scene itself was
+        // built to, and then the picture on screen is referenced to a work zero the job no longer
+        // uses.
+        //
+        // 6.57, found while building the ruler: ticking *Build on stock* left the viewport on the
+        // board's frame while the panel beside it already said the stock was 88.63 × 86.09 mm, and
+        // the pointer readout said *from the board's corner* over a job whose files would be
+        // referenced to the stock's. Pressing Preview corrected both, which is what gave it away.
+        //
+        // Tested against the frame rather than against the blank's settings, so everything else
+        // that moves it arrives here too: mirroring a layer, and changing the outline's bit, both
+        // feed `Blanks.Resolve` and neither is a blank edit.
+        var moved = _board is { } current && _sceneFrame is { } was
+            && (Frame.IsEmpty ? current.Bounds : Frame) != was;
 
-        if (_backplot.Count == 0 && !stopped)
+        // Asked before invalidating, not after: clearing the backplot is what makes this false,
+        // so reading it afterwards would say "nothing was drawn" every single time and take the
+        // early return on the one path that had just done the work. Caught by this method's own
+        // golden run, which stopped printing "Output changed" — the kind of thing the guard
+        // rewritten below is exactly as easy to get wrong the second time as the first.
+        var drawn = _backplot.Count > 0 || Gcode is not null;
+        var stopped = Invalidate(StaleBecause.OutputChanged);
+
+        if (!drawn && !stopped)
         {
+            if (moved)
+            {
+                Reframe();
+            }
+
             return;
         }
 
-        _backplot = [];
-        Gcode = null;
-        GcodeSummary = string.Empty;
-        Rebuild(TimeSpan.Zero);
         StatusMessage = "Output changed. Preview again to see the new programs.";
     }
 
@@ -2831,6 +3063,61 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// One place, because three things have to agree about it: where a program is drawn over the
     /// board, which axis a mirrored program is flipped back about, and what the exporter shifted by.
     /// </summary>
+    /// <summary>
+    /// The rectangle the scene on screen was built to, or null before there is one.
+    ///
+    /// Kept so that <see cref="OnOutputChanged"/> can tell a change that moved work zero from one
+    /// that did not. Recorded where the scene is built rather than computed on demand: the point is
+    /// what the picture *was* drawn to, and <see cref="Frame"/> by then is what it should be.
+    /// </summary>
+    private Bounds? _sceneFrame;
+
+    /// <summary>
+    /// Moves the picture onto the frame the job now uses, without rebuilding it.
+    ///
+    /// **The geometry has not changed, only what it is measured from.** A full rebuild walks every
+    /// ring of every layer into a path — about 7 ms on the Mega, measured — and the stock's border
+    /// is a slider, so doing that per tick is the fault 6.49 describes in a different coat.
+    /// Reframing is one assignment, too small to time, and a re-fit is arithmetic.
+    ///
+    /// **Re-fitted every time, not only when the stock appears.** Fitting only on the appearance
+    /// was tried first, on the theory that a border nudged by a millimetre is not worth the view
+    /// jumping — and it is wrong for the reason the scene is fitted to the blank at all: *"the cut
+    /// that makes it lies outside the board — so fitting to the board put the blank's own toolpath
+    /// just off screen, which is the one thing you would want to look at before running it."* Grow
+    /// the border past the viewport without re-fitting and that cut goes off screen again, which
+    /// is the very thing being guarded against. On a slider it reads as the board shrinking
+    /// smoothly as the stock grows, which is feedback rather than a jump.
+    /// </summary>
+    private void Reframe()
+    {
+        if (_board is not { } board || Scene is not { } scene)
+        {
+            return;
+        }
+
+        var frame = Frame.IsEmpty ? board.Bounds : Frame;
+
+        scene.Reframe(frame);
+        _sceneFrame = frame;
+
+        // The origin's name is read off this, and it is the half an operator reads rather than
+        // sees.
+        OnPropertyChanged(nameof(OriginName));
+
+        FrameMoved?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// The rectangle the picture is measured from has moved under it.
+    ///
+    /// **Two things follow, which is why this is not called `FitRequested`.** The view has to fit
+    /// again, and anything holding a coordinate in the old frame now means a different place.
+    /// Named for what happened rather than for one of its consequences, because the first version
+    /// was named for the fit and the second consequence was then simply forgotten.
+    /// </summary>
+    public event EventHandler? FrameMoved;
+
     private Bounds Frame
     {
         get
@@ -3087,6 +3374,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         var name = _project.Sources.Length == 0 ? "PCB_MillBurn" : _project.DisplayName;
         WindowTitle = _project.IsDirty ? $"{name} * — PCB_MillBurn" : $"{name} — PCB_MillBurn";
+
+        // Beside the title rather than in it: the title bar is one line shared with the dirty mark
+        // and the application's own name, and a path is the thing that does not fit there.
+        // Absolute and in this platform's separators, because a path relative to a working
+        // directory the operator never sees cannot answer the question the line was added for: a
+        // board opened as `tests/boards/…` showed exactly that, forward slashes and all.
+        SourceFolder = _project.OriginFolder is { Length: > 0 } where ? ProjectOrigin.Full(where) : null;
     }
 
     /// <summary>

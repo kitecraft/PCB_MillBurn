@@ -65,6 +65,16 @@ public sealed record ProbeRoutineOptions
 
     /// <summary>Whether work zero is a blank's corner, which changes what the header says.</summary>
     public bool OnBlank { get; init; }
+
+    /// <summary>
+    /// Whether this grid is over a test coupon rather than a board.
+    ///
+    /// Only the header changes, and only in two sentences — but they are the two somebody reads
+    /// while standing at the machine with a probe clipped on, and on a coupon they said "the
+    /// board's lower-left corner, the same as every other file in this export" when there is no
+    /// board and no export: one piece of scrap, and the test program beside it.
+    /// </summary>
+    public bool OnCoupon { get; init; }
 }
 
 /// <summary>What the routine will do, in numbers worth seeing before running it.</summary>
@@ -224,6 +234,14 @@ public static class ProbeRoutine
             lines.Add(Boxed(string.Empty));
             lines.Add(Boxed("The grid covers the board, not the stock's border:"));
             lines.Add(Boxed("the stock is cut through, and needs no levelling."));
+        }
+        else if (options.OnCoupon)
+        {
+            lines.Add(Boxed("Work zero is the lower-left corner of the scrap, on"));
+            lines.Add(Boxed("the copper, exactly where the test cut wants it."));
+            lines.Add(Boxed(string.Empty));
+            lines.Add(Boxed("Zero Z on the same spot for both, and do not"));
+            lines.Add(Boxed("re-zero between probing and cutting."));
         }
         else
         {

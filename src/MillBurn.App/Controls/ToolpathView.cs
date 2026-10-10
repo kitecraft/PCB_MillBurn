@@ -27,6 +27,21 @@ public sealed class ToolpathView : Control
         set => SetValue(SceneProperty, value);
     }
 
+    /// <summary>
+    /// Whether the scale strips are drawn, as on the board view and from the same preference.
+    ///
+    /// Both viewports, one implementation: the ruler is a function of the transform and the viewport
+    /// rectangle, so it lives in MillBurn.Viewer and these two siblings each ask for it.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowRulerProperty =
+        AvaloniaProperty.Register<ToolpathView, bool>(nameof(ShowRuler), defaultValue: true);
+
+    public bool ShowRuler
+    {
+        get => GetValue(ShowRulerProperty);
+        set => SetValue(ShowRulerProperty, value);
+    }
+
     private float _scale = 4f;
     private float _offsetX;
     private float _offsetY;
@@ -42,7 +57,7 @@ public sealed class ToolpathView : Control
 
     static ToolpathView()
     {
-        AffectsRender<ToolpathView>(SceneProperty);
+        AffectsRender<ToolpathView>(SceneProperty, ShowRulerProperty);
         FocusableProperty.OverrideDefaultValue<ToolpathView>(true);
     }
 
@@ -195,6 +210,7 @@ public sealed class ToolpathView : Control
             ResolvePalette(),
             ThemeTokens.Resolve(this, "ViewportBackground", new SKColor(0x0F, 0x12, 0x14)),
             ThemeTokens.Resolve(this, "ViewportGrid", new SKColor(0x26, 0x2B, 0x30)),
+            ShowRuler,
             OnFrameRendered));
     }
 
