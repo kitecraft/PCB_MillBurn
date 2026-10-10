@@ -2468,8 +2468,8 @@ public static class ExportPlanner
     }
 
     /// <summary>
-    /// The layers every SVG carries for placing it, not for burning: the board outline in red, and
-    /// the stock with its alignment holes in blue when there is stock.
+    /// The layers every SVG carries for placing it, not for burning: the board outline in grey, and
+    /// the stock with its alignment holes in black when there is stock — LightBurn's C08 and C00.
     ///
     /// Asked for from the workshop after a mask, cropped by Falcon to its own outermost openings,
     /// would have landed 9.5 mm out. With these in every file each one imports at the same box, so
@@ -2483,7 +2483,10 @@ public static class ExportPlanner
 
         var layers = new List<SvgReference>
         {
-            new("board-outline", "Board outline", "#FF0000",
+            // Reference: LightBurn's C08, the layer 04 §2.3 sets not to output. It used to be a
+            // literal red, which is C02 — the low-power Line layer that runs first — so the outline
+            // that is there to be looked at was on a layer that burns.
+            new("board-outline", "Board outline", ArtRole.Reference,
                 [new ArtShape { Subpaths = Rings(BoardRegion(board, sumX)), StrokeWidthNm = hairline }]),
         };
 
@@ -2518,8 +2521,11 @@ public static class ExportPlanner
             });
         }
 
+        // Registration: C00. The holes are what Print and Cut registers on, and the stock is what
+        // goes against the jig. It was a literal blue, which is C01 — the Fill layer, the one the
+        // drawing itself is on.
         layers.Add(new SvgReference(
-            "stock", blank.AlignmentHoles.Count > 0 ? "Stock and holes" : "Stock", "#0000FF", shapes));
+            "stock", blank.AlignmentHoles.Count > 0 ? "Stock and holes" : "Stock", ArtRole.Registration, shapes));
 
         return layers;
 

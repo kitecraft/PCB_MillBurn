@@ -330,9 +330,9 @@ public static class ProjectPage
                 .Append(withStock ? (holes ? ", and the stock with its holes" : ", and the stock") : string.Empty)
                 .Append(withStock
                     ? (holes
-                        ? "</strong>, as layers of their own: the board outline in red, the stock and its holes in blue"
-                        : "</strong>, as layers of their own: the board outline in red, the stock in blue")
-                    : "</strong>, as a layer of its own, in red")
+                        ? "</strong>, as layers of their own: the board outline in grey, the stock and its holes in black"
+                        : "</strong>, as layers of their own: the board outline in grey, the stock in black")
+                    : "</strong>, as a layer of its own, in grey")
                 .Append(". They are for placing the file, not for burning, so switch them off in the "
                     + "laser software before you burn. Because every file has them, software that "
                     + "imports the drawing rather than the page imports every file at the same size — ")

@@ -102,8 +102,9 @@ public sealed record SvgExportOptions
     /// board into hundreds of layers — one per pad — each needing its power and speed set by hand.
     /// That makes the file unusable, and it is not a hypothetical: Creality Falcon does it.
     ///
-    /// So this mode emits a single group with no Inkscape layer markup, one colour, one filled
-    /// path, and one stroked path. It is the opposite of what LightBurn wants — there, colour *is*
+    /// So this mode emits a single group with no Inkscape layer markup, and one filled path and one
+    /// stroked path per role — each role in its own colour, because the colour is what puts a fill
+    /// on a Fill layer and a centreline on a Line layer. It is the opposite of what LightBurn wants — there, colour *is*
     /// the layer assignment and separate layers are the point — so the two are alternatives, not
     /// defaults, and the export report says how many elements were written either way.
     /// </summary>
@@ -138,6 +139,10 @@ public sealed record SvgExportOptions
 /// </summary>
 /// <param name="Id">The SVG element id.</param>
 /// <param name="Label">The layer's name, as the laser software shows it.</param>
-/// <param name="Colour">A colour the drawing does not use, so it arrives as its own layer.</param>
+/// <param name="Role">
+/// Which palette entry it is drawn in, and with it which of the laser software's layers it lands on.
+/// A role rather than a colour, so that the profile decides — it used to be a literal red and blue,
+/// which in LightBurn are C02 and C01, and C01 is the layer set to Fill (M6).
+/// </param>
 /// <param name="Shapes">Hairlines, in source coordinates.</param>
-public sealed record SvgReference(string Id, string Label, string Colour, IReadOnlyList<ArtShape> Shapes);
+public sealed record SvgReference(string Id, string Label, ArtRole Role, IReadOnlyList<ArtShape> Shapes);

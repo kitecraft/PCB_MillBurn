@@ -220,8 +220,20 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
             var svg = Svg(plan, layer);
             Assert.Contains("<g id=\"board-outline\" inkscape:groupmode=\"layer\" inkscape:label=\"Board outline\">", svg.Content, StringComparison.Ordinal);
             Assert.Contains("<g id=\"stock\" inkscape:groupmode=\"layer\" inkscape:label=\"Stock and holes\">", svg.Content, StringComparison.Ordinal);
-            Assert.Contains("stroke=\"#FF0000\"", svg.Content, StringComparison.Ordinal);
-            Assert.Contains("stroke=\"#0000FF\"", svg.Content, StringComparison.Ordinal);
+            // Each group on its own LightBurn layer (M6): the drawing on C01, set to Fill; the
+            // outline on C08, set not to output; the stock and holes on C00. Nothing else — red and
+            // green, C02 and C03, are layers that burn.
+            var doc = System.Xml.Linq.XDocument.Parse(svg.Content);
+            string[] Strokes(string id) => [.. doc.Descendants()
+                .Single(e => e.Name.LocalName == "g" && (string?)e.Attribute("id") == id)
+                .Descendants().Where(e => e.Name.LocalName == "path")
+                .Select(p => p.Attribute("stroke")!.Value).Distinct()];
+
+            Assert.Equal(["#0000FF"], Strokes("artwork"));
+            Assert.Equal(["#B4B4B4"], Strokes("board-outline"));
+            Assert.Equal(["#000000"], Strokes("stock"));
+            Assert.DoesNotContain("#FF0000", svg.Content, StringComparison.Ordinal);
+            Assert.DoesNotContain("#00E000", svg.Content, StringComparison.Ordinal);
             Assert.Contains(svg.Summary, s => s.Contains("Settings › Laser", StringComparison.Ordinal));
         }
 

@@ -3396,7 +3396,9 @@ layers with explicit colours even in single-layer mode — being separate is the
 the drawing, about the frame's centreline. `ExportItem.Drawing` now includes them, so each file's
 summary and the project page say every file imports at the stock's size, and the page gives one
 placement instead of the per-file table (which stays for exports without them). On by default, against
-this project's habit, because what it prevents is silent.
+this project's habit, because what it prevents is silent. **Recoloured in sprint 5 (M6)**: the outline is
+now grey, LightBurn's C08, and the stock and holes black, C00 — red and blue were C02 and C01, both
+layers that burn, and C01 the drawing's own.
 
 **Which box is a list**, under *Settings › Laser › Placing layers*, because it depends on what goes
 against the laser's origin and the workshop does it both ways. *Board outline, and the stock* (the

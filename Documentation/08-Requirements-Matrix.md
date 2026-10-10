@@ -79,9 +79,9 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 01 Architecture | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
 | 02 Gerber & geometry pipeline | 24 | 18 | 0 | 3 | 1 | 1 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
-| 04 Machines, laser & mixed workflows | 32 | 11 | 1 | 15 | 0 | 4 | 1 |
+| 04 Machines, laser & mixed workflows | 32 | 12 | 1 | 15 | 0 | 3 | 1 |
 | 05 Viewer & export | 42 | 25 | 0 | 11 | 0 | 4 | 2 |
-| **Requirements** | **123** | **75** | **1** | **31** | **2** | **9** | **5** |
+| **Requirements** | **123** | **76** | **1** | **31** | **2** | **8** | **5** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -179,7 +179,7 @@ pieces of new capability, none of which the workshop has asked for.
 | M3 | Laser profile: spot size, page, palette | §1.2 | **Partial** | `SvgProfile` has flavour + spot; no material library |
 | M4 | Pad selection from X2 attributes for pad-only burns | §2.1 | **Not started** | attributes parsed; not used for selection |
 | M5 | Kerf and etch-bias compensation stay with the laser software | §2.2 | **Done** | decision, documented and held |
-| M6 | SVG says fill versus line per layer | §2.3 | **Partial** | single-layer mode and inversion exist |
+| M6 | SVG says fill versus line per layer | §2.3 | **Done** | sprint 5 story 1: every colour comes from the role through `SvgProfile` — drawing C01, board outline C08, stock and holes C00, silk centrelines C03 — single-layer mode included, and each file's description names its layers and modes. `SvgWriterTests`, `ProjectPageTests`. Rendered, not yet imported into LightBurn on the bench |
 | M7 | Calibration generators: registration repeatability coupon | §2.4 | **Not started** | mill-side test cuts exist; laser-side does not |
 | M8 | Silkscreen marking straight from parsed strokes | §2.5 | **Done** | `SilkscreenOperation`; verified at 1:1 |
 | M9 | Job / Step / Setup / Fixture model | §3 | **Not started** | `JobBuilder` builds one job, not a workflow |
@@ -189,7 +189,7 @@ pieces of new capability, none of which the workshop has asked for.
 | M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Done** | `Blanks`, `BlankOperation`; work zero, page and mirror axis all follow it |
 | M29 | Laser verification: burn into the blank's border and measure | 06 §5.6.5 | **Not started** | the mill defines its datum; the laser only trusts one |
 | M30 | A re-measured (pre-cut) stock keeps the alignment holes it was cut with | 06 §6.16 | **Not started** | parked 2026-09-19: built on branch `005_StockKeepsItsHoles`, too hard to follow in the window |
-| M31 | The stock's alignment holes on a layer of their own in every SVG, for registering a burn | 06 §6.17 | **Done — used on metal** | `ExportPlanner.ReferenceLayers`, `SvgReference`; board outline red, stock and holes blue; Settings › Laser › Placing layers: outline and stock, outline only, none; `ProjectPageTests` |
+| M31 | The stock's alignment holes on a layer of their own in every SVG, for registering a burn | 06 §6.17 | **Done — used on metal** | `ExportPlanner.ReferenceLayers`, `SvgReference`; board outline grey on C08 and stock and holes black on C00 since sprint 5 (M6), red and blue before; Settings › Laser › Placing layers: outline and stock, outline only, none; `ProjectPageTests` |
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |

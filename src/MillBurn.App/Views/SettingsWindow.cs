@@ -198,8 +198,8 @@ public sealed class SettingsWindow : Window
             + "Laser software that imports the drawing instead keeps only the drawing's own box — "
             + "and a mask's box is just its outermost openings.", 11, new Thickness(0, 0, 0, 8)));
         Choice(body, _placing, "Placing layers", (int)settings.Machine.SvgPlacingLayers,
-            "Drawn into every SVG as layers of their own — the board outline in red, the stock and "
-            + "its alignment holes in blue — so every file imports at the same size and one "
+            "Drawn into every SVG as layers of their own — the board outline in grey, LightBurn's C08, "
+            + "and the stock and its alignment holes in black, C00 — so every file imports at the same size and one "
             + "placement works for copper, mask and silkscreen alike. With the stock, that size is "
             + "the stock's: for placing the stock before the board is cut out. The outline alone "
             + "makes it the board's: for a cut-out board against a jig. Switch them off in the laser "
