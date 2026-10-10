@@ -937,7 +937,7 @@ depend on each other in order and only the seventh stands alone.
 **But the decision should be revisited at story 1's close, deliberately and in writing.** By then
 the new model exists and the question is concrete rather than theoretical: if the checks have
 become the most testable thing in the view model and nothing can reach them, that is the argument
-for 6.50 next, and the closure is where to say so. [6.51](../Documentation/06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--open--six-paths-and-counting)
+for 6.50 next, and the closure is where to say so. [6.51](../Documentation/06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting)
 travels with it.
 
 **6.2, 6.16 and 6.46**, all parked or low priority with reasons, and none of the reasons has

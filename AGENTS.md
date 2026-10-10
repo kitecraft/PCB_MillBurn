@@ -55,9 +55,13 @@ sufficient.
   [library|name|kind|size]` (the library, filtered and ordered), `--tool-prompt [delete|copy]` (the
   two questions that window asks, for their wording), `--tools-from <file>` (a library from a path,
   for photographing a long one without borrowing anybody's),
-  `--change <output|thickness|tabs|sizes>` (makes that change the way a click would, so the
-  `unsaved changes:` line below can print *yes* — it is the only way to check from a script that an
-  edit marks the project changed, which is what decides whether the save/discard prompt appears),
+  `--change <output|thickness|tabs|sizes|blank>` and `--then-change <same>` (makes that change the
+  way a click would — `--change` before the preview and `--then-change` over a drawn one, which is
+  the only way to photograph an edit that invalidates something, and is what 6.33 is. Either makes
+  the `unsaved changes:` line below print *yes*, which is how a script checks that an edit marks
+  the project changed, and that is what decides whether the save/discard prompt appears),
+  `--open-program <file>` (a `.nc` opened over the board that is already loaded; the two share the
+  backplot and that state was otherwise unreachable in a shot),
   `--zoom <px-per-mm>,<x>,<y>` (centres a board point at a given zoom, so a shot can be taken at the
   scale a single bridge is inspected at), `--goto <n>` with `--findings` (presses the nth place in
   the findings list, because a screenshot cannot click — and the shot is then of the board rather

@@ -431,43 +431,7 @@ public partial class MainWindow : Window
         // to save/discard when I have changes to a project and then open a recent one."
         if (Argument(args, "--change") is { } what && vm.Layers.Count > 0)
         {
-            switch (what.ToLowerInvariant())
-            {
-                case "thickness":
-                    vm.BoardThicknessMm = Math.Round(vm.BoardThicknessMm + 0.1, 2);
-                    break;
-
-                case "tabs":
-                    if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } outlineRow)
-                    {
-                        outlineRow.TabCount = outlineRow.TabCount == 4 ? 6 : 4;
-                    }
-
-                    break;
-
-                // Builds the job on stock, which moves work zero to the stock's corner. The one
-                // change that alters what the pointer readout calls zero, so it is the only way to
-                // photograph the other half of that line.
-                case "blank":
-                    vm.UseBlank = true;
-                    break;
-
-                // The tabs window's own route in, which is not a binding like the others.
-                case "sizes":
-                    if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
-                    {
-                        sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), []);
-                    }
-
-                    break;
-
-                default:
-                    var row = vm.Layers.First(r => r.Layer is not null);
-                    row.SelectedOutput = row.Outputs.First(o => o.Kind != row.Output);
-                    break;
-            }
-
-            Console.WriteLine($"changed: {what}");
+            Change(vm, what);
         }
 
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
@@ -494,6 +458,27 @@ public partial class MainWindow : Window
             // Awaited, not started: everything below and the screenshot itself would otherwise
             // capture the window before the preview it was asked for had arrived in it.
             await vm.PreviewAsync();
+        }
+
+        // A program off disk, opened over the board that is already loaded. The two can coexist
+        // and share the backplot, and there was no way to reach that state in a shot — so what an
+        // edit does to a program nobody asked to close could not be looked at.
+        if (Argument(args, "--open-program") is { } ncPath && vm.OpenProgram(ncPath))
+        {
+            Viewport.FitToContent();
+        }
+
+        // The same edits as `--change`, made *after* the preview rather than before it.
+        //
+        // **This is the one scenario that has bitten four times and could not be photographed.**
+        // 6.33 is "an edit while programs are drawn, or while a run is still building"; every
+        // other flag here runs before the first preview, so `--change` could only ever exercise
+        // the empty case. What it proves is in the status line: an edit over a drawn preview says
+        // *"Output changed. Preview again to see the new programs."* and an edit over nothing says
+        // whatever was there before, because the guard skipped it.
+        if (Argument(args, "--then-change") is { } later && vm.Layers.Count > 0)
+        {
+            Change(vm, later);
         }
 
         // Job ▸ Check this board, so the panel can be photographed with the electrical findings in
@@ -1544,6 +1529,53 @@ public partial class MainWindow : Window
         {
             window.Close();
         }
+    }
+
+    /// <summary>
+    /// Makes one change the way a click would, for <c>--change</c> and <c>--then-change</c>.
+    ///
+    /// Shared so the two flags cannot drift: the only difference between them is *when* they run,
+    /// which is the whole point — before the first preview, or over a drawn one.
+    /// </summary>
+    private static void Change(MainViewModel vm, string what)
+    {
+        switch (what.ToLowerInvariant())
+        {
+            case "thickness":
+                vm.BoardThicknessMm = Math.Round(vm.BoardThicknessMm + 0.1, 2);
+                break;
+
+            case "tabs":
+                if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } outlineRow)
+                {
+                    outlineRow.TabCount = outlineRow.TabCount == 4 ? 6 : 4;
+                }
+
+                break;
+
+            // Builds the job on stock, which moves work zero to the stock's corner. The one
+            // change that alters what the pointer readout calls zero, so it is the only way to
+            // photograph the other half of that line.
+            case "blank":
+                vm.UseBlank = true;
+                break;
+
+            // The tabs window's own route in, which is not a binding like the others.
+            case "sizes":
+                if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
+                {
+                    sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), []);
+                }
+
+                break;
+
+            default:
+                var row = vm.Layers.First(r => r.Layer is not null);
+                row.SelectedOutput = row.Outputs.First(o => o.Kind != row.Output);
+                break;
+        }
+
+        Console.WriteLine($"changed: {what}");
     }
 
     /// <summary>

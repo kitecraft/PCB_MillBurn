@@ -429,10 +429,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // **A preview still building captured the old numbers and has to go.** It read the machine
         // profile when its request was built, so left alone it finishes and publishes programs cut
         // to the safe height, decimals and rapid rate that were just replaced — and writes its own
-        // status over the confirmation below. The branch further down does not cover it: a run in
-        // flight has `Gcode == null`, so the condition it tests is false exactly when a run is
-        // outstanding. Same fault as 6.33, in a path its sweep did not reach.
-        var interrupted = StopPreview();
+        // status over the confirmation below. This reason does not clear the backplot, because the
+        // branch below re-previews and the new run replaces it; see `Staleness.Of`.
+        var interrupted = Invalidate(StaleBecause.MachineChanged);
 
         var confirmation = string.Create(
             System.Globalization.CultureInfo.InvariantCulture,
@@ -488,16 +487,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         // Framing is read when a request is built, so a preview in flight is writing the old
         // header and footer into every program — and a finished one is showing them. Both stop
-        // being true the moment this returns, so neither may stay on screen. 6.33 again.
-        var stopped = StopPreview();
-
-        if (_backplot.Count > 0 || stopped)
-        {
-            _backplot = [];
-            Gcode = null;
-            GcodeSummary = string.Empty;
-            Rebuild(TimeSpan.Zero);
-        }
+        // being true the moment this returns, so neither may stay on screen.
+        Invalidate(StaleBecause.FramingChanged);
 
         StatusMessage = framing.IsEmpty
             ? "Start and end G-code cleared. Preview again to see the programs without it."
@@ -764,38 +755,74 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // this just cleared — so say so. Losing one silently is the same complaint as a preview
         // that completes when it should not have: the operator is owed an account of what the
         // window did, not just of what they asked for.
-        var stopped = ForgetProgram();
+        var stopped = Invalidate(StaleBecause.ProgramClosed);
 
-        Rebuild(TimeSpan.Zero);
-        OnPropertyChanged(nameof(HasProgram));
-        OnPropertyChanged(nameof(ShowingNothing));
         StatusMessage = stopped
             ? "Closed the program, and stopped the preview that was building. Preview again when you want it."
             : "Closed the program.";
     }
 
+    /// <summary>
+    /// The programs on screen are no longer of this job. Says so once, for every reason there is.
+    ///
+    /// **The one method 6.51 asks for.** Six paths used to decide this for themselves and the
+    /// decisions had drifted; what each reason means now lives in
+    /// <see cref="Staleness.Of"/>, which has no window in it and can be read back in a test. This
+    /// is the part that cannot: it touches bound properties and the scene.
+    ///
+    /// The status line stays with the caller. Each has something different to say, and several
+    /// say it differently depending on whether a run was interrupted — which is why that is
+    /// returned rather than announced here.
+    /// </summary>
+    /// <param name="why">What changed.</param>
     /// <returns>True if a preview was still building and has been stopped.</returns>
-    private bool ForgetProgram()
+    private bool Invalidate(StaleBecause why)
     {
-        // Opening another project is the same situation as editing this one, and worse: a preview
-        // of the board being replaced would finish and draw itself over the board that replaced it.
-        // `Adopt` calls this before it swaps the project, which is why the stop belongs here.
-        var stopped = StopPreview();
+        var rule = Staleness.Of(why);
 
-        _backplot = [];
-        _programBounds = null;
-        _programPath = null;
-        Gcode = null;
-        GcodeSummary = string.Empty;
-        Warnings.Clear();
+        // Asked before anything is cleared, because clearing is what makes the answer false.
+        var drawn = _backplot.Count > 0 || Gcode is not null;
 
-        // `HasProgram` and `ShowingNothing` are computed from `_programPath` and the backplot, and
-        // both just changed. `CloseProgram` raised them itself; `Adopt` and `ApplyRefresh` did not,
-        // so a refresh left the close-program button enabled over a program that had gone and the
-        // empty-state panels showing the wrong thing. Raised here, where the fields are cleared,
-        // so a caller cannot forget.
-        OnPropertyChanged(nameof(HasProgram));
-        OnPropertyChanged(nameof(ShowingNothing));
+        if (!rule.Applies(drawn, _previewRun.IsRunning))
+        {
+            return false;
+        }
+
+        var stopped = rule.StopRun && StopPreview();
+
+        // **Not a program that was opened off disk, unless this reason is forgetting it too.**
+        // The backplot holds either a preview or an opened program — never both, since opening one
+        // replaces it — so clearing it for a layer edit threw away a program nobody asked to
+        // close, while `_programPath` survived and left *Close program* enabled over nothing
+        // drawn. The rule's own words are that a settings change leaves an opened program alone,
+        // and this is what makes them true. Pre-existing, and found by `/code-review` reading the
+        // table against the code the moment the rule had one place to be stated in.
+        if (rule.ClearPrograms && (rule.ForgetOpenedProgram || !HasProgram))
+        {
+            _backplot = [];
+            Gcode = null;
+            GcodeSummary = string.Empty;
+        }
+
+        if (rule.ForgetOpenedProgram)
+        {
+            _programBounds = null;
+            _programPath = null;
+            Warnings.Clear();
+
+            // `HasProgram` and `ShowingNothing` are computed from `_programPath` and the backplot,
+            // and both just changed. Two callers used to raise these and two did not, so a refresh
+            // left the close-program button enabled over a program that had gone and the
+            // empty-state panels showing the wrong thing. Raised where the fields are cleared, so
+            // a caller cannot forget.
+            OnPropertyChanged(nameof(HasProgram));
+            OnPropertyChanged(nameof(ShowingNothing));
+        }
+
+        if (rule.Rebuild)
+        {
+            Rebuild(TimeSpan.Zero);
+        }
 
         return stopped;
     }
@@ -1991,7 +2018,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // describing copper that no longer exists. Left running it publishes the old board's
         // programs against the new geometry and takes the status line with them — and unlike a
         // settings change, nothing here was clearing the backplot either.
-        var stopped = ForgetProgram();
+        //
+        // **Stopped and cleared before the swap, rebuilt after it.** That split is why this reason
+        // carries `Rebuild: false`: a run in flight is reading the project `Apply` is about to
+        // mutate, so the stop cannot wait — and a rebuild before the swap would draw the bytes
+        // being discarded, then be thrown away by the real one below.
+        var stopped = Invalidate(StaleBecause.SourceRefreshed);
 
         ProjectRefresh.Apply(_project, plan, taking);
         Rebuild(TimeSpan.Zero);
@@ -2235,8 +2267,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private void Adopt(MillBurnProject project, TimeSpan elapsed)
     {
-        // A program made from the previous board is not a program for this one.
-        ForgetProgram();
+        // A program made from the previous board is not a program for this one. No rebuild asked
+        // for here: this swaps the project and rebuilds below with `fresh: true`, because the rows
+        // on screen still belong to the project being replaced.
+        Invalidate(StaleBecause.BoardReplaced);
 
         // **Nor is a window describing it.** Raised here because this is the one place a board is
         // replaced: importing a folder, opening a project, and closing one — which is
@@ -2693,18 +2727,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _project.Touch();
 
         // The programs were made from the settings that just changed, so they are no longer a
-        // picture of anything. Cleared rather than left to look current — and a preview still
-        // building is making another one, which would publish itself over this the moment it
-        // finished and overwrite the message below with its own. This path clears the backplot by
-        // hand instead of going through <see cref="OnOutputChanged"/>, which is how it came to be
-        // missing the stop that one grew. See 6.33.
-        var stopped = StopPreview();
-
-        _backplot = [];
-        Gcode = null;
-        GcodeSummary = string.Empty;
-
-        Rebuild(TimeSpan.Zero);
+        // picture of anything. Unconditional, unlike an output change: this is one button press
+        // rather than a slider tick, so the guard that reason carries would buy nothing.
+        var stopped = Invalidate(StaleBecause.LayersReset);
 
         StatusMessage = stopped
             ? "Every layer is back to what a freshly imported board starts with, and the preview that was building has stopped."
@@ -2778,12 +2803,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // method returned before it could stop anything. From the bench: *"if I change a setting,
         // click preview, then change the setting back, the preview completes instead of being
         // interrupted on the setting change."*
-        var stopped = StopPreview();
-
-        // **The guard below is about clearing a drawn preview; a moved frame is a different
-        // question.** With nothing drawn there is nothing to clear, so skipping the rebuild is
-        // right — except when the change moved the rectangle the scene itself was built to, and
-        // then the picture on screen is referenced to a work zero the job no longer uses.
+        // **Invalidating is about a drawn preview; a moved frame is a different question.** With
+        // nothing drawn there is nothing to clear, so `OutputChanged` carries a guard and does
+        // nothing — except that the change may have moved the rectangle the scene itself was
+        // built to, and then the picture on screen is referenced to a work zero the job no longer
+        // uses.
         //
         // 6.57, found while building the ruler: ticking *Build on stock* left the viewport on the
         // board's frame while the panel beside it already said the stock was 88.63 × 86.09 mm, and
@@ -2796,7 +2820,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         var moved = _board is { } current && _sceneFrame is { } was
             && (Frame.IsEmpty ? current.Bounds : Frame) != was;
 
-        if (_backplot.Count == 0 && !stopped)
+        // Asked before invalidating, not after: clearing the backplot is what makes this false,
+        // so reading it afterwards would say "nothing was drawn" every single time and take the
+        // early return on the one path that had just done the work. Caught by this method's own
+        // golden run, which stopped printing "Output changed" — the kind of thing the guard
+        // rewritten below is exactly as easy to get wrong the second time as the first.
+        var drawn = _backplot.Count > 0 || Gcode is not null;
+        var stopped = Invalidate(StaleBecause.OutputChanged);
+
+        if (!drawn && !stopped)
         {
             if (moved)
             {
@@ -2806,10 +2838,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        _backplot = [];
-        Gcode = null;
-        GcodeSummary = string.Empty;
-        Rebuild(TimeSpan.Zero);
         StatusMessage = "Output changed. Preview again to see the new programs.";
     }
 

@@ -1807,3 +1807,85 @@ into a local, which is the care `Rebuild` already takes swapping the scene befor
 one.
 
 1,349 tests and 28 goldens green.
+
+**[6.51](../Documentation/06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting)
+— one place that says the picture is no longer true**, taken as the first bite of
+[6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint)
+rather than as a whole sprint, on the grounds that the entry itself warns doing it badly would be
+worse than the gap.
+
+**Seven paths by the time it was done, not the six the entry counted.** `OnOutputChanged` grew one
+more during 6.57, which is that entry's own argument arriving on schedule: the value was never the
+six that were already correct.
+
+**The seam the entry guessed at is the right one.** `StaleBecause` names every edit that can make
+the drawn programs wrong and `Staleness.Of` says what each means, as one table, with no Avalonia in
+it. `MainViewModel.Invalidate` is the twenty-five lines of mutation left over, and `ForgetProgram`
+is gone entirely. The largest file in the repository lost about forty lines and gained no
+indirection worth the name.
+
+**Two historical faults were re-introduced on purpose and both failed by name**, which is the only
+way to know these tests guard anything: 6.33's missing stop fails
+`EveryReasonStopsARunInFlight`, and the missing property notifications fail
+`OnlyAReplacedBoardForgetsAnOpenedProgram`.
+
+**`EveryReasonHasARule` is the test the entry is actually for.** A new kind of edit has to be added
+to the enum, and the moment it is, that fails until somebody has decided what it clears. Proved by
+adding an eighth reason with no rule: six of the eleven tests failed, by name.
+
+**`/describe-test` found the sweep was only half there.** Two of the five decisions were pinned
+across the whole enum and three were checked only for named reasons — so a new reason could have
+joined with the wrong `ClearPrograms`, `Rebuild` or guard and nothing would have caught it, in the
+file whose whole purpose is that it would. It also found three sweeps that would pass having
+asserted nothing on an empty enum, and one whose skip is computed from a production value and could
+therefore empty its own loop. All guarded now; eleven tests rather than nine.
+
+**One behaviour was nearly changed by accident**, and it is the same shape as the thing being
+fixed: the rewritten guard read "was anything drawn" *after* invalidating, and clearing the
+backplot is what makes that false — so it would have taken the early return on exactly the path
+that had just done the work. Caught by reasoning, not by the suite, which still cannot see that
+method.
+
+**`--then-change` had to be added to photograph it at all.** Every other screenshot flag runs
+before the first preview, so `--change` could only ever exercise the empty case; an edit over a
+*drawn* preview — which is what 6.33 is — had never been reachable in a shot. With one drawn the
+status reads *"Output changed. Preview again to see the new programs."* and the toolpaths go; with
+nothing drawn the guard skips and the status is still *"Loaded Millburn_Test_Board."*
+
+1,360 tests and 28 goldens green.
+
+### What the code review found — 2026-10-10, medium
+
+Three findings, all fixed, and the first two are the price of having stated the rule at all.
+
+**A layer edit threw away a program opened off disk —
+[6.67](../Documentation/06-Roadmap-and-Risks.md#667-a-layer-edit-threw-away-a-program-opened-off-disk--defect--fixed--found-by-code-review-2026-10-10).**
+A board and a standalone `.nc` share one backplot, so clearing it for a layer edit lost a program
+nobody asked to close — the toolpath, and the whole *"5573 mm cut · 368 mm travel · 262 plunges"*
+line — while **Close program** stayed enabled over nothing.
+
+**Pre-existing, and found the moment the rule had somewhere to be read.** The six hand-written
+branches all did it and nobody noticed, because there was nothing to check them against. This
+story's table says in words that a settings change leaves an opened program alone, and the review
+read the table against the code. **A stated rule that is false is worse than six unstated ones**,
+which is the risk this story took on — paid down on the first review rather than in six months.
+
+**A source refresh rebuilt the scene twice —
+[6.68](../Documentation/06-Roadmap-and-Risks.md#668-a-source-refresh-rebuilt-the-scene-twice--defect--fixed--found-by-code-review-2026-10-10),
+introduced by this story.** The stop has to come before the bytes are swapped and the rebuild
+after, and giving that reason `Rebuild: true` put one inside the stop as well — against geometry
+about to be discarded. The comment beside it claimed the opposite of what the table did, which is
+the tell.
+
+**The test caught the correction, which is the right way round**, and fixing it turned
+`ClearingThePicturePutsOneBack` into a partition over the whole enum — closing the last of the five
+decisions with no sweep pinning it. Two reasons defer their rebuild now, and it is the same reason
+twice: both have a caller that replaces the thing a scene is built *from*.
+
+**And the flag entry in AGENTS.md was garbled** into two parentheticals with a dangling clause.
+
+**`--open-program <file>` was added to see any of this**, because a board with a program over it
+was not a state any flag could produce. Both sides photographed: with the fix the toolpath and its
+status line survive a layer change; with the one condition reverted they both vanish.
+
+1,360 tests and 28 goldens green.

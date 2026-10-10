@@ -13,7 +13,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
 
-## Enhancements (11)
+## Enhancements (10)
 
 Something new or better, which is not the same as something broken.
 
@@ -27,7 +27,6 @@ Something new or better, which is not the same as something broken.
 | [6.31](06-Roadmap-and-Risks.md#631-let-the-operator-say-what-a-layer-is--enhancement--open--asked-for-by-the-product-owner) | Let the operator say what a layer is | asked for by the product owner |
 | [6.35](06-Roadmap-and-Risks.md#635-a-knife-blade-as-a-tool-for-vinyl-masking--enhancement--open--asked-for-by-the-product-owner) | A knife blade as a tool, for vinyl masking | asked for by the product owner |
 | [6.50](06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | Nothing can test the view model | three times in one sprint |
-| [6.51](06-Roadmap-and-Risks.md#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--open--six-paths-and-counting) | There is no single place that says "this picture is no longer true" | six paths and counting |
 | [6.54](06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | The checks panel cannot show a cancelled run | found by `/code-review`, 2026-09-29 |
 | [6.55](06-Roadmap-and-Risks.md#655-the-findings-view-costs-about-twice-what-it-needs-to-and-cannot-be-interrupted--enhancement--open--found-by-code-review-at-xhigh-2026-09-30) | The findings view costs about twice what it needs to, and cannot be interrupted | found by `/code-review` at xhigh, 2026-09-30 |
 
@@ -59,4 +58,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**17 open**, of 66 entries in the roadmap.
+**16 open**, of 68 entries in the roadmap.

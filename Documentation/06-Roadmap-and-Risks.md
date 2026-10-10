@@ -6068,7 +6068,27 @@ would have been a unit test under that shape.
 badly would be worse than the gap. It belongs in a sprint that has room for it, and the argument
 for it is the table above rather than a principle.
 
-#### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · open** — *six paths and counting*
+**One row of that table is done, 2026-10-09.** The decision in the middle row — what an edit
+invalidates — is behind a seam and unit-tested, which is
+[6.51](#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting).
+`StaleBecause` and `Staleness.Of` have no Avalonia in them; `MainViewModel.Invalidate` is the
+twenty-five lines of mutation left over. Both 6.33 and the missing property notifications were
+re-introduced deliberately and failed by name.
+
+**The shape works, which was the open question.** The entry guessed at *"a seam rather than a test
+project that references the app"*, and that guess holds: the part that keeps going wrong is a
+decision, the part that needs a window is a handful of assignments, and they separate cleanly. The
+largest file lost about forty lines and gained no indirection worth the name.
+
+**What is left.** *When a setting is persisted* — twenty settings writes across nineteen handlers,
+and the most recent fault there was mine: a session-only override added for a screenshot flag made
+the stored value unreachable, because the setter compared against the file rather than against
+what the getter returns ([6.62](#662-the-rulers-could-not-be-turned-back-on-after---no-ruler--defect--fixed--found-by-code-review-2026-10-07)).
+*When a preview is cancelled* is now mostly covered by the above, since stopping the run is one of
+the five things a reason decides. The remaining row is the smaller of the two and the same shape,
+which is the argument for doing it next rather than for doing it now.
+
+#### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · fixed** — *six paths and counting*
 
 Six methods in `MainViewModel` have to notice that an edit has made the drawn programs wrong, and
 each does it by hand:
@@ -6097,9 +6117,54 @@ every one of the six calls it, and what it does is stated once. It is a small re
 value is that the seventh path cannot be written wrong — which matters more than the six, because
 the six are now correct and the seventh is the one nobody has thought of yet.
 
-**Depends on nothing**, but is worth far more with [6.50](#): behind a seam, this method is the
+**Depends on nothing**, but is worth far more with [6.50](#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint): behind a seam, this method is the
 single most testable thing in the view model, and the six faults above would each have been a
 failing test rather than a bench report or a review.
+
+**Built as a seam, which is what made it worth doing now.** `StaleBecause` names every edit that
+can make the drawn programs wrong, and `Staleness.Of` says what each one means as one table:
+whether to stop a run in flight, clear the programs, forget a standalone one that was opened off
+disk, rebuild the scene, and whether to skip all of it when nothing was drawn. None of that has a
+window in it, so it is a unit test. `MainViewModel.Invalidate` is the part that cannot be — it
+touches bound properties — and it is now about twenty-five linear lines with no decisions left in
+it.
+
+**Seven paths by the time it was done, not six.** `OnOutputChanged` grew one more during
+[6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06),
+which is the entry's own argument arriving on schedule: the value was never the six that were
+already correct.
+
+**Each of the listed faults is now a named test.** `EveryReasonStopsARunInFlight` is the one that
+was missed in four separate places. `ARunInFlightCountsEvenWithNothingDrawn` is 6.33 stated as an
+assertion — that guard asked whether anything was drawn and returned before it could stop a run,
+and a run in flight is exactly when nothing is drawn, because the edit that started it cleared the
+last picture. `OnlyAReplacedBoardForgetsAnOpenedProgram` covers the missing property notifications.
+Both were re-introduced deliberately and both tests failed by name before being put back.
+
+**And `EveryReasonHasARule` is the point of the whole entry.** A new kind of edit has to be added
+to the enum, and the moment it is, that test fails until somebody has decided what it clears. The
+seventh path cannot be written wrong because there is nowhere to write it. Checked by adding an
+eighth reason with no rule: **six of the eleven tests failed**, by name.
+
+**`/describe-test` found that three of the five decisions had no such sweep.** `StopRun` and
+`ForgetOpenedProgram` were pinned across the whole enum from the start; `ClearPrograms`, `Rebuild`
+and the guard were only checked for named reasons — so a new reason could have joined with the
+wrong answer on any of those three and nothing would have said so, in the one file whose entire
+purpose is that it would. Two partitions added. It also found that three of the sweeps would pass
+having asserted nothing if the enum were ever empty, and that the skip in `ClearingThePicturePutsOneBack`
+is computed from a production value, so that loop could empty itself; both are guarded now.
+
+**One behaviour was nearly changed by accident in the doing**, which is worth recording. The
+rewritten `OnOutputChanged` read "was anything drawn" *after* invalidating — and clearing the
+backplot is what makes that false, so it would have taken the early return on precisely the path
+that had just done the work, and stopped saying *"Output changed"*. Caught by reasoning through it
+rather than by the suite, which still cannot see that method.
+
+**`--then-change <what>` was added to reach the scenario at all.** Every other screenshot flag runs
+before the first preview, so `--change` could only ever exercise the empty case — an edit *over a
+drawn preview*, which is what 6.33 is, had never been photographable. It is now: with a preview
+drawn the status reads *"Output changed. Preview again to see the new programs."* and the toolpaths
+go; with nothing drawn the guard skips and the status still says *"Loaded Millburn_Test_Board."*
 
 #### 6.52 A test cut that finds where the copper stops — **enhancement · fixed**
 
@@ -6744,3 +6809,44 @@ state no gesture can produce or undo.
 **And its comment said the opposite of what the code did.** It described the rejected first design,
 in which a border being moved did not re-fit the view. A shot captioned from that comment would have
 asserted something false about the very behaviour it was taken to show.
+
+#### 6.67 A layer edit threw away a program opened off disk — **defect · fixed** — *found by `/code-review`, 2026-10-10*
+
+A board and a standalone `.nc` can be on screen together, and they share one backplot — opening a
+program replaces whatever was drawn, and only one of the two is ever held at a time. So clearing
+the backplot on a layer edit threw away a program nobody had asked to close, while `_programPath`
+survived: the toolpath and the whole *"Millburn_Test_Board-F_Cu.nc · 5573 mm cut · 368 mm travel ·
+262 plunges"* status line went, and **Close program** stayed enabled over nothing.
+
+**Pre-existing, and found the moment the rule had one place to be stated in.** The six hand-written
+branches did the same thing, and nobody noticed because there was nothing to read it against.
+[6.51](#651-there-is-no-single-place-that-says-this-picture-is-no-longer-true--enhancement--fixed--six-paths-and-counting)
+put the rule in a table whose own words are *"a settings change leaves an opened program alone,
+because it came off disk and was not made from these settings"* — and the next review read the
+table against the code. A stated rule that is false is worse than six unstated ones, which is the
+risk that entry took on; this is that risk being paid down on the first pass rather than later.
+
+**Clearing now means the *previewed* programs.** A reason that clears without also forgetting an
+opened one leaves it alone, which is what the sentence claimed all along.
+
+**`--open-program <file>` was added to see it**, because a board with a program over it was not a
+state any flag could produce. Both sides were photographed: with the fix the toolpath and its
+status line survive a layer change, and with the one condition reverted they both vanish.
+
+#### 6.68 A source refresh rebuilt the scene twice — **defect · fixed** — *found by `/code-review`, 2026-10-10*
+
+Introduced by 6.51 and caught on its first review. `ApplyRefresh` stops and clears before
+`ProjectRefresh.Apply` swaps the source bytes — it must, because a run in flight is reading the
+project that is about to be mutated — and then rebuilds afterwards. Giving `SourceRefreshed` a
+`Rebuild: true` meant the rebuild also happened inside the stop, against the bytes about to be
+discarded: `ToBoard`, `BoardSceneBuilder.Build`, the rows, the facts and the warnings, all for a
+picture thrown away microseconds later. The comment written beside it claimed the opposite of what
+the table did.
+
+**Two reasons now defer their rebuild, and it is the same reason twice:** replacing the project and
+re-reading the source bytes both have a caller that swaps the thing a scene is built *from*. Stated
+that way in `Staleness.Of` rather than as two unrelated exceptions.
+
+**The test caught the correction, which is the right way round.** `ClearingThePicturePutsOneBack`
+failed the moment `Rebuild` went false, and in being fixed it became a partition over the whole
+enum — closing the last of the five decisions that had no sweep pinning it.
