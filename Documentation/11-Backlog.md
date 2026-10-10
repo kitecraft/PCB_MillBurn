@@ -4,7 +4,7 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (3)
+## Defects (2)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
@@ -12,7 +12,6 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 |---|---|---|
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
-| [6.57](06-Roadmap-and-Risks.md#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--open--found-while-building-61-2026-10-06) | Ticking "Build on stock" does not move the viewport onto the stock | found while building 6.1, 2026-10-06 |
 
 ## Enhancements (11)
 
@@ -60,4 +59,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**18 open**, of 64 entries in the roadmap.
+**17 open**, of 66 entries in the roadmap.

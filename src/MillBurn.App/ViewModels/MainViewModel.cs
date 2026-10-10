@@ -2342,9 +2342,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // answer still: it is the piece on the table, and the cut that makes it lies outside the
         // board — so fitting to the board put the blank's own toolpath just off screen, which is
         // the one thing you would want to look at before running it.
+        _sceneFrame = Frame.IsEmpty ? board.Bounds : Frame;
+
         var scene = BoardSceneBuilder.Build(
             board.Layers.Select(l => new BoardLayerSource(l.FileName, l.Label, l.Role, l.Rings())),
-            Frame.IsEmpty ? board.Bounds : Frame,
+            _sceneFrame.Value,
             Palette,
             _backplot.Count > 0 ? Recoloured(_backplot) : null,
             SceneStyle(BoardSceneBuilder.SubstrateId, BoardPalette.Substrate));
@@ -2778,8 +2780,29 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // interrupted on the setting change."*
         var stopped = StopPreview();
 
+        // **The guard below is about clearing a drawn preview; a moved frame is a different
+        // question.** With nothing drawn there is nothing to clear, so skipping the rebuild is
+        // right — except when the change moved the rectangle the scene itself was built to, and
+        // then the picture on screen is referenced to a work zero the job no longer uses.
+        //
+        // 6.57, found while building the ruler: ticking *Build on stock* left the viewport on the
+        // board's frame while the panel beside it already said the stock was 88.63 × 86.09 mm, and
+        // the pointer readout said *from the board's corner* over a job whose files would be
+        // referenced to the stock's. Pressing Preview corrected both, which is what gave it away.
+        //
+        // Tested against the frame rather than against the blank's settings, so everything else
+        // that moves it arrives here too: mirroring a layer, and changing the outline's bit, both
+        // feed `Blanks.Resolve` and neither is a blank edit.
+        var moved = _board is { } current && _sceneFrame is { } was
+            && (Frame.IsEmpty ? current.Bounds : Frame) != was;
+
         if (_backplot.Count == 0 && !stopped)
         {
+            if (moved)
+            {
+                Reframe();
+            }
+
             return;
         }
 
@@ -3012,6 +3035,61 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// One place, because three things have to agree about it: where a program is drawn over the
     /// board, which axis a mirrored program is flipped back about, and what the exporter shifted by.
     /// </summary>
+    /// <summary>
+    /// The rectangle the scene on screen was built to, or null before there is one.
+    ///
+    /// Kept so that <see cref="OnOutputChanged"/> can tell a change that moved work zero from one
+    /// that did not. Recorded where the scene is built rather than computed on demand: the point is
+    /// what the picture *was* drawn to, and <see cref="Frame"/> by then is what it should be.
+    /// </summary>
+    private Bounds? _sceneFrame;
+
+    /// <summary>
+    /// Moves the picture onto the frame the job now uses, without rebuilding it.
+    ///
+    /// **The geometry has not changed, only what it is measured from.** A full rebuild walks every
+    /// ring of every layer into a path — about 7 ms on the Mega, measured — and the stock's border
+    /// is a slider, so doing that per tick is the fault 6.49 describes in a different coat.
+    /// Reframing is one assignment, too small to time, and a re-fit is arithmetic.
+    ///
+    /// **Re-fitted every time, not only when the stock appears.** Fitting only on the appearance
+    /// was tried first, on the theory that a border nudged by a millimetre is not worth the view
+    /// jumping — and it is wrong for the reason the scene is fitted to the blank at all: *"the cut
+    /// that makes it lies outside the board — so fitting to the board put the blank's own toolpath
+    /// just off screen, which is the one thing you would want to look at before running it."* Grow
+    /// the border past the viewport without re-fitting and that cut goes off screen again, which
+    /// is the very thing being guarded against. On a slider it reads as the board shrinking
+    /// smoothly as the stock grows, which is feedback rather than a jump.
+    /// </summary>
+    private void Reframe()
+    {
+        if (_board is not { } board || Scene is not { } scene)
+        {
+            return;
+        }
+
+        var frame = Frame.IsEmpty ? board.Bounds : Frame;
+
+        scene.Reframe(frame);
+        _sceneFrame = frame;
+
+        // The origin's name is read off this, and it is the half an operator reads rather than
+        // sees.
+        OnPropertyChanged(nameof(OriginName));
+
+        FrameMoved?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// The rectangle the picture is measured from has moved under it.
+    ///
+    /// **Two things follow, which is why this is not called `FitRequested`.** The view has to fit
+    /// again, and anything holding a coordinate in the old frame now means a different place.
+    /// Named for what happened rather than for one of its consequences, because the first version
+    /// was named for the fit and the second consequence was then simply forgotten.
+    /// </summary>
+    public event EventHandler? FrameMoved;
+
     private Bounds Frame
     {
         get

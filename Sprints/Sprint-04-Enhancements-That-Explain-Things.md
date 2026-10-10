@@ -1315,7 +1315,7 @@ second case: on `Millburn_Test_Board` with stock, the ruler runs 0 to 90 across 
 and the readout says *from the stock's corner*, which is the corner the checks panel calls work zero
 three lines below it.
 
-**And photographing it found a defect that is not this story's — [6.57](../Documentation/06-Roadmap-and-Risks.md#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--open--found-while-building-61-2026-10-06).**
+**And photographing it found a defect that is not this story's — [6.57](../Documentation/06-Roadmap-and-Risks.md#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06).**
 With no preview built, ticking *Build on stock* does not rebuild the scene at all: `OnOutputChanged`
 returns early when nothing is drawn, so the viewport keeps the board's frame while the panel beside
 it already describes the stock. Press Preview and both correct themselves. The readout code is right
@@ -1723,3 +1723,87 @@ it is a project-structure change, and putting it in a sprint this size would be 
 
 **The features.** V30 the paste stencil, 6.18 the 3D-printed stencil, 6.2 climb or conventional, 6.7
 the coachmarks. None was asked for recently and none is on the held list.
+
+---
+
+## After the sprint
+
+Taken before sprint 5 is picked, because it was the obvious next thing and the product owner asked
+for it by number.
+
+**[6.57](../Documentation/06-Roadmap-and-Risks.md#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06)
+— ticking *Build on stock* did not move the viewport onto the stock.** Found while building the
+ruler, written up rather than fixed there because the fix is in the preview-interruption guard and
+that was not a story about previews. The guard asks whether there is a drawn preview to clear and
+never asked whether the change moved the rectangle the scene was built to — so the picture stayed
+referenced to a work zero the job no longer used, with the panel beside it already describing the
+stock.
+
+**Three judgements worth keeping:**
+
+*Tested on the frame, not on the blank's settings.* Mirroring a layer and changing the outline's bit
+both move `Frame` too, and neither is a blank edit. Watching the blank's own fields would have fixed
+the reported case and left those two.
+
+*Reframed rather than rebuilt.* The geometry does not move when the frame does, and the border is a
+slider. Measured on the Mega: **about 7 ms to rebuild, too small to time to reframe.**
+
+*That figure took three goes to get right, which is the point of the rule about quoting measured
+numbers.* First it was 55 ms, from a process-level delta that also contained the settings write and
+the blank resolution. Then 16.5 ms, from a single timed build — and the next run of the same test
+read 7.4 ms, because one sample of anything on a desktop is noise.
+`ReframingIsOrdersOfMagnitudeCheaperThanRebuilding` takes the best of five now and prints it; three
+consecutive runs give 7.2, 7.0 and 7.1 ms.
+
+*Re-fitting only when the stock appears was tried first and is wrong.* The theory was that a border
+nudged a millimetre is not worth the view jumping. But the reason the scene is fitted to the blank
+at all is that the cut making it lies outside the board, and growing the border past the viewport
+without re-fitting puts that cut back off screen. One rule: the frame moves, the view fits.
+
+*And the re-fit had to be asked for rather than performed.* `FitToContent` gives up when the control
+has no layout, which is exactly the state a `--shot` is in while its flags run — so the first
+attempt did nothing silently and the shot came out correctly labelled and wrongly scaled. The lazy
+fit in `Render` was already the robust path; `RefitWhenDrawn` just points it at the same scene again.
+
+1,349 tests and 28 goldens green. Both stock shots are in `WorkingFolder/V0.5.0/Stock`.
+
+### What the code review found — 2026-10-08, medium
+
+Four findings, all fixed, and the first is a defect the fix itself created.
+
+**Reframing moved work zero without clearing the marker —
+[6.65](../Documentation/06-Roadmap-and-Risks.md#665-reframing-moved-work-zero-without-clearing-the-marker--defect--fixed--found-by-code-review-2026-10-08).**
+`BoardView` clears a mark by comparing the scene's extent across an assignment to `Scene`, and its
+comment names *"turning stock on and moving work zero"* as a case it covers. Reframing keeps the
+same scene object on purpose — that is what makes it cheap — so the rule was right and its one
+implementation could not see this. Go to a finding with 10 mm of stock, widen the border to 20, and
+the ring stays at 54.05, 40.31 while the bridge it names moves to 64.05, 50.31.
+
+**It is 6.58's symptom, re-opened by 6.57's fix**, which is worth saying plainly: the two defects
+are the same confusion seen from opposite ends, and fixing one by keeping the scene object alive
+walked straight into the other. The event is `FrameMoved` now rather than `FitRequested` — a signal
+named after one of its consequences is a signal whose other consequence gets forgotten, which is
+precisely what happened.
+
+**Nothing caught it sooner because the border has to move *after* the mark is placed.** Every other
+screenshot flag runs before the first frame, so `--change blank` and `--findings` always agreed;
+`--stock-border` is the only one that lands afterwards. The flag added to photograph this story is
+what exposed the fault in it.
+
+**`--stock-border` failed silently in three ways —
+[6.66](../Documentation/06-Roadmap-and-Risks.md#666---stock-border-failed-silently-in-three-ways--defect--fixed--found-by-code-review-2026-10-08).**
+A value that does not parse, a value equal to the one already set, and a project not built on stock.
+**This is the third screenshot flag in three reviews caught doing exactly this**, after `--zoom` and
+`--goto`, and the standard is written out in both of their messages. Worth treating as a habit to
+break rather than three separate slips: a flag that cannot do its job says so, every time.
+
+**Its comment said the opposite of what the code does.** It described the rejected first design, in
+which moving the border did not re-fit. A shot captioned from it would have asserted something false
+about the behaviour it was taken to show.
+
+**And `scene.Bounds` was read twice per frame** while the UI thread can now write it. Two reads
+could mix an old x with a new y — one frame with its origin somewhere neither frame had. Read once
+into a local, which is the care `Rebuild` already takes swapping the scene before disposing the old
+one.
+
+1,349 tests and 28 goldens green.

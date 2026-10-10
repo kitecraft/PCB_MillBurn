@@ -6475,7 +6475,7 @@ findings window do not.
 **Requires:** [6.1](#61-rulers--enhancement--fixed) is not a prerequisite, but the two were asked for
 together and the ruler is what lets an operator confirm the view went where it said it would.
 
-#### 6.57 Ticking "Build on stock" does not move the viewport onto the stock — **defect · open** — *found while building 6.1, 2026-10-06*
+#### 6.57 Ticking "Build on stock" does not move the viewport onto the stock — **defect · fixed** — *found while building 6.1, 2026-10-06*
 
 The board scene is built to the job's frame — `Frame.IsEmpty ? board.Bounds : Frame` — and that is
 the stock's rectangle when the job is built on stock. The comment above that call says so: *"Fitted
@@ -6507,6 +6507,45 @@ its own would not have repainted. That is in; what remains is the rebuild itself
 frame with no preview built — and a `--shot` with `--change blank` and no `--preview` reads from the
 stock's corner.
 
+**The guard was right about its own question and silent about a different one.** It asks whether
+there is a drawn preview to clear; with none there is nothing to clear and skipping the rebuild is
+correct. What it never asked is whether the change moved the rectangle the scene itself was built
+to. `OnOutputChanged` now tests that as well, against the frame the picture was last drawn to —
+recorded where the scene is built, because the question is what the picture *was* referenced to.
+
+**Tested on the frame, not on the blank's settings.** `Frame` also moves when a layer is mirrored
+and when the outline's bit changes, because both feed `Blanks.Resolve`. Watching the blank's own
+fields would have fixed the reported case and left those two.
+
+**Reframed rather than rebuilt, because the border is a slider.** The geometry does not change when
+the frame moves — only what it is measured from — and a scene's extent is one assignment at the end
+of a build that walks every ring of every layer into a path. Measured on the Mega:
+**about 7 ms to rebuild, too small to time to reframe** — best of five, because a single timed
+build read 16.5 ms and then 7.4 ms on the same machine. Rebuilding per tick of a slider drag is
+[6.49](#649-a-slider-drag-writes-the-settings-file-on-every-tick--defect--fixed) in a different
+coat. `ReframingLandsWhereRebuildingWouldHave` is what lets the cheap path be trusted: it compares
+against a scene built the expensive way rather than against a remembered rectangle, so it cannot
+drift from whatever `Build` decides the extent means.
+
+**Re-fitted every time the frame moves, and fitting only on the appearance was tried first.** The
+theory was that a border nudged by a millimetre is not worth the view jumping — and it is wrong for
+the same reason the scene is fitted to the blank at all: *"the cut that makes it lies outside the
+board — so fitting to the board put the blank's own toolpath just off screen, which is the one thing
+you would want to look at before running it."* Grow the border past the viewport without re-fitting
+and that cut goes off screen again. On a slider it reads as the board shrinking smoothly as the
+stock grows, which is feedback rather than a jump.
+
+**The re-fit is asked for, not performed.** `FitToContent` gives up when the control has no layout
+yet, which is exactly the state a `--shot` is in while its flags run — so the first attempt did
+nothing and said nothing, and the shot came out correctly labelled and wrongly scaled. `BoardView`
+already fits lazily when it meets a scene it has not fitted; `RefitWhenDrawn` forgets which that was
+and lets that path do the work once the control has a size. Needed at all because reframing keeps
+the same scene object, which is the point of it and also why the lazy check cannot notice alone.
+
+**Shot on the test board with no preview:** ticking stock gives a ruler of 0 to 90 with the board's
+corner at 10, 10 and the readout reading *from the stock's corner*; `--stock-border 20` gives 0 to
+110 with the corner at 20, 20, and the panel's 108.63 × 106.09 mm agrees with the scale beside it.
+
 #### 6.58 Findings were reported from the board's corner on a job built on stock — **defect · fixed** — *found by `/code-review`, 2026-10-07*
 
 `BoardFindings.Shifted` moved every located gap so that zero was **`board.Bounds`**' lower-left. The
@@ -6528,7 +6567,7 @@ be seen: the ring landed ten millimetres from the bridge it was labelled with, w
 zoom that feature goes to is most of the viewport.
 
 **And it took two other defects to make it visible at all.** The first attempt to photograph it
-looked correct, because [6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--open--found-while-building-61-2026-10-06)
+looked correct, because [6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06)
 means ticking *Build on stock* does not move the viewport onto the stock — so both frames were still
 the board's and they agreed. A preview, which does rebuild, is what separated them.
 
@@ -6664,3 +6703,44 @@ asserting one. On the test board the four tabs read 79.13, 30.34 with 10 mm of s
 coordinate while naming the wrong origin, and each was found only when something else made the two
 disagree visibly. Anything that prints a position should take its origin's name from the frame it
 was shifted by, not state one.
+
+#### 6.65 Reframing moved work zero without clearing the marker — **defect · fixed** — *found by `/code-review`, 2026-10-08*
+
+`BoardView.OnPropertyChanged` is the one place a mark is cleared when the board under it changes,
+and its own comment names this very case: *"re-importing, opening another board, **or turning stock
+on and moving work zero**"*. It does that by comparing the extent across an assignment to `Scene` —
+and [6.57](#657-ticking-build-on-stock-does-not-move-the-viewport-onto-the-stock--defect--fixed--found-while-building-61-2026-10-06)'s
+fix deliberately keeps the same scene object and moves the extent in place, which is the whole point
+of reframing rather than rebuilding. So the rule was right, its one implementation could not see
+this, and the fix for one defect re-opened the symptom of another.
+
+**Reproduced in a shot.** Go to a finding on a job with 10 mm of stock, then widen the border to 20:
+the ring stays at 54.05, 40.31 with that coordinate on its label, while the bridge it names has
+moved to 64.05, 50.31. Ten millimetres of copper away, pointing at the wrong trace, with a number
+beside it that is right about nothing.
+
+**It needed the border to move *after* the mark was placed**, which is why nothing caught it sooner:
+every other screenshot flag runs before the first frame, so `--change blank` and `--findings` always
+agreed. `--stock-border` is the only one that lands afterwards.
+
+**The event is named for what happened, not for one of its consequences.** It was `FitRequested`,
+and a signal named after the fit is a signal whose second consequence is easy to forget — which is
+exactly what happened. It is `FrameMoved` now, and the window answers it by clearing the mark and
+asking for a fit.
+
+#### 6.66 `--stock-border` failed silently in three ways — **defect · fixed** — *found by `/code-review`, 2026-10-08*
+
+A value that does not parse, a value equal to the one already set — the generated setter drops equal
+assignments, so `--stock-border 10` against a 10 mm border does nothing — and a project with *Build
+on stock* off, where there is no blank to resize. In all three the capture came out on the board's
+own frame and looked like a successful demonstration of the opposite claim.
+
+This is the third screenshot flag in three reviews to be caught doing this, after `--zoom` and
+`--goto`. The standard is written down in both of their messages and it is the same one each time:
+a shot that quietly came out wrong is a false claim in a picture. It is also clamped to the
+slider's 3–30 mm, for the reason `ZoomTo` clamps its scale — a flag should not put the project in a
+state no gesture can produce or undo.
+
+**And its comment said the opposite of what the code did.** It described the rejected first design,
+in which a border being moved did not re-fit the view. A shot captioned from that comment would have
+asserted something false about the very behaviour it was taken to show.

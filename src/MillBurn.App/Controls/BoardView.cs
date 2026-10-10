@@ -188,6 +188,25 @@ public sealed class BoardView : Control
     }
 
     /// <summary>
+    /// Fits again at the next frame, rather than now.
+    ///
+    /// **Now is too early when the frame moved during start-up.** `FitCore` gives up when the
+    /// control has no layout yet, which is exactly the state a `--shot` is in while the flags run —
+    /// so a fit asked for there did nothing and said nothing. `Render` already fits lazily when it
+    /// meets a scene it has not fitted; forgetting which scene that was puts the request on the
+    /// same path, which happens once the control has a size and not before.
+    ///
+    /// Needed because the scene object does not change when only its extent does: that is the
+    /// point of reframing rather than rebuilding, and it is also why the lazy check cannot notice
+    /// on its own.
+    /// </summary>
+    public void RefitWhenDrawn()
+    {
+        _fittedFor = null;
+        InvalidateVisual();
+    }
+
+    /// <summary>
     /// Puts a board point in the middle of the viewport at a given scale.
     ///
     /// Added for the screenshots: the ladder is supposed to change with the zoom — 5 mm majors over

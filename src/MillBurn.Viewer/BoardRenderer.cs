@@ -41,7 +41,12 @@ public static class BoardRenderer
         // Work zero in this view's world coordinates: the frame's lower-left corner, which the
         // scene was built around. World y is the board's negated, so the corner's y is the
         // rectangle's *bottom*.
-        var origin = new SKPoint(scene.Bounds.Left, scene.Bounds.Bottom);
+        // Read once. `BoardScene.Reframe` assigns this from the UI thread while a slider is being
+        // dragged, and two reads of it on the render thread could mix an old x with a new y — one
+        // frame with its ruler origin in a place neither frame had. The same care `Rebuild` takes
+        // swapping the scene before disposing the old one.
+        var extent = scene.Bounds;
+        var origin = new SKPoint(extent.Left, extent.Bottom);
         var step = GridLadder.StepFor(view.Scale);
 
         // One frame for the ruler and the marker both, so a mark cannot land somewhere the scale

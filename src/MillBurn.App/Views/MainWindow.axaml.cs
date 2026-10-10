@@ -52,6 +52,23 @@ public partial class MainWindow : Window
                 vm.RedrawRequested += (_, _) => Viewport.InvalidateVisual();
                 vm.BoardReplaced += (_, _) => CloseFindings();
 
+                // The frame moved under the picture, so what was a good fit for the board is not
+                // one for the stock around it — and a marker placed in the old frame is now a ring
+                // over the wrong copper.
+                //
+                // **The second half is the rule `BoardView.OnPropertyChanged` already states**, and
+                // it names this very case: *"re-importing, opening another board, or turning stock
+                // on and moving work zero"*. That check compares the extent across an assignment to
+                // `Scene`, and reframing deliberately keeps the same scene object — so the rule was
+                // true and its one implementation could not see this. Found by `/code-review`: go
+                // to a finding on a job with 10 mm of stock and widen the border to 20, and the
+                // ring stayed at 54.05, 40.31 while the bridge it names moved to 64.05, 50.31.
+                vm.FrameMoved += (_, _) =>
+                {
+                    Viewport.ClearMarker();
+                    Viewport.RefitWhenDrawn();
+                };
+
                 // Refilled each time the empty panel comes back, because opening or saving a
                 // project in between changes the list.
                 vm.PropertyChanged += (_, e) =>
@@ -877,6 +894,19 @@ public partial class MainWindow : Window
             }
         }
 
+        // Nudges the stock's border the way the slider does, so that a frame moving *after* the
+        // picture exists can be photographed — which is the case the other flags cannot reach,
+        // because they all run before the first frame.
+        //
+        // **The comment here used to say the opposite**: that the stock appearing re-fits the view
+        // and a border being moved does not. That was the first design, and it was rejected for
+        // the reason `Reframe` now gives — a shot captioned from it would have asserted something
+        // false in a picture, which is the fault this whole family of flags exists to prevent.
+        if (Argument(args, "--stock-border") is { } border)
+        {
+            Nudged(vm, border);
+        }
+
         // Closes or replaces the project after everything above, so that what a findings window
         // does when its board goes can be seen in a script: the count printed at capture must be
         // nought. Both doors, because the bench report named both — *"opening a recent project or
@@ -1514,6 +1544,51 @@ public partial class MainWindow : Window
         {
             window.Close();
         }
+    }
+
+    /// <summary>
+    /// The <c>--stock-border</c> flag: moves the border, and says when it did not.
+    ///
+    /// **Three ways it used to pass silently**, each leaving a capture on the board's own frame
+    /// that looks like a successful demonstration of the opposite claim: a value that does not
+    /// parse, a value equal to the one already set — the generated setter drops equal assignments,
+    /// so `--stock-border 10` against a 10 mm border is a no-op — and a project with *Build on
+    /// stock* off, where there is no blank to resize and the frame stays the board's.
+    ///
+    /// Clamped to the slider's own range, for the reason `ZoomTo` gives for clamping its scale: a
+    /// flag should not put the project in a state no gesture can produce or undo.
+    /// </summary>
+    private static void Nudged(MainViewModel vm, string border)
+    {
+        if (!double.TryParse(border, NumberStyles.Float, CultureInfo.InvariantCulture, out var mm))
+        {
+            Console.WriteLine($"stock-border: {border} is not a number of millimetres.");
+            return;
+        }
+
+        if (!vm.UseBlank)
+        {
+            Console.WriteLine(
+                "stock-border: ignored — this job is not built on stock, so there is no border. "
+                    + "Add --change blank.");
+            return;
+        }
+
+        var wanted = Math.Clamp(mm, 3, 30);
+
+        if (Math.Abs(wanted - vm.BlankBorderMm) < 0.0001)
+        {
+            Console.WriteLine(
+                $"stock-border: ignored — the border is already {wanted:0.##} mm, so nothing moved.");
+            return;
+        }
+
+        if (wanted != mm)
+        {
+            Console.WriteLine($"stock-border: {mm:0.##} clamped to {wanted:0.##} mm, the slider's range.");
+        }
+
+        vm.BlankBorderMm = wanted;
     }
 
     /// <summary>
