@@ -14,8 +14,9 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 **Put it where it belongs.** The sprint set out to get a design onto the machine in the right
 place, the right way up and on the right layer, and did the last of those. Three stories shipped,
-three were set aside at the bench, and one was built, proven and declined — with two items from the
-backlog taken in where two of the set-aside ones had been. The sprint's notes say which, and why.
+three were set aside at the bench, and one was built, proven and declined — and 6.31, letting you
+say what a layer is, was taken in from the backlog in place of two of the set-aside ones. The
+sprint's notes say which, and why.
 
 [Sprint 5 — Put it where it belongs](Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
 
