@@ -687,13 +687,29 @@
                                                                       HorizontalAlignment="Stretch"
                                                                       HorizontalContentAlignment="Stretch"
                                                                       ToolTip.Tip="Show what this layer becomes">
-                                                            <Grid ColumnDefinitions="*,Auto">
+                                                            <Grid ColumnDefinitions="*,Auto,Auto">
                                                                 <TextBlock Grid.Column="0"
                                                                            Text="{Binding Label}"
                                                                            TextTrimming="CharacterEllipsis"
                                                                            VerticalAlignment="Center"
                                                                            Foreground="{DynamicResource TextPrimary}" />
+                                                                <!--
+                                                                    6.31: a role read off the file's
+                                                                    name says so on the row itself,
+                                                                    not only in the checks — a guess
+                                                                    has to look like a guess.
+                                                                -->
                                                                 <TextBlock Grid.Column="1"
+                                                                           Text="guessed"
+                                                                           FontSize="10.5"
+                                                                           FontStyle="Italic"
+                                                                           Margin="6,0,0,0"
+                                                                           Padding="0,0,2,0"
+                                                                           VerticalAlignment="Center"
+                                                                           IsVisible="{Binding RoleGuessed}"
+                                                                           Foreground="{DynamicResource StatusWarning}"
+                                                                           ToolTip.Tip="The file does not say what it is, so this was read off its name. Open the row to check it, or to set it by hand." />
+                                                                <TextBlock Grid.Column="2"
                                                                            Text="{Binding Chevron}"
                                                                            FontSize="14"
                                                                            Margin="6,0,4,0"
@@ -723,6 +739,44 @@
                                                     <StackPanel Spacing="3"
                                                                 Margin="26,3,0,4"
                                                                 IsVisible="{Binding IsExpanded}">
+
+                                                    <!--
+                                                        What this file is, and how that was decided.
+                                                        6.31: the way out of a name the matcher
+                                                        does not know or reads wrong.
+                                                    -->
+                                                    <Grid ColumnDefinitions="Auto,*" Margin="0"
+                                                          IsVisible="{Binding CanSetRole}">
+                                                        <TextBlock Grid.Column="0" Classes="caption" Width="78"
+                                                                   VerticalAlignment="Center" Text="Layer is" />
+                                                        <ComboBox Grid.Column="1"
+                                                                  ItemsSource="{Binding Roles}"
+                                                                  SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
+                                                                  HorizontalAlignment="Stretch"
+                                                                  ToolTip.Tip="What this file is. Set it here when it was read wrong, or not at all; refreshing the folder keeps what you set." />
+                                                    </Grid>
+                                                    <Grid ColumnDefinitions="*,Auto" Margin="78,0,0,2"
+                                                          IsVisible="{Binding CanSetRole}">
+                                                        <TextBlock Grid.Column="0"
+                                                                   Classes="caption"
+                                                                   Text="{Binding RoleSource}"
+                                                                   TextWrapping="Wrap"
+                                                                   VerticalAlignment="Center" />
+                                                        <!--
+                                                            Confirming a guess as it stands. The
+                                                            picker cannot: choosing the item it
+                                                            already shows is not a change.
+                                                        -->
+                                                        <Button Grid.Column="1"
+                                                                Content="That's right"
+                                                                FontSize="11"
+                                                                Padding="8,2"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                IsVisible="{Binding RoleGuessed}"
+                                                                Command="{Binding ConfirmRoleCommand}"
+                                                                ToolTip.Tip="Keep this role, and stop calling it a guess." />
+                                                    </Grid>
 
                                                     <ComboBox ItemsSource="{Binding Outputs}"
                                                               SelectedItem="{Binding SelectedOutput, Mode=TwoWay}"

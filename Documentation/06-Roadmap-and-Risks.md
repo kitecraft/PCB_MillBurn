@@ -4314,7 +4314,7 @@ body it used to have — the three import presets — is still there, under
 **Confirmed at the bench, 2026-09-22**, on a published build: *"Inner layers are no longer
 exportable."*
 
-#### 6.31 Let the operator say what a layer is — **enhancement · open** — *asked for by the product owner*
+#### 6.31 Let the operator say what a layer is — **enhancement · fixed** — *asked for by the product owner*
 
 From the product owner, after a day of chasing naming conventions: *"Perhaps, instead of trying to
 match all the different naming schemes, we use the most common. But, as a future enhancement, we can
@@ -4343,6 +4343,13 @@ absence of this, and the entries above should be read in that light.
 from that row, the choice is saved with the project and survives a refresh of the source folder, and
 a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
 the test: it should be usable by hand even with every one of its files unrecognised.
+
+**Fixed in sprint 5, 2026-10-11** — [story 7](../Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
+*Layer is* at the top of an opened row, through `MillBurnProject.SetRole`, which marks the role the
+operator's so a refresh keeps it. The guess is kept from import onwards (`ProjectSource.RoleGuessed`)
+and shown on the row: a board built from a project had been reporting every layer as declared, so
+the advice that a role was a guess had not fired in the window since projects arrived. Tried on
+`TopBotNames`, every role a guess; the Olimex set is not in the corpus.
 
 #### 6.32 Say where the project came from — **enhancement · fixed**
 

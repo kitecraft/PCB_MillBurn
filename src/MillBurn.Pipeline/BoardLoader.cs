@@ -88,12 +88,26 @@ public static class BoardLoader
         RealisationOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(sources);
+        return LoadSources(source, sources.Select(s => (s.FileName, s.Content, s.Role, false)), options);
+    }
+
+    /// <summary>
+    /// <see cref="LoadSources(string, IEnumerable{ValueTuple{string, byte[], LayerRole}}, RealisationOptions?)"/>,
+    /// with whether each role was guessed from its file's name — which the project knows and the
+    /// realiser cannot, since it is handed the role rather than finding it (6.31).
+    /// </summary>
+    public static Board LoadSources(
+        string source,
+        IEnumerable<(string FileName, byte[] Content, LayerRole Role, bool RoleGuessed)> sources,
+        RealisationOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
         options ??= new RealisationOptions();
 
         var layers = new List<BoardLayer>();
         var failures = new List<BoardFailure>();
 
-        foreach (var (fileName, content, role) in sources)
+        foreach (var (fileName, content, role, guessed) in sources)
         {
             try
             {
@@ -109,14 +123,20 @@ public static class BoardLoader
                 // Built once per distinct file, role and set of options. A preview that follows a
                 // ticked checkbox changes none of those for any layer, so the whole board is served
                 // from memory and the work that used to be repeated is simply not done.
-                layers.Add(RealisedLayers.Get(
+                var realised = RealisedLayers.Get(
                     fileName,
                     content,
                     role,
                     options,
                     () => LayerRoleInfo.IsDrill(role) && !IsGerberText(text)
                         ? RealiseDrill(fileName, ExcellonParser.Parse(text), role, roleGuessed: false, options)
-                        : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options)));
+                        : RealiseGerber(fileName, GerberParser.Parse(text), role, roleGuessed: false, options));
+
+                // Applied after the cache, not inside it. The cache is keyed on the file, its bytes,
+                // its role and the options — not on how the role was arrived at — so a flag built in
+                // would be whichever value the first caller happened to pass. Copied only when it
+                // differs, so a layer that is not a guess is still the cached instance itself.
+                layers.Add(realised.RoleGuessed == guessed ? realised : realised with { RoleGuessed = guessed });
             }
             catch (Exception ex) when (ex is GerberParseException or DecoderFallbackException)
             {

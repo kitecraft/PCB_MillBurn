@@ -534,6 +534,75 @@ already knows the difference.
 says so on its row, any layer's role can be set by hand from the window, the choice survives a save,
 a reopen and a refresh, and a `--shot` shows both.
 
+### Closed — 2026-10-11
+
+**Met**, on the board 6.31 named as the test — `TopBotNames`, PogoTest1 renamed to the
+Top/Bot/Ln1_Cu convention with every file-function attribute stripped, so every role on it is a
+guess — rather than the Olimex set itself, which is not in the corpus.
+
+**What was found first changed the shape of it.** The row could not say a role was guessed,
+because nothing it was built from knew: import worked the answer out and threw it away, and a
+board built from a project — every board the window shows — passed `roleGuessed: false` for every
+layer. So the checks panel's *"this role is a guess"*, there since sprint 1, had not fired in the
+window since projects arrived, and *Help* has been promising *"anything guessed is labelled"* all
+the while.
+
+- **The guess is kept.** `ProjectSource.RoleGuessed`, from import, through save and open, to
+  `BoardLayer.RoleGuessed`. A project saved before it existed works it out once on opening, from
+  the same bytes: a guess only if the file still cannot say what it is and the saved role is the
+  one its name gives. Applied after the realised-layer cache, which is not keyed on it.
+- **The row says so**: *guessed*, in the warning colour, beside the layer's name; and under the
+  picker, how the role was arrived at — *read from the file*, *guessed from the file's name… check
+  it*, or *set by hand. Refreshing the folder keeps it.*
+- **The picker**, *Layer is*, at the top of an opened row. Choosing a role — including the one it
+  already has, which is how a guess is confirmed — goes through `MillBurnProject.SetRole`: marked as
+  the operator's, no longer a guess, the layer's old settings forgotten so it takes the defaults for
+  what it now is, and the project marked unsaved. The view model stops and clears the drawn
+  programs first, as a new `StaleBecause.RoleChanged` says, then rebuilds; an opened program stays.
+- **A refresh keeps it**, as it already did, and no longer brings the fresh file's guess back.
+- **The checks say it once.** With the guess restored, a board like this one produced nine
+  identical lines. More than one guessed layer is now one line counting them and pointing at the
+  rows; a single one keeps its own.
+- **`--set-role <name>=<role>`** does what the picker does, for a shot, and says what it did — or
+  that a name matched nothing, or matched three layers and which.
+
+**The manual test.** `TopBotNames` opened from its folder: every row *guessed*, one check line.
+Then `--set-role Ln1=Documentation`: *"8 files declare no file function…"*, the status line
+*"Ln1_Cu.gbr is now Documentation, set by hand. Save to keep this."*, unsaved changes *yes*. And
+`--set-role Top.gbr=TopCopper`, confirming a guess: that row reads *Set by hand* with no tag, the
+next still *guessed*. `--set-role Top=…` answered *"'Top' matches 3 layers (Top.gbr, Top_Mask.gbr,
+Top_Silk.gbr); name one."* Pictures: `WorkingFolder/V0.6.0/Screenshots/story-7-*.png`.
+
+**The saved file gained a field, and nothing is Breaking.** `RoleGuessed` is optional on reading —
+an older project works it out — and 0.5.0 opening a project saved by this ignores it, since the
+manifest reader does not reject fields it does not know. No `SchemaVersion` change.
+
+**What the review found — 2026-10-11, medium.** Nine findings; seven acted on, two left.
+
+- **The picker could not confirm a guess** — choosing the item a combo box already shows is not a
+  change, so it raised nothing, and the commonest answer to *is this right?* was unreachable from
+  the window. A guessed row now has *That's right* beside its explanation:
+  `story-7-confirm-a-guess.png`.
+- **A role a file cannot be read as would have taken its row with it** — a layer that fails to
+  realise is not on the board, so the picker that could undo the choice went too, and the choice
+  was marked as the operator's. Now refused, put back, and said. **Not seen to fire**: telling the
+  Excellon drill file it is top copper did not fail — the Gerber parser read it — so the layer and
+  its row stayed and the choice could be undone. No file here fails that way; the guard is for the
+  one that does.
+- **The rebuild ran inside the combo box's own selection write**, replacing the row it belongs to.
+  Posted to the UI thread's context now.
+- **An older project's guess compared the saved role with today's reading of the name**, so a
+  matcher change would have turned a guess into "read from the file". No earlier build could set a
+  role by hand, so a file that declares nothing is now a guess whatever role was saved.
+- **Smaller:** a comment that had landed on the wrong method; rows looking up hand-set roles one
+  by one; `--set-role` preferring an exact file name before a partial one.
+- **Left:** the one *N files…* line cannot be clicked through to a row, which is the trade for the
+  rows saying it themselves; and the row's own re-check of a hand-set role, now simply the board's.
+
+**Not done.** The CLI cannot set a role yet — `project save` carries outputs and job options but
+not this — which leaves the window the only way to make a hand-set project. And the Olimex set from
+6.28 has not been tried, because it is not in the corpus.
+
 ---
 
 ## Deliberately out

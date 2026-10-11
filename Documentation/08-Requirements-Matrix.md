@@ -80,8 +80,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry pipeline | 24 | 18 | 0 | 3 | 1 | 1 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
 | 04 Machines, laser & mixed workflows | 32 | 12 | 1 | 15 | 0 | 3 | 1 |
-| 05 Viewer & export | 42 | 25 | 0 | 11 | 0 | 3 | 3 |
-| **Requirements** | **123** | **76** | **1** | **31** | **2** | **7** | **6** |
+| 05 Viewer & export | 43 | 26 | 0 | 11 | 0 | 3 | 3 |
+| **Requirements** | **124** | **77** | **1** | **31** | **2** | **7** | **6** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -250,6 +250,7 @@ pieces of new capability, none of which the workshop has asked for.
 | V37 | The checks become something you can read: a non-modal findings view naming every place the copper stays joined | 06 §6.44 | **Done** | `BoardFindings`, `FindingsWindow`, *Job › Findings* (F7); a coordinate and the nets for each place, capped and counted. `BoardFindingsTests`. Sprint 3 — **the whole of it** |
 | V38 | Copper with no net name is called unnamed wherever it is reported | 06 §6.53 | **Done** | `ElectricalCheck.NamedSides`; a region sharing one named net is no longer reported as safe. `ElectricalCheckTests`. Sprint 4 story 2 |
 | V39 | A scale along the top and left of both viewports, agreeing with the grid at every zoom | 06 §6.1 | **Done** | `GridLadder`, `RulerFrame`, `Ruler.Draw`, called by `BoardRenderer` and `ToolpathRenderer` from one ladder; toggled by *View › Show rulers* and remembered. `RulerTests`, `AppSettingsTests.TheRulerIsOnUnlessItWasTurnedOff`. Sprint 4 story 8 |
+| V40 | A layer's role can be set by hand on its row, and a guessed one says so | 06 §6.31 | **Done** | `MillBurnProject.SetRole`, `ProjectSource.RoleGuessed`, *Layer is* on the row, `StaleBecause.RoleChanged`; `--set-role`. `LayerRoleByHandTests`, `StalenessTests`. Sprint 5 story 7 |
 | V40 | The pointer's position, continuously, in the board's own numbers with its origin named | 06 §6.48 | **Done** | `RulerReadout`, `BoardView.PointerAt`/`OriginName`; reads from the stock's corner on a job built on stock and the board's otherwise, cleared when the pointer leaves. Shift-drag measures: `RulerMeasure` gives dx, dy and the diagonal. Sprint 4 story 8 |
 | V41 | A finding takes you to the copper it is about | 06 §6.56 | **Done** | `Marker`, `BoardView.GoTo`; every coordinate in the findings list is a button, the view goes to it at 14 mm across and rings it, and the mark clears by each of the five routes the entry names. `MarkerTests`. Sprint 4 story 9 |
 | V42 | The window says which folder the Gerbers came from | 06 §6.32 | **Done** | `ProjectOrigin.Full`, at the head of *Project info*; the full path, normalised, labelled `Gerbers`. `ProjectOriginTests`. Sprint 4 story 6 |

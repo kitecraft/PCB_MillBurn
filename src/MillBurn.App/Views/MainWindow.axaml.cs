@@ -434,6 +434,15 @@ public partial class MainWindow : Window
             Change(vm, what);
         }
 
+        // Tells one layer what it is, the way the row's picker does — 6.31. `<name>=<role>`, the name
+        // matched against the file names and the role one of `LayerRole`'s, so a shot can show a
+        // corrected layer and what the correction did. **Says what it did, and says so when it could
+        // not** (06 §6.66): a flag that quietly matched nothing photographs the uncorrected board.
+        if (Argument(args, "--set-role") is { } assignment)
+        {
+            Console.WriteLine(SetRoleForShot(vm, assignment));
+        }
+
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
         // the shut one. The rows are the part most likely to lay out wrongly.
         //
@@ -1529,6 +1538,42 @@ public partial class MainWindow : Window
         {
             window.Close();
         }
+    }
+
+    /// <summary>For <c>--set-role</c>: the one line saying what was set, or why nothing was.</summary>
+    private static string SetRoleForShot(MainViewModel vm, string assignment)
+    {
+        var parts = assignment.Split('=', 2, StringSplitOptions.TrimEntries);
+
+        if (parts.Length != 2 || !Enum.TryParse<LayerRole>(parts[1], ignoreCase: true, out var role)
+            || !Enum.IsDefined(role))
+        {
+            return $"set role: '{assignment}' is not <name>=<role>; the roles are {string.Join(", ", Enum.GetNames<LayerRole>())}";
+        }
+
+        // An exact file name first, so a name that is part of others can still be meant on its own.
+        var exact = vm.Layers
+            .Where(r => r.Layer is not null && string.Equals(r.FileName, parts[0], StringComparison.OrdinalIgnoreCase))
+            .Select(r => r.FileName)
+            .ToList();
+
+        var matches = exact.Count > 0
+            ? exact
+            : vm.Layers
+                .Where(r => r.Layer is not null && r.FileName.Contains(parts[0], StringComparison.OrdinalIgnoreCase))
+                .Select(r => r.FileName)
+                .ToList();
+
+        if (matches.Count != 1)
+        {
+            return matches.Count == 0
+                ? $"set role: no layer's file name contains '{parts[0]}'"
+                : $"set role: '{parts[0]}' matches {matches.Count} layers ({string.Join(", ", matches)}); name one";
+        }
+
+        return vm.SetRole(matches[0], role)
+            ? $"set role: {matches[0]} is now {role}, by hand"
+            : $"set role: {matches[0]} already is {role}, by hand";
     }
 
     /// <summary>

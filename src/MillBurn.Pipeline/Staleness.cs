@@ -30,6 +30,12 @@ public enum StaleBecause
 
     /// <summary>A different project, or none: importing, opening, closing.</summary>
     BoardReplaced,
+
+    /// <summary>
+    /// A layer was told what it is, by hand (6.31). The board is rebuilt from the project with that
+    /// layer realised as its new role, so every program drawn of the old one is of a different board.
+    /// </summary>
+    RoleChanged,
 }
 
 /// <summary>
@@ -97,10 +103,10 @@ public readonly record struct Staleness(
     /// was false in exactly the case that needed it.
     /// </para>
     /// <para>
-    /// **Two reasons do not rebuild here, and it is the same reason twice.**
-    /// <see cref="StaleBecause.BoardReplaced"/> and <see cref="StaleBecause.SourceRefreshed"/>
-    /// both have a caller that replaces the thing a scene is built *from* — the project, or the
-    /// source bytes — and then rebuilds itself. Rebuilding here as well would run the whole thing
+    /// **Three reasons do not rebuild here, and it is the same reason three times.**
+    /// <see cref="StaleBecause.BoardReplaced"/>, <see cref="StaleBecause.SourceRefreshed"/> and
+    /// <see cref="StaleBecause.RoleChanged"/> all have a caller that replaces the thing a scene is
+    /// built *from* — the project, the source bytes, a layer's role — and then rebuilds itself. Rebuilding here as well would run the whole thing
     /// twice, the first time against geometry that is about to be thrown away.
     /// </para>
     /// <para>
@@ -162,6 +168,17 @@ public readonly record struct Staleness(
             StopRun: true,
             ClearPrograms: true,
             ForgetOpenedProgram: true,
+            Rebuild: false,
+            OnlyWhenDrawn: false),
+
+        // The third that its caller rebuilds, for the same reason as the other two: the caller
+        // changes the project the scene is built from, and a run in flight is reading it, so the stop
+        // comes first and the rebuild after. An opened program stays — it came off disk and no role
+        // made it — and it is one press, so it is not guarded like an output change.
+        StaleBecause.RoleChanged => new(
+            StopRun: true,
+            ClearPrograms: true,
+            ForgetOpenedProgram: false,
             Rebuild: false,
             OnlyWhenDrawn: false),
 

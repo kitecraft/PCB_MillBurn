@@ -2000,6 +2000,77 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private void OnRoleChanged(LayerRow row, LayerRole role)
+    {
+        if (_suspendOutputChanges)
+        {
+            return;
+        }
+
+        // Posted, not run here. The combo box that raised this is in the middle of writing its
+        // selection, and the rebuild below replaces the row it belongs to. On the UI thread there is
+        // always a context to post to; without one — a script — there is nothing to be inside.
+        if (SynchronizationContext.Current is { } context)
+        {
+            context.Post(_ => SetRole(row.FileName, role), null);
+        }
+        else
+        {
+            SetRole(row.FileName, role);
+        }
+    }
+
+    /// <summary>
+    /// Tells a layer what it is, by hand — 6.31. The way out of a name the matcher does not know, or
+    /// reads wrong: *"if we do miss one, or mis-interpret one, the user has a way to fix it on their
+    /// own."*
+    ///
+    /// **Stopped and cleared before the change, rebuilt after it**, the split a refresh uses and for
+    /// the same reason (`StaleBecause.RoleChanged`): a run in flight is reading the project this is
+    /// about to change. The layer's own settings are forgotten with its old role, so it takes the
+    /// defaults for the new one, as an imported layer would.
+    /// </summary>
+    /// <returns>False when there is no such layer, or it already has that role by hand.</returns>
+    public bool SetRole(string fileName, LayerRole role)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+
+        var current = _project.Sources.FirstOrDefault(s => string.Equals(s.FileName, fileName, StringComparison.Ordinal));
+
+        if (current is null || (current.Role == role && current.RoleOverridden))
+        {
+            return false;
+        }
+
+        var stopped = Invalidate(StaleBecause.RoleChanged);
+
+        var sources = _project.Sources;
+        var settings = _project.Settings;
+        _project.SetRole(fileName, role);
+
+        // **Refused when the file cannot be read as that role**, rather than left. Telling an
+        // Excellon drill file it is copper hands it to the Gerber parser, which fails, and a layer
+        // that fails is not on the board — so its row, and the picker that could undo the choice,
+        // went with it, and the choice was marked as the operator's and survived every refresh.
+        // Found by review. Put back as it was, and said.
+        var board = ProjectFile.ToBoard(_project);
+
+        if (board.Failures.FirstOrDefault(f => string.Equals(f.FileName, fileName, StringComparison.Ordinal)) is { } failure)
+        {
+            _project.Sources = sources;
+            _project.Settings = settings;
+            Rebuild(TimeSpan.Zero);
+            StatusMessage = $"{fileName} cannot be read as {LayerRoleInfo.Label(role)}, so it was left as {LayerRoleInfo.Label(current.Role)}: {failure.Reason}";
+            return false;
+        }
+
+        Rebuild(TimeSpan.Zero);
+
+        var said = $"{fileName} is now {LayerRoleInfo.Label(role)}, set by hand. Save to keep this.";
+        StatusMessage = stopped ? said + " The preview that was building has been stopped." : said;
+        return true;
+    }
+
     public void ApplyRefresh()
     {
         if (_plan is not { } plan)
@@ -2458,6 +2529,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _suspendOutputChanges = true;
         Layers.Clear();
 
+        var setByHand = _project.Sources
+            .Where(s => s.RoleOverridden)
+            .Select(s => s.FileName)
+            .ToHashSet(StringComparer.Ordinal);
+
         foreach (var layer in scene.Layers)
         {
             if (!byName.TryGetValue(layer.Id, out var source))
@@ -2484,7 +2560,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 };
 
             var row = new LayerRow(
-                source, layer, settings, Library.Tools, OnLayerVisibilityChanged, OnOutputChanged);
+                source, layer, settings, Library.Tools, OnLayerVisibilityChanged, OnOutputChanged,
+                OnRoleChanged,
+                roleSetByHand: setByHand.Contains(layer.Id));
 
             if (bySource.TryGetValue(layer.Id, out var paths))
             {
@@ -3424,14 +3502,26 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 $"{layer.FileName}: {first.Message}"));
         }
 
-        foreach (var layer in board.Layers.Where(l => l.RoleGuessed))
+        var guessed = board.Layers.Where(l => l.RoleGuessed).ToList();
+
+        if (guessed.Count == 1)
         {
             // The role is the label the panel now prints in front of this, so restating it here
             // said the same layer three times: "Top copper — F_Cu.gbr declares no file function;
             // role guessed as Top copper." The file name stays — it is the thing the operator
             // would open to check the guess, and it is the one fact the label does not carry.
-            Warn(Check.Advice(SourceFor(layer), CheckKind.Board,
-                $"{layer.FileName} declares no file function; this role is a guess."));
+            Warn(Check.Advice(SourceFor(guessed[0]), CheckKind.Board,
+                $"{guessed[0].FileName} declares no file function; this role is a guess."));
+        }
+        else if (guessed.Count > 1)
+        {
+            // **One line for all of them, once the rows say it themselves** (6.31). A board whose
+            // exporter writes no file functions guesses every layer, and a line apiece was nine
+            // identical sentences pushing everything else out of the list — the dilution the
+            // findings view was built to end. Each row is marked *guessed*, and its picker is where
+            // the guess is put right.
+            Warn(Check.Advice(CheckSource.Board, CheckKind.Board,
+                $"{guessed.Count} files declare no file function, so their roles were read off their names. Each is marked guessed on its row; open the row to check it or set it by hand."));
         }
 
         if (!board.Layers.Any(l => l.Role == LayerRole.Outline))

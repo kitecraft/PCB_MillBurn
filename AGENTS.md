@@ -55,6 +55,8 @@ sufficient.
   [library|name|kind|size]` (the library, filtered and ordered), `--tool-prompt [delete|copy]` (the
   two questions that window asks, for their wording), `--tools-from <file>` (a library from a path,
   for photographing a long one without borrowing anybody's),
+  `--set-role <name>=<role>` (the layer row's *Layer is* picker, for one file whose name contains
+  `<name>`; prints what it set, or why it could not — no match, or more than one),
   `--change <output|thickness|tabs|sizes|blank>` and `--then-change <same>` (makes that change the
   way a click would — `--change` before the preview and `--then-change` over a drawn one, which is
   the only way to photograph an edit that invalidates something, and is what 6.33 is. Either makes
