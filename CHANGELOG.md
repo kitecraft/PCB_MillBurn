@@ -13,9 +13,9 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 ## [0.6.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.6.0) — 2026-10-11
 
 **Put it where it belongs.** The sprint set out to get a design onto the machine in the right
-place, the right way up and on the right layer, and did the first and the last of those. Four
-stories shipped, three were set aside at the bench, and one was built, proven and declined. The
-sprint's notes say which, and why.
+place, the right way up and on the right layer, and did the last of those. Three stories shipped,
+three were set aside at the bench, and one was built, proven and declined — with two items from the
+backlog taken in where two of the set-aside ones had been. The sprint's notes say which, and why.
 
 [Sprint 5 — Put it where it belongs](Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
 
