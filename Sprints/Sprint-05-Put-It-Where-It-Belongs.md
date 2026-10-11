@@ -238,6 +238,69 @@ assignment and the modes, not the numbers that depend on the tube, the lens and 
 **Done when** the preset imports into LightBurn and the five layers come up with the modes the
 table names, on a board exported from the application and nothing typed by hand.
 
+### Closed — 2026-10-10: declined, and what was kept
+
+**Not met, deliberately.** The preset was built, failed on the bench, was shown how to work, and
+was then declined by the product owner as not worth keeping. V11 is **Superseded** in 08, and the
+whole account — including the file format as LightBurn wrote it — is
+[06 §6.69](../Documentation/06-Roadmap-and-Risks.md), so that nobody repeats the bench work.
+
+**What happened at the bench, in order.**
+
+1. **The preset as first built** — a `.lbrn2` holding the five layers' settings and no shapes —
+   loaded nothing: *"Neither file opened anything in LightBurn. The Cuts/Layers remain empty."*
+   LightBurn keeps a layer only while a shape is on it. The tests had passed, because they checked
+   the file against my own reading of an unpublished format: exactly the failure *verify by
+   running* exists to catch.
+2. **An SVG of this application's, imported and saved by LightBurn**, gave the real format — and
+   showed the chore is real: C01, remembered as Fill in the workshop's preferences, came back as
+   Line at the defaults.
+3. **A hand-written probe** with a square on each layer opened with every setting as written, and
+   in Preview filled the C01 square as a ring and left the output-off layers out of the job. A
+   `.lbrn2` per SVG, with the geometry in it, would have worked.
+4. **Declined:** *"It seems like overhead that we have to maintain for a small number of users. I
+   don't use LightBurn normally. I use Falcon from Creality."* The value was always in each SVG
+   putting its geometry on the right colour, which story 1 already does for any software that
+   imports by colour.
+
+**What was kept, because it is worth having without LightBurn.**
+
+- **The project page's *Laser layers* table** — colour, with a swatch, what it is, Fill or Line,
+  and whether to burn it — for the colours actually in this export's files and no others, naming
+  no program. The test board on stock gets three rows: the drawing, the stock and holes, the
+  outline. `WorkingFolder/V0.6.0/Screenshots/story-2-laser-layers-table.png`.
+- **`LayerContract`**, the one table both that page and each SVG's own description are written
+  from. Story 1 had the description's wording in a `switch` inside the writer.
+- **The export window counts the project page.** It never had, so it said one file fewer than it
+  wrote; found while counting the preset. *16 files will be written*, which is what the CLI writes:
+  `story-2-export-window-counts-the-page.png`.
+
+**What was removed:** the preset writer and its tests, the plan's preset field and the list of
+whole-export files built for it, and the changes to "Export only this layer", the plan cache and
+the CLI that existed only to carry it. The five code-review findings fixed in the preset all went
+with it.
+
+**The review of what was kept — 2026-10-10, medium.** Ten findings; six fixed, four left.
+
+- **A stock with no holes was called "stock and holes".** The row is now named by the placing layer
+  actually in the files, as the paragraph above the table already was.
+- **The file's description and the page listed layers in different orders**; both follow the
+  contract's run order now.
+- **`ArtRole.Registration` said "usually burned"**, while the contract says not to output it. The
+  only geometry on it is the stock and its holes, so its documentation now says so — and says a
+  mark meant to burn wants a role of its own, which is what story 4 has to know before it puts
+  fiducials anywhere.
+- **Smaller:** the mode cell uses the mode's own name rather than a ternary that would call a third
+  mode "Line"; the colour is escaped on the page like everything beside it.
+- **Left:** an unknown role throws rather than writing "unassigned" — the enum is closed and a new
+  role should fail loudly; the page reads the built-in palette rather than the SVGs' profile, and
+  the test now asserts the page's colours are exactly the files'; a Fill row for an export whose
+  only drawing is empty, which is one harmless row; and placing layers matched by label, a pattern
+  `Laser()` already used, whose move to roles is a change of its own.
+- **`/describe-test` found the gap that mattered**: the page's table was never compared with the
+  SVGs. The test now collects every stroke colour in the export's files and asserts it is the set
+  of colours in the table.
+
 ---
 
 ## Story 3 — Which way up is this stock?

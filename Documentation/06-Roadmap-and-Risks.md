@@ -6852,3 +6852,56 @@ that way in `Staleness.Of` rather than as two unrelated exceptions.
 **The test caught the correction, which is the right way round.** `ClearingThePicturePutsOneBack`
 failed the moment `Rebuild` went false, and in being fixed it became a partition over the whole
 enum — closing the last of the five decisions that had no sweep pinning it.
+
+#### 6.69 A LightBurn layer preset beside the SVGs — **enhancement · superseded** — *built, checked on the bench and declined by the product owner, 2026-10-10*
+
+Sprint 5 story 2, V11: 04 §2.3 says to *"ship this as a LightBurn layer preset next to the SVG, so
+the settings are applied once and then reused for every board."* It was built, and the bench said
+no twice — once about the file, and once about whether it was worth having.
+
+**The file did nothing.** The first version was a `.lbrn2` with the five layers' settings and no
+shapes. Opened in LightBurn 2.1.03, *"Neither file opened anything in LightBurn. The Cuts/Layers
+remain empty."* LightBurn keeps a layer only while a shape is on it; a project of settings alone is
+an empty project. And the import does not reuse remembered settings either: the workshop's own
+preferences had C01 on Fill, and an SVG imported and saved came back with C01 as Line at 20 % and
+100 mm/s. So the chore V11 describes is real in LightBurn — every board's layers are set up again.
+
+**What would have worked, and was proven to.** A `.lbrn2` per SVG with the geometry in it, every
+shape on its role's layer and the layers already set. A hand-written probe — five 10 mm squares, one
+per layer, the C01 square with a hole — opened with every setting as written: C01 on Fill, C00 and
+C08 with Output off, the list in priority order with C02 first, each layer named, and in Preview the
+C01 square filled as a ring, the hole left clear, the two output-off layers left out of the job.
+Screenshots: `WorkingFolder/Sprint 5/Screenshots/layer-probe.lbrn2.png` and `…_preview.png`.
+
+**Declined anyway, and that is the useful finding.** *"It seems like overhead that we have to
+maintain for a small number of users. I don't use LightBurn normally. I use Falcon from Creality."*
+The value was always in each SVG putting its geometry on the right colour, and story 1 already does
+that for any software that imports by colour. A LightBurn project is a second output format, in a
+layout LightBurn does not publish and may change in any release, for users this application does
+not have. What stayed: the project page's *Laser layers* table, program-neutral, from the same
+`LayerContract` the SVGs' descriptions are written from; and a fix found on the way — the export
+window had never counted the project page, so it said one file fewer than it wrote.
+
+**The format, as LightBurn 2.1.03 wrote it**, kept so that whoever asks for this next starts from
+evidence rather than from a library's README. Read from a file LightBurn saved itself
+(`Millburn_Test_Board-B_Mask.lbrn2`, an import of this application's SVG) and from the probe above.
+
+- Root: `<LightBurnProject AppVersion="2.1.03" FormatVersion="1" MaterialHeight="0" MirrorX="False"
+  MirrorY="False">`. LightBurn adds `DeviceName`, a `<Thumbnail>`, `<VariableText>`, `<UIPrefs>` and
+  `<Notes>`; the probe had none of them and opened.
+- A layer: `<CutSetting type="Cut">` for Line, `type="Scan"` for Fill, each value a child element with
+  a `Value` attribute — `<index Value="1"/>` (the palette number, C01 is 1), `<name …/>`,
+  `<priority …/>`, and `<doOutput Value="0"/>` for Output off. Power and speed, when left out, come up
+  at 20 % and 6,000 mm/min.
+- A shape: `<Shape Type="Path" CutIndex="1" VertID="n" PrimID="n">` holding `<XForm>1 0 0 1 x y</XForm>`,
+  `<VertList>` of `V<x> <y>c0x1c1x1` per vertex, and `<PrimList>LineClosed</PrimList>`. LightBurn
+  shares vertex and primitive lists between shapes by ID and omits a repeated one; unique IDs with
+  both lists always present is what the probe used.
+- Coordinates: millimetres, **Y up**. An imported SVG keeps its own coordinates with Y negated, and
+  the `XForm` holds where it was dropped on the bed. A hole is a second closed shape inside the
+  first, on the same layer.
+- Not seen in a real file: a true arc. LightBurn stored the import's circles as runs of straight
+  segments, and that is what a writer should do until it has been shown otherwise.
+
+**If it is asked for again**, the reasons above are the ones to answer, and the bench work does not
+need repeating.

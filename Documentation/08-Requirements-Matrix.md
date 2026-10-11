@@ -80,8 +80,8 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 02 Gerber & geometry pipeline | 24 | 18 | 0 | 3 | 1 | 1 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
 | 04 Machines, laser & mixed workflows | 32 | 12 | 1 | 15 | 0 | 3 | 1 |
-| 05 Viewer & export | 42 | 25 | 0 | 11 | 0 | 4 | 2 |
-| **Requirements** | **123** | **76** | **1** | **31** | **2** | **8** | **5** |
+| 05 Viewer & export | 42 | 25 | 0 | 11 | 0 | 3 | 3 |
+| **Requirements** | **123** | **76** | **1** | **31** | **2** | **7** | **6** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -221,7 +221,7 @@ pieces of new capability, none of which the workshop has asked for.
 | V8 | Live stats readout: distances, lifts, per-tool time | §2.4 | **Done** | status bar and export summary |
 | V9 | Structured SVG: real mm, named layers, `evenodd` holes, deterministic | §3.2 | **Done** | `SvgWriter`; byte-identical across runs |
 | V10 | One page origin and size shared by every export in a job | §3.2 | **Done** | `SvgPage`; asserted in the golden tests |
-| V11 | LightBurn palette mapping and a shipped layer preset | §3.3 | **Partial** | palette mapping done; no preset file ships |
+| V11 | LightBurn palette mapping and a shipped layer preset | §3.3 | **Superseded** | palette mapping done (M6). The preset was built and checked on the bench in sprint 5, and declined: a LightBurn project with no shapes loads no layers, one with the geometry works, and keeping a second output format for software the workshop does not use is not worth it — 06 §6.69, with the format as LightBurn wrote it. The project page's *Laser layers* table says what each colour is, for any software that imports by colour |
 | V12 | DXF (R12 polyline) as the second laser flavour | §3.4 | **Not started** | `MillBurn.Export` holds SVG only |
 | V13 | PNG at a specified DPI | §3.4 | **Partial** | `--png` renders; DPI is not a parameter |
 | V14 | PDF for the documentation profile | §3.4 | **Not started** | — |

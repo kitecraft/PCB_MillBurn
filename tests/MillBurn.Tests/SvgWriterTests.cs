@@ -409,7 +409,7 @@ public sealed class SvgWriterTests
         Assert.DoesNotContain("C03", desc, StringComparison.Ordinal);
         Assert.DoesNotContain("C00", desc, StringComparison.Ordinal);
 
-        // Once each, though Reference is in the file twice, and in the enum's order though it came first.
+        // Once each, though Reference is in the file twice, and in run order though it came first.
         Assert.Single(desc.Split('\n'), l => l.StartsWith("Layer C08", StringComparison.Ordinal));
         Assert.True(desc.IndexOf("C01", StringComparison.Ordinal) < desc.IndexOf("C08", StringComparison.Ordinal));
     }

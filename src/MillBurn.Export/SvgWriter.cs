@@ -119,17 +119,18 @@ public static class SvgWriter
         // LightBurn's only: the modes are its layer settings, and an Inkscape file's colours are for
         // reading the drawing. A role with nothing to draw is left out, since a line telling somebody
         // to set up a layer that is not there is worse than none.
-        var roles = options.Profile.Flavour == SvgFlavour.LightBurn
+        //
+        // In the contract's run order, which is the order the project page lists them in too.
+        var present = options.Profile.Flavour == SvgFlavour.LightBurn
             ? artwork.Layers.Where(l => l.Shapes.Any(Draws)).Select(l => l.Role)
                 .Concat(options.References.Where(r => r.Shapes.Any(Draws)).Select(r => r.Role))
-                .Distinct()
-                .Order()
-            : Enumerable.Empty<ArtRole>();
+                .ToHashSet()
+            : [];
 
-        foreach (var role in roles)
+        foreach (var role in LayerContract.All.Select(c => c.Role).Where(present.Contains))
         {
             sb.Append(Invariant(
-                $"Layer {options.Profile.LayerNameFor(role)} ({options.Profile.ColourFor(role)}): {Purpose(role)}.\n"));
+                $"Layer {options.Profile.LayerNameFor(role)} ({options.Profile.ColourFor(role)}): {LayerContract.For(role).Description}.\n"));
         }
 
         if (options.Timestamp is { } stamp)
@@ -141,19 +142,6 @@ public static class SvgWriter
     }
 
     private static bool Draws(ArtShape shape) => shape.Subpaths.Any(s => s.Count > 0);
-
-    /// <summary>The contract in Documentation/04 §2.3: what each role is, and the mode its layer is set to once.</summary>
-    private static string Purpose(ArtRole role) => role switch
-    {
-        ArtRole.Fill => "regions to clear; set to Fill",
-        ArtRole.Boundary => "the edges of those regions; Line, low power, run first",
-        ArtRole.Mark => "centrelines; Line",
-        // Not "Line": the stock's rectangle is on this layer with the holes, and burning it marks the
-        // whole edge of the piece. Every other place that describes the placing layers says the same.
-        ArtRole.Registration => "for placing and registering the work, not for burning; set not to output",
-        ArtRole.Reference => "for reference only; set not to output",
-        _ => "unassigned",
-    };
 
     private static void WriteStyle(StringBuilder sb, SvgProfile profile)
     {
