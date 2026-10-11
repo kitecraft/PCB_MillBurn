@@ -3626,6 +3626,13 @@ stock allows.
 - **A mark, not a cut**: the letters of the corner engraved shallowly in the waste, or burned in by
   the laser as part of a placing layer — free on the laser, and readable rather than inferred.
 
+**Set aside in sprint 5, 2026-10-11**, by the product owner, until it proves a bigger problem — see
+[that sprint's story 3](../Sprints/Sprint-05-Put-It-Where-It-Belongs.md). Two findings from
+looking: a single chamfer cannot catch a flip on a near-square piece at any size; and a second
+chamfer has to go on a corner next to the datum, both of which hold an alignment hole, so it means
+moving a hole. Sizing the chamfer was declined — *"The problem I had can not be solved by changing
+the chamfer size."*
+
 **To settle:** whether the mark should also survive the board being cut out of the stock, since after
 that the waste is scrap and the board's own outline has to carry the orientation; and whether a flip
 needs to be as loudly marked as a turn.

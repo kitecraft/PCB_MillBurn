@@ -335,6 +335,29 @@ sprint runs.
 unambiguous under both a 180° turn and a flip, the stock program says what the mark means, and
 there is a photograph of the real piece rather than only a render.
 
+### Set aside — 2026-10-11, by the product owner
+
+**Not built, and not dropped either: left until it turns out to be a bigger problem.** This was the
+story the plan said would never be dropped. The product owner set it aside, and that decision
+outranks the plan's line about it.
+
+**What came out of looking at it,** so the next attempt starts from here:
+
+- **One chamfer cannot catch a flip on a near-square piece, whatever its size.** Turned over and
+  given a quarter turn, the chamfered corner goes straight back into the stop. On an oblong piece
+  the quarter turn is obvious; on 78.63 × 76.09 it is 2.5 mm.
+- **A second chamfer only works on a neighbouring corner** — on the diagonal, a flip about that
+  diagonal reproduces the pattern — **and both neighbouring corners hold an alignment hole**,
+  1.8 mm in from the edge, because the holes are as far apart as the stock allows. A second
+  chamfer means moving a hole, which makes every stock drilled before it disagree with the export.
+- **Sizing the chamfer to the piece was proposed and declined:** *"I'm ok with the chamfer as it is.
+  There is nothing wrong with it. The problem I had can not be solved by changing the chamfer size."*
+  The trouble at the bench was not that the corner was hard to see.
+- And: *"I think maybe we are overthinking/overworking this."* Worth taking as the guide for when it
+  comes back.
+
+V32 stays **Not started** in 08, and 06 §6.20 stays open with this beside it.
+
 ---
 
 ## Story 4 — Marks that survive what comes between
