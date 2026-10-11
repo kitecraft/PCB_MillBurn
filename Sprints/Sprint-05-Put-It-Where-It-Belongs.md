@@ -413,6 +413,19 @@ run once on a real piece of stock with real marks — numbers read off the machi
 **This is the story most likely to be dropped**, and it can be: story 4 is useful without it,
 because the two-point fit already built consumes the marks it places.
 
+### Stories 4 and 5 set aside — 2026-10-11, by the product owner; 6.31 in their place
+
+**Not built.** Asked first this time, before anything was cut: the two waste holes already
+survive everything in the workshop's workflow, Drill alignment fits them, the laser is placed by
+the jig, and nothing in 0.5.0 — Drill alignment included — has been used on metal yet. Building a
+copper cross, a survivability table and a three-point fit before the two-point one has been leaned
+on is machinery ahead of need, and both stories can only close at the bench. Asked whether
+two-hole alignment had been good enough: *"yes, swap them for 6.55 and 6.31."*
+
+**The slice worth keeping for later**, if story 3's flip ever bites: a third hole off the line of
+the other two would make Drill alignment show a flipped piece as a large residual — the one place a
+third mark earns its keep here. M16 and M17 stay **Partial** in 08.
+
 ---
 
 ## Story 6 — The findings view, at half the cost and interruptible
@@ -446,6 +459,80 @@ often than it was.
 **Done when** the Mega's findings come back in appreciably less than 1.5 s with the figure
 measured and quoted, pressing F7 twice abandons the first run rather than waiting it out, and the
 window opens without a visible pause on a board with a hundred groups.
+
+### Closed — 2026-10-11
+
+**Met**, with the window's half met by measurement rather than by a change: nothing a real board
+produces needed one.
+
+**Half the cost, measured.** The whole findings run on the two-sided Mega, Release build, median of
+twenty after warming, the old code and the new run the same way back to back:
+**1,535 ms before, 806 ms after — 47 % less**, with identical answers (9 places, 7 groups). The
+machine settles after the first two or three runs and both versions slow by the same proportion,
+which is why the figure is the steady state and not the first run's 1,018 and 430.
+
+- **`ElectricalCheck.GrownCopper`**: the copper split into pieces, grown by half the cut, split into
+  the regions it merges into, and which piece fell in which region — built once per layer and handed
+  to both `Isolation` and `Gaps`. Each used to build it. It is tied to the copper and cut it was made
+  for, and refuses to answer about another layer.
+- **The token is read before each whole-layer operation.** A cancel 50 ms into a run used to return
+  500 ms later, and one in the second layer waited **928 ms**; now the longest wait is one Clipper
+  offset, **119 ms** at worst and usually under 30. `ASecondPressAbandonsTheRunInsteadOfWaitingItOut`
+  cancels inside the first layer's own settings lookup and requires the run to stop in under a
+  quarter of one layer's time on the same machine: **610 ms on the old code, which fails it, and
+  0.1 ms on the new.**
+- **The window, measured before deciding.** The Mega opens its findings window in **52 ms**. No
+  real board here reaches a hundred groups — widening the cut on the Mega merges them, peaking near
+  twenty while the places grow — so a hundred were fabricated for the measurement:
+  100 groups of 3 places opened in **146 ms**; 100 groups each filled to the 40-place cap, 4,000
+  rows, took **1,083 ms**. Virtualising the window for a case no board produces was not done. What
+  was fixed is the waste: each layer's shorts were filtered and copied again for every group, and
+  every bridge tested against every group; they are now read once and filed by region once.
+
+**Not done:** 6.54, the checks panel showing a cancelled run, which the plan said to fold in if
+this ran short. It did not, and it stays where it was.
+
+**What the review found — 2026-10-11, medium.** Eight findings; six acted on, two left.
+
+- **A cost regression, introduced by the fix itself.** The grown copper was built for every layer
+  before the check's cheap refusals, so a layer with no net names, or one, paid the whole offset for
+  an answer it then threw away — the boards the view can say least about made slowest. The refusals
+  are now `ElectricalCheck.CannotRun`, one place both callers ask before anything is grown.
+- **A mismatched grown copper slipped through on those early paths**, since the refusal of a wrong
+  layer or cut came after them. It now comes first in both checks.
+- **The shared piece-to-region array is read-only**: the check used to write into its copy as it
+  went, and that habit returning would quietly change what the gap search reads.
+- **`GrownCopper.Of` refuses a cut of no width** rather than clamping it to a zero offset of the
+  whole layer.
+- **The cancellation test says what it proves.** Its reader and the review both saw it: the token
+  turns before the layer's geometry starts, so it shows a run does none of that layer's work, and
+  would also pass with a single check straight after the lookup. That the token is read *between*
+  the offsets rests on the measured table above, and the test now says so. Its setup also stopped
+  using the indexer where production uses `TryGetValue`.
+- **Left:** a standalone `Gaps` call on a single-piece layer now offsets before noticing there is
+  one piece — only tests call it standalone; and the cancellation test averaging two layers' time,
+  where the margins are 0.1 ms against about 60.
+- **Re-measured after the fixes: 790 ms**, the same 9 places and 7 groups.
+
+---
+
+## Story 7 — Let the operator say what a layer is (6.31)
+
+**Taken in on 2026-10-11 in place of stories 4 and 5**, as the plan named it: *the first reserve if
+this sprint turns out shorter than it looks*. Asked for by the product owner after a day of chasing
+naming conventions: *"we can provide a user with a way to define a file in someway. So, if we do
+miss one, or mis-interpret one, the user has a way to fix it on their own."*
+
+**Problem.** When the application reads a layer's role wrong — or cannot read it at all — nothing
+in the window can correct it. Every part of the mechanism exists except the control: a hand-set
+role is saved (`RoleOverridden`), survives a refresh, and is printed by the CLI as *"(role set by
+hand)"*; `LayerRow.Role` is display-only and nothing sets it. And a role read off a file's *name*
+rather than declared by the file looks exactly like one that was declared, though `RoleGuessed`
+already knows the difference.
+
+**Done when** ([06 §6.31](../Documentation/06-Roadmap-and-Risks.md)) a layer whose role was guessed
+says so on its row, any layer's role can be set by hand from the window, the choice survives a save,
+a reopen and a refresh, and a `--shot` shows both.
 
 ---
 

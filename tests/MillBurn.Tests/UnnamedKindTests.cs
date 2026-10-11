@@ -342,7 +342,7 @@ public sealed class UnnamedKindTests(ITestOutputHelper output)
             new("NET_B", Middle(20, 0, 2)),
         ];
 
-        var gaps = ElectricalCheck.Gaps(copper, nets, Wide, CancellationToken.None);
+        var gaps = ElectricalCheck.Gaps(copper, nets, Wide, token: CancellationToken.None);
 
         foreach (var gap in gaps)
         {

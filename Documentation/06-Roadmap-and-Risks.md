@@ -6436,7 +6436,7 @@ proved by a test on that day rather than assumed to have worked all along.
 **Done when** a run an operator stops is shown as stopped rather than as clean, with a test that
 fails if the banner stops appearing.
 
-#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · open** — *found by `/code-review` at xhigh, 2026-09-30*
+#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · fixed** — *found by `/code-review` at xhigh, 2026-09-30*
 
 *Job ▸ Findings* takes about 1.5 s on a two-sided Arduino Mega. Roughly half of that is work already
 done, and almost none of it can be cancelled.
@@ -6471,6 +6471,16 @@ elsewhere.
 **Done when** the grown regions are computed once per layer and shared, the token is read before each
 whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
 window opens without a visible stall.
+
+**Fixed in sprint 5, 2026-10-11** — [story 6](../Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
+`ElectricalCheck.GrownCopper` is built once per layer and handed to both checks; the Mega's whole
+findings run went from **1,535 ms to 806 ms** at steady state with identical answers. The token is
+read before each whole-layer operation: a cancel that used to wait out the layer — up to 928 ms —
+now waits at most one offset, 119 ms, and a test that fails on the old code (610 ms) holds it. The
+window was measured rather than rebuilt: 52 ms on the Mega, 146 ms for a fabricated hundred groups
+of three places, and a second only when every one of a hundred groups is filled to the 40-place
+cap, which no board here produces. Each layer's shorts are now read once and filed by region once,
+instead of filtered again for every group.
 
 #### 6.56 A finding takes you to the copper it is about — **enhancement · fixed** — *asked for by the product owner, 2026-09-30*
 
