@@ -181,6 +181,21 @@ public sealed partial class LayerRow : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Puts the picker back to the role the layer really has, without reporting a change — for a
+    /// choice that was refused. The row is not rebuilt for a refusal, so without this it went on
+    /// showing the role that was turned down, and choosing the real one back then counted as a
+    /// change and marked it as set by hand. Found by review.
+    /// </summary>
+    public void ShowRole(LayerRole role)
+    {
+        if (RoleChoice.All.FirstOrDefault(c => c.Role == role) is { } choice && choice != _selectedRole)
+        {
+            _selectedRole = choice;
+            OnPropertyChanged(nameof(SelectedRole));
+        }
+    }
+
     /// <summary>The operator chose this role, so detection will not change it again.</summary>
     public bool RoleSetByHand { get; }
 

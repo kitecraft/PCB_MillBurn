@@ -111,7 +111,12 @@ public sealed partial class LayerRoleByHandTests : IDisposable
         var before = Source(project, "Top.gbr");
         Assert.True(before.RoleGuessed);
 
+        // Settings the operator chose for this layer as it is. Confirming the role must not cost them.
+        var chosen = new LayerOutputSettings { FileName = "Top.gbr", Output = OutputKind.Gcode, DepthNm = Nm.FromMillimetres(0.08) };
+        project.Settings = project.Settings.WithOutput(chosen);
+
         Assert.True(project.SetRole("Top.gbr", before.Role));
+        Assert.Equal(chosen, project.Settings.OutputFor("Top.gbr"));
 
         var after = Source(project, "Top.gbr");
         Assert.Equal(before.Role, after.Role);

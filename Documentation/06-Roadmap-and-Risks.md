@@ -3595,7 +3595,7 @@ than the plumbing:
   is the time the real program takes"* was false, in the one place the operator reads at the
   machine. It is now conditional, and says so when the time means nothing.
 
-#### 6.20 Which way up is this stock? — **enhancement · open**
+#### 6.20 Which way up is this stock? — **enhancement · open** — *set aside in sprint 5, until it proves a bigger problem*
 
 From the workshop, cutting the 78.63 x 76.09 mm test stock: *"Might need a better way to orient the
 board. On this mostly square board, the chamfer corner isn't quite enough for a visual check for
@@ -4399,6 +4399,11 @@ of backslashes, and relative to a working directory the operator never sees — 
 it* with "it depends where you were standing". And `ProjectOrigin.Full` returns its argument rather
 than throwing when a path cannot be resolved, because it runs while a panel is drawing, off a string
 a project file supplied.
+
+**Changed at 0.6.0, by the product owner.** The path is one line now, its middle folders elided and
+the whole of it in the tooltip. Wrapped in full, a path with no spaces could only break straight
+after the drive, so the panel spent a line on `E:`. Asked whether to keep it whole and wrap at
+folder boundaries instead, or elide the middle: *"B (The mouse hover solves the rest)."*
 
 #### 6.33 A superseded preview stops being watched, not stopped — **defect · fixed**
 
@@ -6929,3 +6934,56 @@ evidence rather than from a library's README. Read from a file LightBurn saved i
 
 **If it is asked for again**, the reasons above are the ones to answer, and the bench work does not
 need repeating.
+
+#### 6.70 The rulers could not be read in the light theme — **defect · fixed** — *found retaking the README's screenshots, 2026-10-11*
+
+The rulers' numbers, ticks, the pointer's readout and the measuring line were all drawn in white,
+over a strip washed in the viewport's own colour. On the dark theme that is white on near-black. On
+the light theme it is white on #FAFAFB: drawn, and invisible. They shipped in 0.5.0 (sprint 4 story
+8) and every picture taken of them was dark, so nothing had looked.
+
+Found retaking the README's light-theme viewer shot for 0.6.0, where the ruler strip came out empty.
+`Ruler.InkOn` now picks the marks' colour from the strip's — near-black on a light viewport, white on
+a dark one — for every mark the ruler draws. `RulerTests.TheMarksStandOutFromEitherThemesViewport`
+draws the ruler onto each theme's background and requires its marks to differ from it by most of
+the range; on the old code the light theme's differed by **4 in 255**.
+
+#### 6.71 The 66-up panel draws at about 14 fps where the README's hero showed 37 — **enhancement · open** — *found retaking the README's screenshots, 2026-10-11; for sprint 6*
+
+Retaking the hero for 0.6.0 — the GridStripConnector panel previewed, 1600 × 1000, the same shot the
+README has used since 0.2.0 — the status bar read **about 69 ms a frame, 14 fps**, where the
+September shot read **27 ms, 37 fps**. Fewer vertices now than then (228,448 against 241,742).
+
+**Not this release.** The same view from a `main` checkout (0.5.0), built in Release and shot
+alternately with 0.6.0 on the same machine: 69.6 and 69.1 ms for 0.5.0, 68.9 and 71.4 for 0.6.0.
+So it is somewhere between September and 0.5.0 — sprints 2 to 4, the rulers among them — or it is
+the machine: the findings benchmarks in sprint 5 also settled to about half their first runs' speed
+after warming.
+
+**Why it matters.** The README says the viewport *"holds 98 fps through a full zoom sweep on 500,247
+segments"*, and its own hero now shows 14. One of the two has to change, and which is a measurement:
+`--bench` on the 0.2.0 tag against today, on one machine at one time, and a frame-time capture of
+the panel with the rulers off (`--no-ruler`) to see whether they are the cost.
+
+#### 6.72 On a panel, every tab goes on one edge — **defect · open** — *found in the workshop, 2026-10-11; for sprint 6*
+
+From the product owner, looking at the 66-up GridStripConnector panel in the README's hero: *"On
+the panalized connector … all the tabs end up along the bottom edge of the 'board'. Up to 6 tabs.
+Then, 7 - 12 along the top of the board. The tabs do distribute better on a more 'normal' shapped
+board."*
+
+**Reproduced.** The panel's project with the outline cut by the 0.8 mm end mill, *Job ▸ Tabs…*:
+four tabs by default, every one *"on a 24.6 mm edge"* at y = −0.40 mm, x = 40.94, 96.14, 123.74 and
+151.34 mm — all on the bottom. `WorkingFolder/V0.6.0/Screenshots/6-72-panel-tabs-all-on-the-bottom.png`.
+
+**Why, as far as reading it goes.** Sprint 4 story 1 (6.4) places one tab per straight edge, longest
+edge first, before any edge gets a second. On a rectangle that is one per side. A panel's outline is
+not four long edges: it is broken into many short straight stretches between the boards, and the
+longest of them happen to lie along one side, so the first six tabs go there and the next six along
+the opposite one. The rule is right for the board it was written for and blind to *where* the edges
+it chooses are.
+
+**The shape a fix probably wants**: spread across the outline's sides before going down the list of
+edges — the quarter of the perimeter a tab falls in, or its bearing round the board's centre, as the
+first key and length as the second. To be checked against the 21 × 37 mm board 6.4 was tuned on,
+which must not move.

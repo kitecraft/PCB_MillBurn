@@ -4,7 +4,7 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (2)
+## Defects (3)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
@@ -12,8 +12,9 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 |---|---|---|
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
+| [6.72](06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6) | On a panel, every tab goes on one edge | found in the workshop, 2026-10-11; for sprint 6 |
 
-## Enhancements (8)
+## Enhancements (9)
 
 Something new or better, which is not the same as something broken.
 
@@ -22,11 +23,12 @@ Something new or better, which is not the same as something broken.
 | [6.2](06-Roadmap-and-Risks.md#62-climb-or-conventional--enhancement--open--low-priority) | Climb or conventional | low priority |
 | [6.7](06-Roadmap-and-Risks.md#67-teaching-the-conventions-coachmarks-and-a-first-run-walkthrough--enhancement--open--needs-research) | Teaching the conventions: coachmarks and a first-run walkthrough | needs research |
 | [6.18](06-Roadmap-and-Risks.md#618-a-paste-stencil-to-3d-print--enhancement--open) | A paste stencil to 3D-print | — |
-| [6.20](06-Roadmap-and-Risks.md#620-which-way-up-is-this-stock--enhancement--open) | Which way up is this stock? | — |
+| [6.20](06-Roadmap-and-Risks.md#620-which-way-up-is-this-stock--enhancement--open--set-aside-in-sprint-5-until-it-proves-a-bigger-problem) | Which way up is this stock? | set aside in sprint 5, until it proves a bigger problem |
 | [6.21](06-Roadmap-and-Risks.md#621-every-hole-approached-from-the-same-side--enhancement--open--possibly-a-global-setting-rather-than-always-on) | Every hole approached from the same side | possibly a global setting rather than always on |
 | [6.35](06-Roadmap-and-Risks.md#635-a-knife-blade-as-a-tool-for-vinyl-masking--enhancement--open--asked-for-by-the-product-owner) | A knife blade as a tool, for vinyl masking | asked for by the product owner |
 | [6.50](06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | Nothing can test the view model | three times in one sprint |
 | [6.54](06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | The checks panel cannot show a cancelled run | found by `/code-review`, 2026-09-29 |
+| [6.71](06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--open--found-retaking-the-readmes-screenshots-2026-10-11-for-sprint-6) | The 66-up panel draws at about 14 fps where the README's hero showed 37 | found retaking the README's screenshots, 2026-10-11; for sprint 6 |
 
 ## Part-built (4)
 
@@ -56,4 +58,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**14 open**, of 69 entries in the roadmap.
+**16 open**, of 72 entries in the roadmap.

@@ -1571,9 +1571,18 @@ public partial class MainWindow : Window
                 : $"set role: '{parts[0]}' matches {matches.Count} layers ({string.Join(", ", matches)}); name one";
         }
 
+        var row = vm.Layers.First(r => r.FileName == matches[0]);
+
+        if (row.RoleSetByHand && row.Role == role)
+        {
+            return $"set role: {matches[0]} already is {role}, by hand";
+        }
+
+        // A refusal is said as one, with the reason the status line gives: reporting it as done is
+        // the silent mismatch 06 §6.66 forbids a shot flag, and review found this one doing it.
         return vm.SetRole(matches[0], role)
             ? $"set role: {matches[0]} is now {role}, by hand"
-            : $"set role: {matches[0]} already is {role}, by hand";
+            : $"set role: {matches[0]} was not set — {vm.StatusMessage}";
     }
 
     /// <summary>

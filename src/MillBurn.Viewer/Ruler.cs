@@ -200,8 +200,8 @@ public static class Ruler
         var step = gridStep * every;
 
         using var strip = new SKPaint { Color = ink.WithAlpha(0xC8), Style = SKPaintStyle.Fill };
-        using var line = new SKPaint { Color = SKColors.White.WithAlpha(0x55), StrokeWidth = 1f, IsAntialias = false };
-        using var text = new SKPaint { Color = SKColors.White.WithAlpha(0xC8), IsAntialias = true };
+        using var line = new SKPaint { Color = InkOn(ink).WithAlpha(0x55), StrokeWidth = 1f, IsAntialias = false };
+        using var text = new SKPaint { Color = InkOn(ink).WithAlpha(0xC8), IsAntialias = true };
 
         canvas.DrawRect(new SKRect(viewport.Left, viewport.Top, viewport.Right, viewport.Top + Thickness), strip);
         canvas.DrawRect(new SKRect(viewport.Left, viewport.Top, viewport.Left + LeftWidth, viewport.Bottom), strip);
@@ -225,6 +225,23 @@ public static class Ruler
     }
 
     /// <summary>
+    /// What to draw the ruler's marks in, against a strip washed in <paramref name="background"/>:
+    /// near-black on a light viewport, white on a dark one.
+    ///
+    /// **It was white whatever the theme**, which on the light theme's #FAFAFB is white on white —
+    /// the numbers, the ticks, the pointer's readout and the measuring line all there and none of
+    /// them visible. Found when the README's light-theme screenshot was retaken in sprint 5; nothing
+    /// had looked at the rulers in the light theme since they shipped.
+    /// </summary>
+    internal static SKColor InkOn(SKColor background)
+    {
+        // Relative luminance, Rec. 709 weights on the 0-255 channels. Mid-grey is the line: below it
+        // white reads, above it a near-black does.
+        var luma = (0.2126 * background.Red) + (0.7152 * background.Green) + (0.0722 * background.Blue);
+        return luma > 140 ? new SKColor(0x1B, 0x1F, 0x24) : SKColors.White;
+    }
+
+    /// <summary>
     /// The pointer's position, in a box in the top right.
     ///
     /// **Asked for in those words:** *"Put a small rectangular display in the top right corner of the
@@ -242,9 +259,9 @@ public static class Ruler
             $"X {readout.At.X:0.00}   Y {readout.At.Y:0.00}");
 
         using var panel = new SKPaint { Color = ink.WithAlpha(0xE0), Style = SKPaintStyle.Fill };
-        using var edge = new SKPaint { Color = SKColors.White.WithAlpha(0x33), Style = SKPaintStyle.Stroke, StrokeWidth = 1f };
-        using var bold = new SKPaint { Color = SKColors.White.WithAlpha(0xE6), IsAntialias = true };
-        using var faint = new SKPaint { Color = SKColors.White.WithAlpha(0x99), IsAntialias = true };
+        using var edge = new SKPaint { Color = InkOn(ink).WithAlpha(0x33), Style = SKPaintStyle.Stroke, StrokeWidth = 1f };
+        using var bold = new SKPaint { Color = InkOn(ink).WithAlpha(0xE6), IsAntialias = true };
+        using var faint = new SKPaint { Color = InkOn(ink).WithAlpha(0x99), IsAntialias = true };
 
         var width = MathF.Max(Font.MeasureText(position), Small.MeasureText(readout.Origin)) + 20;
         var box = new SKRect(viewport.Right - width - 10, viewport.Top + Thickness + 10, viewport.Right - 10, viewport.Top + Thickness + 50);
@@ -268,6 +285,9 @@ public static class Ruler
         var a = new SKPoint(frame.ScreenX(measure.From.X), frame.ScreenY(measure.From.Y));
         var b = new SKPoint(frame.ScreenX(measure.To.X), frame.ScreenY(measure.To.Y));
 
+        // White in both themes, unlike the strip and the boxes: this line is drawn over the board, and
+        // the board's substrate is dark whatever the theme. Following the viewport's colour made it
+        // near-black over near-black in the light theme — found by review of 6.70's own fix.
         using var span = new SKPaint { Color = SKColors.White.WithAlpha(0xDD), StrokeWidth = 1.5f, IsAntialias = true };
         // Brighter than it first was: at 0x55 the two sides were invisible over copper, which is
         // most of a board, so the only shot that showed them was one taken over bare substrate.
@@ -295,7 +315,7 @@ public static class Ruler
             $"dx {measure.DeltaX:0.00}   dy {measure.DeltaY:0.00}   {measure.Diagonal:0.00} mm");
 
         using var panel = new SKPaint { Color = ink.WithAlpha(0xE6), Style = SKPaintStyle.Fill };
-        using var text = new SKPaint { Color = SKColors.White.WithAlpha(0xE6), IsAntialias = true };
+        using var text = new SKPaint { Color = InkOn(ink).WithAlpha(0xE6), IsAntialias = true };
 
         var width = Font.MeasureText(label) + 16;
         var cx = MathF.Min(MathF.Max((a.X + b.X) / 2, viewport.Left + LeftWidth + (width / 2)), viewport.Right - (width / 2));

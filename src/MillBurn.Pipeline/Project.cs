@@ -396,10 +396,11 @@ public sealed class MillBurnProject
     /// already has that role and the choice was already the operator's.
     ///
     /// **Marked as set by hand, so nothing undoes it**: a refresh of the folder keeps it
-    /// (`ProjectRefresh`), and it is no longer a guess. **And the layer's settings are forgotten**,
-    /// so it takes the defaults for what it now is, the way an imported layer does: an output that
-    /// suited a silkscreen is not a choice the operator made about a copper layer, and an output the
-    /// new role cannot have would only be set back to nothing when the project was next opened.
+    /// (`ProjectRefresh`), and it is no longer a guess. **And when the role really changes, the
+    /// layer's settings are forgotten**, so it takes the defaults for what it now is, the way an
+    /// imported layer does: an output that suited a silkscreen is not a choice the operator made
+    /// about a copper layer, and an output the new role cannot have would only be set back to
+    /// nothing when the project was next opened. Confirming the role it already has keeps them.
     /// </summary>
     public bool SetRole(string fileName, LayerRole role)
     {
@@ -420,8 +421,17 @@ public sealed class MillBurnProject
             return false;
         }
 
+        var changed = Sources[index].Role != role;
         Sources = Sources.SetItem(index, Sources[index] with { Role = role, RoleOverridden = true, RoleGuessed = false });
-        Settings = Settings.WithoutOutput(fileName);
+
+        // Only when the role really changes. Confirming a guess keeps the role, and its output, tool
+        // and depth are choices the operator made about exactly that role — throwing them away was
+        // the first thing review found in the confirm button.
+        if (changed)
+        {
+            Settings = Settings.WithoutOutput(fileName);
+        }
+
         Touch();
         return true;
     }

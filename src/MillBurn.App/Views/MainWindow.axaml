@@ -416,11 +416,19 @@
                                         The title shows the folder's last segment alone, and this machine
                                         has two boards sharing one.
 
-                                        In full and wrapping, never elided: the first attempt shortened
-                                        the middle out of it to keep the panel narrow, which answers
-                                        "which of the two is this" and not "where is it" — and *where*
-                                        is what was asked for. A second line costs nothing; a hidden
-                                        middle costs the answer.
+                                        **One line, the middle folders elided, the whole path on
+                                        hover** — the product owner's call at 0.6.0, reversing the
+                                        wrapping 6.32 shipped with. A path has no spaces, so the only
+                                        place it could wrap was straight after the drive, and the
+                                        panel spent a line on "E:". Whole folders go from the middle
+                                        (PathSegmentEllipsis), so both ends stay — the drive and the
+                                        folders nearest the board — and *"the mouse hover solves the
+                                        rest."* Dragging the splitter shows more.
+
+                                        6.32's first attempt elided too and was taken out, on the
+                                        ground that a hidden middle answers "which of the two is this"
+                                        but not "where is it". The tooltip is what answers the second
+                                        now.
 
                                         Labelled, because a bare path at the top of Project info was
                                         read as the project file's own location.
@@ -431,6 +439,8 @@
                                                    VerticalAlignment="Top" Text="Gerbers" />
                                         <TextBlock Grid.Column="1" Classes="fact"
                                                    Text="{Binding SourceFolder}"
+                                                   TextWrapping="NoWrap"
+                                                   TextTrimming="PathSegmentEllipsis"
                                                    ToolTip.Tip="{Binding SourceFolder}" />
                                     </Grid>
 

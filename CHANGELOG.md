@@ -10,6 +10,69 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
+## [0.6.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.6.0) — 2026-10-11
+
+**Put it where it belongs.** The sprint set out to get a design onto the machine in the right
+place, the right way up and on the right layer, and did the first and the last of those. Four
+stories shipped, three were set aside at the bench, and one was built, proven and declined. The
+sprint's notes say which, and why.
+
+[Sprint 5 — Put it where it belongs](Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
+
+**Not breaking.** Every saved artefact still reads and writes format 1, and the CLI did not change
+at all. A project saved by this version carries one new field, which 0.5.0 ignores when it opens
+one. One thing you will see did change, and it is the next paragraph.
+
+**The SVGs' colours changed — check your laser software's layers.** Each kind of geometry now goes
+on its own colour, and the colour is what puts it on a layer:
+
+| Colour | What it is | Burn it as | Was |
+|---|---|---|---|
+| `#0000FF` blue | the drawing — regions to clear | Fill | green |
+| `#000000` black | the stock and its holes | not burned | blue |
+| `#B4B4B4` grey | the board outline | not burned | red |
+
+In LightBurn's palette the old colours were the wrong layers: green is C03, a Line layer, so a
+mask's openings would have been traced rather than cleared; red is C02, which burns; and blue is
+C01, the Fill layer the drawing belongs on. **If you switch the placing layers off by colour, they
+are now grey and black.** Checked in Creality Falcon: each still arrives as a layer of its own. Each
+SVG's description names its layers and what each wants, and the project page has the same table.
+
+**Job ▸ Findings at half the cost, and a second F7 abandons the first.** On the two-sided Arduino
+Mega the findings came back in about 1.5 s; now about 0.8, with the same answers. Each copper layer
+was being grown twice — once for the check, once for the search that locates the gaps — and is now
+grown once. And pressing F7 again used to wait out the run already going, up to most of a second;
+it now stops within one offset of the copper.
+
+**Say what a layer is.** Open a layer's row: *Layer is* sets its role by hand, for a file the
+application read wrong or could not read at all. What you choose is kept with the project and kept
+across a refresh of the folder. A role that was only read off the file's name now says *guessed* on
+its row, with *That's right* to confirm it. That label had quietly stopped appearing for any board
+opened as a project, which is every board the window shows; it is back. Several guessed layers make
+one line in the checks rather than one each.
+
+**The export window counts the project page.** It said one file fewer than it wrote.
+
+**The rulers can be read in the light theme.** They were drawn in white whatever the theme, which on
+the light theme's background is white on white. Found retaking this page's screenshots.
+
+**Tried and declined: a LightBurn layer preset.** Built, then opened in LightBurn 2.1.03: a project
+file with only layer settings in it loads nothing, because LightBurn keeps a layer only while
+something is on it. One with the board's geometry in it does work — proven with a probe file — but
+it is a second output format, in a file layout LightBurn does not publish, for software the
+workshop does not use, so it was not kept. What LightBurn actually writes is recorded in
+[06 §6.69](Documentation/06-Roadmap-and-Risks.md) for whoever asks next.
+
+**Set aside.** *Which way up is this stock* (V32): a single chamfer cannot catch a flip on a
+near-square piece at any size, and a second needs a corner the alignment holes already use. *Marks
+that survive* and *a fit from three or more* (M16, M17): the two waste holes already survive the
+workflow, and nothing has needed a third yet. All three are written up where they were left.
+
+**Known limitation, unchanged since 0.4.0.** Isolation still cuts inside holes the same export is
+about to drill. See [06 §6.47](Documentation/06-Roadmap-and-Risks.md).
+
+---
+
 ## [0.5.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.5.0) — 2026-10-10
 
 **Enhancements that explain things.** Nine stories, and every one of them is the application saying

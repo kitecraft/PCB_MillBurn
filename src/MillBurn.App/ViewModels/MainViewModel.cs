@@ -2027,8 +2027,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     ///
     /// **Stopped and cleared before the change, rebuilt after it**, the split a refresh uses and for
     /// the same reason (`StaleBecause.RoleChanged`): a run in flight is reading the project this is
-    /// about to change. The layer's own settings are forgotten with its old role, so it takes the
-    /// defaults for the new one, as an imported layer would.
+    /// about to change. When the role really changes, the layer's own settings are forgotten with
+    /// the old one, so it takes the defaults for the new one, as an imported layer would. Confirming
+    /// a guess changes neither and touches nothing but the label.
     /// </summary>
     /// <returns>False when there is no such layer, or it already has that role by hand.</returns>
     public bool SetRole(string fileName, LayerRole role)
@@ -2042,28 +2043,39 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return false;
         }
 
-        var stopped = Invalidate(StaleBecause.RoleChanged);
-
-        var sources = _project.Sources;
-        var settings = _project.Settings;
-        _project.SetRole(fileName, role);
-
-        // **Refused when the file cannot be read as that role**, rather than left. Telling an
-        // Excellon drill file it is copper hands it to the Gerber parser, which fails, and a layer
-        // that fails is not on the board — so its row, and the picker that could undo the choice,
-        // went with it, and the choice was marked as the operator's and survived every refresh.
-        // Found by review. Put back as it was, and said.
-        var board = ProjectFile.ToBoard(_project);
-
-        if (board.Failures.FirstOrDefault(f => string.Equals(f.FileName, fileName, StringComparison.Ordinal)) is { } failure)
+        // **Refused when the file cannot be read as that role**, before anything is touched. Telling
+        // an Excellon drill file it is copper hands it to the Gerber parser, and a layer that fails
+        // is not on the board — so its row, and the picker that could undo the choice, went with it,
+        // and the choice was marked as the operator's and survived every refresh. Found by review.
+        //
+        // Asked of that one file alone, and first: the second review found the first fix stopping
+        // the preview, clearing the programs and marking the project unsaved for a change it then
+        // took back.
+        if (current.Role == role)
         {
-            _project.Sources = sources;
-            _project.Settings = settings;
+            // Confirming a guess: the same role, so the same geometry and the same settings. Nothing
+            // drawn is out of date, and stopping a preview for a label would cost the operator the
+            // wait for nothing. Found by review.
+            _project.SetRole(fileName, role);
             Rebuild(TimeSpan.Zero);
+            StatusMessage = $"{fileName} is {LayerRoleInfo.Label(role)}, confirmed by hand. Save to keep this.";
+            return true;
+        }
+
+        var trial = BoardLoader.LoadSources("role check", [(fileName, current.Content.AsSpan().ToArray(), role)]);
+
+        if (trial.Failures is [var failure, ..])
+        {
+            // The picker already shows the refused role — the row set it before asking — and nothing
+            // is rebuilt, so put it back by hand.
+            Layers.FirstOrDefault(r => string.Equals(r.FileName, fileName, StringComparison.Ordinal))?.ShowRole(current.Role);
             StatusMessage = $"{fileName} cannot be read as {LayerRoleInfo.Label(role)}, so it was left as {LayerRoleInfo.Label(current.Role)}: {failure.Reason}";
             return false;
         }
 
+        var stopped = Invalidate(StaleBecause.RoleChanged);
+
+        _project.SetRole(fileName, role);
         Rebuild(TimeSpan.Zero);
 
         var said = $"{fileName} is now {LayerRoleInfo.Label(role)}, set by hand. Save to keep this.";

@@ -62,7 +62,7 @@ code.
 |---|---|---|
 | [M6](../Documentation/08-Requirements-Matrix.md) | The SVG says which layer, so the mode is already set | 04 §2.3; Partial — single-layer mode and inversion exist |
 | [V11](../Documentation/08-Requirements-Matrix.md) | A LightBurn preset that ships | 04 §2.3, §3.3; Partial — palette mapping done, no preset file ships |
-| [V32](../Documentation/08-Requirements-Matrix.md) + [6.20](../Documentation/06-Roadmap-and-Risks.md#620-which-way-up-is-this-stock--enhancement--open) | Which way up is this stock? | The workshop, cutting the 78.63 × 76.09 test stock |
+| [V32](../Documentation/08-Requirements-Matrix.md) + [6.20](../Documentation/06-Roadmap-and-Risks.md#620-which-way-up-is-this-stock--enhancement--open--set-aside-in-sprint-5-until-it-proves-a-bigger-problem) | Which way up is this stock? | The workshop, cutting the 78.63 × 76.09 test stock |
 | [M16](../Documentation/08-Requirements-Matrix.md) | Marks that survive what comes between | 04 §4.2; Partial — the milled case is cut and measured, the rest is not |
 | [M17](../Documentation/08-Requirements-Matrix.md) | A fit from three or more marks, and what it cost | 04 §4.2; Partial — the two-point rigid case exists |
 | [6.55](../Documentation/06-Roadmap-and-Risks.md#655-the-findings-view-costs-about-twice-what-it-needs-to-and-cannot-be-interrupted--enhancement--open--found-by-code-review-at-xhigh-2026-09-30) | The findings view, at half the cost and interruptible | `/code-review` at xhigh, 2026-09-30 |
@@ -198,7 +198,8 @@ centrelines in green, and the wider strokes in red.
 - **The bench.** The placing layers the workshop has been switching off by colour are now grey and
   black instead of red and blue. They are still a layer each in both programs by construction —
   three colours, three layers — but that is the claim 6.17 was careful to check in Falcon itself
-  rather than assume, and it should be checked again.
+  rather than assume, and it should be checked again. **Checked, 2026-10-11:** *"Colours look fine
+  in Falcon."*
 
 ### What the code review found — 2026-10-10, medium
 
@@ -598,6 +599,14 @@ manifest reader does not reject fields it does not know. No `SchemaVersion` chan
   by one; `--set-role` preferring an exact file name before a partial one.
 - **Left:** the one *N files…* line cannot be clicked through to a row, which is the trade for the
   rows saying it themselves; and the row's own re-check of a hand-set role, now simply the board's.
+
+**From the release review — 2026-10-11, medium, twice.** The first pass found the confirm button
+throwing away the layer's settings, a refusal still stopping the preview and marking the project
+unsaved, `--set-role` reporting a refusal as done, and a refresh comparing a hand-set layer across
+two roles; all fixed. The second found its own fixes' edges — a refused role left showing in the
+picker, and confirming a guess still stopping the preview — and both are fixed. **Left:** a hand-set
+role is kept across a refresh without checking the new bytes can still be read as it, which needs
+the same file name re-exported in a different format to bite.
 
 **Not done.** The CLI cannot set a role yet — `project save` carries outputs and job options but
 not this — which leaves the window the only way to make a hand-set project. And the Olimex set from
