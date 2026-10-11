@@ -220,8 +220,11 @@ public static class ProjectRefresh
                 case SourceChangeKind.Changed or SourceChangeKind.Reexported when index >= 0 && change.Incoming is { } fresh:
                     // A role the user corrected by hand outlives the file it was corrected on.
                     // Re-detecting it here would undo that silently on every refresh.
+                    //
+                    // And not a guess either, whatever the fresh file's name suggests: the role is
+                    // the operator's, so the row must not say otherwise (6.31).
                     sources[index] = sources[index].RoleOverridden
-                        ? fresh with { Role = sources[index].Role, RoleOverridden = true }
+                        ? fresh with { Role = sources[index].Role, RoleOverridden = true, RoleGuessed = false }
                         : fresh;
                     break;
 
@@ -246,7 +249,11 @@ public static class ProjectRefresh
         var details = new List<string>();
 
         var oldBoard = BoardLoader.LoadSources("before", [(before.FileName, before.Content.AsSpan().ToArray(), before.Role)], options);
-        var newBoard = BoardLoader.LoadSources("after", [(after.FileName, after.Content.AsSpan().ToArray(), after.Role)], options);
+        // Under the role the layer will have once applied: a hand-set one is kept (see `Apply`), so
+        // comparing the old bytes as that role with the new bytes as whatever the name now suggests
+        // would describe a change of role nobody is making.
+        var afterRole = before.RoleOverridden ? before.Role : after.Role;
+        var newBoard = BoardLoader.LoadSources("after", [(after.FileName, after.Content.AsSpan().ToArray(), afterRole)], options);
 
         var oldLayer = oldBoard.Layers.Count > 0 ? oldBoard.Layers[0] : null;
         var newLayer = newBoard.Layers.Count > 0 ? newBoard.Layers[0] : null;

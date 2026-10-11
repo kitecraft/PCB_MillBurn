@@ -55,7 +55,7 @@ public static class ProjectFile
         ArgumentNullException.ThrowIfNull(fileName);
         ArgumentNullException.ThrowIfNull(content);
 
-        var (role, _) = DetectRole(fileName, content);
+        var (role, guessed) = DetectRole(fileName, content);
 
         return new ProjectSource
         {
@@ -64,6 +64,9 @@ public static class ProjectFile
             ContentHash = HashBytes(content),
             GeometryHash = GeometryFingerprint(fileName, content, options),
             Role = role,
+
+            // Kept, not discarded: it is what lets the row say a role is a guess (6.31).
+            RoleGuessed = guessed,
         };
     }
 
@@ -191,6 +194,7 @@ public static class ProjectFile
                 GeometryHash = s.GeometryHash,
                 Role = s.Role,
                 RoleOverridden = s.RoleOverridden,
+                RoleGuessed = s.RoleGuessed,
             })],
         };
 
@@ -259,15 +263,17 @@ public static class ProjectFile
             using var content = entry.Open();
             using var buffer = new MemoryStream();
             content.CopyTo(buffer);
+            var bytes = buffer.ToArray();
 
             sources.Add(new ProjectSource
             {
                 FileName = descriptor.FileName,
-                Content = [.. buffer.ToArray()],
+                Content = [.. bytes],
                 ContentHash = descriptor.ContentHash,
                 GeometryHash = descriptor.GeometryHash,
                 Role = descriptor.Role,
                 RoleOverridden = descriptor.RoleOverridden,
+                RoleGuessed = descriptor.RoleGuessed ?? GuessedBefore(descriptor, bytes),
             });
         }
 
@@ -351,7 +357,7 @@ public static class ProjectFile
         ArgumentNullException.ThrowIfNull(project);
         return BoardLoader.LoadSources(
             project.FilePath ?? project.OriginFolder ?? "project",
-            project.Sources.Select(s => (s.FileName, s.Content.AsSpan().ToArray(), s.Role)),
+            project.Sources.Select(s => (s.FileName, s.Content.AsSpan().ToArray(), s.Role, s.RoleGuessed && !s.RoleOverridden)),
             options);
     }
 
@@ -386,5 +392,24 @@ public static class ProjectFile
         public required LayerRole Role { get; init; }
 
         public bool RoleOverridden { get; init; }
+
+        /// <summary>
+        /// Null in a project saved before 6.31, which kept no record of it — and then worked out
+        /// once, on opening, by <see cref="GuessedBefore"/>.
+        /// </summary>
+        public bool? RoleGuessed { get; init; }
     }
+
+    /// <summary>
+    /// Whether a source saved before the flag existed had its role guessed: the file still does not
+    /// say what it is, and nobody set the role by hand. One parse per layer, once, when an older
+    /// project is opened; a project saved since carries the answer.
+    ///
+    /// **Not compared with what the name suggests today.** That was the first version, and review
+    /// found the hole in it: a saved role differing from today's reading of the name means the
+    /// matcher changed, since no build before this one could set a role by hand — and a file that
+    /// declares nothing is a guess whatever the matcher now makes of its name.
+    /// </summary>
+    private static bool GuessedBefore(SourceDescriptor descriptor, byte[] content) =>
+        !descriptor.RoleOverridden && DetectRole(descriptor.FileName, content).Guessed;
 }

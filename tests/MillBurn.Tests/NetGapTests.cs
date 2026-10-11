@@ -223,6 +223,77 @@ public sealed class NetGapTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The layer is grown once and both questions are asked of it — 06 §6.55 — and the answers are
+    /// the ones each gave when it grew the layer for itself.
+    ///
+    /// **Compared field by field against the unshared run**, on the board where the sharing pays:
+    /// the Mega's top copper, with real joins and real bridges in it.
+    ///
+    /// **What it guards is the sharing, not the geometry.** Both runs now build the grown copper the
+    /// same way, so this cannot show that way is right — it shows that asking `Isolation` first does
+    /// not disturb what `Gaps` then reads from the same object, which is the new risk: `Isolation`
+    /// used to write into its piece-to-region array as it went, and that array is now the shared one.
+    /// That the answers are the ones the old separate computation gave is held by this file's and
+    /// `ElectricalCheckTests`' literal expectations, all unchanged, and by the Mega's findings coming
+    /// out at the same 9 places and 7 groups before and after (06 §6.55).
+    /// </summary>
+    [Fact]
+    public void GrowingTheLayerOnceGivesTheAnswersGrowingItTwiceDid()
+    {
+        var (layer, options) = Copper(RealBoards.ArduinoMega);
+
+        var alone = ElectricalCheck.Isolation(layer.Area, layer.Nets, options);
+        var aloneGaps = ElectricalCheck.Gaps(layer.Area, layer.Nets, options);
+
+        var grown = ElectricalCheck.GrownCopper.Of(layer.Area, options);
+        Assert.NotNull(grown);
+
+        var shared = ElectricalCheck.Isolation(layer.Area, layer.Nets, options, grown);
+        var sharedGaps = ElectricalCheck.Gaps(layer.Area, layer.Nets, options, grown);
+
+        output.WriteLine($"{alone.Joins.Count} join(s), {aloneGaps.Count} gap(s), {alone.Merged} merge(s)");
+
+        // Something to compare: an answer of nothing agrees with nothing.
+        Assert.NotEmpty(alone.Joins);
+        Assert.NotEmpty(aloneGaps);
+
+        Assert.Equal(alone.Merged, shared.Merged);
+        Assert.Equal(alone.SameNet, shared.SameNet);
+        Assert.Equal(alone.Nameless, shared.Nameless);
+        Assert.Equal(alone.Unplaced, shared.Unplaced);
+        Assert.Equal(alone.UnplacedCopper, shared.UnplacedCopper);
+        Assert.Equal(
+            alone.Joins.Select(j => string.Join(",", j.Nets) + "@" + j.Near),
+            shared.Joins.Select(j => string.Join(",", j.Nets) + "@" + j.Near));
+        Assert.Equal(
+            aloneGaps.Select(g => string.Join(",", g.Between) + "@" + g.At),
+            sharedGaps.Select(g => string.Join(",", g.Between) + "@" + g.At));
+    }
+
+    /// <summary>
+    /// Grown copper handed to a question about other copper, or about another cut, is refused.
+    /// The answer would be about the wrong layer and nothing in it would say so.
+    /// </summary>
+    [Fact]
+    public void GrownCopperForOneLayerIsRefusedForAnother()
+    {
+        var (top, options) = Copper(RealBoards.ArduinoMega);
+        var grown = ElectricalCheck.GrownCopper.Of(top.Area, options)!;
+
+        var bottom = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.ArduinoMega))
+            .Layers.First(l => l.Role == LayerRole.BottomCopper);
+        var deeper = options with { DepthNm = options.DepthNm * 3 };
+
+        Assert.Throws<ArgumentException>(() => ElectricalCheck.Isolation(bottom.Area, bottom.Nets, options, grown));
+        Assert.Throws<ArgumentException>(() => ElectricalCheck.Gaps(bottom.Area, bottom.Nets, options, grown));
+        Assert.Throws<ArgumentException>(() => ElectricalCheck.Isolation(top.Area, top.Nets, deeper, grown));
+        Assert.Throws<ArgumentException>(() => ElectricalCheck.Gaps(top.Area, top.Nets, deeper, grown));
+
+        // And the copper it was built for is accepted, so the refusals above are about the mismatch.
+        Assert.NotEmpty(ElectricalCheck.Isolation(top.Area, top.Nets, options, grown).Joins);
+    }
+
+    /// <summary>
     /// Locating the gaps costs enough to belong behind a button, and not so much that the button is
     /// useless.
     ///

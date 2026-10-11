@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Pipeline;
@@ -25,6 +26,19 @@ public sealed record OutputChoice(OutputKind Kind, string Label)
         OutputKind.Gcode => "G-code (mill)",
         _ => "Not exported",
     });
+}
+
+/// <summary>What a layer can be told it is, by hand (6.31).</summary>
+public sealed record RoleChoice(LayerRole Role, string Label)
+{
+    public override string ToString() => Label;
+
+    /// <summary>
+    /// Every role, in the enum's order — which is the order a board is described in: coppers, masks,
+    /// legends, paste, outline, holes, then the files that are not layers to be made.
+    /// </summary>
+    public static IReadOnlyList<RoleChoice> All { get; } =
+        [.. Enum.GetValues<LayerRole>().Select(r => new RoleChoice(r, LayerRoleInfo.Label(r)))];
 }
 
 /// <summary>
@@ -65,7 +79,9 @@ public sealed partial class LayerRow : ObservableObject
         LayerOutputSettings settings,
         IReadOnlyList<Tool> tools,
         Action visibilityChanged,
-        Action outputChanged)
+        Action outputChanged,
+        Action<LayerRow, LayerRole>? roleChanged = null,
+        bool roleSetByHand = false)
     {
         ArgumentNullException.ThrowIfNull(layer);
         ArgumentNullException.ThrowIfNull(settings);
@@ -101,6 +117,11 @@ public sealed partial class LayerRow : ObservableObject
 
         _visibilityChanged = visibilityChanged;
         _outputChanged = outputChanged;
+
+        // Set before the callback is attached, so building the row does not report a change.
+        _selectedRole = RoleChoice.All.First(c => c.Role == layer.Role);
+        RoleSetByHand = roleSetByHand;
+        _roleChanged = roleChanged;
     }
 
     /// <summary>A layer the scene invented: the substrate, or a backplot. Eye and colour only.</summary>
@@ -127,6 +148,84 @@ public sealed partial class LayerRow : ObservableObject
     public BoardLayer? Layer { get; }
 
     public LayerRole? Role { get; }
+
+    // ------------------------------------------------------------------ role (6.31)
+
+    private readonly Action<LayerRow, LayerRole>? _roleChanged;
+
+    private RoleChoice? _selectedRole;
+
+    /// <summary>The roles the picker offers. Empty on a row the scene invented, which has none.</summary>
+    public IReadOnlyList<RoleChoice> Roles => Layer is null ? [] : RoleChoice.All;
+
+    /// <summary>Whether this row can be told what it is: a real layer, not the substrate or a backplot.</summary>
+    public bool CanSetRole => Layer is not null;
+
+    /// <summary>
+    /// What this layer is, as the picker shows it. Choosing another reports it; the view model
+    /// changes the project and rebuilds, and this row is replaced by one built for the new role.
+    /// </summary>
+    public RoleChoice? SelectedRole
+    {
+        get => _selectedRole;
+        set
+        {
+            if (value is null || value == _selectedRole)
+            {
+                return;
+            }
+
+            _selectedRole = value;
+            OnPropertyChanged();
+            _roleChanged?.Invoke(this, value.Role);
+        }
+    }
+
+    /// <summary>
+    /// Puts the picker back to the role the layer really has, without reporting a change — for a
+    /// choice that was refused. The row is not rebuilt for a refusal, so without this it went on
+    /// showing the role that was turned down, and choosing the real one back then counted as a
+    /// change and marked it as set by hand. Found by review.
+    /// </summary>
+    public void ShowRole(LayerRole role)
+    {
+        if (RoleChoice.All.FirstOrDefault(c => c.Role == role) is { } choice && choice != _selectedRole)
+        {
+            _selectedRole = choice;
+            OnPropertyChanged(nameof(SelectedRole));
+        }
+    }
+
+    /// <summary>The operator chose this role, so detection will not change it again.</summary>
+    public bool RoleSetByHand { get; }
+
+    /// <summary>
+    /// The role was read off the file's name, because the file did not say — and nobody has
+    /// confirmed it since. A guess has to look like a guess (`LayerRoles`), and on a project board it
+    /// did not: every layer read as declared.
+    /// </summary>
+    public bool RoleGuessed => Layer?.RoleGuessed == true;
+
+    /// <summary>
+    /// Confirms a guessed role as it stands. The picker cannot: choosing the item a combo box already
+    /// shows is not a change, so it raises nothing — and confirming a guess is the commonest answer
+    /// to "is this right?". Found by review.
+    /// </summary>
+    [RelayCommand]
+    private void ConfirmRole()
+    {
+        if (SelectedRole is { } role)
+        {
+            _roleChanged?.Invoke(this, role.Role);
+        }
+    }
+
+    /// <summary>How the role was arrived at, under the picker.</summary>
+    public string RoleSource => RoleSetByHand
+        ? "Set by hand. Refreshing the folder keeps it."
+        : RoleGuessed
+            ? "Guessed from the file's name — the file does not say what it is. Check it."
+            : "Read from the file.";
 
     public string Id { get; }
 

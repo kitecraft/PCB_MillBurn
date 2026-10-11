@@ -260,11 +260,14 @@ public sealed class SvgWriterTests
     /// <summary>
     /// Some laser software creates one of its own cut layers per imported object, which turns a
     /// board into hundreds of layers — one per pad — each needing its settings entered by hand.
-    /// Single-layer mode exists for that, and what it has to guarantee is a *count*: one group, one
-    /// filled path, whatever the drawing contains.
+    /// Single-layer mode exists for that, and what it has to guarantee is a *count*: one group, and
+    /// one filled path per role however many shapes and layers the drawing has.
+    ///
+    /// Per role rather than one in all, because the colour is the layer assignment (M6): merging a
+    /// Fill layer's openings into a Mark layer's path put them on a layer that traces them.
     /// </summary>
     [Fact]
-    public void SingleLayerModeEmitsOneGroupAndOneFilledPath()
+    public void SingleLayerModeEmitsOneGroupAndOneFilledPathPerRole()
     {
         var artwork = new Artwork
         {
@@ -281,23 +284,170 @@ public sealed class SvgWriterTests
                 },
                 new ArtLayer
                 {
-                    Id = "b", Label = "B", Role = ArtRole.Mark,
+                    Id = "b", Label = "B", Role = ArtRole.Fill,
                     Shapes = [new ArtShape { Subpaths = [ApertureSquare(Mm(12, 0), 4)], Filled = true }],
                 },
+                new ArtLayer
+                {
+                    Id = "c", Label = "C", Role = ArtRole.Mark,
+                    Shapes = [new ArtShape { Subpaths = [ApertureSquare(Mm(18, 0), 4)], Filled = true }],
+                },
             ],
-            ContentBounds = new Bounds(Nm.FromMillimetres(-2), Nm.FromMillimetres(-2), Nm.FromMillimetres(14), Nm.FromMillimetres(2)),
+            ContentBounds = new Bounds(Nm.FromMillimetres(-2), Nm.FromMillimetres(-2), Nm.FromMillimetres(20), Nm.FromMillimetres(2)),
         };
 
         var doc = XDocument.Parse(SvgWriter.Write(artwork, Page(-20, -20, 20, 20), Plain with { SingleLayer = true }));
 
         Assert.Single(doc.Descendants(), e => e.Name.LocalName == "g");
 
-        var path = Assert.Single(doc.Descendants(), e => e.Name.LocalName == "path");
-        Assert.Equal(3, path.Attribute("d")!.Value.Split('M').Length - 1);
+        var paths = doc.Descendants().Where(e => e.Name.LocalName == "path").ToList();
+        Assert.Equal(2, paths.Count);
+
+        // Two layers of one role are one path, in that role's colour: three squares, C01.
+        var fill = Assert.Single(paths, p => p.Attribute("stroke")!.Value == "#0000FF");
+        Assert.Equal(3, fill.Attribute("d")!.Value.Split('M').Length - 1);
+
+        var mark = Assert.Single(paths, p => p.Attribute("stroke")!.Value == "#00E000");
+        Assert.Equal(1, mark.Attribute("d")!.Value.Split('M').Length - 1);
 
         // No layer markup: declaring a group to *be* a layer is what invites the behaviour this
         // mode exists to avoid.
         Assert.DoesNotContain("groupmode", doc.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// What the export writes for a mask or an etch resist: filled regions, flattened for the
+    /// Falcon. They have to arrive on LightBurn's C01, the layer set to Fill. Flattening painted
+    /// them in the Mark colour — C03, a Line layer — so LightBurn traced the openings' edges and
+    /// cleared nothing inside them.
+    /// </summary>
+    [Fact]
+    public void FlattenedFillsArriveOnTheFillLayerNotALineLayer()
+    {
+        var svg = SvgWriter.Write(
+            Single(new ArtShape { Subpaths = [ApertureSquare(Mm(0, 0), 4)], Filled = true }, ArtRole.Fill),
+            Page(-20, -20, 20, 20),
+            Plain with { SingleLayer = true });
+
+        var path = XDocument.Parse(svg).Descendants().Single(e => e.Name.LocalName == "path");
+
+        Assert.Equal("#0000FF", path.Attribute("stroke")!.Value);
+        Assert.Equal("#0000FF", path.Attribute("fill")!.Value);
+        Assert.DoesNotContain("#00E000", svg, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The placing layers' colour is their role's, from the profile: the board outline on C08,
+    /// which 04 §2.3 sets not to output, and the stock's holes on C00, registration. They were
+    /// literal red and blue — C02, a layer that burns, and C01, the drawing's own Fill layer.
+    /// </summary>
+    [Fact]
+    public void PlacingLayersTakeTheirRolesColourFromTheProfile()
+    {
+        var hairline = Stroke(ArtSegment.Line(Mm(0, 0), Mm(1, 0)));
+        var options = Plain with
+        {
+            SingleLayer = true,
+            References =
+            [
+                new SvgReference("board-outline", "Board outline", ArtRole.Reference, [hairline]),
+                new SvgReference("stock", "Stock and holes", ArtRole.Registration, [hairline]),
+            ],
+        };
+
+        var doc = XDocument.Parse(SvgWriter.Write(
+            Single(new ArtShape { Subpaths = [ApertureSquare(Mm(0, 0), 4)], Filled = true }, ArtRole.Fill),
+            Page(-20, -20, 20, 20),
+            options));
+
+        static string StrokeOf(XDocument doc, string id) => doc.Descendants()
+            .Single(e => e.Name.LocalName == "g" && (string?)e.Attribute("id") == id)
+            .Elements().Single(e => e.Name.LocalName == "path").Attribute("stroke")!.Value;
+
+        Assert.Equal("#B4B4B4", StrokeOf(doc, "board-outline"));
+        Assert.Equal("#000000", StrokeOf(doc, "stock"));
+
+        // The Inkscape profile has its own palette for the same roles; nothing is hard-wired.
+        var inkscape = XDocument.Parse(SvgWriter.Write(
+            Single(hairline), Page(-20, -20, 20, 20), options with { Profile = SvgProfile.Inkscape }));
+        Assert.Equal("#9E9E9E", StrokeOf(inkscape, "board-outline"));
+        Assert.Equal("#111111", StrokeOf(inkscape, "stock"));
+    }
+
+    /// <summary>
+    /// The file says which colour is which layer and what mode it wants, for each role in it and no
+    /// other — so somebody at the laser with only the file has the contract in front of them.
+    ///
+    /// The Reference layer is deliberately met first, so the order the lines come out in is the
+    /// writer's and not the input's.
+    /// </summary>
+    [Fact]
+    public void TheDescriptionNamesEachLayerInTheFileAndTheModeItWants()
+    {
+        var artwork = new Artwork
+        {
+            Layers =
+            [
+                new ArtLayer { Id = "ref", Label = "Ref", Role = ArtRole.Reference, Shapes = [Stroke(ArtSegment.Line(Mm(0, 0), Mm(1, 0)))] },
+                new ArtLayer { Id = "fill", Label = "Fill", Role = ArtRole.Fill, Shapes = [new ArtShape { Subpaths = [ApertureSquare(Mm(0, 0), 4)], Filled = true }] },
+            ],
+            ContentBounds = new Bounds(Nm.FromMillimetres(-2), Nm.FromMillimetres(-2), Nm.FromMillimetres(2), Nm.FromMillimetres(2)),
+        };
+
+        var svg = SvgWriter.Write(
+            artwork,
+            Page(-20, -20, 20, 20),
+            Plain with
+            {
+                References = [new SvgReference("board-outline", "Board outline", ArtRole.Reference, [Stroke(ArtSegment.Line(Mm(0, 0), Mm(1, 0)))])],
+            });
+
+        var desc = XDocument.Parse(svg).Descendants().Single(e => e.Name.LocalName == "desc").Value;
+
+        Assert.Contains("Layer C01 (#0000FF): regions to clear; set to Fill.", desc, StringComparison.Ordinal);
+        Assert.Contains("Layer C08 (#B4B4B4): for reference only; set not to output.", desc, StringComparison.Ordinal);
+        Assert.DoesNotContain("C03", desc, StringComparison.Ordinal);
+        Assert.DoesNotContain("C00", desc, StringComparison.Ordinal);
+
+        // Once each, though Reference is in the file twice, and in run order though it came first.
+        Assert.Single(desc.Split('\n'), l => l.StartsWith("Layer C08", StringComparison.Ordinal));
+        Assert.True(desc.IndexOf("C01", StringComparison.Ordinal) < desc.IndexOf("C08", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Three ways the description could tell somebody to set up the wrong thing, found by review:
+    /// a role whose layer has nothing in it, LightBurn's modes in a file that is not for LightBurn,
+    /// and the stock's layer described as one to burn when every other place says not to.
+    /// </summary>
+    [Fact]
+    public void TheDescriptionNamesNoEmptyLayerAndNeverSaysToBurnTheStock()
+    {
+        var artwork = new Artwork
+        {
+            Layers =
+            [
+                new ArtLayer { Id = "fill", Label = "Fill", Role = ArtRole.Fill, Shapes = [new ArtShape { Subpaths = [ApertureSquare(Mm(0, 0), 4)], Filled = true }] },
+                new ArtLayer { Id = "edge", Label = "Edge", Role = ArtRole.Boundary, Shapes = [new ArtShape { Subpaths = [] }] },
+            ],
+            ContentBounds = new Bounds(Nm.FromMillimetres(-2), Nm.FromMillimetres(-2), Nm.FromMillimetres(2), Nm.FromMillimetres(2)),
+        };
+
+        var options = Plain with
+        {
+            References = [new SvgReference("stock", "Stock and holes", ArtRole.Registration, [Stroke(ArtSegment.Line(Mm(0, 0), Mm(1, 0)))])],
+        };
+
+        string Desc(SvgExportOptions o) =>
+            XDocument.Parse(SvgWriter.Write(artwork, Page(-20, -20, 20, 20), o)).Descendants().Single(e => e.Name.LocalName == "desc").Value;
+
+        var lightBurn = Desc(options);
+        Assert.Contains("Layer C01 (#0000FF)", lightBurn, StringComparison.Ordinal);
+        Assert.DoesNotContain("C02", lightBurn, StringComparison.Ordinal);
+        Assert.Contains("Layer C00 (#000000): for placing and registering the work, not for burning; set not to output.", lightBurn, StringComparison.Ordinal);
+
+        var inkscape = Desc(options with { Profile = SvgProfile.Inkscape });
+        Assert.DoesNotContain("Layer ", inkscape, StringComparison.Ordinal);
+        Assert.DoesNotContain("set to Fill", inkscape, StringComparison.Ordinal);
     }
 
     [Fact]

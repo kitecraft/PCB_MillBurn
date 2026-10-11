@@ -225,9 +225,9 @@ public sealed class StalenessTests
     /// viewport showing toolpaths that have just been declared wrong — or nothing at all where a
     /// board was.
     ///
-    /// **The two exceptions are the same exception twice.** Replacing the project and re-reading
-    /// the source bytes both have a caller that swaps the thing a scene is built *from* and then
-    /// rebuilds itself; rebuilding here as well runs the whole thing twice, the first time against
+    /// **The three exceptions are the same exception three times.** Replacing the project,
+    /// re-reading the source bytes and telling a layer what it is (6.31) all have a caller that
+    /// swaps the thing a scene is built *from* and then rebuilds itself; rebuilding here as well runs the whole thing twice, the first time against
     /// geometry that is about to be thrown away. `SourceRefreshed` did exactly that for a day, and
     /// this test is what failed when it was corrected — which is the right way round.
     ///
@@ -239,7 +239,8 @@ public sealed class StalenessTests
     [Fact]
     public void ClearingThePicturePutsOneBackUnlessTheCallerWill()
     {
-        StaleBecause[] rebuiltByTheirCaller = [StaleBecause.BoardReplaced, StaleBecause.SourceRefreshed];
+        StaleBecause[] rebuiltByTheirCaller =
+            [StaleBecause.BoardReplaced, StaleBecause.SourceRefreshed, StaleBecause.RoleChanged];
 
         Assert.All(Reasons, why =>
         {

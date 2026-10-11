@@ -3396,7 +3396,9 @@ layers with explicit colours even in single-layer mode — being separate is the
 the drawing, about the frame's centreline. `ExportItem.Drawing` now includes them, so each file's
 summary and the project page say every file imports at the stock's size, and the page gives one
 placement instead of the per-file table (which stays for exports without them). On by default, against
-this project's habit, because what it prevents is silent.
+this project's habit, because what it prevents is silent. **Recoloured in sprint 5 (M6)**: the outline is
+now grey, LightBurn's C08, and the stock and holes black, C00 — red and blue were C02 and C01, both
+layers that burn, and C01 the drawing's own.
 
 **Which box is a list**, under *Settings › Laser › Placing layers*, because it depends on what goes
 against the laser's origin and the workshop does it both ways. *Board outline, and the stock* (the
@@ -3593,7 +3595,7 @@ than the plumbing:
   is the time the real program takes"* was false, in the one place the operator reads at the
   machine. It is now conditional, and says so when the time means nothing.
 
-#### 6.20 Which way up is this stock? — **enhancement · open**
+#### 6.20 Which way up is this stock? — **enhancement · open** — *set aside in sprint 5, until it proves a bigger problem*
 
 From the workshop, cutting the 78.63 x 76.09 mm test stock: *"Might need a better way to orient the
 board. On this mostly square board, the chamfer corner isn't quite enough for a visual check for
@@ -3623,6 +3625,13 @@ stock allows.
   stay clean to seat in the corner stop.
 - **A mark, not a cut**: the letters of the corner engraved shallowly in the waste, or burned in by
   the laser as part of a placing layer — free on the laser, and readable rather than inferred.
+
+**Set aside in sprint 5, 2026-10-11**, by the product owner, until it proves a bigger problem — see
+[that sprint's story 3](../Sprints/Sprint-05-Put-It-Where-It-Belongs.md). Two findings from
+looking: a single chamfer cannot catch a flip on a near-square piece at any size; and a second
+chamfer has to go on a corner next to the datum, both of which hold an alignment hole, so it means
+moving a hole. Sizing the chamfer was declined — *"The problem I had can not be solved by changing
+the chamfer size."*
 
 **To settle:** whether the mark should also survive the board being cut out of the stock, since after
 that the waste is scrap and the board's own outline has to carry the orientation; and whether a flip
@@ -4305,7 +4314,7 @@ body it used to have — the three import presets — is still there, under
 **Confirmed at the bench, 2026-09-22**, on a published build: *"Inner layers are no longer
 exportable."*
 
-#### 6.31 Let the operator say what a layer is — **enhancement · open** — *asked for by the product owner*
+#### 6.31 Let the operator say what a layer is — **enhancement · fixed** — *asked for by the product owner*
 
 From the product owner, after a day of chasing naming conventions: *"Perhaps, instead of trying to
 match all the different naming schemes, we use the most common. But, as a future enhancement, we can
@@ -4334,6 +4343,13 @@ absence of this, and the entries above should be read in that light.
 from that row, the choice is saved with the project and survives a refresh of the source folder, and
 a role that was set by hand is never silently replaced by detection. The Olimex board from 6.28 is
 the test: it should be usable by hand even with every one of its files unrecognised.
+
+**Fixed in sprint 5, 2026-10-11** — [story 7](../Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
+*Layer is* at the top of an opened row, through `MillBurnProject.SetRole`, which marks the role the
+operator's so a refresh keeps it. The guess is kept from import onwards (`ProjectSource.RoleGuessed`)
+and shown on the row: a board built from a project had been reporting every layer as declared, so
+the advice that a role was a guess had not fired in the window since projects arrived. Tried on
+`TopBotNames`, every role a guess; the Olimex set is not in the corpus.
 
 #### 6.32 Say where the project came from — **enhancement · fixed**
 
@@ -4383,6 +4399,11 @@ of backslashes, and relative to a working directory the operator never sees — 
 it* with "it depends where you were standing". And `ProjectOrigin.Full` returns its argument rather
 than throwing when a path cannot be resolved, because it runs while a panel is drawing, off a string
 a project file supplied.
+
+**Changed at 0.6.0, by the product owner.** The path is one line now, its middle folders elided and
+the whole of it in the tooltip. Wrapped in full, a path with no spaces could only break straight
+after the drive, so the panel spent a line on `E:`. Asked whether to keep it whole and wrap at
+folder boundaries instead, or elide the middle: *"B (The mouse hover solves the rest)."*
 
 #### 6.33 A superseded preview stops being watched, not stopped — **defect · fixed**
 
@@ -6427,7 +6448,7 @@ proved by a test on that day rather than assumed to have worked all along.
 **Done when** a run an operator stops is shown as stopped rather than as clean, with a test that
 fails if the banner stops appearing.
 
-#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · open** — *found by `/code-review` at xhigh, 2026-09-30*
+#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · fixed** — *found by `/code-review` at xhigh, 2026-09-30*
 
 *Job ▸ Findings* takes about 1.5 s on a two-sided Arduino Mega. Roughly half of that is work already
 done, and almost none of it can be cancelled.
@@ -6462,6 +6483,16 @@ elsewhere.
 **Done when** the grown regions are computed once per layer and shared, the token is read before each
 whole-layer operation as well as inside the pair loop, and a board with enough groups to fill the
 window opens without a visible stall.
+
+**Fixed in sprint 5, 2026-10-11** — [story 6](../Sprints/Sprint-05-Put-It-Where-It-Belongs.md).
+`ElectricalCheck.GrownCopper` is built once per layer and handed to both checks; the Mega's whole
+findings run went from **1,535 ms to 806 ms** at steady state with identical answers. The token is
+read before each whole-layer operation: a cancel that used to wait out the layer — up to 928 ms —
+now waits at most one offset, 119 ms, and a test that fails on the old code (610 ms) holds it. The
+window was measured rather than rebuilt: 52 ms on the Mega, 146 ms for a fabricated hundred groups
+of three places, and a second only when every one of a hundred groups is filled to the 40-place
+cap, which no board here produces. Each layer's shorts are now read once and filed by region once,
+instead of filtered again for every group.
 
 #### 6.56 A finding takes you to the copper it is about — **enhancement · fixed** — *asked for by the product owner, 2026-09-30*
 
@@ -6850,3 +6881,109 @@ that way in `Staleness.Of` rather than as two unrelated exceptions.
 **The test caught the correction, which is the right way round.** `ClearingThePicturePutsOneBack`
 failed the moment `Rebuild` went false, and in being fixed it became a partition over the whole
 enum — closing the last of the five decisions that had no sweep pinning it.
+
+#### 6.69 A LightBurn layer preset beside the SVGs — **enhancement · superseded** — *built, checked on the bench and declined by the product owner, 2026-10-10*
+
+Sprint 5 story 2, V11: 04 §2.3 says to *"ship this as a LightBurn layer preset next to the SVG, so
+the settings are applied once and then reused for every board."* It was built, and the bench said
+no twice — once about the file, and once about whether it was worth having.
+
+**The file did nothing.** The first version was a `.lbrn2` with the five layers' settings and no
+shapes. Opened in LightBurn 2.1.03, *"Neither file opened anything in LightBurn. The Cuts/Layers
+remain empty."* LightBurn keeps a layer only while a shape is on it; a project of settings alone is
+an empty project. And the import does not reuse remembered settings either: the workshop's own
+preferences had C01 on Fill, and an SVG imported and saved came back with C01 as Line at 20 % and
+100 mm/s. So the chore V11 describes is real in LightBurn — every board's layers are set up again.
+
+**What would have worked, and was proven to.** A `.lbrn2` per SVG with the geometry in it, every
+shape on its role's layer and the layers already set. A hand-written probe — five 10 mm squares, one
+per layer, the C01 square with a hole — opened with every setting as written: C01 on Fill, C00 and
+C08 with Output off, the list in priority order with C02 first, each layer named, and in Preview the
+C01 square filled as a ring, the hole left clear, the two output-off layers left out of the job.
+Screenshots: `WorkingFolder/Sprint 5/Screenshots/layer-probe.lbrn2.png` and `…_preview.png`.
+
+**Declined anyway, and that is the useful finding.** *"It seems like overhead that we have to
+maintain for a small number of users. I don't use LightBurn normally. I use Falcon from Creality."*
+The value was always in each SVG putting its geometry on the right colour, and story 1 already does
+that for any software that imports by colour. A LightBurn project is a second output format, in a
+layout LightBurn does not publish and may change in any release, for users this application does
+not have. What stayed: the project page's *Laser layers* table, program-neutral, from the same
+`LayerContract` the SVGs' descriptions are written from; and a fix found on the way — the export
+window had never counted the project page, so it said one file fewer than it wrote.
+
+**The format, as LightBurn 2.1.03 wrote it**, kept so that whoever asks for this next starts from
+evidence rather than from a library's README. Read from a file LightBurn saved itself
+(`Millburn_Test_Board-B_Mask.lbrn2`, an import of this application's SVG) and from the probe above.
+
+- Root: `<LightBurnProject AppVersion="2.1.03" FormatVersion="1" MaterialHeight="0" MirrorX="False"
+  MirrorY="False">`. LightBurn adds `DeviceName`, a `<Thumbnail>`, `<VariableText>`, `<UIPrefs>` and
+  `<Notes>`; the probe had none of them and opened.
+- A layer: `<CutSetting type="Cut">` for Line, `type="Scan"` for Fill, each value a child element with
+  a `Value` attribute — `<index Value="1"/>` (the palette number, C01 is 1), `<name …/>`,
+  `<priority …/>`, and `<doOutput Value="0"/>` for Output off. Power and speed, when left out, come up
+  at 20 % and 6,000 mm/min.
+- A shape: `<Shape Type="Path" CutIndex="1" VertID="n" PrimID="n">` holding `<XForm>1 0 0 1 x y</XForm>`,
+  `<VertList>` of `V<x> <y>c0x1c1x1` per vertex, and `<PrimList>LineClosed</PrimList>`. LightBurn
+  shares vertex and primitive lists between shapes by ID and omits a repeated one; unique IDs with
+  both lists always present is what the probe used.
+- Coordinates: millimetres, **Y up**. An imported SVG keeps its own coordinates with Y negated, and
+  the `XForm` holds where it was dropped on the bed. A hole is a second closed shape inside the
+  first, on the same layer.
+- Not seen in a real file: a true arc. LightBurn stored the import's circles as runs of straight
+  segments, and that is what a writer should do until it has been shown otherwise.
+
+**If it is asked for again**, the reasons above are the ones to answer, and the bench work does not
+need repeating.
+
+#### 6.70 The rulers could not be read in the light theme — **defect · fixed** — *found retaking the README's screenshots, 2026-10-11*
+
+The rulers' numbers, ticks, the pointer's readout and the measuring line were all drawn in white,
+over a strip washed in the viewport's own colour. On the dark theme that is white on near-black. On
+the light theme it is white on #FAFAFB: drawn, and invisible. They shipped in 0.5.0 (sprint 4 story
+8) and every picture taken of them was dark, so nothing had looked.
+
+Found retaking the README's light-theme viewer shot for 0.6.0, where the ruler strip came out empty.
+`Ruler.InkOn` now picks the marks' colour from the strip's — near-black on a light viewport, white on
+a dark one — for every mark the ruler draws. `RulerTests.TheMarksStandOutFromEitherThemesViewport`
+draws the ruler onto each theme's background and requires its marks to differ from it by most of
+the range; on the old code the light theme's differed by **4 in 255**.
+
+#### 6.71 The 66-up panel draws at about 14 fps where the README's hero showed 37 — **enhancement · open** — *found retaking the README's screenshots, 2026-10-11; for sprint 6*
+
+Retaking the hero for 0.6.0 — the GridStripConnector panel previewed, 1600 × 1000, the same shot the
+README has used since 0.2.0 — the status bar read **about 69 ms a frame, 14 fps**, where the
+September shot read **27 ms, 37 fps**. Fewer vertices now than then (228,448 against 241,742).
+
+**Not this release.** The same view from a `main` checkout (0.5.0), built in Release and shot
+alternately with 0.6.0 on the same machine: 69.6 and 69.1 ms for 0.5.0, 68.9 and 71.4 for 0.6.0.
+So it is somewhere between September and 0.5.0 — sprints 2 to 4, the rulers among them — or it is
+the machine: the findings benchmarks in sprint 5 also settled to about half their first runs' speed
+after warming.
+
+**Why it matters.** The README says the viewport *"holds 98 fps through a full zoom sweep on 500,247
+segments"*, and its own hero now shows 14. One of the two has to change, and which is a measurement:
+`--bench` on the 0.2.0 tag against today, on one machine at one time, and a frame-time capture of
+the panel with the rulers off (`--no-ruler`) to see whether they are the cost.
+
+#### 6.72 On a panel, every tab goes on one edge — **defect · open** — *found in the workshop, 2026-10-11; for sprint 6*
+
+From the product owner, looking at the 66-up GridStripConnector panel in the README's hero: *"On
+the panalized connector … all the tabs end up along the bottom edge of the 'board'. Up to 6 tabs.
+Then, 7 - 12 along the top of the board. The tabs do distribute better on a more 'normal' shapped
+board."*
+
+**Reproduced.** The panel's project with the outline cut by the 0.8 mm end mill, *Job ▸ Tabs…*:
+four tabs by default, every one *"on a 24.6 mm edge"* at y = −0.40 mm, x = 40.94, 96.14, 123.74 and
+151.34 mm — all on the bottom. `WorkingFolder/V0.6.0/Screenshots/6-72-panel-tabs-all-on-the-bottom.png`.
+
+**Why, as far as reading it goes.** Sprint 4 story 1 (6.4) places one tab per straight edge, longest
+edge first, before any edge gets a second. On a rectangle that is one per side. A panel's outline is
+not four long edges: it is broken into many short straight stretches between the boards, and the
+longest of them happen to lie along one side, so the first six tabs go there and the next six along
+the opposite one. The rule is right for the board it was written for and blind to *where* the edges
+it chooses are.
+
+**The shape a fix probably wants**: spread across the outline's sides before going down the list of
+edges — the quarter of the perimeter a tab falls in, or its bearing round the board's centre, as the
+first key and length as the second. To be checked against the 21 × 37 mm board 6.4 was tuned on,
+which must not move.

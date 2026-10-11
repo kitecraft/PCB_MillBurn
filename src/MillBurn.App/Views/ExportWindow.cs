@@ -330,7 +330,10 @@ public sealed class ExportWindow : Window
 
         // Counted rather than assumed: levelling no longer produces one extra file per program,
         // because the programs for the side that was not probed do not get one.
+        // And the project page, which the writer has always written beside the files and this
+        // never counted: the window said one fewer than the folder then held.
         var extra = _plan.Items.Count(i => i.Companion is not null)
+            + (_plan.Page is null ? 0 : 1)
             + (_dryRun.IsChecked == true ? programs : 0)
             + (Levelling ? Levellable.Count() : 0);
 

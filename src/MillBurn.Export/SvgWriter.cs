@@ -112,6 +112,27 @@ public static class SvgWriter
             sb.Append("Note: ").Append(Escape(note)).Append('\n');
         }
 
+        // Which colour is which layer, and the mode it wants, for every role actually in the file.
+        // The colour is the whole of the assignment, so the file says what each one is for rather
+        // than leaving it to a table in a document nobody has open at the laser.
+        //
+        // LightBurn's only: the modes are its layer settings, and an Inkscape file's colours are for
+        // reading the drawing. A role with nothing to draw is left out, since a line telling somebody
+        // to set up a layer that is not there is worse than none.
+        //
+        // In the contract's run order, which is the order the project page lists them in too.
+        var present = options.Profile.Flavour == SvgFlavour.LightBurn
+            ? artwork.Layers.Where(l => l.Shapes.Any(Draws)).Select(l => l.Role)
+                .Concat(options.References.Where(r => r.Shapes.Any(Draws)).Select(r => r.Role))
+                .ToHashSet()
+            : [];
+
+        foreach (var role in LayerContract.All.Select(c => c.Role).Where(present.Contains))
+        {
+            sb.Append(Invariant(
+                $"Layer {options.Profile.LayerNameFor(role)} ({options.Profile.ColourFor(role)}): {LayerContract.For(role).Description}.\n"));
+        }
+
         if (options.Timestamp is { } stamp)
         {
             sb.Append("Generated: ").Append(stamp.ToString("u", CultureInfo.InvariantCulture)).Append('\n');
@@ -119,6 +140,8 @@ public static class SvgWriter
 
         sb.Append("  </desc>\n");
     }
+
+    private static bool Draws(ArtShape shape) => shape.Subpaths.Any(s => s.Count > 0);
 
     private static void WriteStyle(StringBuilder sb, SvgProfile profile)
     {
@@ -135,7 +158,7 @@ public static class SvgWriter
     }
 
     /// <summary>
-    /// The whole drawing as one group: one filled path, and one stroked path per stroke width.
+    /// The whole drawing as one group: per role, one filled path and one stroked path per stroke width.
     ///
     /// Merging the fills into a single path is only safe because holes wind opposite to islands and
     /// the fill rule is non-zero. Under even-odd — which this used to emit — two shapes that
@@ -144,51 +167,69 @@ public static class SvgWriter
     /// Stroke widths cannot merge, since the width is an attribute of the element. In practice a
     /// silk layer has one or two, and a laser burns at its beam width regardless of what the file
     /// says, so a couple of elements is not the problem hundreds of them were.
+    ///
+    /// **One path per role as well**, in that role's colour. Flattening used to paint everything in
+    /// the Mark colour — LightBurn's C03, a Line layer — so a mask's openings arrived on a layer that
+    /// traced them instead of clearing them. The colour is the layer assignment (M6), and a file with
+    /// fills and centrelines in it needs two modes, so it gets two colours; that is two layers in
+    /// the laser software, not the hundreds this mode exists to prevent.
     /// </summary>
     private static void WriteFlattened(StringBuilder sb, Artwork artwork, SvgPage page, SvgExportOptions options)
     {
-        var colour = options.Profile.ColourFor(ArtRole.Mark);
+        // Keyed on role, then width, so the output order is the enum's and the widths' rather than
+        // the order the layers happened to arrive in.
+        var filled = new SortedDictionary<ArtRole, List<IReadOnlyList<ArtSegment>>>();
+        var stroked = new SortedDictionary<(ArtRole Role, long Width), List<IReadOnlyList<ArtSegment>>>();
 
-        var filled = new List<IReadOnlyList<ArtSegment>>();
-        var stroked = new SortedDictionary<long, List<IReadOnlyList<ArtSegment>>>();
-
-        foreach (var shape in artwork.Layers.SelectMany(l => l.Shapes))
+        foreach (var layer in artwork.Layers)
         {
-            if (shape.Filled)
+            foreach (var shape in layer.Shapes)
             {
-                filled.AddRange(shape.Subpaths);
-                continue;
+                if (shape.Filled)
+                {
+                    Bucket(filled, layer.Role).AddRange(shape.Subpaths);
+                }
+                else
+                {
+                    Bucket(stroked, (layer.Role, shape.StrokeWidthNm)).AddRange(shape.Subpaths);
+                }
             }
-
-            if (!stroked.TryGetValue(shape.StrokeWidthNm, out var bucket))
-            {
-                bucket = [];
-                stroked[shape.StrokeWidthNm] = bucket;
-            }
-
-            bucket.AddRange(shape.Subpaths);
         }
 
         // No inkscape:groupmode here. Declaring the group to be a layer is exactly what invites an
         // importer to make one of its own layers out of it.
         sb.Append("  <g id=\"artwork\">\n");
 
-        if (filled.Count > 0)
+        foreach (var (role, subpaths) in filled)
         {
-            WriteShape(sb, new ArtShape { Subpaths = filled, Filled = true }, page, options, colour);
+            WriteShape(
+                sb, new ArtShape { Subpaths = subpaths, Filled = true }, page, options, options.Profile.ColourFor(role));
         }
 
-        foreach (var (width, subpaths) in stroked)
+        foreach (var ((role, width), subpaths) in stroked)
         {
             WriteShape(
                 sb,
                 new ArtShape { Subpaths = subpaths, StrokeWidthNm = width },
                 page,
                 options,
-                colour);
+                options.Profile.ColourFor(role));
         }
 
         sb.Append("  </g>\n");
+
+        static List<IReadOnlyList<ArtSegment>> Bucket<TKey>(
+            SortedDictionary<TKey, List<IReadOnlyList<ArtSegment>>> buckets, TKey key)
+            where TKey : notnull
+        {
+            if (!buckets.TryGetValue(key, out var bucket))
+            {
+                bucket = [];
+                buckets[key] = bucket;
+            }
+
+            return bucket;
+        }
     }
 
     private static void WriteLayer(StringBuilder sb, ArtLayer layer, SvgPage page, SvgExportOptions options)
@@ -211,7 +252,8 @@ public static class SvgWriter
 
     /// <summary>
     /// A placing layer: declared a layer, so importers make it one, and coloured on every element
-    /// whatever the profile, because its colour is how it is told apart from the drawing.
+    /// whatever the profile, because its colour is how it is told apart from the drawing — and, in
+    /// LightBurn, which cut layer it lands on, which for the outline is the one set not to burn.
     /// </summary>
     private static void WriteReference(StringBuilder sb, SvgReference reference, SvgPage page, SvgExportOptions options)
     {
@@ -225,7 +267,7 @@ public static class SvgWriter
             if (d.Length > 0)
             {
                 sb.Append("    <path d=\"").Append(d).Append('"')
-                  .Append(Invariant($" fill=\"none\" stroke=\"{reference.Colour}\""))
+                  .Append(Invariant($" fill=\"none\" stroke=\"{options.Profile.ColourFor(reference.Role)}\""))
                   .Append(Invariant($" stroke-width=\"{Num(Nm.ToMillimetres(Math.Max(shape.StrokeWidthNm, 0)))}\"/>\n"));
             }
         }

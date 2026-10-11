@@ -101,6 +101,16 @@ public sealed record ProjectSource
 
     /// <summary>The user corrected the detected role, so a refresh must not undo that.</summary>
     public bool RoleOverridden { get; init; }
+
+    /// <summary>
+    /// The role was read off the file's name, because the file did not say what it is (6.31).
+    ///
+    /// Kept beside the role from import onwards. Import always knew and threw the answer away, and a
+    /// board built from a project passed false for every layer — so the window's *"this role is a
+    /// guess"* never fired, and a guessed role looked exactly like a declared one. False once the
+    /// role has been set by hand: it is then nobody's guess.
+    /// </summary>
+    public bool RoleGuessed { get; init; }
 }
 
 /// <summary>
@@ -200,6 +210,13 @@ public sealed record ProjectSettings
     /// <summary>What this layer was set to, or nothing if it has never been set.</summary>
     public LayerOutputSettings? OutputFor(string fileName) =>
         LayerOutputs.FirstOrDefault(o => string.Equals(o.FileName, fileName, StringComparison.Ordinal));
+
+    /// <summary>Forgets one layer's settings, so it takes the defaults for its role again.</summary>
+    public ProjectSettings WithoutOutput(string fileName) =>
+        this with
+        {
+            LayerOutputs = [.. LayerOutputs.Where(o => !string.Equals(o.FileName, fileName, StringComparison.Ordinal))],
+        };
 
     /// <summary>
     /// Records one layer's settings, replacing whatever was there.
@@ -373,6 +390,51 @@ public sealed class MillBurnProject
 
     /// <summary>Marks the document changed. View state deliberately does not call this.</summary>
     public void Touch() => IsDirty = true;
+
+    /// <summary>
+    /// Says what a layer is, by hand — 6.31. Returns false when no source has that name, or when it
+    /// already has that role and the choice was already the operator's.
+    ///
+    /// **Marked as set by hand, so nothing undoes it**: a refresh of the folder keeps it
+    /// (`ProjectRefresh`), and it is no longer a guess. **And when the role really changes, the
+    /// layer's settings are forgotten**, so it takes the defaults for what it now is, the way an
+    /// imported layer does: an output that suited a silkscreen is not a choice the operator made
+    /// about a copper layer, and an output the new role cannot have would only be set back to
+    /// nothing when the project was next opened. Confirming the role it already has keeps them.
+    /// </summary>
+    public bool SetRole(string fileName, LayerRole role)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+
+        var index = -1;
+        for (var i = 0; i < Sources.Length; i++)
+        {
+            if (string.Equals(Sources[i].FileName, fileName, StringComparison.Ordinal))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0 || (Sources[index].Role == role && Sources[index].RoleOverridden))
+        {
+            return false;
+        }
+
+        var changed = Sources[index].Role != role;
+        Sources = Sources.SetItem(index, Sources[index] with { Role = role, RoleOverridden = true, RoleGuessed = false });
+
+        // Only when the role really changes. Confirming a guess keeps the role, and its output, tool
+        // and depth are choices the operator made about exactly that role — throwing them away was
+        // the first thing review found in the confirm button.
+        if (changed)
+        {
+            Settings = Settings.WithoutOutput(fileName);
+        }
+
+        Touch();
+        return true;
+    }
 
     public void MarkSaved() => IsDirty = false;
 

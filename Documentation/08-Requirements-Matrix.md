@@ -17,6 +17,11 @@ test, a measurement — so that "done" means something a reader can check.
 | **Not started** | No code |
 | **Superseded** | Replaced by something better, or deliberately dropped. The reason is the useful half |
 
+**Brought up to date:** 2026-10-11, at 0.6.0, after sprint 5 — every row the sprint touched, not a
+fresh audit of the rest. M6 and V43 done, V11 superseded, V32, M16 and M17 set aside with the reason in
+each, and V37, V39 and V42 carrying what the sprint changed in them. A duplicated ID found on the
+way (two rows called V40) is now refused by `MatrixSummaryTests`.
+
 **Last audited:** 2026-10-10, after sprint 4 and the two fixes that followed it. **Three audits'
 worth of work had landed without this document moving**, which is the longest it has ever been
 left, and the rows said so plainly: G20, G21 and G23 all read *Not started* for features that
@@ -79,9 +84,9 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | 01 Architecture | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
 | 02 Gerber & geometry pipeline | 24 | 18 | 0 | 3 | 1 | 1 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
-| 04 Machines, laser & mixed workflows | 32 | 11 | 1 | 15 | 0 | 4 | 1 |
-| 05 Viewer & export | 42 | 25 | 0 | 11 | 0 | 4 | 2 |
-| **Requirements** | **123** | **75** | **1** | **31** | **2** | **9** | **5** |
+| 04 Machines, laser & mixed workflows | 32 | 12 | 1 | 15 | 0 | 3 | 1 |
+| 05 Viewer & export | 43 | 26 | 0 | 11 | 0 | 3 | 3 |
+| **Requirements** | **124** | **77** | **1** | **31** | **2** | **7** | **6** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -179,7 +184,7 @@ pieces of new capability, none of which the workshop has asked for.
 | M3 | Laser profile: spot size, page, palette | §1.2 | **Partial** | `SvgProfile` has flavour + spot; no material library |
 | M4 | Pad selection from X2 attributes for pad-only burns | §2.1 | **Not started** | attributes parsed; not used for selection |
 | M5 | Kerf and etch-bias compensation stay with the laser software | §2.2 | **Done** | decision, documented and held |
-| M6 | SVG says fill versus line per layer | §2.3 | **Partial** | single-layer mode and inversion exist |
+| M6 | SVG says fill versus line per layer | §2.3 | **Done** | sprint 5 story 1: every colour comes from the role through `SvgProfile` — drawing C01, board outline C08, stock and holes C00, silk centrelines C03 — single-layer mode included, and each file's description names its layers and modes. `SvgWriterTests`, `ProjectPageTests`. Rendered, not yet imported into LightBurn on the bench |
 | M7 | Calibration generators: registration repeatability coupon | §2.4 | **Not started** | mill-side test cuts exist; laser-side does not |
 | M8 | Silkscreen marking straight from parsed strokes | §2.5 | **Done** | `SilkscreenOperation`; verified at 1:1 |
 | M9 | Job / Step / Setup / Fixture model | §3 | **Not started** | `JobBuilder` builds one job, not a workflow |
@@ -189,12 +194,12 @@ pieces of new capability, none of which the workshop has asked for.
 | M28 | The blank: grown from the board, or stated outright and cut or declared | 06 §5.6.3 | **Done** | `Blanks`, `BlankOperation`; work zero, page and mirror axis all follow it |
 | M29 | Laser verification: burn into the blank's border and measure | 06 §5.6.5 | **Not started** | the mill defines its datum; the laser only trusts one |
 | M30 | A re-measured (pre-cut) stock keeps the alignment holes it was cut with | 06 §6.16 | **Not started** | parked 2026-09-19: built on branch `005_StockKeepsItsHoles`, too hard to follow in the window |
-| M31 | The stock's alignment holes on a layer of their own in every SVG, for registering a burn | 06 §6.17 | **Done — used on metal** | `ExportPlanner.ReferenceLayers`, `SvgReference`; board outline red, stock and holes blue; Settings › Laser › Placing layers: outline and stock, outline only, none; `ProjectPageTests` |
+| M31 | The stock's alignment holes on a layer of their own in every SVG, for registering a burn | 06 §6.17 | **Done — used on metal** | `ExportPlanner.ReferenceLayers`, `SvgReference`; board outline grey on C08 and stock and holes black on C00 since sprint 5 (M6), red and blue before; Settings › Laser › Placing layers: outline and stock, outline only, none; `ProjectPageTests` |
 | M13 | "Square the stock" operation | §4.1 | **Not started** | also the bridge from a declared blank to a known one |
 | M14 | Dowel-plate generator and one-time machine calibration | §4.1 | **Not started** | the method is documented in the user FAQ |
 | M15 | Nest-pocket generator with asymmetric keying | §4.1 | **Not started** | — |
-| M16 | Fiducial generation with per-workflow survivability rules | §4.2 | **Partial** | the stock's two waste holes (06 §6.14) are the milled case, cut and measured; fiducials in copper, with the rules about what survives each workflow, are not |
-| M17 | Kabsch/affine fit from typed measurements, residual reported | §4.2 | **Partial** | `RigidFit.Solve`: the two-point rigid case, with the separation error as its residual. Three or more points, and the SVD, are not built |
+| M16 | Fiducial generation with per-workflow survivability rules | §4.2 | **Partial** | the stock's two waste holes (06 §6.14) are the milled case, cut and measured; fiducials in copper, with the rules about what survives each workflow, are not. **Set aside in sprint 5** with M17: the two waste holes already survive the workshop's workflow, and nothing has needed a third mark yet |
+| M17 | Kabsch/affine fit from typed measurements, residual reported | §4.2 | **Partial** | `RigidFit.Solve`: the two-point rigid case, with the separation error as its residual. Three or more points, and the SVD, are not built. **Set aside in sprint 5** with M16 |
 | M18 | Laser registration by placement, not coordinates | §4.3 | **Not started** | — |
 | M19 | Refuse to export above the residual threshold without an override | §4.4 | **Not started** | — |
 | M20 | Alignment records persisted with the project | §4.5 | **Done** | `ProjectSettings.Alignment` — shift, turn, pivot and the date found; `ProjectTests.TheDrillAlignmentIsSavedWithTheProject` |
@@ -221,7 +226,7 @@ pieces of new capability, none of which the workshop has asked for.
 | V8 | Live stats readout: distances, lifts, per-tool time | §2.4 | **Done** | status bar and export summary |
 | V9 | Structured SVG: real mm, named layers, `evenodd` holes, deterministic | §3.2 | **Done** | `SvgWriter`; byte-identical across runs |
 | V10 | One page origin and size shared by every export in a job | §3.2 | **Done** | `SvgPage`; asserted in the golden tests |
-| V11 | LightBurn palette mapping and a shipped layer preset | §3.3 | **Partial** | palette mapping done; no preset file ships |
+| V11 | LightBurn palette mapping and a shipped layer preset | §3.3 | **Superseded** | palette mapping done (M6). The preset was built and checked on the bench in sprint 5, and declined: a LightBurn project with no shapes loads no layers, one with the geometry works, and keeping a second output format for software the workshop does not use is not worth it — 06 §6.69, with the format as LightBurn wrote it. The project page's *Laser layers* table says what each colour is, for any software that imports by colour |
 | V12 | DXF (R12 polyline) as the second laser flavour | §3.4 | **Not started** | `MillBurn.Export` holds SVG only |
 | V13 | PNG at a specified DPI | §3.4 | **Partial** | `--png` renders; DPI is not a parameter |
 | V14 | PDF for the documentation profile | §3.4 | **Not started** | — |
@@ -242,17 +247,18 @@ pieces of new capability, none of which the workshop has asked for.
 | V29 | Align from the stock's waste holes, from either side of the board, and choose which programs move | 06 §6.14 | **Done** | `ExportPlanner.Movable`, `DrillAlignment.Moved`, the dialog's waste/flip ticks; `AlignmentTests.OnlyTheProgramsNamedAreMoved`, `TheStockIsNeverMovedEvenWhenNamed`; CLI `align --waste-holes --flipped`, `export --align-moves` |
 | V30 | A paste stencil to 3D-print: STL from a paste layer, apertures shrunk to the right volume, thinner steps only where release needs them, optional locating lip | 06 §6.18 | **Not started** | *Job › Paste stencil…*; target volume from Phase 9's rule |
 | V31 | A dry run that is the real program raised: every move kept, spindle off, Z offset by a rise (default 3 mm) | 06 §6.19 | **Done** | move-for-move identical to the real program with every Z lifted; refuses on depth, on a program that commands no Z at all, on `G92`, `G10`, `G38`, `G43`/`G49` and their decimal variants, and on a machine-referenced Z (`G53`, `G28`, `G30`); the flat run is a choice in Settings and `--dry-run-height`. Sprint 2 story 8 |
-| V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180° |
+| V32 | The stock's datum corner readable at a glance on a square piece | 06 §6.20 | **Not started** | a 3 mm chamfer is too subtle on 78 mm; the two waste holes are near-symmetric under 180°. **Set aside by the product owner in sprint 5**: one chamfer cannot catch a flip on a near-square piece at any size, and a second needs a corner the alignment holes already use — 06 §6.20 |
 | V33 | Every hole approached from one side, and a backlash check to measure the slack | 06 §6.21 | **Not started** | the workshop's waste holes came out 0.24 mm closer than programmed (09 §1): about 0.17 mm of X backlash, or 0.13° of skew — 6.22's check tells them apart |
 | V34 | Machine checks: backlash (six plunges, three rows), axis scale, squareness, effective cutter diameter, return to zero, tram | 06 §6.22 | **Partial** | backlash and squareness built: `MachineCheck`, `MachineCheckGuide`, *Job › Machine checks…*, `machine-check` CLI, `MachineCheckTests`, `Help/guides/machine-checks.html`. Axis scale, cutter diameter, return to zero and tram not started |
 | V35 | About window: version, build date, and a manual check for a newer release | 06 §6.23 | **Done** | `ReleaseCheck` (parse + compare, no network), `AboutWindow`, `TravelDemo`; `ReleaseCheckTests` |
 | V36 | The outline drops straight to the next lap, and hops tabs at the tab's own height | 06 §6.24 | **Done** | 45.4 mm of vertical motion down to 27.4 on the test board; about eight minutes off a 66-up panel. Sprint 1 story 6 |
-| V37 | The checks become something you can read: a non-modal findings view naming every place the copper stays joined | 06 §6.44 | **Done** | `BoardFindings`, `FindingsWindow`, *Job › Findings* (F7); a coordinate and the nets for each place, capped and counted. `BoardFindingsTests`. Sprint 3 — **the whole of it** |
+| V37 | The checks become something you can read: a non-modal findings view naming every place the copper stays joined | 06 §6.44 | **Done** | `BoardFindings`, `FindingsWindow`, *Job › Findings* (F7); a coordinate and the nets for each place, capped and counted. `BoardFindingsTests`. Sprint 3 — **the whole of it**. Sprint 5 story 6 (06 §6.55): the layer is grown once for the check and the search, about half the cost on the Mega, and a second F7 abandons the run in progress. `NetGapTests`, `BoardFindingsTests.ASecondPressAbandonsTheRunInsteadOfWaitingItOut` |
 | V38 | Copper with no net name is called unnamed wherever it is reported | 06 §6.53 | **Done** | `ElectricalCheck.NamedSides`; a region sharing one named net is no longer reported as safe. `ElectricalCheckTests`. Sprint 4 story 2 |
-| V39 | A scale along the top and left of both viewports, agreeing with the grid at every zoom | 06 §6.1 | **Done** | `GridLadder`, `RulerFrame`, `Ruler.Draw`, called by `BoardRenderer` and `ToolpathRenderer` from one ladder; toggled by *View › Show rulers* and remembered. `RulerTests`, `AppSettingsTests.TheRulerIsOnUnlessItWasTurnedOff`. Sprint 4 story 8 |
+| V39 | A scale along the top and left of both viewports, agreeing with the grid at every zoom | 06 §6.1 | **Done** | `GridLadder`, `RulerFrame`, `Ruler.Draw`, called by `BoardRenderer` and `ToolpathRenderer` from one ladder; toggled by *View › Show rulers* and remembered. `RulerTests`, `AppSettingsTests.TheRulerIsOnUnlessItWasTurnedOff`. Sprint 4 story 8. Readable on the light theme since 0.6.0, where its marks had been white on white (06 §6.70); `RulerTests.TheMarksStandOutFromEitherThemesViewport` |
 | V40 | The pointer's position, continuously, in the board's own numbers with its origin named | 06 §6.48 | **Done** | `RulerReadout`, `BoardView.PointerAt`/`OriginName`; reads from the stock's corner on a job built on stock and the board's otherwise, cleared when the pointer leaves. Shift-drag measures: `RulerMeasure` gives dx, dy and the diagonal. Sprint 4 story 8 |
 | V41 | A finding takes you to the copper it is about | 06 §6.56 | **Done** | `Marker`, `BoardView.GoTo`; every coordinate in the findings list is a button, the view goes to it at 14 mm across and rings it, and the mark clears by each of the five routes the entry names. `MarkerTests`. Sprint 4 story 9 |
-| V42 | The window says which folder the Gerbers came from | 06 §6.32 | **Done** | `ProjectOrigin.Full`, at the head of *Project info*; the full path, normalised, labelled `Gerbers`. `ProjectOriginTests`. Sprint 4 story 6 |
+| V42 | The window says which folder the Gerbers came from | 06 §6.32 | **Done** | `ProjectOrigin.Full`, at the head of *Project info*; the full path, normalised, labelled `Gerbers`. `ProjectOriginTests`. Sprint 4 story 6. One line since 0.6.0, the middle folders elided and the whole path on hover — the product owner's call, reversing the wrapping 6.32 shipped with |
+| V43 | A layer's role can be set by hand on its row, and a guessed one says so | 06 §6.31 | **Done** | `MillBurnProject.SetRole`, `ProjectSource.RoleGuessed`, *Layer is* on the row, `StaleBecause.RoleChanged`; `--set-role`. `LayerRoleByHandTests`, `StalenessTests`. Sprint 5 story 7 |
 
 ## 06 §2 — Cross-cutting acceptance criteria
 

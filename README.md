@@ -278,10 +278,12 @@ dump. Checked for contradictions, and refused rather than silently clamped.</p>
 </tr>
 </table>
 
-<img src="art/screenshots/svg-output.png" alt="The exported SVG rendered in a browser: 66 boards in LightBurn green">
+<img src="art/screenshots/svg-output.png" alt="The exported SVG rendered in a browser: 66 boards in blue, each outlined in grey">
 
-<sub>The actual exported SVG, opened in a browser. Real millimetres, named layers, LightBurn's
-palette. This artwork has been laser-engraved onto copper-clad and measured true to within 0.1 mm.</sub>
+<sub>The actual exported SVG, opened in a browser. Real millimetres, and every kind of geometry on a
+colour of its own — the copper to clear in blue, the board outlines in grey, there to place by and
+not to burn — so software that sorts an import by colour puts each on its own layer. This artwork
+has been laser-engraved onto copper-clad and measured true to within 0.1 mm.</sub>
 
 ### It is also just a really good Gerber viewer
 
@@ -290,8 +292,8 @@ Point it at any Gerber export folder and look at your board — fast, correct, a
 - **Reads what your EDA tool actually writes.** Gerber RS-274X and X2, aperture macros, negative
   polarity, step-and-repeat, arcs kept as arcs. Excellon drill files including the zero-suppressed
   dialects, G85 slots and routed slots, and drill files written as Gerber.
-- **Knows what each file is** from its X2 `.FileFunction` — not from its filename — and *says so*
-  when it had to guess.
+- **Knows what each file is** from its X2 `.FileFunction` — not from its filename — *says so*
+  when it had to guess, and lets you set it by hand when the guess is wrong.
 - **Fast.** The viewport holds **98 fps** through a full zoom sweep on 500,247 segments.
 - **Opens anybody's G-code too.** `File ▸ Open G-code…`, or drag a `.nc` onto the window. It parses
   the text, so a program from any CAM tool draws the same way.

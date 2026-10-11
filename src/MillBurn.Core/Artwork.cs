@@ -25,7 +25,13 @@ public enum ArtRole
     /// <summary>The edge of a fill region, run first at low power for a crisp boundary.</summary>
     Boundary,
 
-    /// <summary>Registration marks. Usually burned; sometimes only a placement aid.</summary>
+    /// <summary>
+    /// For placing and registering the work, not for burning: today the stock's rectangle and its
+    /// alignment holes, on one layer whose contract sets it not to output (Export's
+    /// <c>LayerContract</c>). It used to say "usually burned", which nothing ever did. A mark that is
+    /// meant to burn wants a role of its own rather than this one, so that switching the placing
+    /// layer off cannot switch it off too.
+    /// </summary>
     Registration,
 
     /// <summary>Drawn but never burned — board outline, underlays, dimensions.</summary>

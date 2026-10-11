@@ -165,14 +165,37 @@ public static class BoardFindings
             var tool = ExportPlanner.ToolFor(setting, OperationKind.Isolation, library);
             var options = ExportPlanner.IsolationFor(setting, tool);
 
-            var check = ElectricalCheck.Isolation(layer.Area, layer.Nets, options);
+            // **Grown once and asked twice** — 06 §6.55. The check and the gap search both need the
+            // layer offset by half the cut and split into the regions it merges into, and each used to
+            // build it: byte-identical inputs, identical results, and the round offset of a dense layer
+            // is the dominant cost of this whole view. The token is read before each whole-layer
+            // operation inside it, which is where the time goes, so a second press of F7 no longer
+            // waits out the first.
+            //
+            // **Asked whether the check will run before growing anything.** A layer with no net
+            // names, or one, is refused before any geometry and used to cost this view nothing;
+            // growing it first made exactly the boards the view can say least about the slowest.
+            ElectricalCheck.GrownCopper? grown = null;
+
+            if (ElectricalCheck.CannotRun(layer.Nets, options) is null
+                && (grown = ElectricalCheck.GrownCopper.Of(layer.Area, options, token)) is null)
+            {
+                return new Result(layers, Stopwatch.GetElapsedTime(started), Cancelled: true);
+            }
+
+            var check = ElectricalCheck.Isolation(layer.Area, layer.Nets, options, grown);
+
+            if (token.IsCancellationRequested)
+            {
+                return new Result(layers, Stopwatch.GetElapsedTime(started), Cancelled: true);
+            }
 
             // **Only located when there is something to locate.** A layer the check could not run
             // on has no groups to point at, and paying a quarter of a second to find bridges nobody
             // can name would be spending the operator's time on an answer this view cannot use.
             var gaps = check.Ran
                 ? Shifted(
-                    ElectricalCheck.Gaps(layer.Area, layer.Nets, options, token),
+                    ElectricalCheck.Gaps(layer.Area, layer.Nets, options, grown, token),
                     frame is { IsEmpty: false } f ? f : board.Bounds)
                 : [];
 

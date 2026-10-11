@@ -54,6 +54,22 @@ public sealed partial class MatrixSummaryTests
             + "out of the counts above without anything saying so. Put the status in a cell of its "
             + "own and the qualifier in Evidence:\n  " + string.Join("\n  ", unreadable));
 
+        // **And no two rows share an ID.** Sprint 5 added V40 for the role picker while V40 already
+        // named the pointer readout, and every count above stayed right — two rows are two rows — so
+        // nothing said that "V40" now meant two requirements. An ID is what the sprints, the roadmap
+        // and the commits cite; one that points at two rows is a citation nobody can follow.
+        var shared = text.Split('\n')
+            .Select(l => RowId().Match(l))
+            .Where(m => m.Success)
+            .GroupBy(m => m.Groups["id"].Value, StringComparer.Ordinal)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        Assert.True(
+            shared.Count == 0,
+            "these IDs name more than one row of the matrix: " + string.Join(", ", shared));
+
         var rebuilt = Replace(text, Render(sections));
 
         if (Rewriting)
@@ -275,4 +291,7 @@ public sealed partial class MatrixSummaryTests
     /// <summary>Anything shaped like a requirement row, parseable or not. See the assertion that uses it.</summary>
     [GeneratedRegex(@"^\| [A-Z]+\d+ \|")]
     private static partial Regex LooksLikeARow();
+
+    [GeneratedRegex(@"^\| (?<id>[A-Z]+\d+) \|")]
+    private static partial Regex RowId();
 }

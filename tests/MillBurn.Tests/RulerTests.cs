@@ -15,6 +15,106 @@ namespace MillBurn.Tests;
 public sealed class RulerTests
 {
     /// <summary>
+    /// The ruler can be read on both themes' viewports.
+    ///
+    /// **It could not on the light one.** Its numbers, ticks and readout were white whatever the
+    /// theme, over a strip washed in the viewport's own colour — and the light theme's is #FAFAFB, so
+    /// they were drawn and invisible. Found retaking the README's light-theme screenshot, two sprints
+    /// after the rulers shipped; every shot taken of them until then was dark.
+    ///
+    /// **Judged on the pixels drawn**, because that is what fails: the ruler is drawn onto a bitmap of
+    /// each theme's background, and the strip along the top must hold marks that differ from the
+    /// background by most of the range. White on #FAFAFB differs by about 2 in 255.
+    /// </summary>
+    [Theory]
+    [InlineData(0xFA, 0xFA, 0xFB)]
+    [InlineData(0x0F, 0x12, 0x14)]
+    public void TheMarksStandOutFromEitherThemesViewport(byte red, byte green, byte blue)
+    {
+        var background = new SKColor(red, green, blue);
+
+        using var bitmap = new SKBitmap(600, 400);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(background);
+            Ruler.Draw(
+                canvas,
+                new SKRect(0, 0, 600, 400),
+                new RulerFrame(Scale: 8f, ScreenXAtZero: 100f, ScreenYAtZero: 350f),
+                gridStep: 1f,
+                ink: background,
+                readout: new RulerReadout(new SKPoint(12.5f, 7.25f), "from the board's corner"));
+        }
+
+        static double Luma(SKColor c) => (0.2126 * c.Red) + (0.7152 * c.Green) + (0.0722 * c.Blue);
+
+        // The strip along the top, where the numbers are.
+        var most = 0.0;
+        for (var x = 0; x < bitmap.Width; x++)
+        {
+            for (var y = 0; y < 16; y++)
+            {
+                most = Math.Max(most, Math.Abs(Luma(bitmap.GetPixel(x, y)) - Luma(background)));
+            }
+        }
+
+        Assert.True(most > 120, $"the ruler's marks differ from #{red:X2}{green:X2}{blue:X2} by at most {most:F0} of 255");
+    }
+
+    /// <summary>
+    /// The measuring line can be seen over the board in the light theme.
+    ///
+    /// It is drawn over the copper and the substrate, not over the strip, and the substrate is dark
+    /// whatever the theme. 6.70's first fix gave it the strip's theme-aware colour, which in the
+    /// light theme is near-black — over near-black. Found by review; this draws a measurement across
+    /// a patch of substrate with the light theme's viewport colour and looks along the line.
+    ///
+    /// **Diagonal, and sampled a quarter of the way along**, so that only the line can pass it: the
+    /// measure's two dashed sides run along its legs, one horizontal and one vertical, and a level
+    /// measurement would have put one of them exactly on the line being looked for. A quarter of the
+    /// way along is clear of both ends and of a label near the middle.
+    /// </summary>
+    [Fact]
+    public void TheMeasuringLineShowsOverTheBoardInTheLightTheme()
+    {
+        var light = new SKColor(0xFA, 0xFA, 0xFB);
+        var substrate = new SKColor(0x1E, 0x2A, 0x1C);
+
+        using var bitmap = new SKBitmap(600, 400);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(light);
+
+            // The board, as the viewport draws it before the ruler goes on top.
+            using var board = new SKPaint { Color = substrate, Style = SKPaintStyle.Fill };
+            canvas.DrawRect(new SKRect(100, 100, 500, 350), board);
+
+            // Board (10, 5) to (40, 25): screen (180, 310) to (420, 150), all inside the board.
+            Ruler.Draw(
+                canvas,
+                new SKRect(0, 0, 600, 400),
+                new RulerFrame(Scale: 8f, ScreenXAtZero: 100f, ScreenYAtZero: 350f),
+                gridStep: 1f,
+                ink: light,
+                measure: new RulerMeasure(new SKPoint(10, 5), new SKPoint(40, 25)));
+        }
+
+        static double Luma(SKColor c) => (0.2126 * c.Red) + (0.7152 * c.Green) + (0.0722 * c.Blue);
+
+        // A quarter of the way along: (240, 270). The legs are at y = 310 and x = 420, far from it.
+        var most = 0.0;
+        for (var x = 237; x <= 243; x++)
+        {
+            for (var y = 267; y <= 273; y++)
+            {
+                most = Math.Max(most, Luma(bitmap.GetPixel(x, y)) - Luma(substrate));
+            }
+        }
+
+        Assert.True(most > 120, $"the measuring line is at most {most:F0} brighter than the substrate it crosses");
+    }
+
+    /// <summary>
     /// The first rung clearing the threshold, not the nearest one.
     ///
     /// At 90 px/mm — the zoom a single bridge is inspected at — 0.1 mm is 9 px and 0.5 mm is 45 px,

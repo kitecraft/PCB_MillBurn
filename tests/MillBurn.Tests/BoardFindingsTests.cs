@@ -374,4 +374,66 @@ public sealed class BoardFindingsTests(ITestOutputHelper output)
         Assert.NotEmpty(result.Layers);
         Assert.True(result.Layers.Count < whole.Layers.Count, "the run was not actually stopped");
     }
+
+    /// <summary>
+    /// Pressing F7 again abandons the run in progress instead of waiting it out — 06 §6.55.
+    ///
+    /// **The token is turned inside the first isolated layer's own settings lookup**, which is after
+    /// the loop's check at the top and before any of that layer's geometry. The run is then in the
+    /// middle of a layer, which is the only place this ever mattered: the token used to be read
+    /// only in the gap search's pair loop, which a board that is mostly fine skips, so the whole
+    /// layer — the offset of the copper, the check, the search — ran to the end before anything
+    /// looked. Measured on the Mega before the fix, a cancel 50 ms in returned 500 ms later.
+    ///
+    /// **Measured against this machine's own layer**, not against a number: the abandoned run must
+    /// take under a quarter of one layer's share of the whole run. Before the fix it took all of
+    /// it — 610 ms against 554 — and failed; after, it stops at the first whole-layer step, 0.1 ms.
+    ///
+    /// **What this proves and what it does not.** It proves a run whose token turns at the start of
+    /// a layer does none of that layer's geometry. It would also pass if the token were read only
+    /// once, straight after the lookup — it cannot land a cancel *between* two Clipper operations,
+    /// which needs a hook in the production code. That finer claim, that `GrownCopper.Of` reads the
+    /// token before each whole-layer operation, rests on a measurement recorded in 06 §6.55: a
+    /// cancel anywhere in a run now returns within one offset, 119 ms at worst, where it used to
+    /// wait out the layer.
+    /// </summary>
+    [Fact]
+    public void ASecondPressAbandonsTheRunInsteadOfWaitingItOut()
+    {
+        var (board, settings) = Load(RealBoards.ArduinoMega);
+
+        // Warmed, so neither figure below is the first call's compilation.
+        BoardFindings.For(board, settings, ToolLibrary.Default);
+        var whole = BoardFindings.For(board, settings, ToolLibrary.Default);
+
+        // A whole run of a two-sided board: two layers, uncancelled, so the share below means one.
+        Assert.False(whole.Cancelled);
+        Assert.Equal(2, whole.Layers.Count);
+
+        var oneLayer = whole.Elapsed / whole.Layers.Count;
+
+        // The position of the first layer the findings view examines, so the cancel lands on its
+        // lookup: `CancelsAfterLayers` turns the token once more lookups than `after` have been made.
+        var first = board.Layers
+            .Select((layer, index) => (layer, index))
+            .First(p => settings.TryGetValue(p.layer.FileName, out var s)
+                && LayerOperations.For(p.layer.Role, s.Output) == OperationKind.Isolation)
+            .index;
+
+        using var stop = new CancellationTokenSource();
+        var abandoned = new CancelsAfterLayers(settings, after: first, stop);
+
+        var result = BoardFindings.For(board, abandoned, ToolLibrary.Default, token: stop.Token);
+
+        output.WriteLine(
+            $"one layer's share of a whole run: {oneLayer.TotalMilliseconds:F0} ms; the abandoned run: {result.Elapsed.TotalMilliseconds:F1} ms");
+
+        // It really was stopped inside that layer: the lookup that turned the token was its own.
+        Assert.Equal(first + 1, abandoned.Reached);
+        Assert.True(result.Cancelled, "the abandoned run reported itself complete");
+        Assert.Empty(result.Layers);
+        Assert.True(
+            result.Elapsed < oneLayer / 4,
+            $"the abandoned run took {result.Elapsed.TotalMilliseconds:F0} ms against {oneLayer.TotalMilliseconds:F0} ms for a whole layer: it waited the layer out");
+    }
 }

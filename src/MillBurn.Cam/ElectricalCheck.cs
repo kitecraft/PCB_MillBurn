@@ -247,25 +247,153 @@ public sealed record NetCheck
 /// </summary>
 public static class ElectricalCheck
 {
-    public static NetCheck Isolation(
-        Paths64 copper, IReadOnlyList<NetPoint> nets, IsolationOptions options)
+    /// <summary>
+    /// The whole-layer half of both checks, worked out once: the copper split into its pieces, the
+    /// copper grown by half the cut and split into the regions it merges into, and which region
+    /// each piece fell in.
+    ///
+    /// **Both <see cref="Isolation"/> and <see cref="Gaps"/> need exactly this, and used to build it
+    /// each** — byte-identical inputs, identical results, and the round offset of a dense layer is
+    /// the dominant cost of the findings view. Sprint 3 shared the cheaper half (the check's answer,
+    /// through <c>ElectricalFindings.For</c>'s <c>already</c>) and left this half done twice: 06 §6.55.
+    ///
+    /// Tied to the copper and the cut it was built for. Handing it to a check about a different
+    /// layer or a different cut is refused rather than answered, because the answer would be about
+    /// the wrong copper and nothing in it would say so.
+    /// </summary>
+    public sealed class GrownCopper
     {
-        ArgumentNullException.ThrowIfNull(copper);
+        private GrownCopper(
+            Paths64 copper,
+            IsolationOptions options,
+            List<Paths64> artwork,
+            List<Paths64> regions,
+            int[] regionOf)
+        {
+            Copper = copper;
+            ReachNm = options.EffectiveWidthNm / 2;
+            SagittaNm = options.SagittaNm;
+            Artwork = artwork;
+            ArtworkBoxes = BoxesOf(artwork);
+            Regions = regions;
+            RegionBoxes = BoxesOf(regions);
+            RegionOf = regionOf;
+        }
+
+        internal Paths64 Copper { get; }
+
+        internal long ReachNm { get; }
+
+        internal long SagittaNm { get; }
+
+        /// <summary>The copper's own pieces, as the artwork left them.</summary>
+        internal List<Paths64> Artwork { get; }
+
+        internal (long MinX, long MinY, long MaxX, long MaxY)[][] ArtworkBoxes { get; }
+
+        /// <summary>The copper grown by half the cut, split into the pieces it merges into.</summary>
+        internal List<Paths64> Regions { get; }
+
+        internal (long MinX, long MinY, long MaxX, long MaxY)[][] RegionBoxes { get; }
+
+        /// <summary>
+        /// Which region each piece of artwork fell into, or -1 for a piece that is empty or did not
+        /// locate. Found by the piece's first vertex: the grown copper is the artwork offset outwards
+        /// by a positive amount, so every point of the original — boundary included — is strictly
+        /// inside it.
+        ///
+        /// Read-only because it is shared: the check used to write into its own copy as it went, and
+        /// that habit coming back would quietly change what the gap search reads next.
+        /// </summary>
+        internal IReadOnlyList<int> RegionOf { get; }
+
+        /// <summary>
+        /// Builds it, or returns null when <paramref name="token"/> turns first.
+        ///
+        /// **The token is read before each whole-layer operation**, which is where the time goes.
+        /// It used to be read only inside the gap search's pair loop, which on a board that is mostly
+        /// fine is skipped entirely — so a findings run, sold as cancellable, never was: pressing F7
+        /// twice waited out the first run in full.
+        /// </summary>
+        public static GrownCopper? Of(Paths64 copper, IsolationOptions options, CancellationToken token = default)
+        {
+            ArgumentNullException.ThrowIfNull(copper);
+            ArgumentNullException.ThrowIfNull(options);
+
+            var reach = options.EffectiveWidthNm / 2;
+
+            // Refused rather than clamped: a cut of no width separates nothing, and both checks
+            // already refuse one before they get here. Building a zero offset of the whole layer to
+            // throw away would be the work this type exists to save.
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(reach, nameof(options));
+
+            if (token.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            var grown = Polygons.Inflate(
+                copper, reach, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
+
+            if (token.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            var regions = Polygons.Separate(grown).ToList();
+
+            if (token.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            var artwork = Polygons.Separate(copper).ToList();
+
+            if (token.IsCancellationRequested)
+            {
+                return null;
+            }
+
+            var regionBoxes = BoxesOf(regions);
+            var regionOf = new int[artwork.Count];
+
+            for (var p = 0; p < artwork.Count; p++)
+            {
+                var piece = artwork[p];
+
+                regionOf[p] = piece.Count == 0 || piece[0].Count == 0
+                    ? -1
+                    : RegionAt(regions, regionBoxes, new Point2(piece[0][0].X, piece[0][0].Y));
+            }
+
+            return new GrownCopper(copper, options, artwork, regions, regionOf);
+        }
+
+        /// <summary>Refuses a grown copper built for some other layer or some other cut.</summary>
+        internal void Fits(Paths64 copper, IsolationOptions options)
+        {
+            if (!ReferenceEquals(copper, Copper)
+                || options.EffectiveWidthNm / 2 != ReachNm
+                || options.SagittaNm != SagittaNm)
+            {
+                throw new ArgumentException(
+                    "This grown copper was built for a different layer or a different cut.", nameof(copper));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Why <see cref="Isolation"/> will not look at this layer, before any geometry is done — or null
+    /// when it will. Public so a caller about to build <see cref="GrownCopper"/> can ask first: a
+    /// layer with no net names, or one, used to cost the findings view nothing, and building the
+    /// offset before asking made it pay the whole of it for an answer it then threw away.
+    /// </summary>
+    public static NetCheck? CannotRun(IReadOnlyList<NetPoint> nets, IsolationOptions options)
+    {
         ArgumentNullException.ThrowIfNull(nets);
         ArgumentNullException.ThrowIfNull(options);
 
-        // `%TO.N,*%` is how KiCad says this copper belongs to no net, and it arrives here as an
-        // empty name. It is not a net that can be shorted to anything and it is not a name the
-        // operator can look up, so it takes no part: the copper it marks still joins whatever it
-        // touches, and the real nets either side of it are named on their own account.
-        var named = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var point in nets)
-        {
-            if (!string.IsNullOrWhiteSpace(point.Net))
-            {
-                named.Add(point.Net);
-            }
-        }
+        var named = NamedNets(nets);
 
         if (named.Count == 0)
         {
@@ -279,28 +407,73 @@ public static class ElectricalCheck
             return NetCheck.CouldNot("only one net is named on this layer, which nothing can be shorted to", named.Count);
         }
 
-        var reach = options.EffectiveWidthNm / 2;
-
-        if (reach <= 0)
+        if (options.EffectiveWidthNm / 2 <= 0)
         {
             return NetCheck.CouldNot("the tool cuts nothing at this depth, so no gap is reachable", named.Count);
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The net names on a layer. `%TO.N,*%` is how KiCad says copper belongs to no net, and it
+    /// arrives as an empty name: not a net that can be shorted to anything nor one the operator can
+    /// look up, so it takes no part. The copper it marks still joins whatever it touches.
+    /// </summary>
+    private static HashSet<string> NamedNets(IReadOnlyList<NetPoint> nets)
+    {
+        var named = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var point in nets)
+        {
+            if (!string.IsNullOrWhiteSpace(point.Net))
+            {
+                named.Add(point.Net);
+            }
+        }
+
+        return named;
+    }
+
+    /// <summary>Which nets this cut leaves joined. See the class summary.</summary>
+    /// <param name="copper">The layer's artwork, as realised.</param>
+    /// <param name="nets">The net points, used to name the copper.</param>
+    /// <param name="options">The isolation as it will actually be cut.</param>
+    /// <param name="grownCopper">
+    /// The whole-layer offset, already worked out — so the findings view, which asks this and then
+    /// <see cref="Gaps"/> about the same layer, pays for it once. Null works it out here.
+    /// </param>
+    public static NetCheck Isolation(
+        Paths64 copper, IReadOnlyList<NetPoint> nets, IsolationOptions options, GrownCopper? grownCopper = null)
+    {
+        ArgumentNullException.ThrowIfNull(copper);
+        ArgumentNullException.ThrowIfNull(nets);
+        ArgumentNullException.ThrowIfNull(options);
+
+        // First, so a mismatch is refused on every path — including the early refusals below,
+        // which would otherwise answer about the wrong layer without saying so.
+        grownCopper?.Fits(copper, options);
+
+        if (CannotRun(nets, options) is { } refusal)
+        {
+            return refusal;
+        }
+
+        var named = NamedNets(nets);
 
         // Half a cut width, which is where the first pass's centreline runs. Bias is deliberately
         // left out: it pushes the cut further from the copper and so can only make two pieces
         // harder to separate, and a check that reported a short the operator could fix by setting
         // bias back to zero would be reporting the setting rather than the board.
-        var grown = Polygons.Inflate(
-            copper, reach, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm);
-
-        var regions = Polygons.Separate(grown).ToList();
+        var shared = grownCopper ?? GrownCopper.Of(copper, options)!;
+        var regions = shared.Regions;
 
         if (regions.Count == 0)
         {
             return NetCheck.CouldNot("the copper grows to nothing at this width", named.Count);
         }
 
-        var boxes = BoxesOf(regions);
+        var boxes = shared.RegionBoxes;
 
         // How many pieces of artwork fell into each grown region.
         //
@@ -310,33 +483,30 @@ public static class ElectricalCheck
         // the author's test board at 0.75 mm deep that was one named group of 23 nets, 63 merges,
         // and 62 of them announced as unnamed on a board with no unnamed copper at all.
         //
-        // A vertex of the artwork is safe to locate with: the grown copper is the artwork offset
-        // outwards by a positive amount, so every point of the original — boundary included — is
-        // strictly inside it.
-        var artwork = Polygons.Separate(copper).ToList();
+        // Each piece was located by a vertex of its own when the grown copper was built; see
+        // `GrownCopper.RegionOf`, where the argument for why that is safe now lives.
+        var artwork = shared.Artwork;
         var pieces = new int[regions.Count];
         var strays = 0;
 
         // Which region each piece ended up in, so that a name found on a piece can be charged to
         // the region the piece merged into. -1 is a piece that did not locate at all.
-        var regionOf = new int[artwork.Count];
+        var regionOf = shared.RegionOf;
 
         for (var p = 0; p < artwork.Count; p++)
         {
             var piece = artwork[p];
-            regionOf[p] = -1;
 
             if (piece.Count == 0 || piece[0].Count == 0)
             {
                 continue;
             }
 
-            var found = RegionAt(regions, boxes, new Point2(piece[0][0].X, piece[0][0].Y));
+            var found = regionOf[p];
 
             if (found >= 0)
             {
                 pieces[found]++;
-                regionOf[p] = found;
             }
             else
             {
@@ -376,7 +546,7 @@ public static class ElectricalCheck
         // copper grown by the cut and the other the artwork, and a point a nanometre outside its
         // island was named by one and silently dropped by the other.
         var namedPieces = new bool[artwork.Count];
-        var artworkBoxes = BoxesOf(artwork);
+        var artworkBoxes = shared.ArtworkBoxes;
 
         // Regions holding a name that could not be put on any one piece. Rare — a point exactly on
         // a boundary — and it has to be remembered rather than ignored: without knowing which
@@ -551,16 +721,27 @@ public static class ElectricalCheck
     /// <param name="copper">The layer's artwork, as realised.</param>
     /// <param name="nets">The net points, used to name the copper either side of each bridge.</param>
     /// <param name="options">The isolation as it will actually be cut.</param>
-    /// <param name="token">Checked per candidate pair; a cancelled run returns what it has.</param>
+    /// <param name="token">
+    /// Checked before each whole-layer operation and per candidate pair; a cancelled run returns
+    /// what it has. It used to be read only in the pair loop, which a board that is mostly fine
+    /// skips entirely — so the run it claimed could be abandoned never was (06 §6.55).
+    /// </param>
+    /// <param name="grownCopper">
+    /// The whole-layer offset <see cref="Isolation"/> already used, or null to work it out here.
+    /// </param>
     public static IReadOnlyList<NetGap> Gaps(
         Paths64 copper,
         IReadOnlyList<NetPoint> nets,
         IsolationOptions options,
+        GrownCopper? grownCopper = null,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(copper);
         ArgumentNullException.ThrowIfNull(nets);
         ArgumentNullException.ThrowIfNull(options);
+
+        // First, as in `Isolation`, so a mismatch is refused on the early path below as well.
+        grownCopper?.Fits(copper, options);
 
         var reach = options.EffectiveWidthNm / 2;
 
@@ -570,16 +751,6 @@ public static class ElectricalCheck
             // no gap to be narrower than it.
             return [];
         }
-
-        var artwork = Polygons.Separate(copper).ToList();
-
-        if (artwork.Count < 2)
-        {
-            // One piece of copper cannot bridge to anything, and nought pieces still less.
-            return [];
-        }
-
-        var boxes = BoxesOf(artwork);
 
         // **Only pieces that merged into the same region can bridge**, and this is what makes the
         // whole thing tractable rather than merely possible.
@@ -594,31 +765,28 @@ public static class ElectricalCheck
         // in different merged regions are provably further apart than this cut, because the regions
         // *are* the grown copper's connected parts — so the only pairs worth examining are the ones
         // inside a region holding more than one piece, which on a board that is mostly fine is a
-        // handful out of hundreds.
-        var merged = Polygons.Separate(
-            Polygons.Inflate(copper, reach, JoinType.Round, EndType.Polygon, arcTolerance: options.SagittaNm))
-            .ToList();
-
-        if (merged.Count == 0)
+        // handful out of hundreds. That growing is <see cref="GrownCopper"/>, shared with the check.
+        if ((grownCopper ?? GrownCopper.Of(copper, options, token)) is not { } shared)
         {
+            // Cancelled before the whole-layer work finished: there is nothing yet to return.
             return [];
         }
 
-        var mergedBoxes = BoxesOf(merged);
+        var artwork = shared.Artwork;
+
+        if (artwork.Count < 2 || shared.Regions.Count == 0)
+        {
+            // One piece of copper cannot bridge to anything, and nought pieces still less.
+            return [];
+        }
+
+        var boxes = shared.ArtworkBoxes;
         var together = new Dictionary<int, List<int>>();
 
         for (var piece = 0; piece < artwork.Count; piece++)
         {
-            if (artwork[piece].Count == 0 || artwork[piece][0].Count == 0)
-            {
-                continue;
-            }
-
-            // A vertex of the artwork is safe to locate with: the grown copper is the artwork
-            // offset outwards by a positive amount, so every point of the original — boundary
-            // included — is strictly inside it. The same argument `Isolation` relies on.
-            var first = artwork[piece][0][0];
-            var region = RegionAt(merged, mergedBoxes, new Point2(first.X, first.Y));
+            // Located when the grown copper was built, by the argument `GrownCopper.RegionOf` gives.
+            var region = shared.RegionOf[piece];
 
             if (region < 0)
             {
@@ -633,6 +801,11 @@ public static class ElectricalCheck
             {
                 together[region] = [piece];
             }
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return [];
         }
 
         // Which piece each named net point sits in. Attributed per *piece* rather than per grown

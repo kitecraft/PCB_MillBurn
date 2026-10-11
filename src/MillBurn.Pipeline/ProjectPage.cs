@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using MillBurn.Core;
+using MillBurn.Export;
 using MillBurn.Gcode;
 
 namespace MillBurn.Pipeline;
@@ -65,6 +66,7 @@ public static class ProjectPage
         Files(page, plan);
         Zero(page, context);
         Laser(page, plan, context);
+        LaserLayers(page, plan);
         Watch(page, plan, context);
         Rebuild(page, context);
 
@@ -330,9 +332,9 @@ public static class ProjectPage
                 .Append(withStock ? (holes ? ", and the stock with its holes" : ", and the stock") : string.Empty)
                 .Append(withStock
                     ? (holes
-                        ? "</strong>, as layers of their own: the board outline in red, the stock and its holes in blue"
-                        : "</strong>, as layers of their own: the board outline in red, the stock in blue")
-                    : "</strong>, as a layer of its own, in red")
+                        ? "</strong>, as layers of their own: the board outline in grey, the stock and its holes in black"
+                        : "</strong>, as layers of their own: the board outline in grey, the stock in black")
+                    : "</strong>, as a layer of its own, in grey")
                 .Append(". They are for placing the file, not for burning, so switch them off in the "
                     + "laser software before you burn. Because every file has them, software that "
                     + "imports the drawing rather than the page imports every file at the same size — ")
@@ -385,6 +387,69 @@ public static class ProjectPage
 
         static string Pair(long x, long y) =>
             Nm.ToMillimetreString(x, 2) + " right, " + Nm.ToMillimetreString(y, 2) + " up";
+    }
+
+    /// <summary>
+    /// Which colour in the SVGs is which kind of geometry, how it wants burning, and whether it should
+    /// burn at all — for whatever laser software sorts an import by colour, which Falcon and LightBurn
+    /// both do. Set each up once and every file in the export lands the same way.
+    ///
+    /// Only the colours actually in this export's files: a row for geometry that is not there is a
+    /// layer somebody sets up for nothing. From <see cref="LayerContract"/>, the table each SVG's own
+    /// description is written from, so the page and the files cannot disagree.
+    ///
+    /// **Program-neutral on purpose.** A LightBurn project beside each SVG was built, checked on the
+    /// bench and declined (06 §6.69): a second output format, in a file layout LightBurn does not
+    /// publish, for users this application does not have.
+    /// </summary>
+    private static void LaserLayers(StringBuilder page, ExportPlan plan)
+    {
+        var svgs = plan.Items.Where(i => i.Output == OutputKind.Svg).ToList();
+
+        if (svgs.Count == 0)
+        {
+            return;
+        }
+
+        // Every exported SVG's drawing is filled area; the placing layers are named for what they are,
+        // the same way Laser() above tells the stock's box from the board's.
+        //
+        // A placing layer's row is called by that layer's own label — "Stock and holes", or "Stock"
+        // when there are none — so the table names what is in the file rather than what usually is.
+        var names = new Dictionary<ArtRole, string> { [ArtRole.Fill] = LayerContract.For(ArtRole.Fill).Name };
+
+        if (svgs.SelectMany(i => i.PlacingLayers).FirstOrDefault(l => l.StartsWith("Stock", StringComparison.Ordinal)) is { } stock)
+        {
+            names[ArtRole.Registration] = stock.ToLowerInvariant() + ", not burned";
+        }
+
+        if (svgs.Any(i => i.PlacingLayers.Contains("Board outline")))
+        {
+            names[ArtRole.Reference] = LayerContract.For(ArtRole.Reference).Name;
+        }
+
+        var profile = SvgProfile.LightBurn;
+
+        page.Append("<h2>Laser layers</h2>\n");
+        page.Append("<p>Each SVG puts its geometry on a layer by stroke colour, and laser software that "
+            + "imports by colour makes each one a layer of its own. Set each up once:</p>\n");
+
+        page.Append("<table>\n<thead><tr><th>Colour</th><th>What it is</th><th>Burn it as</th>"
+            + "<th>Burns</th></tr></thead>\n<tbody>\n");
+
+        foreach (var contract in LayerContract.All.Where(c => names.ContainsKey(c.Role)))
+        {
+            var colour = Escape(profile.ColourFor(contract.Role));
+
+            page.Append("<tr><td><span style=\"display:inline-block;width:0.9em;height:0.9em;"
+                    + "border:1px solid #888;vertical-align:-0.1em;background:")
+                .Append(colour).Append("\"></span> <code>").Append(colour).Append("</code></td><td>")
+                .Append(Escape(names[contract.Role])).Append("</td><td>")
+                .Append(contract.Mode).Append("</td><td>")
+                .Append(contract.Output ? "Yes" : "No — switch it off").Append("</td></tr>\n");
+        }
+
+        page.Append("</tbody>\n</table>\n");
     }
 
     private static void Watch(StringBuilder page, ExportPlan plan, ProjectPageContext context)

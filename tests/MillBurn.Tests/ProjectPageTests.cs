@@ -33,6 +33,76 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
             job: new JobOptions { Blank = blank ?? new BlankOptions() });
     }
 
+    /// <summary>
+    /// The page says which colour in the SVGs is what, how to burn it, and whether to burn it at all,
+    /// for whatever laser software sorts an import by colour — and only for the colours this export's
+    /// files actually contain, since a row for geometry that is not there is a layer set up for nothing.
+    /// </summary>
+    [Fact]
+    public void ThePageSaysWhatEachColourInTheSvgsIsAndWhetherItBurns()
+    {
+        // The rows of the Laser layers table, in order, as colour and the rest of the row.
+        static string[] Rows(string html)
+        {
+            var at = html.IndexOf("<h2>Laser layers</h2>", StringComparison.Ordinal);
+            Assert.True(at >= 0, "no Laser layers section");
+            var table = html[at..html.IndexOf("</table>", at, StringComparison.Ordinal)];
+
+            return [.. System.Text.RegularExpressions.Regex.Matches(table, "<code>(#[0-9A-F]{6})</code></td>(.*?)</tr>")
+                .Select(m => m.Groups[1].Value + " " + m.Groups[2].Value)];
+        }
+
+        // Stock with holes, and the placing layers for both: the drawing, the stock, the outline.
+        Assert.Equal(
+            [
+                "#0000FF <td>regions to clear</td><td>Fill</td><td>Yes</td>",
+                "#000000 <td>stock and holes, not burned</td><td>Line</td><td>No — switch it off</td>",
+                "#B4B4B4 <td>board outline, not burned</td><td>Line</td><td>No — switch it off</td>",
+            ],
+            Rows(TestBoard(SvgPlacingLayers.OutlineAndStock).Page!.Content));
+
+        // The outline alone: no row for a stock colour that no file contains.
+        Assert.Equal(
+            [
+                "#0000FF <td>regions to clear</td><td>Fill</td><td>Yes</td>",
+                "#B4B4B4 <td>board outline, not burned</td><td>Line</td><td>No — switch it off</td>",
+            ],
+            Rows(TestBoard(SvgPlacingLayers.OutlineOnly).Page!.Content));
+
+        // Stock with no holes in it is called the stock, not "stock and holes": the row is named by
+        // the placing layer actually in the files.
+        Assert.Equal(
+            [
+                "#0000FF <td>regions to clear</td><td>Fill</td><td>Yes</td>",
+                "#000000 <td>stock, not burned</td><td>Line</td><td>No — switch it off</td>",
+                "#B4B4B4 <td>board outline, not burned</td><td>Line</td><td>No — switch it off</td>",
+            ],
+            Rows(TestBoard(SvgPlacingLayers.OutlineAndStock, PreCut80 with { AlignmentHoles = false, HolesOnly = false }).Page!.Content));
+
+        // The table and the files agree: every stroke colour in the SVGs has a row, and every row is a
+        // colour some SVG actually uses. The rows are the operator's guide to the files, so a colour
+        // in one and not the other is a layer set up for nothing, or one nobody was told about.
+        var stocked = TestBoard(SvgPlacingLayers.OutlineAndStock);
+        var inFiles = stocked.Items
+            .Where(i => i.Output == OutputKind.Svg)
+            .SelectMany(i => System.Text.RegularExpressions.Regex.Matches(i.Content, "stroke=\"(#[0-9A-F]{6})\"").Select(m => m.Groups[1].Value))
+            .ToHashSet(StringComparer.Ordinal);
+        var onPage = Rows(stocked.Page!.Content).Select(r => r[..7]).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(3, inFiles.Count);
+        Assert.True(inFiles.SetEquals(onPage), $"files {string.Join(", ", inFiles.Order())}, page {string.Join(", ", onPage.Order())}");
+
+        // And no program is named: the table is for any software that imports by colour.
+        var html = stocked.Page!.Content;
+        var section = html[html.IndexOf("<h2>Laser layers</h2>", StringComparison.Ordinal)..html.IndexOf("<h2>Worth checking</h2>", StringComparison.Ordinal)];
+        Assert.DoesNotContain("LightBurn", section, StringComparison.Ordinal);
+        Assert.DoesNotContain(".lbrn2", html, StringComparison.Ordinal);
+
+        // With no SVG in the export there is nothing to set up.
+        var millOnly = Plan(masksAsSvg: false);
+        Assert.DoesNotContain(millOnly.Items, i => i.Output == OutputKind.Svg);
+        Assert.DoesNotContain("Laser layers", millOnly.Page!.Content, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EveryExportGetsOne()
     {
@@ -220,8 +290,20 @@ public sealed class ProjectPageTests(ITestOutputHelper output)
             var svg = Svg(plan, layer);
             Assert.Contains("<g id=\"board-outline\" inkscape:groupmode=\"layer\" inkscape:label=\"Board outline\">", svg.Content, StringComparison.Ordinal);
             Assert.Contains("<g id=\"stock\" inkscape:groupmode=\"layer\" inkscape:label=\"Stock and holes\">", svg.Content, StringComparison.Ordinal);
-            Assert.Contains("stroke=\"#FF0000\"", svg.Content, StringComparison.Ordinal);
-            Assert.Contains("stroke=\"#0000FF\"", svg.Content, StringComparison.Ordinal);
+            // Each group on its own LightBurn layer (M6): the drawing on C01, set to Fill; the
+            // outline on C08, set not to output; the stock and holes on C00. Nothing else — red and
+            // green, C02 and C03, are layers that burn.
+            var doc = System.Xml.Linq.XDocument.Parse(svg.Content);
+            string[] Strokes(string id) => [.. doc.Descendants()
+                .Single(e => e.Name.LocalName == "g" && (string?)e.Attribute("id") == id)
+                .Descendants().Where(e => e.Name.LocalName == "path")
+                .Select(p => p.Attribute("stroke")!.Value).Distinct()];
+
+            Assert.Equal(["#0000FF"], Strokes("artwork"));
+            Assert.Equal(["#B4B4B4"], Strokes("board-outline"));
+            Assert.Equal(["#000000"], Strokes("stock"));
+            Assert.DoesNotContain("#FF0000", svg.Content, StringComparison.Ordinal);
+            Assert.DoesNotContain("#00E000", svg.Content, StringComparison.Ordinal);
             Assert.Contains(svg.Summary, s => s.Contains("Settings › Laser", StringComparison.Ordinal));
         }
 

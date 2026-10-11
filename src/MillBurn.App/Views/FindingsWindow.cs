@@ -43,6 +43,13 @@ public sealed class FindingsWindow : Window
     private const int MostPlaces = 40;
 
     /// <summary>
+    /// Joins a region's net names into one key for filing its bridges. The unit separator, a control
+    /// character no design tool puts in a net name, so two different lists of names do not make one
+    /// key.
+    /// </summary>
+    private const string NameSeparator = "\u001F";
+
+    /// <summary>
     /// Raised when a place in the list is clicked, so the viewport can go to it.
     ///
     /// **An event rather than a reference to the board**, because this window must stay non-modal
@@ -191,6 +198,12 @@ public sealed class FindingsWindow : Window
             TextWrapping = TextWrapping.Wrap,
         }, "TextSecondary"));
 
+        // Each list read once. They are computed properties that filter the whole gap list and
+        // copy it, and the groups below used to ask for the shorts once per group (06 §6.55).
+        var shorts = layer.Shorts;
+        var sameNet = layer.SameNet;
+        var nameless = layer.Nameless;
+
         if (!layer.Ran)
         {
             // Why it could not look, rather than silence. A layer that was not checked reading as a
@@ -209,9 +222,9 @@ public sealed class FindingsWindow : Window
         // flattened — is a join with no bridge to find, so `Shorts` is empty while `Joins` is not.
         // This is the one window whose job is to let somebody satisfy themselves a board is sound.
         if (layer.Joins.Count == 0
-            && layer.Shorts.Count == 0
-            && layer.SameNet.Count == 0
-            && layer.Nameless.Count == 0)
+            && shorts.Count == 0
+            && sameNet.Count == 0
+            && nameless.Count == 0)
         {
             panel.Children.Add(Token(new TextBlock
             {
@@ -233,45 +246,58 @@ public sealed class FindingsWindow : Window
                 "Two or more nets sharing one piece of copper that this cut cannot divide. The "
                 + "places below are where the copper actually bridges."));
 
+            // Filed by the region they are in, once, rather than every bridge tested against every
+            // group: what `Group` matches on is the region's whole set of names.
+            var byRegion = shorts
+                .GroupBy(g => string.Join(NameSeparator, g.RegionNets), StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+
             foreach (var join in layer.Joins)
             {
-                panel.Children.Add(Group(join, layer.Shorts, pick, listed));
+                panel.Children.Add(Group(
+                    join,
+                    byRegion.TryGetValue(string.Join(NameSeparator, join.Nets), out var here) ? here : [],
+                    pick,
+                    listed));
             }
         }
 
         // **Story 3's split, shown rather than counted**, which is the other half of why this window
         // exists. These two used to be one number covering two things that mean opposite amounts of
         // trouble.
-        if (layer.Nameless.Count > 0)
+        if (nameless.Count > 0)
         {
             panel.Children.Add(Section(
-                Invariant($"Copper with no net name — {layer.Nameless.Count} place(s)"),
+                Invariant($"Copper with no net name — {nameless.Count} place(s)"),
                 "StatusWarning",
                 "The cut cannot get between these either, and nothing here can say whether it "
                 + "matters: at least one side carries no net attribute to check against. Look at "
                 + "them — and at the ones where the other side is a net you can look up first."));
 
-            panel.Children.Add(Places(layer.Nameless, pick, listed));
+            panel.Children.Add(Places(nameless, pick, listed));
         }
 
-        if (layer.SameNet.Count > 0)
+        if (sameNet.Count > 0)
         {
             panel.Children.Add(Section(
-                Invariant($"One net meeting itself — {layer.SameNet.Count} place(s)"),
+                Invariant($"One net meeting itself — {sameNet.Count} place(s)"),
                 "TextSecondary",
                 "Nothing is shorted by these: the copper either side carries the same net, so it "
                 + "was one conductor before the cut and is one after it. Listed because copper left "
                 + "where the design wanted none still matters for soldering and for probing."));
 
-            panel.Children.Add(Places(layer.SameNet, pick, listed));
+            panel.Children.Add(Places(sameNet, pick, listed));
         }
 
         return panel;
     }
 
-    /// <summary>One group of nets, and the places the copper holding them bridges.</summary>
+    /// <summary>
+    /// One group of nets, and the places the copper holding them bridges — <paramref name="here"/>,
+    /// the shorts already filed under this group's region by the caller.
+    /// </summary>
     private static StackPanel Group(
-        NetJoin join, IReadOnlyList<NetGap> shorts, Action<NetGap> pick, Action<NetGap> listed)
+        NetJoin join, List<NetGap> here, Action<NetGap> pick, Action<NetGap> listed)
     {
         var panel = new StackPanel { Spacing = 1, Margin = new Thickness(12, 4, 0, 6) };
 
@@ -293,10 +319,6 @@ public sealed class FindingsWindow : Window
         // hold both names. The first version of this window did that and listed one bridge under
         // two groups — a board made to look worse than it is, by a view whose entire job is to be
         // the trustworthy account.
-        var here = shorts
-            .Where(g => g.RegionNets.SequenceEqual(join.Nets, StringComparer.Ordinal))
-            .ToList();
-
         if (here.Count == 0)
         {
             // **Says so rather than showing nothing.** The groups come from merging the whole layer
