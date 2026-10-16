@@ -6965,6 +6965,34 @@ segments"*, and its own hero now shows 14. One of the two has to change, and whi
 `--bench` on the 0.2.0 tag against today, on one machine at one time, and a frame-time capture of
 the panel with the rulers off (`--no-ruler`) to see whether they are the cost.
 
+**Measured, 2026-10-15.** Every suspect the entry named is cleared, and the cost has a face.
+
+- **Not any sprint.** v0.2.0, v0.3.0, v0.4.0 and 0.6.0 `main`, built Release from worktrees and
+  shot alternately on the same machine, two rounds: 69.0–71.0 ms each, the versions
+  indistinguishable. The very code that drew September's 27 ms hero draws 69 ms today.
+- **Not the rulers.** `--no-ruler` on the panel: 69.9 and 72.3 ms against 67.9 and 68.8 with them.
+- **Not the machine's CPU.** `--bench` today: mean 5.35 ms, p95 20.02 — the Phase 0 numbers
+  (5.5 / 20) to within noise, identical on v0.2.0 and `main`.
+- **Not the GPU loop.** `--fpstest` today: 98.2 fps, the documented 98.
+- **Where the 69 ms goes** (per-layer flush timing, temporary instrumentation): the two big
+  **anti-aliased stroked paths** — the previewed isolation program, one `SKPath` of 108,504
+  vertices, **48.8 ms**, and the panel's Edge_Cuts outline, 42,532 vertices, **14.2 ms**. The
+  *fills* are cheap: all the copper, 45,276 vertices, 2.5 ms. Frame time barely moves from
+  800 × 500 to 3200 × 1421, so the cost is per-vertex stroke work, not pixels.
+- **Scope.** Panel without a preview: 17 ms. The single GridStripConnector with a preview:
+  1.9 ms. Only a large panel *with its programs previewed* is slow; exports, the CLI and every
+  emitted file are untouched.
+
+What flipped between 15 September and 11 October on the author's machine was not found: the
+NVIDIA driver (616.92), the .NET SDK (10.0.401) and runtime (10.0.12) were all installed on
+13 September, *before* the fast shot, and the October Windows updates landed on the 13th–14th,
+*after* the slow one. The trigger is environmental and unidentified — but it only mattered because
+the preview strokes a 108k-vertex path through `canvas.DrawPath` every frame. The app already owns
+the proof that this is unnecessary: `ToolpathRenderer` draws 500k segments at 98 fps with LOD,
+culling and the stroke configuration the Phase 0 probe chose. The fix is to draw the preview
+layers the way the toolpath view already draws toolpaths, not to chase the driver stack.
+Turning stroke anti-aliasing off was measured too — 43 ms, a 1.6× help and not a fix.
+
 #### 6.72 On a panel, every tab goes on one edge — **defect · open** — *found in the workshop, 2026-10-11; for sprint 6*
 
 From the product owner, looking at the 66-up GridStripConnector panel in the README's hero: *"On
