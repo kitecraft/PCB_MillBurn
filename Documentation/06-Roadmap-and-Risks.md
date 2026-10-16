@@ -7015,3 +7015,106 @@ it chooses are.
 edges — the quarter of the perimeter a tab falls in, or its bearing round the board's centre, as the
 first key and length as the second. To be checked against the 21 × 37 mm board 6.4 was tuned on,
 which must not move.
+
+#### 6.73 Placement data for a pick-and-place — **enhancement · open** — *asked for by the product owner, 2026-10-16*
+
+From the product owner, thinking past the stencil (6.18) and the paste extruder (Phase 9) to the
+next station on the bench: *"What about pick-and-place machines? What sort of info would one of
+those need? And are there popular open-source systems that home-builders are using?"* Researched
+2026-10-16; recorded here so the groundwork is not lost.
+
+**The ecosystem has a clear leader, in two halves.** [OpenPnP](https://openpnp.org/) is the de
+facto *software* — open-source machine control that owns vision, feeders, nozzles and job planning,
+the GRBL of this niche. The *hardware* leader is Opulo's
+[LumenPnP](https://docs.opulo.io/byop/), an open-source desktop machine (KiCad and FreeCAD sources
+published) that runs OpenPnP; the v4 places 0402 and 0.5 mm BGA at about $2k, and its feeder design
+is itself open. The product owner's first reaction: *"LumenPnP looks really interesting."* Targeting
+OpenPnP's import is the same decision 6.69 recorded for the laser: build for what the ecosystem
+actually runs, and every machine that runs it inherits the work.
+
+**What a machine needs from the board** — the machine's own side (feeder slots, nozzles, part
+heights, vision templates) lives in OpenPnP's library and is none of this project's business:
+
+- Per component: reference designator, X/Y of the component *centroid* against a stated origin,
+  rotation, side, package name, and value — the value is what maps to a feeder.
+- Per board: the origin datum, fiducial positions for the camera to align on, and the outline.
+
+**The format situation is the mask situation again.** The de facto carrier is the centroid file
+(KiCad's `.pos`; also called CPL or XY file) — and it is notoriously sloppy: units, origin and
+above all the rotation zero-convention are not standardised, which is why boards arrive at
+assemblers with every diode backwards. The emerging fix is **Gerber X3**: component placement as
+attributes in Gerber, one file per side, which KiCad already exports beside `.pos`. X3 is the X2
+attribute system this project already parses, extended to components — which is what makes this
+entry cheaper than it looks.
+
+**Where MillBurn fits, in rank order:**
+
+1. **Read X3 component layers** as layers in the set, and draw component outlines and refdeses
+   over the copper. On a milled board with no silkscreen, an assembly view you can zoom is useful
+   on day one with no machine at all — it serves hand placement with tweezers first.
+2. **Emit a centroid file in MillBurn's own datum** — the work zero the G-code and rulers already
+   use, side and mirroring handled the way bottom copper already is. One stated origin is the
+   source-named answer to the format's worst ambiguity, and the rotation swamp makes this a
+   textbook refuse-rather-than-guess feature: no emit when the source does not state its
+   convention, and the refusal names what is missing.
+3. **Fiducials for milled boards.** A bought board gets copper fiducials under mask; a milled one
+   can get them from isolation routing or drills already planned. Their positions, in the same
+   datum as the centroid file, are what let OpenPnP's vision lock onto a milled board at all.
+
+**Two standing rules apply.** This stays *writes files, never drives machines* — the integration is
+emitting what OpenPnP imports, exactly as the laser's is SVG. And per 6.69's lesson, the first step
+of any story here is checking the emitted file against what OpenPnP actually accepts — it reads
+KiCad `.pos` and generic CSV today; X3 import is to be verified, not assumed.
+
+**The 3D question, answered.** The product owner asked whether the components' 3D models could come
+too — *"a most awesome enhancement"*, behind *"a big IF"*. The data splits cleanly:
+
+- **Gerbers will never carry it.** X3 tops out at centroid, rotation, outline, the non-geometric
+  attributes and a component *height* — no geometry, no model paths. The STEP paths live in
+  KiCad's own footprints (`(model "…")` entries resolved through `${KICAD9_3DMODEL_DIR}`-style
+  variables), and chasing those would mean parsing `.kicad_pcb` and another program's path
+  variables — the unpublished-format trap 6.69 named.
+- **But KiCad hands over the finished article.** `kicad-cli` (KiCad 9) exports the *assembled*
+  board — copper, substrate, every component model resolved and baked in — as STEP or **GLB**,
+  one self-contained file needing no library and no KiCad installed. (Known wrinkle: a footprint
+  referencing only a `.wrl` can drop out of a STEP export.) So the shape that fits is the drill
+  file's: a companion file beside the Gerbers, one more step in the KiCad export guide, and
+  MillBurn loads what it is given or does without.
+- **The price is the viewer, not the data.** The viewer is 2D Skia and Avalonia has no 3D scene:
+  a real 3D view means a GPU renderer on the existing ANGLE context, a glTF loader, a camera and
+  picking — a Phase beside the paste extruder, not a story. The middle rung is **2.5D**: X3's
+  height on the courtyard outline, extruded in the viewer that exists, enough to see a tall
+  electrolytic beside a planned travel. Whether that earns its place is a workshop question, and
+  both the height attribute and KiCad's X3 output are to be checked against a real export first.
+
+**Component handling gets a view of its own.** The product owner's direction, 2026-10-16: *"We
+could put the component handling into an entirely different view tab. Separate them."* The argument
+is measured, not aesthetic: 6.71 found the machining viewport already pays ~49 ms a frame for the
+preview overlay alone, and assembly drawing piled into that frame would tax the one view that must
+stay responsive — a separate tab renders only while it is shown, so machining never pays for
+assembly. It also matches the bench: planning cuts and populating a board are different activities
+on different days, with different overlays and different questions. Milling stays milling;
+assembly gets its own room.
+
+**Talked through further, 2026-10-16 — three answers that reorder the feature:**
+
+- **The companion file is GLB, not STEP.** The product owner already exports STEP for Fusion360,
+  which proves the workflow costs one click — but STEP is BREP and reading it means a CAD kernel
+  (OpenCascade, a large native dependency with licensing of its own to vet). The same KiCad dialog
+  exports GLB: meshes in a well-specified container, readable with a small permissive loader.
+  MillBurn asks for the GLB beside the STEP and never parses STEP itself.
+- **A 3D view's first customer is machining, not assembly.** Behind an option, default off, the
+  product owner asked whether it could show the cuts and drills — and that half needs nothing from
+  KiCad: the outline, thickness, stock and every toolpath's Z are already MillBurn's own. The
+  genuinely three-dimensional things are exactly what the 2D viewer can only show as numbers:
+  tabs as bridges at depth (6.72's subject), break-through past the board's bottom face, the dry
+  run as a flyable path, and above all **levelling** — a backplot following the height map over a
+  bowed board, which nothing can show today. The KiCad GLB then layers in as optional context
+  under those paths, rather than being the reason the view exists.
+- **For component handling itself, 3D helps in one narrow, sharp place.** The centroid file is 2D
+  data and needs no 3D to emit. What a render with real models buys is *visual verification of
+  the rotation swamp*: a backwards diode or a rotated pin-1 is visible before any machine runs.
+  That, plus a modest tall-part clearance check. For merely admiring the populated board, KiCad's
+  own 3D viewer already serves — MillBurn's 3D earns its place only where it shows what only
+  MillBurn knows: the cuts, the tabs, the levelled Z, and components overlaid on the milled
+  result.
