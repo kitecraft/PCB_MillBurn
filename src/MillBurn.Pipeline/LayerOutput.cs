@@ -119,6 +119,20 @@ public sealed record LayerOutputSettings
     public ImmutableArray<TabEdit> TabEdits { get; init; } = [];
 
     /// <summary>
+    /// Outline only: tabs the operator moved, removed or added by hand in the viewport (6.4).
+    ///
+    /// Named the way <see cref="TabEdits"/> names theirs — by the tab's place in the planned
+    /// order — and living beside them so the two kinds of override clear through the same doors: a
+    /// changed count, a changed board-wide width or a changed outline cutter re-plans the tabs, and
+    /// a hand position belongs to the plan it overrode. Positions are nanometres along the cut
+    /// profile, which is the planner's own coordinate.
+    ///
+    /// Added without bumping the format version, like <see cref="TabEdits"/> before it: an older
+    /// project simply has none.
+    /// </summary>
+    public ImmutableArray<TabMove> TabMoves { get; init; } = [];
+
+    /// <summary>
     /// Drilling only: write a page beside the program explaining how to run it.
     ///
     /// On by default. A drilling program is the one operation with tool changes in it, so it is the

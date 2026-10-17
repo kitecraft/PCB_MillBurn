@@ -75,6 +75,12 @@ public sealed record OutlineOptions
     /// </summary>
     public IReadOnlyList<TabEdit> TabEdits { get; init; } = [];
 
+    /// <summary>
+    /// Tabs a hand moved, removed or added (6.4), keyed like <see cref="TabEdits"/> and applied
+    /// after them. Empty is the ordinary case: the planner's positions stand.
+    /// </summary>
+    public IReadOnlyList<TabMove> TabMoves { get; init; } = [];
+
     /// <summary>Cut outside the profile line, so the finished board is nominal size.</summary>
     public bool CutOutside { get; init; } = true;
 
@@ -295,8 +301,11 @@ public static class OutlineOperation
         // Per-tab edits belong to one profile: the first that places any, which is the one the tabs
         // window lists and numbers. Found by `/code-review`: the edits were handed to every
         // outermost profile and applied by index inside each, so "tab 3, 0.30 mm" set a thin web on
-        // tab 3 of a second board in the same Edge_Cuts that nobody had looked at.
+        // tab 3 of a second board in the same Edge_Cuts that nobody had looked at. Hand-set
+        // positions (6.4) are keyed the same way and spend with the same profile, for the same
+        // reason.
         var edits = options.TabEdits;
+        var moves = options.TabMoves;
         var editsSpent = false;
 
         for (var c = 0; c < contours.Count; c++)
@@ -327,7 +336,9 @@ public static class OutlineOperation
             // board whose outline is a rounded rectangle gets a different answer from one that is a
             // plain rectangle of the same size.
             var tabs = outermost && closed[c]
-                ? TabPlan.For(contour, editsSpent ? options with { TabEdits = [] } : options)
+                ? TabPlan.For(
+                    contour,
+                    editsSpent ? options with { TabEdits = [], TabMoves = [] } : options)
                 : [];
 
             if (outermost && closed[c] && contour.Count >= 3)
@@ -337,7 +348,23 @@ public static class OutlineOperation
 
             if (tabs.Count > 0)
             {
-                editsSpent = editsSpent || edits.Count > 0;
+                editsSpent = editsSpent || edits.Count > 0 || moves.Count > 0;
+            }
+            else if (!editsSpent
+                && outermost && closed[c]
+                && moves.Any(m => m.Index >= 0 && m.AlongNm is null)
+                && TabPlan.For(contour, options with { TabEdits = [], TabMoves = [] }).Count > 0)
+            {
+                // The overrides belong to the first profile whose *pristine* plan placed tabs —
+                // and hand removals can empty that profile's list, which the latch above cannot
+                // see. Found by `/code-review`: a file holding removals for every one of profile
+                // one's ordinals left `editsSpent` false, and the same removals then deleted the
+                // tabs of the next board in the same Edge_Cuts, by the same numbers. The pristine
+                // re-plan runs only in this corner — a removal-bearing file whose first tabbed
+                // profile came back empty — so the ordinary export never pays for it. The window
+                // refuses to remove the last tab; this is the route that does not go through the
+                // window.
+                editsSpent = true;
             }
             var walk = closed[c] ? new ProfileWalk(contour) : null;
 
@@ -400,8 +427,10 @@ public static class OutlineOperation
                 profilesTabbed++;
 
                 // Counted per profile: an edge index is a place on its own profile, so the same
-                // number means different edges on two of them.
-                edgesUsed += tabs.Where(t => !t.Spaced).Select(t => t.Edge).Distinct().Count();
+                // number means different edges on two of them. By the index being a real edge
+                // rather than by not-Spaced, because a hand-placed tab (6.4) is neither spaced nor
+                // on an edge the planner chose — its -1 must not count as one more edge.
+                edgesUsed += tabs.Where(t => t.Edge >= 0).Select(t => t.Edge).Distinct().Count();
             }
 
             // Tabs were asked for and the planner could not place any: they would have consumed the
@@ -554,13 +583,16 @@ public static class OutlineOperation
 
         if (options.TabCount > 0 && planned.Count == 0)
         {
-            // Asked for and not placed, which is two different sentences at the machine: either the
-            // tabs would have taken up the whole profile, or there was no profile to put them on.
-            // Both end with a piece that comes free on the last pass, and that is the part the
-            // operator has to know.
-            notes.Add(tabsSwallowProfile
-                ? Invariant($"The {options.TabCount} tabs asked for are wider than the profile they would hold, so it is cut right through and the piece comes free on the last pass. Hold it down.")
-                : "No profile here takes tabs, so nothing holds the piece on the last pass. Hold it down.");
+            // Asked for and not placed, which is three different sentences at the machine: every
+            // tab was removed by hand, or the tabs would have taken up the whole profile, or there
+            // was no profile to put them on. All three end with a piece that comes free on the last
+            // pass, and that is the part the operator has to know — blaming the profile for a
+            // removal somebody chose would be the header lying about who decided.
+            notes.Add(options.TabMoves.Any(m => m.Index >= 0 && m.AlongNm is null)
+                ? "Every tab was removed by hand, so nothing holds the piece on the last pass. Hold it down."
+                : tabsSwallowProfile
+                    ? Invariant($"The {options.TabCount} tabs asked for are wider than the profile they would hold, so it is cut right through and the piece comes free on the last pass. Hold it down.")
+                    : "No profile here takes tabs, so nothing holds the piece on the last pass. Hold it down.");
         }
         else if (planned.Count > 0)
         {
@@ -581,14 +613,41 @@ public static class OutlineOperation
             notes.Add(Invariant($"{planned.Count} tabs, {wide}, {under}."));
 
             // Where they are, and why there. This is the line that answers the report this work came
-            // from — "they may not be in the best locations" — so it says what chose the positions.
+            // from — "they may not be in the best locations" — so it says what chose the positions:
+            // the edges, the fallback spacing, or a hand (6.4). An operator about to snap a tab out
+            // deserves to know which ones nobody's rule vouches for.
             var where = profilesTabbed > 1
                 ? Invariant($"{edgesUsed} straight edge(s) across {profilesTabbed} profiles")
                 : Invariant($"{edgesUsed} straight edge(s) of the profile");
 
-            notes.Add(planned.All(t => t.Spaced)
-                ? "Spaced evenly: no edge long enough to centre a tab on."
-                : Invariant($"Centred on {where}, never across a corner."));
+            var byHand = planned.Count(t => t.Moved || t.Added);
+            var spacedEvenly = planned.Count(t => t.Spaced);
+            var centred = planned.Count - byHand - spacedEvenly;
+
+            if (byHand == 0)
+            {
+                notes.Add(spacedEvenly == planned.Count
+                    ? "Spaced evenly: no edge long enough to centre a tab on."
+                    : Invariant($"Centred on {where}, never across a corner."));
+            }
+            else
+            {
+                var account = new List<string>();
+
+                if (centred > 0)
+                {
+                    account.Add(Invariant($"{centred} centred on {where}, never across a corner"));
+                }
+
+                if (spacedEvenly > 0)
+                {
+                    account.Add(Invariant($"{spacedEvenly} spaced evenly"));
+                }
+
+                account.Add(Invariant($"{byHand} placed by hand"));
+
+                notes.Add(string.Join("; ", account) + ".");
+            }
 
             // Against the profiles that could have had tabs, not the ones that got them. Found by
             // `/code-review`: a profile too small to hold any was left out of the multiplier, so a
@@ -598,8 +657,11 @@ public static class OutlineOperation
 
             if (planned.Count < asked)
             {
-                notes.Add(Invariant(
-                    $"{asked} were asked for: the straight edges hold {planned.Count} with clearance either side of each."));
+                // With hand changes in play the shortfall is not the edges' doing: a removed tab
+                // is a choice, and blaming clearance for it would be the header lying.
+                notes.Add(options.TabMoves.Count > 0
+                    ? Invariant($"{asked} were asked for: {planned.Count} after the hand-set changes.")
+                    : Invariant($"{asked} were asked for: the straight edges hold {planned.Count} with clearance either side of each."));
             }
 
             if (addedTops.Count == 1)
@@ -887,7 +949,7 @@ public static class OutlineOperation
             // for every tab.
             if (tabs.Count > 0)
             {
-                return new TabPlanning(tabs, candidate, height);
+                return new TabPlanning(tabs, candidate, height, contours[c]);
             }
         }
 

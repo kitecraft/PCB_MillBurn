@@ -29,7 +29,8 @@ public static class BoardRenderer
         bool ruler = false,
         RulerReadout? readout = null,
         RulerMeasure? measure = null,
-        BoardMarker? marker = null)
+        BoardMarker? marker = null,
+        TabOverlay? tabs = null)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(scene);
@@ -193,6 +194,14 @@ public static class BoardRenderer
         if (ruler)
         {
             Ruler.Draw(canvas, viewport, frame, step, background, readout, measure);
+        }
+
+        // After the ruler for the same reason it is, and before the marker: a handle is something
+        // to take hold of, a mark is something to look at, and when the two coincide the answer to
+        // "where is the fault" goes on top.
+        if (tabs is not null)
+        {
+            TabHandles.Draw(canvas, viewport, frame, tabs);
         }
 
         // After the ruler, so the crosshairs and the two strip pointers land on top of the strips

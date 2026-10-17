@@ -1121,7 +1121,8 @@
                 <ctl:BoardView x:Name="Viewport"
                                Scene="{Binding Scene}"
                                ShowRuler="{Binding ShowRuler}"
-                               OriginName="{Binding OriginName}" />
+                               OriginName="{Binding OriginName}"
+                               Tabs="{Binding TabHandles}" />
 
                 <!-- Kept for the fpstest harness: it measures the real Phase 0 render loop. -->
                 <ctl:ToolpathView x:Name="ToolpathViewport"

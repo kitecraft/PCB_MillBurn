@@ -21,6 +21,7 @@ internal sealed class BoardDrawOperation(
     RulerReadout? readout,
     RulerMeasure? measure,
     BoardMarker? marker,
+    TabOverlay? tabs,
     Action<double, BoardRenderer.DrawResult> onFrameRendered) : ICustomDrawOperation
 {
     public Rect Bounds => bounds;
@@ -51,7 +52,8 @@ internal sealed class BoardDrawOperation(
             ruler,
             readout,
             measure,
-            marker);
+            marker,
+            tabs);
 
         var elapsedMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started)
             * 1000.0 / System.Diagnostics.Stopwatch.Frequency;

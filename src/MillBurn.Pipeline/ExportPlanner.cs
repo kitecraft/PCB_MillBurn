@@ -2145,6 +2145,7 @@ public static class ExportPlanner
             // currently produces — kept, because that is what `IsDefaultOrEmpty` is for and it costs
             // nothing, but no longer claiming to have a reproduction behind it.
             TabEdits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits,
+            TabMoves = setting.TabMoves.IsDefaultOrEmpty ? [] : setting.TabMoves,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             Keep = keep,
         };

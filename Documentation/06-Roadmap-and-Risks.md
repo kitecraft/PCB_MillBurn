@@ -2296,7 +2296,7 @@ depth rather than the two neighbouring passes. It would pick up links across gro
 in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
 a strict subset of it, so nothing has to be undone to get there.
 
-#### 6.4 Tabs: where, how many, how big — **enhancement · partial** — *placed and sized from the board in sprint 4; moving one by hand is not built*
+#### 6.4 Tabs: where, how many, how big — **enhancement · partial** — *placed and sized in sprint 4, moved by hand in sprint 6; keep-outs are not built*
 
 Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
 put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
@@ -2438,18 +2438,8 @@ were for the count and for the board-wide width. A per-tab edit of zero or less 
 board-wide pair was guarded and the per-tab ones were not, so a hand-edited project file could put
 two cut runs end to end and cut the profile clean through while the header still counted that tab.
 
-**Still open, and why this entry is `partial`:**
-
-- **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
-  best locations"* completely. It needs the viewport to hit-test the profile, which nothing does;
-  [6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30)
-  gives the viewport a marker, which is not the same as a pick.
-- **Keep-out from features** — item 4. No tab within *n* mm of a hole or a pad.
-- **The blank still places its own**, two to an edge on the top and right only. That rule is right and
-  was kept; what it does not yet share is the sizing.
-
-**Item 3 goes into sprint 6, 2026-10-16, folded with
-[6.72](#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6)
+**Item 3 went into sprint 6, 2026-10-16, folded with
+[6.72](#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6)
 at the product owner's suggestion** — *"It may fold the bug into it."* One story
 ([Sprint 6 story 2](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md)), the fix first: the
 planner spreads tabs round the outline's sides instead of piling them on the longest edges, and
@@ -2460,8 +2450,72 @@ think."* A pick built general opens doors this entry does not own: a trace click
 is, a finding picked on the copper instead of navigated to from the list, item 4's keep-outs drawn
 by hand, a component picked in
 [6.73](#673-placement-data-for-a-pick-and-place--enhancement--open--asked-for-by-the-product-owner-2026-10-16)'s
-assembly tab. Those queue here, not in the story. Items 4 and the blank's sizing stay open —
-the fold takes the drag, not the entry.
+assembly tab. Those queue here, not in the story.
+
+##### Built in sprint 6 story 2 — the hand (2026-10-17)
+
+**The viewport's first pick.** The cut path — the offset profile, not the board's edge — is drawn
+as a faint dashed loop with a handle on every tab: hollow for one the planner placed, solid for one
+a hand did. The gap's true ends are ticked across the path in cyan once the zoom makes the gap
+wider than the handle — ticks, not a bar, and a contrasting colour, both from the bench on first
+sight: the first cut drew the width as a horizontal bar through the handle, and *"on a horizontal
+edge, it'd difficult to notice, and because the bar takes up the full gap width, it's also
+difficult to tell the gap"* — a bar lying along a horizontal edge disappears into the cut line and
+paints over the very gap it names, where two ticks where the cut stops and resumes read at any
+orientation and leave the gap itself as the board's own picture. The cyan is the second half of
+the same report: *"A contrasting colour might be nice."*
+Take hold of a handle and it slides *along the loop*: the pointer is projected onto the nearest
+point of the profile, which is what carries a tab round a corner and makes "off the outline" not
+possible rather than merely refused. Escape, or the window losing the drag, puts the tab back —
+committing a position the hand never let go of would write a place nobody chose. Click an empty
+stretch of the loop and a tab is added there at the board's own sizes; right-click a handle and
+that tab goes — except the last one, which refuses with the reason: the last tab is what holds the
+board, and cutting it free belongs to the count, not to a slip of a click.
+
+**The stored form is a `TabMove`**, living in the settings beside the hand-set sizes and built the
+same way: it names a planned tab by its place in the pristine plan and says where the hand put it,
+as a distance along the profile — the planner's own coordinate, which `ProfilePath` (the planner's
+walk made public) measures and projects. One record, three shapes: an index with a distance moves
+that tab, an index alone removes it, `-1` with a distance adds one. The ordinal is assigned on the
+pristine plan and never re-derived from the list, so a tab moved across its neighbour, or the tabs
+around a removed one, keep their names — the size-edit review's "an override landing on whichever
+tab then sorts into that slot" cannot happen. Positions clear through every door the sizes clear
+through: a changed count, a changed board-wide width, a changed outline cutter — and the CLI's
+`--tabs` and `--tab-width` flags now clear what they re-plan too, which they never did for the
+sizes either. The project file carries them with no format bump; an older project simply has none.
+
+**The header, the window and the planner say the same thing.** The program's placement line counts
+what each rule chose — *"3 centred on 4 straight edge(s) of the profile, never across a corner; 1
+placed by hand"* — a shortfall against the count says *"after the hand-set changes"* instead of
+blaming edge clearance for a removal somebody chose, and a profile whose every tab was removed says
+so rather than claiming no profile takes tabs. The tabs window's rows read *"placed by hand"* where
+they used to quote an edge length the hand never consulted, and they name tabs by ordinal now, so a
+size edit made with a tab removed does not land one over. `--move-tab <n>=<mm>` is the headless
+route in, `--set-role`'s shape: it moves a tab by name and arc, prints what it did or why it could
+not, and the capture's *unsaved changes* line shows the project noticing.
+
+**The blank's datum rule turned out to be a property, not a refusal.** A board tab exists only on
+the board's cut loop, and `Blanks.Resolve` refuses any border under cutter + 2 mm — so no point of
+that loop can lie on the blank's bottom or left edge, and there is nothing for a drop to refuse:
+the projection cannot produce the place the rule forbids. The blank's own tabs stay
+`BlankOperation`'s, planner-placed on the top and right only; if they ever become draggable, the
+refusal becomes real and gets built then.
+
+**And a defect nobody had seen, found when a moved tab vanished across a preview.** `LayerRow`'s
+restoring constructor assigns the cutter *after* the stored tab overrides, and the cutter's
+clearing door — added by `/code-review` as the third door on the re-planning hazard — fires during
+construction too. Every rebuild of the rows, which is every preview and every reopened project,
+wiped the operator's per-tab sizes while the file still showed them: the first preview after an
+edit was right, the second was quietly derived again. The hand-set positions made it visible
+within the hour of existing; the sizes had been going that way since the door was added. The doors
+are guarded with a built flag now — construction restores, only a change clears.
+
+**Still open, and why this entry stays `partial`:**
+
+- **Keep-out from features** — item 4. No tab within *n* mm of a hole or a pad; the picking
+  machinery and the hand-set positions are the two halves it needed, so it is nearer than it was.
+- **The blank still places its own**, two to an edge on the top and right only. That rule is right
+  and was kept; what it does not yet share is the sizing or the hand.
 
 #### 6.5 A picture on the companion pages — **enhancement · fixed**
 
@@ -7047,7 +7101,7 @@ the claim rather than the absolutes:
 The status bar's vertex count now reports what a frame actually drew (77,633 at the hero's fit
 zoom, against 205,620 before), which is the honest number for a shot to quote.
 
-#### 6.72 On a panel, every tab goes on one edge — **defect · open** — *found in the workshop, 2026-10-11; for sprint 6*
+#### 6.72 On a panel, every tab goes on one edge — **defect · fixed** — *found in the workshop, 2026-10-11; fixed in sprint 6*
 
 From the product owner, looking at the 66-up GridStripConnector panel in the README's hero: *"On
 the panalized connector … all the tabs end up along the bottom edge of the 'board'. Up to 6 tabs.
@@ -7076,6 +7130,23 @@ bench: the fixed planner puts tabs where a hand usually would, and the drag move
 gets wrong. The fix ships first and stands alone
 ([Sprint 6 story 2](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md)); this defect closes with
 the test that would have caught it, whatever happens to the drag.
+
+**Fixed in sprint 6, 2026-10-17** (story 2, first half). `TabPlan` now asks *where* before *how
+long*: every straight edge is classified by the side of the profile it faces — the edge's own
+direction decides top-and-bottom against left-and-right, its position against the centre decides
+which of the two — and each tab goes to the emptiest side first, a bare edge within it second,
+length per tab last. On the panel the default four land two on the bottom and two on the top,
+opposite pairs on distinct 24.6 mm stretches; that is this frame's right answer rather than a
+compromise, because its left and right sides are 6.8 mm stretches between the boards' channels and
+a 5 mm tab needs 15 mm of edge to hold its clearance either side — a side that cannot carry a tab
+without the cut running into it gets none. The 21 × 37 mm board 6.4 was tuned on is unchanged, as
+is every other golden; the panel's own outline program kept its cutting to the millimetre and its
+rapid travel *fell* from 521 to 382 mm, because the lap entry points move with the first tab on
+each profile. The test that would have caught it runs against the real panel's frame:
+`TabPlacementTests.OnThePanelTheDefaultTabsGoRoundTheFrame`, red on the old rule with all four
+tabs on one side, and the first cut at the fix — a bearing round the centre, quantised at the
+box's diagonals — failed it too, by calling a top stretch near a corner "right" and putting three
+tabs back on one side.
 
 #### 6.73 Placement data for a pick-and-place — **enhancement · open** — *asked for by the product owner, 2026-10-16*
 

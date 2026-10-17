@@ -18,7 +18,7 @@ panel — the README's own hero — is the first board big enough to break rules
 boards. Its preview draws at 14 fps on an application whose README claims 98 through a zoom sweep,
 because nothing before it stroked a 108,504-vertex path every frame ([6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--fixed--found-retaking-the-readmes-screenshots-2026-10-11-fixed-in-sprint-6)).
 Its tabs all land on one edge, because *longest edge first* was written for a rectangle that has
-four of them ([6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6)).
+four of them ([6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6)).
 Both were found on 2026-10-11, one retaking the hero and one in the workshop looking at it. The
 third story is the half of the tab fix the panel will still need when the planner is right —
 the hand — and the fourth is review debt the sprint has room for, said plainly the way sprint 5
@@ -40,7 +40,7 @@ grep -n 'defect · open' Documentation/06-Roadmap-and-Risks.md
 |---|---|---|
 | [6.45](../Documentation/06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | **Out**, as it has been every sprint since 2: no fixture exists, and the unblocker is a Gerber set rather than a line of code |
 | [6.47](../Documentation/06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | **Out**: built in sprint 3 and withdrawn by the product owner; the patch is kept in `WorkingFolder/held/` and the shape is still wrong |
-| [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6) | On a panel, every tab goes on one edge | **In — story 2**, folded with 6.4's manual placement at the product owner's suggestion |
+| [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6) | On a panel, every tab goes on one edge | **In — story 2**, folded with 6.4's manual placement at the product owner's suggestion |
 
 **Then the other places the rule names.**
 [08](../Documentation/08-Requirements-Matrix.md)'s Partial rows: M16 and M17 were set aside by the
@@ -63,7 +63,7 @@ careful one.
 | # | story | where it came from |
 |---|---|---|
 | [6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--fixed--found-retaking-the-readmes-screenshots-2026-10-11-fixed-in-sprint-6) | The panel previews at a rate the README can stand beside | Retaking the hero, 2026-10-11; measured 2026-10-15; named first by the product owner |
-| [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6) + [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-from-the-board-in-sprint-4-moving-one-by-hand-is-not-built) | Tabs spread round the panel, and a hand can move one | The workshop, 2026-10-11, on the same panel; folded at the picking, 2026-10-16 |
+| [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6) + [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs spread round the panel, and a hand can move one | The workshop, 2026-10-11, on the same panel; folded at the picking, 2026-10-16 |
 | [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
 | [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
 
@@ -253,6 +253,32 @@ golden programs, and the blank keeps placing its own tabs on the top and right o
 closes with the test that would have caught it: one that fails if the panel's default tabs
 collapse back onto one edge.
 
+### The fix half — landed 2026-10-17
+
+The key is which **side of the profile an edge faces**: the edge's own direction decides
+top-and-bottom against left-and-right, its position against the centre decides which of the two,
+and `TabPlan.Allocate` fills the emptiest side first, a bare edge within it second, length per tab
+last. Two findings on the way, both caught by running against the real panel frame before any of
+it was called done:
+
+- **A bearing round the centre is not a side.** The first cut quantised each edge's midpoint
+  bearing at the bounding box's diagonals — and the panel's frame is wider than tall, so a top
+  stretch near a corner lies past the diagonal and classified as "right". Four tabs went one to
+  each *bearing* and three of them sat on the top side: the defect back again in a hat.
+- **The panel's right answer is two-and-two, not one-per-side.** The frame's left and right sides
+  are 6.8 mm stretches between the boards' channels; a 5 mm tab — the width a 107 mm board
+  derives — needs 15 mm of edge for its clearance either side, and the `Fits` rule refusing those
+  stretches is correct. So the default four hold the frame in opposite pairs on distinct bottom
+  and top stretches, and the regression test asserts exactly that.
+
+`TabPlacementTests.OnThePanelTheDefaultTabsGoRoundTheFrame` loads the real panel, red on the old
+rule with all four tabs on one 24.6 mm edge. The 21 × 37 mm board's programs are byte-identical —
+only the panel's golden moved, its cutting unchanged to the millimetre and its rapid travel down
+from 521 to 382 mm because the lap entry points move with the first tab on each profile. The
+blank's top-and-right-only tabs are `BlankOperation`'s own and untouched. 1,383 unit + 28 golden
+tests pass, zero warnings. The shot of the spread tabs lands with the drag half, which is what
+makes tabs visible in the viewport at all.
+
 **The drag half, second — the part of 6.4 that answers the workshop completely.** However good
 the spread rule gets, the next odd outline will put one tab over a slot or against a connector,
 and today the only recourse is fighting the planner. So:
@@ -287,6 +313,127 @@ the viewport can be grabbed and slid along the border with the gap, the preview 
 window following; a drop on the blank's datum edges refuses and says why; a hand-set position
 survives save and reopen, clears when its plan does, and the program's header tells the truth
 throughout. G24 moves from Partial when the whole of this is met.
+
+### Closed — 2026-10-17
+
+Both halves landed; the fix half's own record is above. The drag half, as built:
+
+- **The pick and the slide.** The cut path is drawn as a faint dashed amber loop with a handle on
+  every tab — hollow for the planner's, solid for a hand's — and the gap's two ends ticked across
+  the path in cyan once the zoom makes the gap wider than the handle. A handle under the pointer lights and the cursor offers
+  a hand; a grabbed tab slides to the nearest point of the loop whatever the pointer does, which
+  carries it round corners and makes "off the outline" impossible rather than refused. Escape or a
+  lost capture drops it back — a position the hand never released is a place nobody chose. Click
+  an empty stretch to add a tab at the board's own sizes; right-click a handle to remove it — the
+  last one refuses, with the reason in the status line: the last tab is what holds the board, and
+  cutting it free belongs to the count.
+- **The stored form** is `TabMove` — one record, three shapes (move / remove / add), named by the
+  tab's place in the pristine plan exactly as `TabEdit` names sizes, applied after them in
+  `TabPlan.For`, and never re-deriving ordinals from the list, so an override cannot land on
+  whichever tab later sorts into a slot. It lives in `LayerOutputSettings` beside the sizes, with
+  no format bump, and clears through every door the sizes clear through — count, board-wide
+  width, outline cutter — **plus the CLI's `--tabs` and `--tab-width`, which had never cleared
+  what they re-plan, for the sizes either**. `ProfilePath` is the planner's walk made public:
+  `Project` (pointer → arc length) and `PointAt` (arc length → point), one copy of the
+  arithmetic.
+- **The header, the window, the flag.** The placement line counts what each rule chose ("3
+  centred on …; 1 placed by hand"); a shortfall with hand changes says so instead of blaming
+  clearance; every tab removed says that, not "no profile takes tabs". The tabs window's rows
+  read *placed by hand*, key their size edits by ordinal (row position stopped being the name the
+  day a tab could be removed), and disable the boxes on an added tab rather than silently
+  dropping a number. `--move-tab <n>=<mm>` moves a tab by name and arc headlessly and prints what
+  it did or why not; the shots below are taken with it.
+- **A defect found when a moved tab vanished across a preview, older than this story.**
+  `LayerRow`'s restoring constructor assigns the cutter after the stored overrides, and the
+  cutter's clearing door fires during construction — so every rebuild of the rows (every preview,
+  every reopened project) wiped the operator's per-tab *sizes* while the file still held them.
+  Proven with a console probe (settings carried the move; the rebuilt row did not), fixed with a
+  built flag on the clearing doors, re-proven the same way. Unreachable from the unit suite —
+  `LayerRow` is Avalonia-side, which is story 4's 6.50 complaint in one sentence.
+- **The datum-edge clause landed as a property, not a refusal.** A board tab exists only on the
+  board's cut loop, and `Blanks.Resolve` refuses any border under cutter + 2 mm, so no point of
+  the loop can lie on the blank's bottom or left edge — the projection cannot produce the place
+  the rule forbids, and there is nothing to refuse or say. The blank's own tabs stay
+  `BlankOperation`'s, top and right only, not draggable. **This diverges from the story's bullet
+  as written** ("refused and said"), which imagined a drop that cannot occur; flagged for the
+  owner at review rather than building an unreachable refusal — story 3 exists because this
+  codebase does not keep those.
+
+**Measured and shot.** `story-2-panel-tabs-spread.png`: the panel's four default tabs holding
+opposite sides on distinct stretches, handles on the dashed loop.
+`story-2-tab-moved-by-hand.png`: `--move-tab 1=200` — the tab solid on the frame's right edge, a
+place the planner's clearance rule would never choose and a hand may, `unsaved changes: yes`
+below. `story-2-tab-moved-previewed.png`: the same move previewed, the handle riding the cut path
+at 10 px/mm. The panel goldens moved once, for the fix half (travel 521 → 382 mm, cutting to the
+millimetre); the drag half moved none. 1,406 unit + 28 golden tests, zero warnings.
+
+**From the bench at review, 2026-10-17, acted on before the merge.** The owner, on the first
+look: *"I like it. On any non-horizontal edge, it's great, but on a horizontal edge, it'd
+difficult to notice, and because the bar takes up the full gap width, it's also difficult to tell
+the gap"* — and, on the fix: *"A contrasting colour might be nice."* The first cut drew the gap's
+width as a bar through the handle, always horizontal because nothing told it which way the edge
+ran: on a vertical edge it happened to cross the path and read, on a horizontal one it lay along
+the cut and painted over the gap it named. Replaced with two cyan ticks across the path where the
+cut stops and resumes — orientation-independent, the gap between them left unpainted so what shows
+is the board's own cut, and in a colour nothing else in the viewport wears. The ends are walked
+along the loop (corners included) by the same arithmetic the splitter cuts with, and they hide
+during a drag, when the planner has no answer yet.
+`story-2-gap-ticks-horizontal-edge.png` is the horizontal-edge case at 25 px/mm. The owner, on
+the reworked picture: *"That is the best tabs locator I've ever seen."* The story merged on that.
+
+**Not done, and said:** resizing an added tab (it takes the board's own sizes; the window's boxes
+are disabled for it, and the day it earns naming one, the add entry is where the size goes);
+dragging the blank's own tabs; item 4's keep-outs. The pointer gestures themselves — press, slide,
+release — are exercised through the same `ApplyTabMove` path the headless flag writes, but no test
+drives Avalonia's pointer events; the owner's hand is the test of the feel.
+
+### What `/describe-test` found — 2026-10-17, six runs
+
+- **`TabPlacementTests`, first run** (after the fix half): the panel test's name promised "round
+  the frame" while the body proves opposite-pair holding — renamed
+  `OnThePanelTheDefaultTabsHoldOppositeSidesOfTheFrame`; and an orphaned doc comment above
+  `PointAlong` belonged to `EitherSide` — moved. **Second run** (after the drag half): clean; its
+  account of test 18 matches the intent exactly, including that the two-and-two answer is this
+  fixture's own.
+- **`TabMoveTests`**: the added tab's sizes were asserted only against the derived-size functions
+  — the system agreeing with itself if the formula moved. The literal figures (2.0 mm, 0.25 mm)
+  now sit beside the function calls.
+- **`ProfilePathTests`**: clean — the describer re-derived every hand-worked coordinate
+  independently and confirmed them, and correctly placed the round-trip test as consistency, with
+  absolutes pinned by the landing and projection tests.
+- **`LayerOutputPersistenceTests`**: clean — the `TabMoves` round-trip is a real disk round trip,
+  each of the three shapes intact, the removal's null read back as null.
+- **`TabMoveTests`, second run** after it gained the cross-profile leak test below: clean.
+
+### What the code review found — 2026-10-17, medium
+
+Seven findings; five acted on, one left with its reason, one already met.
+
+1. **A stationary middle-click added a tab** — the click-to-add check never asked which button
+   the press was. Guarded on the left button; the middle button pans, everywhere. *Fixed.*
+2. **Hand removals that empty the first profile's plan leaked the same removals onto the next
+   profile** — the `editsSpent` latch watched the post-removal list, so a file removing every one
+   of profile one's ordinals removed the second board's tabs by the same numbers, and both pieces
+   come free on the last pass. The latch now re-plans pristine in exactly that corner and spends
+   the overrides where they belong. *Fixed, with the regression test
+   `RemovingEveryTabOnOneProfileLeavesTheNextProfilesAlone`, proven red against the unfixed
+   latch.*
+3. **The CLI's `--tabs`/`--tab-width` cleared overrides even when the value was unchanged** — a
+   script re-running with the same flag threw hand-set positions away for a no-op. Both compare
+   before clearing now, as the window does. *Fixed.*
+4. **`RefreshTabHandles` re-shaped the whole board on every settings change of any layer, on the
+   UI thread** — a drill-guide checkbox re-offsetting the panel's 102 profiles. A signature of
+   what the tabs actually depend on (board, outline settings record, thickness, frame) now answers
+   "nothing moved" without planning. *Fixed.*
+5. **`BoardView.NearestOnProfile` is a second projection beside `ProfilePath.Project`** — true,
+   and kept: it answers in screen pixels over the overlay's own polyline, which is all the control
+   is allowed to know (the Viewer's overlay type cannot carry a Cam type), and every *committed*
+   position still goes through the planner's walk. The reason is now written at the method.
+   *Left.*
+6. **The hot handle and hand cursor survived the pointer leaving the viewport** — a lit handle
+   under a pointer that is over the settings panel. Cleared in `OnPointerExited`. *Fixed.*
+7. **Four test files owed `/describe-test` runs** — they had run before the review; the section
+   above records all six. *Already met.*
 
 ---
 

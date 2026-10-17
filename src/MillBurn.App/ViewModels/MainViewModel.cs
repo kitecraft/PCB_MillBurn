@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -302,6 +303,270 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         return planned with { Tabs = tabs };
+    }
+
+    /// <summary>
+    /// The tabs as the viewport shows and grabs them, or null when the board offers none (6.4).
+    ///
+    /// Built from the same planner call the tabs window and the export use, so the handle an
+    /// operator drags is the tab the program cuts — but in the frame's own millimetres, unmirrored,
+    /// because that is what the viewport draws. The mirror belongs to the file, not the picture.
+    /// </summary>
+    [ObservableProperty]
+    public partial TabOverlay? TabHandles { get; private set; }
+
+    /// <summary>The plan behind the handles, in artwork coordinates, and the loop they slide on.</summary>
+    private TabPlanning? _tabPlanning;
+    private ProfilePath? _tabProfile;
+    private LayerRow? _tabRow;
+
+    /// <summary>
+    /// What the overlay was last built from, so the next refresh can answer "nothing moved"
+    /// without re-shaping the board. `OnOutputChanged` fires for every settings change on every
+    /// layer, and `/code-review` priced the alternative: a drill-guide checkbox re-offsetting the
+    /// 66-up panel's 102 profiles on the UI thread. The settings record compares by value — its
+    /// immutable arrays by instance, which is exactly right, because an untouched row hands back
+    /// the same instances and a gesture builds new ones.
+    /// </summary>
+    private (Board Board, LayerOutputSettings Settings, double ThicknessMm, Bounds Frame)? _tabHandlesFrom;
+
+    /// <summary>
+    /// Re-asks the planner what the tabs are and where the loop is.
+    ///
+    /// Called wherever the answer can have changed: a rebuilt board, and any output change — the
+    /// gestures themselves arrive back here through <see cref="OnOutputChanged"/>, which is what
+    /// makes a drop show its re-planned truth rather than the control's own projection.
+    /// </summary>
+    private void RefreshTabHandles()
+    {
+        var row = _board is null
+            ? null
+            : Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline && r.Layer is not null);
+
+        var layer = row is null || row.TabCount <= 0
+            ? null
+            : _board!.Layers.FirstOrDefault(
+                l => string.Equals(l.FileName, row.FileName, StringComparison.Ordinal));
+
+        if (layer is null)
+        {
+            _tabPlanning = null;
+            _tabProfile = null;
+            _tabRow = null;
+            _tabHandlesFrom = null;
+            TabHandles = null;
+            return;
+        }
+
+        var settings = row!.ToSettings();
+        var frame = Frame.IsEmpty ? _board!.Bounds : Frame;
+
+        // Nothing the tabs depend on has moved: same board, same outline settings, same
+        // thickness, same frame. The rows are rebuilt on every preview, so the row object itself
+        // is not part of the signature — but a fresh row still has to be the one a gesture
+        // writes to, which is why `_tabRow` is updated even on a hit.
+        if (_tabHandlesFrom is { } from
+            && ReferenceEquals(from.Board, _board)
+            && from.Settings == settings
+            && from.ThicknessMm == BoardThicknessMm
+            && from.Frame == frame)
+        {
+            _tabRow = row;
+            return;
+        }
+
+        var options = ExportPlanner.OutlineOptionsFor(
+            _board!, settings, row.Tool, Nm.FromMillimetres(BoardThicknessMm));
+
+        var planned = OutlineOperation.PlanTabs(ExportPlanner.OutlineProfiles(layer), options);
+
+        if (planned.Profile is not { } profile || planned.Tabs.Count == 0)
+        {
+            _tabPlanning = null;
+            _tabProfile = null;
+            _tabRow = null;
+            _tabHandlesFrom = null;
+            TabHandles = null;
+            return;
+        }
+
+        _tabPlanning = planned;
+        var path = new ProfilePath(profile);
+        _tabProfile = path;
+        _tabRow = row;
+        _tabHandlesFrom = (_board!, settings, BoardThicknessMm, frame);
+
+        SKPoint OnBoard(long x, long y) => new(
+            (float)((x - frame.MinX) / 1_000_000.0),
+            (float)((y - frame.MinY) / 1_000_000.0));
+
+        // Each tab's gap ends are walked along the loop, not offset from the centre: half a width
+        // either way round the path is where the cut really stops and resumes, corners included,
+        // and the splitter does the same arithmetic when it cuts there.
+        TabHandle Handle(PlacedTab t)
+        {
+            var half = t.WidthNm / 2.0;
+            var gapFrom = path.PointAt(t.AlongNm - half);
+            var gapTo = path.PointAt(t.AlongNm + half);
+
+            return new TabHandle(
+                OnBoard(t.At.X, t.At.Y),
+                (float)Nm.ToMillimetres(t.WidthNm),
+                t.Moved || t.Added,
+                OnBoard(gapFrom.X, gapFrom.Y),
+                OnBoard(gapTo.X, gapTo.Y));
+        }
+
+        TabHandles = new TabOverlay
+        {
+            Profile = [.. profile.Select(p => OnBoard(p.X, p.Y))],
+            Tabs = [.. planned.Tabs.Select(Handle)],
+        };
+    }
+
+    /// <summary>A place the viewport reported, taken back into the artwork's own nanometres.</summary>
+    private Point2 ArtworkPoint(double xMm, double yMm)
+    {
+        var frame = Frame.IsEmpty ? _board!.Bounds : Frame;
+
+        return new Point2(
+            frame.MinX + (long)Math.Round(xMm * 1_000_000.0),
+            frame.MinY + (long)Math.Round(yMm * 1_000_000.0));
+    }
+
+    /// <summary>
+    /// A tab was dropped: the planner's walk decides what the point means, and the override goes
+    /// into the settings beside the hand-set sizes.
+    /// </summary>
+    public void MoveTab(int handle, double xMm, double yMm)
+    {
+        if (_tabProfile is not { } path)
+        {
+            return;
+        }
+
+        var (along, _) = path.Project(ArtworkPoint(xMm, yMm));
+
+        if (ApplyTabMove(handle, along))
+        {
+            StatusMessage = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab moved to {path.Wrap(along) / 1_000_000.0:F1} mm along the cut path — by hand now, until the tabs re-plan.");
+        }
+    }
+
+    /// <summary>A click on an empty stretch of the loop: a tab belongs there.</summary>
+    public void AddTab(double xMm, double yMm)
+    {
+        if (_tabProfile is not { } path || _tabRow is not { } row)
+        {
+            return;
+        }
+
+        var (along, _) = path.Project(ArtworkPoint(xMm, yMm));
+
+        row.SetTabMoves([.. row.TabMoves, new TabMove { Index = -1, AlongNm = along }]);
+
+        StatusMessage = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Tab added at {path.Wrap(along) / 1_000_000.0:F1} mm along the cut path, at the board's own sizes.");
+    }
+
+    /// <summary>
+    /// A handle was right-clicked. The last tab refuses: a board held by nothing comes free with
+    /// the cutter still turning, and that choice belongs to the tab count, not to a slip of a
+    /// click.
+    /// </summary>
+    public void RemoveTab(int handle)
+    {
+        if (_tabPlanning is not { } planning || _tabRow is not { } row
+            || handle < 0 || handle >= planning.Tabs.Count)
+        {
+            return;
+        }
+
+        if (planning.Tabs.Count == 1)
+        {
+            StatusMessage = "The last tab is what holds the board. To cut it free, set the tab count to zero.";
+            return;
+        }
+
+        var tab = planning.Tabs[handle];
+
+        row.SetTabMoves(tab.Added
+            ? RemoveAddEntry(row.TabMoves, tab.Ordinal)
+            : [.. row.TabMoves.Where(m => m.Index != tab.Ordinal), new TabMove { Index = tab.Ordinal }]);
+
+        StatusMessage = "Tab removed. The gap it left is cut through.";
+    }
+
+    /// <summary>
+    /// The headless flag's route in: a tab by its place in the plan, moved by arc rather than by
+    /// pointer (6.4). One line back for the capture log, refusals included.
+    /// </summary>
+    internal string MoveTabForShot(int tab, double alongMm)
+    {
+        if (_tabPlanning is not { } planning || _tabProfile is not { } path)
+        {
+            return "move tab: there are no tabs to move — load a board whose outline is cut with tabs";
+        }
+
+        if (tab < 0 || tab >= planning.Tabs.Count)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"move tab: there is no tab {tab} — the plan holds {planning.Tabs.Count}, numbered from 0");
+        }
+
+        ApplyTabMove(tab, alongMm * 1_000_000.0);
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"move tab: tab {tab} is now at {path.Wrap(alongMm * 1_000_000.0) / 1_000_000.0:F1} mm along the cut path, by hand");
+    }
+
+    /// <summary>
+    /// Writes one hand-set position: a planner's tab by its ordinal, an added tab by its place
+    /// among the adds. False when there was nothing to move.
+    /// </summary>
+    private bool ApplyTabMove(int handle, double alongNm)
+    {
+        if (_tabPlanning is not { } planning || _tabRow is not { } row
+            || handle < 0 || handle >= planning.Tabs.Count)
+        {
+            return false;
+        }
+
+        var tab = planning.Tabs[handle];
+
+        row.SetTabMoves(tab.Added
+            ? MoveAddEntry(row.TabMoves, tab.Ordinal, alongNm)
+            : [.. row.TabMoves.Where(m => m.Index != tab.Ordinal), new TabMove { Index = tab.Ordinal, AlongNm = alongNm }]);
+
+        return true;
+    }
+
+    /// <summary>The k-th add entry, moved. The adds keep their order, which is what names them.</summary>
+    private static ImmutableArray<TabMove> MoveAddEntry(
+        ImmutableArray<TabMove> moves, int add, double alongNm)
+    {
+        var seen = -1;
+
+        return
+        [
+            .. moves.Select(m =>
+                m.Index < 0 && m.AlongNm is not null && ++seen == add
+                    ? m with { AlongNm = alongNm }
+                    : m),
+        ];
+    }
+
+    /// <summary>The k-th add entry, gone.</summary>
+    private static ImmutableArray<TabMove> RemoveAddEntry(ImmutableArray<TabMove> moves, int add)
+    {
+        var seen = -1;
+
+        return [.. moves.Where(m => !(m.Index < 0 && m.AlongNm is not null && ++seen == add))];
     }
 
     public MainViewModel()
@@ -2491,6 +2756,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         RefreshFacts(board);
         RefreshWarnings(board);
         RefreshTitles();
+        RefreshTabHandles();
 
         if (elapsed > TimeSpan.Zero)
         {
@@ -2918,6 +3184,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         var drawn = _backplot.Count > 0 || Gcode is not null;
         var stopped = Invalidate(StaleBecause.OutputChanged);
 
+        // Whatever else the change did, it may have re-planned the tabs: a moved frame moves the
+        // millimetres the handles sit at, and every door that clears a hand-set position arrives
+        // here. After the reframe, so the handles are built against the frame they will be drawn
+        // in.
         if (!drawn && !stopped)
         {
             if (moved)
@@ -2925,9 +3195,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 Reframe();
             }
 
+            RefreshTabHandles();
             return;
         }
 
+        RefreshTabHandles();
         StatusMessage = "Output changed. Preview again to see the new programs.";
     }
 

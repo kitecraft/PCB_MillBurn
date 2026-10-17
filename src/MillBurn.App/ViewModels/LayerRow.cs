@@ -105,6 +105,7 @@ public sealed partial class LayerRow : ObservableObject
         TabWidthNm = settings.TabWidthNm;
         TabHeightNm = settings.TabHeightNm;
         TabEdits = settings.TabEdits;
+        TabMoves = settings.TabMoves;
         DrillGuide = settings.WriteDrillGuide;
         Passes = settings.Passes;
         IsolationWidthMm = Nm.ToMillimetres(settings.IsolationWidthNm);
@@ -122,6 +123,7 @@ public sealed partial class LayerRow : ObservableObject
         _selectedRole = RoleChoice.All.First(c => c.Role == layer.Role);
         RoleSetByHand = roleSetByHand;
         _roleChanged = roleChanged;
+        _built = true;
     }
 
     /// <summary>A layer the scene invented: the substrate, or a backplot. Eye and colour only.</summary>
@@ -144,6 +146,18 @@ public sealed partial class LayerRow : ObservableObject
 
         _visibilityChanged = visibilityChanged;
     }
+
+    /// <summary>
+    /// False until the restoring constructor has finished.
+    ///
+    /// The property hooks below fire during construction too — the constructor's own assignments
+    /// are changes — and the ones that clear hand-set tab overrides were wiping the very values
+    /// the constructor restores three lines earlier: `Tool` is assigned after `TabEdits`, so every
+    /// rebuild of the rows — a preview, a reopened project — threw the operator's per-tab sizes
+    /// away while the file still showed them. Found when 6.4's hand-set positions vanished across
+    /// a preview; the sizes had been going the same way since the door was added.
+    /// </summary>
+    private readonly bool _built;
 
     public BoardLayer? Layer { get; }
 
@@ -331,6 +345,9 @@ public sealed partial class LayerRow : ObservableObject
     /// <summary>Outline only: the tabs whose size was set by hand, by their place in the planned order.</summary>
     public ImmutableArray<TabEdit> TabEdits { get; private set; } = [];
 
+    /// <summary>Outline only: tabs a hand moved, removed or added in the viewport (6.4).</summary>
+    public ImmutableArray<TabMove> TabMoves { get; private set; } = [];
+
     /// <summary>
     /// Takes what the tabs window chose.
     ///
@@ -339,9 +356,31 @@ public sealed partial class LayerRow : ObservableObject
     /// </summary>
     public void SetTabs(long? widthNm, long? heightNm, ImmutableArray<TabEdit> edits)
     {
+        // A changed board-wide width re-places every tab — width decides how many an edge can
+        // hold — so hand-set positions go with the plan they belonged to, the same door the sizes
+        // clear through in the window itself. The height moves no tab, so it opens nothing.
+        if (widthNm != TabWidthNm)
+        {
+            TabMoves = [];
+        }
+
         TabWidthNm = widthNm;
         TabHeightNm = heightNm;
         TabEdits = edits;
+
+        OnPropertyChanged(nameof(Detail));
+        _outputChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Takes what a gesture in the viewport chose: the hand-set positions, whole.
+    ///
+    /// One notification, like <see cref="SetTabs"/> and for the same reason — the preview is
+    /// rebuilt from this.
+    /// </summary>
+    public void SetTabMoves(ImmutableArray<TabMove> moves)
+    {
+        TabMoves = moves;
 
         OnPropertyChanged(nameof(Detail));
         _outputChanged?.Invoke();
@@ -551,9 +590,12 @@ public sealed partial class LayerRow : ObservableObject
         // is the one nobody had thought of — the profile is offset by its radius before the tabs are
         // placed, so a wider bit lengthens every straight edge, moves `DefaultWidthFor`, and changes
         // which edges can hold how many. An edit names a tab by its place in that order.
-        if (Operation == OperationKind.Outline)
+        // Only once built: during construction this hook fires from the constructor's own `Tool`
+        // assignment, after the stored edits have been restored — see `_built`.
+        if (_built && Operation == OperationKind.Outline)
         {
             TabEdits = [];
+            TabMoves = [];
         }
 
         _outputChanged?.Invoke();
@@ -591,10 +633,19 @@ public sealed partial class LayerRow : ObservableObject
         // sorts third — an unexplained wide tab somewhere nobody chose — and going the other way
         // drops it silently.
         //
-        // Keeping them would need a tab to have an identity that survives re-planning, which is
-        // 06 §6.4's "move a tab by hand" and is not built. Until it is, the honest answer is that
-        // asking for a different number of tabs is asking for a different set of tabs.
-        TabEdits = [];
+        // The hand-set positions go the same way, and for them 6.4's "move a tab by hand" *is*
+        // built now — but an identity that survives re-planning is not: a move still names a tab
+        // by its place in the plan, and asking for a different number of tabs is asking for a
+        // different set of tabs.
+        //
+        // Only once built, like the cutter's door: the constructor assigns the count before it
+        // restores the stored overrides, and today that order protects them by accident — the
+        // guard makes it not an accident.
+        if (_built)
+        {
+            TabEdits = [];
+            TabMoves = [];
+        }
 
         OnPropertyChanged(nameof(Detail));
         _outputChanged?.Invoke();
@@ -735,6 +786,7 @@ public sealed partial class LayerRow : ObservableObject
         TabWidthNm = TabWidthNm,
         TabHeightNm = TabHeightNm,
         TabEdits = TabEdits,
+        TabMoves = TabMoves,
         WriteDrillGuide = DrillGuide,
         Passes = Passes,
         IsolationWidthNm = Nm.FromMillimetres(IsolationWidthMm),

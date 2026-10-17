@@ -188,6 +188,16 @@ they always were: a filter across the whole drawing.
 - Click a G-code line → the geometry highlights and the view pans to it.
 - Rubber-band select → statistics for the selection; "exclude this region" for quick fixes.
 
+**The viewport's first pick of any kind arrived in sprint 6 (6.4), and it is none of the above:**
+the board view hit-tests the outline's cut path and the tab handles on it, so a holding tab can be
+grabbed, slid along the loop — the pointer projected onto the nearest profile point, which is what
+carries it round a corner — added with a click on an empty stretch, and removed with a right-click.
+The machinery is deliberately general — a `RulerFrame` pick in screen pixels over geometry the
+planner describes in its own arc length — because the owner flagged where it leads: *"Adding this
+interaction with the user and the viewer opens up other possibilities."* What it opens (a trace
+clicked to ask what it is, a finding picked on the copper, keep-outs drawn by hand, a component
+picked in an assembly view) queues in 06's entries, not here.
+
 ### 2.6 Before/after comparison
 
 A dedicated mode that renders the **same job with the optimizer off vs. on**, side by side, with

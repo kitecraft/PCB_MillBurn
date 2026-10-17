@@ -1778,7 +1778,17 @@ internal static class Program
                 return 1;
             }
 
-            Apply(s => s with { TabCount = tabs }, LayerRole.Outline);
+            // A changed count re-plans every position, so the overrides named against the old plan
+            // go with it — the same door the window's own count box opens. This route used to leave
+            // them, which is the review's "an edit landing on whichever tab then sorts into that
+            // slot" reachable from the command line alone. Only a *changed* count: a script that
+            // re-runs with the same flag every time has re-planned nothing, and clearing for it
+            // would throw hand-set positions away for a no-op — the window's own rule.
+            Apply(
+                s => s.TabCount == tabs
+                    ? s
+                    : s with { TabCount = tabs, TabEdits = [], TabMoves = [] },
+                LayerRole.Outline);
         }
 
         // Unset is not zero: it means the tab is sized from the board — a tenth of its narrow side,
@@ -1792,7 +1802,16 @@ internal static class Program
                 return 1;
             }
 
-            Apply(s => s with { TabWidthNm = Nm.FromMillimetres(tabWidthMm) }, LayerRole.Outline);
+            // The board-wide width decides how many tabs an edge can hold, so it re-plans the
+            // positions: the hand-set ones clear, exactly as a width typed into the window does —
+            // and like the window, only when the width actually changes. The sizes stay either
+            // way: the window's own rule for a width change is to mark them stale rather than
+            // delete them, and a flag should not be harsher than the dialog.
+            Apply(
+                s => s.TabWidthNm == Nm.FromMillimetres(tabWidthMm)
+                    ? s
+                    : s with { TabWidthNm = Nm.FromMillimetres(tabWidthMm), TabMoves = [] },
+                LayerRole.Outline);
         }
 
         if (Argument(args, "--tab-height") is { } tabHeightText)

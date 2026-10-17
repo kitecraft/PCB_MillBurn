@@ -20,16 +20,64 @@ public sealed record PlacedTab
 
     /// <summary>
     /// Which straight edge of the profile this tab sits on, counted round the profile from its start
-    /// vertex, or <c>-1</c> for a tab that was spaced round a profile with no edge long enough to
-    /// hold one.
+    /// vertex, or <c>-1</c> for a tab whose position no edge chose: one spaced round a profile with
+    /// no edge long enough to hold one, or one a hand put where it wanted (see <see cref="Moved"/>
+    /// and <see cref="Added"/>).
     /// </summary>
     public required int Edge { get; init; }
 
     /// <summary>How long that edge is, which is what decides how many tabs it can hold.</summary>
     public required double EdgeLengthNm { get; init; }
 
-    /// <summary>True when nothing about the profile chose this position — see <see cref="Edge"/>.</summary>
-    public bool Spaced => Edge < 0;
+    /// <summary>
+    /// Which tab this is, in the terms an edit names one: its place in the pristine planned order
+    /// for a planner's tab, or its place among the hand-added ones when <see cref="Added"/>. The
+    /// two spaces stay stable however tabs are later moved or removed, which is what lets a stored
+    /// edit mean the same tab on every reopen of the same plan.
+    /// </summary>
+    public int Ordinal { get; init; }
+
+    /// <summary>A planner's tab whose position a hand overrode (6.4).</summary>
+    public bool Moved { get; init; }
+
+    /// <summary>A tab a hand put on the loop where the planner put none (6.4).</summary>
+    public bool Added { get; init; }
+
+    /// <summary>
+    /// True when nothing chose this position: the fallback spacing, not a straight edge and not a
+    /// hand.
+    /// </summary>
+    public bool Spaced => Edge < 0 && !Moved && !Added;
+}
+
+/// <summary>
+/// One hand-set change to where the tabs are (6.4): a planned tab moved, a planned tab removed, or
+/// a new tab added.
+///
+/// Three shapes in one record, told apart by which fields are set — the same JSON-friendly shape
+/// as <see cref="TabEdit"/>, living beside it in the settings and clearing through the same doors,
+/// because a position override belongs to the plan it overrode exactly as a size does:
+///
+/// - <see cref="Index"/> ≥ 0 with <see cref="AlongNm"/> set **moves** that planned tab there.
+/// - <see cref="Index"/> ≥ 0 with no <see cref="AlongNm"/> **removes** that planned tab.
+/// - <see cref="Index"/> &lt; 0 with <see cref="AlongNm"/> set **adds** a tab there, at the
+///   profile's derived sizes.
+///
+/// An entry that names no planned tab and adds nothing is ignored, like a size edit out of range: a
+/// hand-edited project file is not taken at its word. A removal of a tab outranks a move of the
+/// same tab, whatever order the entries come in.
+/// </summary>
+public sealed record TabMove
+{
+    /// <summary>Which planned tab, counted as <see cref="TabEdit.Index"/> is; -1 adds one instead.</summary>
+    public required int Index { get; init; }
+
+    /// <summary>
+    /// The tab's new centre as a distance along the cut profile, in nanometres — the coordinate
+    /// <see cref="PlacedTab.AlongNm"/> uses and <see cref="ProfilePath"/> measures. Any distance:
+    /// the loop is closed, so it wraps. Null on a named tab removes it.
+    /// </summary>
+    public double? AlongNm { get; init; }
 }
 
 /// <summary>
@@ -38,13 +86,17 @@ public sealed record PlacedTab
 /// The second pair is what lets a dialog tell "left alone" from "set to the same number", and
 /// what it shows beside the boxes so that "the board decides" is a figure somebody can see.
 /// </summary>
-/// <param name="Tabs">The tabs, in the order they come round the profile.</param>
+/// <param name="Tabs">The tabs, in the pristine plan's order — the order an edit's index names,
+/// which a hand-moved tab keeps however far it slides.</param>
 /// <param name="DerivedWidthNm">The width this profile would give a tab.</param>
 /// <param name="DerivedHeightNm">The material this thickness would leave under one.</param>
+/// <param name="Profile">The offset contour the tabs sit on — the cut path, which is what the
+/// viewport hit-tests and a drag slides along (6.4). Null when no profile took tabs.</param>
 public sealed record TabPlanning(
     IReadOnlyList<PlacedTab> Tabs,
     long DerivedWidthNm,
-    long DerivedHeightNm);
+    long DerivedHeightNm,
+    Path64? Profile = null);
 
 /// <summary>One tab's width or height, set by hand rather than derived.</summary>
 public sealed record TabEdit
@@ -74,7 +126,13 @@ public sealed record TabEdit
 /// on each straight edge is what anybody draws by hand**, and on a rectangle that is exactly what
 /// the default four produce.
 ///
-/// Recorded in [06 §6.4](../../Documentation/06-Roadmap-and-Risks.md).
+/// **And *where* an edge is outranks how long it is.** The first version ranked by length alone,
+/// which is one-per-side on a rectangle by accident of there being four edges — on the 66-up
+/// panel, whose outline is many short stretches with the longest all along one side, it put every
+/// default tab on the frame's bottom edge (6.72). An edge's quarter of the compass, taken round
+/// the profile's centre, is now the first key and its length the second.
+///
+/// Recorded in [06 §6.4](../../Documentation/06-Roadmap-and-Risks.md) and 06 §6.72.
 /// </summary>
 public static class TabPlan
 {
@@ -204,7 +262,8 @@ public static class TabPlan
         }
 
         var edges = StraightEdges(segments, starts, lengths);
-        var placed = Allocate(edges, options.TabCount, width);
+        var quarters = Quarters(segments, starts, lengths, edges, perimeter);
+        var placed = Allocate(edges, quarters, options.TabCount, width);
 
         var tabs = new List<PlacedTab>();
 
@@ -251,8 +310,105 @@ public static class TabPlan
 
         tabs.Sort((a, b) => a.AlongNm.CompareTo(b.AlongNm));
 
-        return Edited(tabs, options.TabEdits);
+        // The ordinal is the name an edit knows a tab by, so it is assigned on the pristine sorted
+        // plan — before any hand-set size or position — and never re-derived from the list order
+        // afterwards. A moved tab that crosses its neighbour keeps its ordinal, and so does every
+        // tab around a removed one, which is what stops a stored override landing on whichever tab
+        // later sorts into that slot.
+        for (var i = 0; i < tabs.Count; i++)
+        {
+            tabs[i] = tabs[i] with { Ordinal = i };
+        }
+
+        return Moved(
+            Edited(tabs, options.TabEdits),
+            options.TabMoves, segments, starts, lengths, perimeter, width, height);
     }
+
+    /// <summary>
+    /// Hand-set positions, applied after the sizes and addressed the same way (6.4).
+    ///
+    /// **After, for the same reason the sizes are**: a position decides nothing about any other
+    /// tab, so it must not take part in placement — a dragged tab moves itself and nothing else.
+    /// The list keeps the pristine plan's order rather than re-sorting by the new positions,
+    /// because the ordinal space is the list's whole contract; the splitter orders by arc length
+    /// itself, and a caller drawing handles cares where each tab *is*, not where it ranks.
+    ///
+    /// An added tab takes the profile's own derived sizes — the board-wide pair every planned tab
+    /// starts from. Sizing one by hand is the tabs window's job, the day it learns to name one.
+    /// </summary>
+    private static List<PlacedTab> Moved(
+        List<PlacedTab> tabs,
+        IReadOnlyList<TabMove> moves,
+        IReadOnlyList<ArtSegment> segments,
+        double[] starts,
+        double[] lengths,
+        double perimeter,
+        long width,
+        long height)
+    {
+        if (moves.Count == 0)
+        {
+            return tabs;
+        }
+
+        var result = new List<PlacedTab>(tabs);
+        var removed = new HashSet<int>();
+        var added = 0;
+
+        foreach (var move in moves)
+        {
+            if (move.Index >= 0 && move.Index < tabs.Count)
+            {
+                if (move.AlongNm is { } along)
+                {
+                    var at = Wrap(along, perimeter);
+
+                    result[move.Index] = result[move.Index] with
+                    {
+                        AlongNm = at,
+                        At = PointAt(segments, starts, lengths, at),
+                        Edge = -1,
+                        EdgeLengthNm = 0,
+                        Moved = true,
+                    };
+                }
+                else
+                {
+                    removed.Add(move.Index);
+                }
+            }
+            else if (move.Index < 0 && move.AlongNm is { } alongAdded)
+            {
+                var at = Wrap(alongAdded, perimeter);
+
+                result.Add(new PlacedTab
+                {
+                    AlongNm = at,
+                    WidthNm = width,
+                    HeightNm = height,
+                    At = PointAt(segments, starts, lengths, at),
+                    Edge = -1,
+                    EdgeLengthNm = 0,
+                    Ordinal = added,
+                    Added = true,
+                });
+
+                added++;
+            }
+
+            // An entry that names no planned tab and adds nothing is ignored — a project file is
+            // geometry's input, not its instruction.
+        }
+
+        return removed.Count == 0
+            ? result
+            : [.. result.Where(t => t.Added || !removed.Contains(t.Ordinal))];
+    }
+
+    /// <summary>A distance along the loop brought back onto it, negatives included.</summary>
+    private static double Wrap(double along, double perimeter) =>
+        perimeter <= 0 ? 0 : ((along % perimeter) + perimeter) % perimeter;
 
     /// <summary>
     /// Per-tab sizes, applied after the positions are settled.
@@ -408,49 +564,99 @@ public static class TabPlan
     }
 
     /// <summary>
+    /// Which side of the profile each edge faces — bottom, right, top or left — from the edge's own
+    /// direction and which side of the centre it lies on.
+    ///
+    /// **This is what "spread" means, and length is blind to it (6.72).** A panel's outline is many
+    /// short straight stretches between the boards, and the longest of them all lie along one side
+    /// — so a rule that only ranks by length put every default tab on the panel frame's bottom
+    /// edge, and a frame held along one edge pivots on it. The facing is the fact the rule was
+    /// missing: *where* an edge is, said coarsely enough that a rectangle's four sides land in four
+    /// different quarters whatever its proportions.
+    ///
+    /// **From the edge's direction first, not from its bearing alone.** A bearing round the centre,
+    /// quantised at the box's diagonals, was the first try — and on the panel it called a top
+    /// stretch near a corner "right", because the frame is wider than it is tall and the corner
+    /// stretch's midpoint lies past the diagonal. Four tabs went one to each *bearing* and three of
+    /// them sat on the top side, which is the defect back again in a hat. A horizontal edge is a
+    /// top-or-bottom edge whatever its x; only which of the two it is comes from its position.
+    /// </summary>
+    private static int[] Quarters(
+        IReadOnlyList<ArtSegment> segments,
+        double[] starts,
+        double[] lengths,
+        List<(double Start, double Length)> edges,
+        double perimeter)
+    {
+        var minX = long.MaxValue;
+        var minY = long.MaxValue;
+        var maxX = long.MinValue;
+        var maxY = long.MinValue;
+
+        foreach (var segment in segments)
+        {
+            minX = Math.Min(minX, segment.From.X);
+            minY = Math.Min(minY, segment.From.Y);
+            maxX = Math.Max(maxX, segment.From.X);
+            maxY = Math.Max(maxY, segment.From.Y);
+        }
+
+        var centreX = (minX + maxX) / 2.0;
+        var centreY = (minY + maxY) / 2.0;
+
+        var quarters = new int[edges.Count];
+
+        for (var e = 0; e < edges.Count; e++)
+        {
+            // The edge merged across the seam starts before the perimeter's end and finishes past
+            // it, so its ends and midpoint are taken modulo the loop, exactly as its tab centres
+            // are.
+            var from = PointAt(segments, starts, lengths, edges[e].Start % perimeter);
+            var to = PointAt(
+                segments, starts, lengths, (edges[e].Start + edges[e].Length) % perimeter);
+            var mid = PointAt(
+                segments, starts, lengths,
+                (edges[e].Start + (edges[e].Length / 2)) % perimeter);
+
+            // The chord across the whole run: an edge is straight to within two degrees, so this is
+            // its direction.
+            var horizontal = Math.Abs(to.X - from.X) >= Math.Abs(to.Y - from.Y);
+
+            quarters[e] = horizontal
+                ? (mid.Y - centreY >= 0 ? 0 : 1)
+                : (mid.X - centreX >= 0 ? 2 : 3);
+        }
+
+        return quarters;
+    }
+
+    /// <summary>
     /// How many tabs each edge gets, which is the part that turns a count into a placement.
     ///
-    /// One at a time to whichever edge has the most length per tab it already holds — so on a
-    /// rectangle the first four go one to each edge, the fifth goes to a long edge, and the sixth to
-    /// the other long one. Four on a rectangle is therefore one centred on every edge, which is the
-    /// default and the thing the workshop draws by hand; asking for more still gets what it asked
-    /// for, spread by length rather than by an arbitrary seam.
+    /// One at a time, and each goes to the emptiest quarter of the profile first, to a bare edge
+    /// within it second, and to the most length per tab last — so on a rectangle the first four go
+    /// one to each side, the fifth goes to a long side, and the sixth to the other long one. Four
+    /// on a rectangle is therefore one centred on every edge, which is the default and the thing
+    /// the workshop draws by hand.
+    ///
+    /// **The quarter outranks the length (6.72)**: on the 66-up panel the longest edges are all
+    /// stretches of the frame's bottom, and ranking by length alone put every tab there. Within a
+    /// quarter the older rules hold — **every edge gets one before any edge gets two**, settled by
+    /// the goldens when a plain length-per-tab ratio put two tabs on each long side of a 9 x 40 mm
+    /// connector strip and left both ends free, because half of forty beats all of seven.
     ///
     /// An edge only accepts another tab if it can hold that many with clearance either side, so a
     /// count larger than the board can carry stops short rather than crowding one edge.
     /// </summary>
-    private static int[] Allocate(List<(double Start, double Length)> edges, int count, long width)
+    private static int[] Allocate(
+        List<(double Start, double Length)> edges, int[] quarters, int count, long width)
     {
         var placed = new int[edges.Count];
-        var given = 0;
+        var byQuarter = new int[4];
 
-        // **Every edge gets one before any edge gets two**, and the goldens are what settled that: a
-        // plain length-per-tab ratio put two tabs on each long side of a 9 x 40 mm connector strip
-        // and left both ends free, because half of forty beats all of seven. A piece is held better
-        // by a tab on every side, and one centred on each edge is the thing this work exists to
-        // produce.
-        foreach (var e in Enumerable.Range(0, edges.Count).OrderByDescending(e => edges[e].Length))
-        {
-            if (given >= count)
-            {
-                break;
-            }
-
-            if (!Fits(edges[e].Length, 1, width))
-            {
-                continue;
-            }
-
-            placed[e] = 1;
-            given++;
-        }
-
-        // Then whatever is left over goes where there is most edge per tab already on it, which on a
-        // rectangle asked for six puts the extra two on the long sides.
-        while (given < count)
+        for (var given = 0; given < count; given++)
         {
             var best = -1;
-            var bestScore = 0.0;
 
             for (var e = 0; e < edges.Count; e++)
             {
@@ -459,11 +665,22 @@ public static class TabPlan
                     continue;
                 }
 
-                var score = edges[e].Length / (placed[e] + 1.0);
-
-                if (score > bestScore)
+                if (best < 0)
                 {
-                    bestScore = score;
+                    best = e;
+                    continue;
+                }
+
+                // Emptiest quarter, then a bare edge over a tabbed one, then length per tab.
+                var quarter = byQuarter[quarters[e]].CompareTo(byQuarter[quarters[best]]);
+                var bare = (placed[e] > 0).CompareTo(placed[best] > 0);
+                var score = edges[e].Length / (placed[e] + 1.0);
+                var bestScore = edges[best].Length / (placed[best] + 1.0);
+
+                if (quarter < 0
+                    || (quarter == 0 && bare < 0)
+                    || (quarter == 0 && bare == 0 && score > bestScore))
+                {
                     best = e;
                 }
             }
@@ -474,7 +691,7 @@ public static class TabPlan
             }
 
             placed[best]++;
-            given++;
+            byQuarter[quarters[best]]++;
         }
 
         return placed;

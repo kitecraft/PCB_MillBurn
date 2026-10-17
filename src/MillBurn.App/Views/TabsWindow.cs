@@ -276,13 +276,20 @@ public sealed class TabsWindow : Window
             Margin = new Thickness(0, 2, 0, 0),
         };
 
-        var where = tab.Spaced
+        // Three answers to "what put it there", and the row says which (6.4): an edge the planner
+        // chose, the fallback spacing, or a hand — whose tab has no edge length to quote, because
+        // the hand did not consult one.
+        var where = tab.Moved || tab.Added
             ? string.Create(
                 CultureInfo.InvariantCulture,
-                $"{index + 1}. spaced round the profile, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
-            : string.Create(
-                CultureInfo.InvariantCulture,
-                $"{index + 1}. on a {Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm");
+                $"{index + 1}. placed by hand, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
+            : tab.Spaced
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{index + 1}. spaced round the profile, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{index + 1}. on a {Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm");
 
         var label = new TextBlock
         {
@@ -295,6 +302,15 @@ public sealed class TabsWindow : Window
 
         var width = Box(tab.WidthNm, 0.5, 2, 0.5, 20);
         var height = Box(tab.HeightNm, 0.05, 2, 0.05, 2);
+
+        // An added tab has no place in the pristine plan for a size edit to name, so it takes the
+        // board's own sizes and says so by refusing the boxes — a box that accepted a number and
+        // silently dropped it would be the worse window.
+        if (tab.Added)
+        {
+            width.IsEnabled = false;
+            height.IsEnabled = false;
+        }
 
         _rows.Add((width, height));
 
@@ -413,6 +429,16 @@ public sealed class TabsWindow : Window
 
         for (var i = 0; i < _rows.Count; i++)
         {
+            // An edit names the tab's place in the *pristine* plan, which the row position stopped
+            // being the day a tab could be removed or added by hand (6.4): remove tab 1 and row 1
+            // shows the tab planned third, so an edit keyed by row would land one tab over. The
+            // tab's own ordinal is the name the planner resolves. An added tab has no place in that
+            // plan to name — it takes the derived sizes, and its boxes are disabled in `Row`.
+            if (_tabs[i].Added)
+            {
+                continue;
+            }
+
             var perTabWidth = Nanometres(_rows[i].Width);
             var perTabHeight = Nanometres(_rows[i].Height);
 
@@ -423,7 +449,7 @@ public sealed class TabsWindow : Window
 
             edits.Add(new TabEdit
             {
-                Index = i,
+                Index = _tabs[i].Ordinal,
                 WidthNm = perTabWidth == widthNm ? null : perTabWidth,
                 HeightNm = perTabHeight == heightNm ? null : perTabHeight,
             });

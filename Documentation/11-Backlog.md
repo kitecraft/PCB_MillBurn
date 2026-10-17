@@ -4,7 +4,7 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (3)
+## Defects (2)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
@@ -12,7 +12,6 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 |---|---|---|
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
-| [6.72](06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6) | On a panel, every tab goes on one edge | found in the workshop, 2026-10-11; for sprint 6 |
 
 ## Enhancements (9)
 
@@ -36,7 +35,7 @@ Begun, and the entry says which half. Open work, but not from nothing.
 
 | # | what | note |
 |---|---|---|
-| [6.4](06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-from-the-board-in-sprint-4-moving-one-by-hand-is-not-built) | Tabs: where, how many, how big *(enhancement)* | placed and sized from the board in sprint 4; moving one by hand is not built |
+| [6.4](06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs: where, how many, how big *(enhancement)* | placed and sized in sprint 4, moved by hand in sprint 6; keep-outs are not built |
 | [6.11](06-Roadmap-and-Risks.md#611-bit-changes-one-file-per-bit-or-one-file-with-custom-tool-change-g-code--enhancement--partial--per-bit-files-built-the-choice-between-them-is-not) | Bit changes: one file per bit, or one file with custom tool-change G-code *(enhancement)* | per-bit files built; the choice between them is not |
 | [6.17](06-Roadmap-and-Risks.md#617-the-stocks-alignment-holes-marked-in-the-svgs--enhancement--partial--used-on-metal-print-and-cut-not-tried) | The stock's alignment holes, marked in the SVGs *(enhancement)* | used on metal; Print and Cut not tried |
 | [6.22](06-Roadmap-and-Risks.md#622-machine-checks-measure-the-machine-not-only-the-bit--enhancement--partial--backlash-and-squareness-built-four-more-sketched) | Machine checks: measure the machine, not only the bit *(enhancement)* | backlash and squareness built; four more sketched |
@@ -58,4 +57,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**16 open**, of 73 entries in the roadmap.
+**15 open**, of 73 entries in the roadmap.

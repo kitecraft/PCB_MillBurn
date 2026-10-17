@@ -721,13 +721,6 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>
-    /// The two points on the profile half a tab either side of its centre.
-    ///
-    /// Walked from the contour itself, in the same arc-length terms the planner used, so the caller
-    /// can ask whether the copper between them is straight without trusting anything the planner
-    /// said about it.
-    /// </summary>
     /// <summary>Where a given distance along the contour lands, wrapping at the seam.</summary>
     private static Point2 PointAlong(Path64 contour, double along)
     {
@@ -760,6 +753,13 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         return segments[^1].To;
     }
 
+    /// <summary>
+    /// The two points on the profile half a tab either side of its centre.
+    ///
+    /// Walked from the contour itself, in the same arc-length terms the planner used, so the caller
+    /// can ask whether the copper between them is straight without trusting anything the planner
+    /// said about it.
+    /// </summary>
     private static (Point2 From, Point2 To) EitherSide(Path64 contour, PlacedTab tab)
     {
         var segments = IsolationOperation.ToSegments(contour);
@@ -1053,4 +1053,84 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
     /// <summary>A path moved, for building a job out of two separate profiles.</summary>
     private static Path64 Shifted(Path64 path, double xMm, double yMm) =>
         [.. path.Select(p => new Point64(p.X + Mm(xMm), p.Y + Mm(yMm)))];
+
+    /// <summary>
+    /// On the panel, the default tabs hold both long sides of the frame — not all one edge.
+    ///
+    /// **The test that would have caught 6.72.** From the workshop, on the 66-up panel: *"all the
+    /// tabs end up along the bottom edge of the 'board'. Up to 6 tabs. Then, 7 - 12 along the
+    /// top."* Reproduced exactly: four tabs by default, every one on a 24.6 mm edge at
+    /// y = −0.40 mm. The placement rule was *longest edge first*, and a panel's outline is many
+    /// short straight stretches between the boards — the longest of which all lie along one side,
+    /// so length alone sent every tab there. A frame held on one edge pivots on it.
+    ///
+    /// Two on the bottom and two on the top is this frame's right answer, not a compromise: its
+    /// left and right sides are 6.8 mm stretches between the boards' routed slots, and a 5 mm tab —
+    /// the width a 107 mm board derives — needs 15 mm of edge to hold its clearance either side. A
+    /// side that cannot carry a tab without the cut running into it gets none, and the four go to
+    /// the two sides that can, in opposite pairs on distinct edges.
+    ///
+    /// Asserted in the terms the bench would check — which of the frame's four sides each tab is
+    /// nearest — so all four on the bottom, which is the defect, fails whatever the planner says
+    /// about its own rule.
+    /// </summary>
+    [Fact]
+    public void OnThePanelTheDefaultTabsHoldOppositeSidesOfTheFrame()
+    {
+        var board = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.Panel));
+        var outline = board.Layers.Single(l => l.Role == LayerRole.Outline);
+
+        var options = Options() with { BoardThicknessNm = Mm(0.8) };
+
+        var cut = Polygons.Inflate(
+            outline.Area,
+            options.Tool.DiameterNm / 2,
+            JoinType.Round,
+            EndType.Polygon,
+            arcTolerance: options.SagittaNm);
+
+        // The frame's outer boundary — the outermost profile, which is the only one the outline
+        // operation tabs on a panel. Everything else the lattice realises to is nested inside it.
+        var frame = cut.MaxBy(c => Clipper.Area(c))!;
+
+        var tabs = TabPlan.For(frame, options);
+
+        var minX = frame.Min(p => p.X);
+        var maxX = frame.Max(p => p.X);
+        var minY = frame.Min(p => p.Y);
+        var maxY = frame.Max(p => p.Y);
+
+        // Which of the frame's four sides each tab is nearest.
+        string NearestSide(Point2 at)
+        {
+            var distances = new (string Side, long Distance)[]
+            {
+                ("bottom", at.Y - minY),
+                ("top", maxY - at.Y),
+                ("left", at.X - minX),
+                ("right", maxX - at.X),
+            };
+
+            return distances.MinBy(d => d.Distance).Side;
+        }
+
+        foreach (var tab in tabs)
+        {
+            output.WriteLine(
+                $"{NearestSide(tab.At)}: {tab.At} on a "
+                + $"{Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge");
+        }
+
+        Assert.Equal(4, tabs.Count);
+        Assert.All(tabs, t => Assert.False(t.Spaced, "a tab on the panel was spaced, not placed"));
+
+        // Opposite pairs: the frame is held from both sides, which is what the defect made
+        // impossible — all four on the bottom reads here as four of one side and none of the other.
+        Assert.Equal(
+            ["bottom", "bottom", "top", "top"],
+            tabs.Select(t => NearestSide(t.At)).Order().ToList());
+
+        // And each pair on two different stretches of its side, not two tabs crowded onto one.
+        Assert.Equal(4, tabs.Select(t => t.Edge).Distinct().Count());
+    }
 }

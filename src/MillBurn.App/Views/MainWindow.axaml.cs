@@ -69,6 +69,12 @@ public partial class MainWindow : Window
                     Viewport.RefitWhenDrawn();
                 };
 
+                // The tab gestures (6.4). The control reports where in board millimetres; the view
+                // model owns what the place means, through the planner's own walk.
+                Viewport.TabMoved += (_, e) => vm.MoveTab(e.Index, e.At.X, e.At.Y);
+                Viewport.TabAddRequested += (_, e) => vm.AddTab(e.At.X, e.At.Y);
+                Viewport.TabRemoveRequested += (_, e) => vm.RemoveTab(e.Index);
+
                 // Refilled each time the empty panel comes back, because opening or saving a
                 // project in between changes the list.
                 vm.PropertyChanged += (_, e) =>
@@ -441,6 +447,16 @@ public partial class MainWindow : Window
         if (Argument(args, "--set-role") is { } assignment)
         {
             Console.WriteLine(SetRoleForShot(vm, assignment));
+        }
+
+        // Moves one tab by name and arc, the way a drag in the viewport does — 6.4. `<n>=<mm>`,
+        // the tab by its place in the plan and the destination as a distance along the cut path,
+        // so a shot can photograph a hand-set tab and the *unsaved changes* line it causes. The
+        // drag itself needs a button held and a pointer moved; this is the same write the drop
+        // makes.
+        if (Argument(args, "--move-tab") is { } slide)
+        {
+            Console.WriteLine(MoveTabForShot(vm, slide));
         }
 
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
@@ -1541,6 +1557,26 @@ public partial class MainWindow : Window
     }
 
     /// <summary>For <c>--set-role</c>: the one line saying what was set, or why nothing was.</summary>
+    /// <summary>
+    /// The <c>--move-tab</c> flag: one tab slid along the cut path, the way a drop does it — 6.4.
+    ///
+    /// Says what it did, and says so when it could not (06 §6.66): a flag that quietly moved
+    /// nothing photographs the unmoved tabs under a caption claiming a hand-set one.
+    /// </summary>
+    private static string MoveTabForShot(MainViewModel vm, string slide)
+    {
+        var parts = slide.Split('=', 2, StringSplitOptions.TrimEntries);
+
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var tab)
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var alongMm))
+        {
+            return $"move tab: '{slide}' is not <n>=<mm> — the tab's place in the plan, and millimetres along the cut path";
+        }
+
+        return vm.MoveTabForShot(tab, alongMm);
+    }
+
     private static string SetRoleForShot(MainViewModel vm, string assignment)
     {
         var parts = assignment.Split('=', 2, StringSplitOptions.TrimEntries);
