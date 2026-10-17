@@ -2448,6 +2448,21 @@ two cut runs end to end and cut the profile clean through while the header still
 - **The blank still places its own**, two to an edge on the top and right only. That rule is right and
   was kept; what it does not yet share is the sizing.
 
+**Item 3 goes into sprint 6, 2026-10-16, folded with
+[6.72](#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6)
+at the product owner's suggestion** — *"It may fold the bug into it."* One story
+([Sprint 6 story 2](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md)), the fix first: the
+planner spreads tabs round the outline's sides instead of piling them on the longest edges, and
+the drag is the escape hatch for the board the improved rule still guesses wrong on. The
+hit-testing the drag needs is the viewport's first pick of any kind, and the owner flagged where
+that leads — *"Adding this interaction with the user and the viewew opens up other possibilites I
+think."* A pick built general opens doors this entry does not own: a trace clicked to ask what it
+is, a finding picked on the copper instead of navigated to from the list, item 4's keep-outs drawn
+by hand, a component picked in
+[6.73](#673-placement-data-for-a-pick-and-place--enhancement--open--asked-for-by-the-product-owner-2026-10-16)'s
+assembly tab. Those queue here, not in the story. Items 4 and the blank's sizing stay open —
+the fold takes the drag, not the entry.
+
 #### 6.5 A picture on the companion pages — **enhancement · fixed**
 
 Requested from the workshop: *"in the companion html for drills and routing, include images of the
@@ -3502,6 +3517,12 @@ takes the same options, as every export does.
 **Done when** the test board's `F_Paste` gives a watertight STL (every edge shared by exactly two
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
+
+**Set back at the sprint 6 picking, 2026-10-16.** Offered for the slate on the strength of the
+workshop ranking above, and declined by the product owner: *"6.18 is for later. It's still more
+'wish list' than actual enhancement request."* The ranking against the paste extruder stands; what
+changed is the reading of the original ask — an idea the workshop liked, not yet a thing the bench
+is waiting on. It goes back in when the ask comes back harder.
 
 #### 6.19 A dry run that is the real run, raised — **enhancement · built**
 
@@ -7016,6 +7037,13 @@ edges — the quarter of the perimeter a tab falls in, or its bearing round the 
 first key and length as the second. To be checked against the 21 × 37 mm board 6.4 was tuned on,
 which must not move.
 
+**Into sprint 6, 2026-10-16, folded with 6.4's manual placement at the product owner's
+suggestion** — *"It may fold the bug into it."* Both halves answer the same sentence from the
+bench: the fixed planner puts tabs where a hand usually would, and the drag moves the one it still
+gets wrong. The fix ships first and stands alone
+([Sprint 6 story 2](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md)); this defect closes with
+the test that would have caught it, whatever happens to the drag.
+
 #### 6.73 Placement data for a pick-and-place — **enhancement · open** — *asked for by the product owner, 2026-10-16*
 
 From the product owner, thinking past the stencil (6.18) and the paste extruder (Phase 9) to the
@@ -7118,3 +7146,8 @@ assembly gets its own room.
   own 3D viewer already serves — MillBurn's 3D earns its place only where it shows what only
   MillBurn knows: the cuts, the tabs, the levelled Z, and components overlaid on the milled
   result.
+
+**Wish list, not yet a request — the product owner, at the sprint 6 picking, 2026-10-16.** The
+same standing the owner gave 6.18 the same day: an idea worth this much groundwork, behind its own
+*"big IF"*, and not a thing the bench is waiting on. No machine is on the bench and no story
+starts until that changes; the entry exists so the thinking is not re-done when one is.
