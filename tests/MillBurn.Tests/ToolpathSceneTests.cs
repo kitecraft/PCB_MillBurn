@@ -26,7 +26,7 @@ public sealed class ToolpathSceneTests
 
         var nearOrigin = new SKRect(-1, -1, 1, 1);
 
-        for (var tier = 0; tier < 4; tier++)
+        for (var tier = 0; tier < ToolpathScene.TierCount; tier++)
         {
             Assert.Empty(scene.VisiblePaths(tier, SegmentStyle.Isolation, nearOrigin));
             Assert.Equal(0, scene.SegmentsInView(tier, nearOrigin));
@@ -68,7 +68,7 @@ public sealed class ToolpathSceneTests
     {
         var scene = ToolpathScene.Build(SyntheticToolpath.Generate(20_000));
 
-        for (var tier = 1; tier < 4; tier++)
+        for (var tier = 1; tier < ToolpathScene.TierCount; tier++)
         {
             Assert.True(
                 scene.SegmentsAtTier(tier) <= scene.SegmentsAtTier(tier - 1),
@@ -78,7 +78,8 @@ public sealed class ToolpathSceneTests
     }
 
     [Theory]
-    [InlineData(1f, 3)]      // zoomed way out: coarsest tier is within half a pixel
+    [InlineData(1f, 4)]      // zoomed way out: coarsest tier is within half a pixel
+    [InlineData(6f, 4)]      // the panel at fit zoom, ~6.2 px/mm (6.71): the tier added for it
     [InlineData(1000f, 0)]   // zoomed way in: only the finest tier is accurate enough
     public void TierSelectionRespectsTheHalfPixelErrorBudget(float pixelsPerMm, int expected)
     {

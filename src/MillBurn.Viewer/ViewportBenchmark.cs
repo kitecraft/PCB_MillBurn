@@ -32,8 +32,8 @@ public static class ViewportBenchmark
         Line(
             $"  generated   {scene.SourceSegmentCount:N0} segments in {generateMs:F0} ms");
         Line(
-            $"  LOD build   4 tiers in {buildMs:F0} ms");
-        for (var t = 0; t < 4; t++)
+            $"  LOD build   {ToolpathScene.TierCount} tiers in {buildMs:F0} ms");
+        for (var t = 0; t < ToolpathScene.TierCount; t++)
         {
             Line(
                 $"    tier {t}    {scene.SegmentsAtTier(t),10:N0} segments");

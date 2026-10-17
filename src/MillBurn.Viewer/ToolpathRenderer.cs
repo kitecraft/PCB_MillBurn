@@ -138,8 +138,12 @@ public static class ToolpathRenderer
             new(Cull: true, Antialias: true, Hairline: false, SKStrokeJoin.Round, AllowDetail: true);
     }
 
-    /// <summary>Above this many visible segments, drop antialiasing and dashes.</summary>
-    private const int DetailBudgetSegments = 25_000;
+    /// <summary>
+    /// Above this many visible segments, drop antialiasing and dashes. Shared with
+    /// <see cref="BoardRenderer"/>, whose tiled stroked layers (6.71) follow the same rule — one
+    /// budget, so the two views cannot drift apart on what "affordable" means.
+    /// </summary>
+    internal const int DetailBudgetSegments = 25_000;
 
     /// <summary>The world-space rectangle currently on screen, used for tile culling.</summary>
     public static SKRect VisibleWorldRect(SKRect viewport, ViewTransform view)

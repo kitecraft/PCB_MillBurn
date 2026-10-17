@@ -16,7 +16,7 @@ placement are one story here.
 **The theme is the panel.** Two of the four stories exist because the 66-up GridStripConnector
 panel — the README's own hero — is the first board big enough to break rules tuned on single
 boards. Its preview draws at 14 fps on an application whose README claims 98 through a zoom sweep,
-because nothing before it stroked a 108,504-vertex path every frame ([6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--open--found-retaking-the-readmes-screenshots-2026-10-11-for-sprint-6)).
+because nothing before it stroked a 108,504-vertex path every frame ([6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--fixed--found-retaking-the-readmes-screenshots-2026-10-11-fixed-in-sprint-6)).
 Its tabs all land on one edge, because *longest edge first* was written for a rectangle that has
 four of them ([6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6)).
 Both were found on 2026-10-11, one retaking the hero and one in the workshop looking at it. The
@@ -62,7 +62,7 @@ careful one.
 
 | # | story | where it came from |
 |---|---|---|
-| [6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--open--found-retaking-the-readmes-screenshots-2026-10-11-for-sprint-6) | The panel previews at a rate the README can stand beside | Retaking the hero, 2026-10-11; measured 2026-10-15; named first by the product owner |
+| [6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--fixed--found-retaking-the-readmes-screenshots-2026-10-11-fixed-in-sprint-6) | The panel previews at a rate the README can stand beside | Retaking the hero, 2026-10-11; measured 2026-10-15; named first by the product owner |
 | [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--open--found-in-the-workshop-2026-10-11-for-sprint-6) + [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-from-the-board-in-sprint-4-moving-one-by-hand-is-not-built) | Tabs spread round the panel, and a hand can move one | The workshop, 2026-10-11, on the same panel; folded at the picking, 2026-10-16 |
 | [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
 | [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
@@ -143,6 +143,95 @@ that belongs in the same README as the 98 fps claim, with the figure quoted agai
 replaces; the picture is unchanged to the eye at working zooms; `--bench` and `--fpstest` still
 read their documented numbers; and the single board and the un-previewed panel are no slower than
 their measured 1.9 and 17 ms.
+
+### Closed — 2026-10-17
+
+**Met, with the figures quoted as ratios** — because the machine spent the day in the slow state
+6.71's measurement first noticed, drawing the *old* code at 122–154 ms where the 15th measured 69.
+Absolutes from this machine are weather; the before/after on the same day, built from adjacent
+commits and shot alternately, is the claim:
+
+- **Fit zoom: 122.3 / 154.0 ms → 38.1 / 42.1 ms** (6–8 fps → 24–26). **40×: 58.7 / 61.7 → 19.4 /
+  20.5 ms** (16–17 fps → 49–52). Three to four times faster, both zooms, both rounds.
+- **The picture is the same picture.** Native-resolution crops at fit and at 40×, before against
+  after: indistinguishable — anti-aliased, full stroke widths, dashes intact
+  (`WorkingFolder/V0.7.0/Screenshots/story-1-crop-*.png`, `story-1-zoom-*.png`).
+- **`--bench` 5.19 ms mean / 19.45 p95** against documented 5.5 / 20; **`--fpstest` 94.0 fps,
+  PASS** — and its sweep now reaches the new fifth tier at far zoom, 6 draw calls on the last
+  frame.
+- **The single board: 2.79 ms old, 2.80 new**, same session — the untiled path untouched. **The
+  un-previewed panel: 23.3 → 10.3 ms**, *faster*, because the 42k-vertex outline is over the
+  budget too.
+
+**What was built.** `BoardScene` gives any stroked layer at or past 20,000 vertices
+(`TiledStrokeBudget`) a `ToolpathScene` beside its monolithic path — the exact machinery the
+toolpath view proved on 500k segments — and `BoardRenderer` draws it under the same rules: tier
+for the zoom, tiles culled to the view, anti-aliasing and dashes while the in-view count holds
+under the shared 25k budget, hairline past it. Two pieces were new. A **fifth LOD tier** (0.08 mm,
+still under half a pixel at fit zoom), because the panel's fit view sat just past tier four's
+reach and would otherwise have crossed the budget at the hero's own zoom — the one zoom the story
+is named after. And a **budget-aware tier choice** (`BoardRenderer.TiledTier`), found by re-shooting
+after the review: the fit zoom sat *exactly* on the tier boundary, and a shot whose side panel came
+up a few pixels narrower flipped the hero to the degraded look. A frame whose half-pixel tier busts
+the budget now relaxes to at most one pixel of simplification error — nearly invisible — before
+giving up anti-aliasing and stroke widths, which is not; proved by re-shooting the window state
+that degraded, and by `TheTierRelaxesByAtMostOnePixelBeforeGoingHairline`. Fills and under-budget
+strokes keep the exact code path they had.
+
+**The manual test.** The hero recipe on both builds, alternated twice, plus `--zoom 40,82,53`;
+status bars read off the PNGs (`story-1-measurements.png`, `story-1-scope.png`); crops compared at
+native resolution. The status bar's vertex count now reports what the frame actually drew — 77,633
+at fit against 205,620 before — which is the honest number for the next hero to quote.
+
+**Not done, and said rather than implied.** The README's hero image itself is not retaken here —
+that is release work, when the whole README is reshot against whatever state the machine is in
+that day. And the environmental trigger that doubles this machine's frame times some days remains
+unidentified and now matters less: it was only ever expensive because the preview stroked 108k
+vertices through one path, and it no longer does.
+
+### What `/describe-test` found — 2026-10-17, five runs
+
+One per file, and again each time a file gained something, as the rule requires:
+`BoardStrokeTileTests` three times (it gained the bounds assertion, then the ladder test),
+`ToolpathSceneTests` and `DeterminismTests` once each. Two catches, both fixed before the review
+ran: the segment-parity test compared only *counts*, so tiles mirrored by a dropped Y flip would
+have passed — it now pins the tile extent against the monolithic path's bounds; and the fifth
+tier existed while every content test still looped tiers 0–3, so the new tier had no
+bounds-to-origin, monotonicity or determinism coverage — the loops now run over all of them. The
+last read confirmed the ladder test pins the one-pixel allowance from both sides (0.6 px must be
+allowed, 1.2 px must not be) and noted honestly what the file leans on: the renderer's reported
+counters, tied to real tile contents by the parity test, not pixels.
+
+### What the code review found — 2026-10-17, medium
+
+Eight findings; seven acted on, one left with a reason.
+
+- **The benchmark lied about what it measured.** `--bench` printed *"LOD build 4 tiers"* and
+  looped four, and the `--fpstest` window said *"4 LOD tiers built"*, while five were built and
+  timed. All three sites — and the three test loops with the same literal — now read
+  `ToolpathScene.TierCount`, which went public for exactly this: the sixth tier cannot go
+  unprinted or untested.
+- **The culling bookkeeping was paid twice.** Each tiled layer's `SegmentsInView` ran once for
+  the detail budget and again for the drawn count, per frame, on the path this story exists to
+  cheapen. The pre-pass now keeps the per-layer counts and the draw loop reads them; an ordinary
+  board allocates nothing.
+- **`TilePaths` threw on the layers that are the common case.** The null-forgiving dereference
+  meant any caller walking every layer's geometry — which is what story 2's hit-testing is about
+  to do — would hit a bare NRE on every under-budget layer. It returns empty now, and says so.
+- **Document 05 kept a four-tier figure under a five-tier heading.** The 94k fit-zoom count was
+  tier 3's; the sentence now says which measurement produced which number.
+- **The unrecorded `/describe-test` runs** were a bookkeeping gap, not a process one — the runs
+  had happened and their catches were already fixed; the section above is the record.
+- **Left, with a reason — dash phase restarts at tile seams.** True, and it is the behaviour the
+  toolpath view has always had for its dashed travel styles, drawn from these same tiles. No
+  stroked board layer in the corpus is both dashed and over the 20k budget; the renderer carries
+  a comment saying what will happen when one arrives, so the decision gets made then, on a real
+  layer, instead of now on a hypothetical one.
+- **Left half-way — the status bar's drawn count mixes meanings**, segments-in-view for tiled
+  layers against whole-path vertices for the rest. Both are honest counts of what was *submitted*
+  to the canvas, which the comment now states; an untiled layer's whole path is submitted
+  whatever the zoom, so its full count is not a lie, just a different question answered on the
+  same line.
 
 ---
 

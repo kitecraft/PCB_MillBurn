@@ -6969,7 +6969,7 @@ a dark one — for every mark the ruler draws. `RulerTests.TheMarksStandOutFromE
 draws the ruler onto each theme's background and requires its marks to differ from it by most of
 the range; on the old code the light theme's differed by **4 in 255**.
 
-#### 6.71 The 66-up panel draws at about 14 fps where the README's hero showed 37 — **enhancement · open** — *found retaking the README's screenshots, 2026-10-11; for sprint 6*
+#### 6.71 The 66-up panel draws at about 14 fps where the README's hero showed 37 — **enhancement · fixed** — *found retaking the README's screenshots, 2026-10-11; fixed in sprint 6*
 
 Retaking the hero for 0.6.0 — the GridStripConnector panel previewed, 1600 × 1000, the same shot the
 README has used since 0.2.0 — the status bar read **about 69 ms a frame, 14 fps**, where the
@@ -7013,6 +7013,39 @@ the proof that this is unnecessary: `ToolpathRenderer` draws 500k segments at 98
 culling and the stroke configuration the Phase 0 probe chose. The fix is to draw the preview
 layers the way the toolpath view already draws toolpaths, not to chase the driver stack.
 Turning stroke anti-aliasing off was measured too — 43 ms, a 1.6× help and not a fix.
+
+**Fixed in sprint 6, 2026-10-17 —
+[story 1](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md).** Exactly the fix the measurement
+named: a stroked layer at or past 20k vertices (`BoardScene.TiledStrokeBudget`) builds a
+`ToolpathScene` beside its monolithic path, and `BoardRenderer` draws it under the toolpath view's
+own rules — tier for the zoom, tiles culled to the view, anti-aliasing, real stroke widths and
+dashes while the view holds under the shared 25k-segment budget, the hairline rasteriser past it.
+A fifth LOD tier was added (0.08 mm tolerance, still under half a pixel at fit zoom), because the
+panel's fit view sat just past the fourth tier's reach and would otherwise have crossed the budget
+at the hero's own zoom. And the tier choice is budget-aware (`BoardRenderer.TiledTier`): the fit
+zoom sat *exactly* on a tier boundary, so a few pixels of window width decided which of two very
+different-looking frames the hero got — now a frame whose half-pixel tier busts the budget
+relaxes to at most one pixel of simplification error, which is nearly invisible, before giving up
+anti-aliasing and stroke widths, which is not. Fills and ordinary boards keep the exact untiled
+path.
+
+Measured on 2026-10-17, baseline and fix built from adjacent commits and shot alternately — on a
+machine whose slow state that day drew the *old* code at 122–154 ms, which is why the ratios are
+the claim rather than the absolutes:
+
+- **Panel previewed, fit zoom: 122.3 / 154.0 ms → 38.1 / 42.1 ms** — 3–4×, 6–8 fps to 24–26.
+- **Panel previewed, 40×: 58.7 / 61.7 ms → 19.4 / 20.5 ms** — 3×, and panning zoomed-in is where
+  culling does the work.
+- **Panel without preview: 23.3 → 10.3 ms** — the outline layer is over the budget too.
+- **The single board: 2.79 → 2.80 ms**, untouched, as is every board under the budget.
+- **`--bench` 5.19 ms mean / 19.45 p95** (documented: 5.5 / 20) and **`--fpstest` 94.0 fps PASS**,
+  so the toolpath view spent nothing — it gained the fifth tier.
+- **The picture is the same picture**: native-resolution crops at fit and at 40×, before against
+  after, are indistinguishable — anti-aliased, full stroke widths
+  (`WorkingFolder/V0.7.0/Screenshots/story-1-*.png`).
+
+The status bar's vertex count now reports what a frame actually drew (77,633 at the hero's fit
+zoom, against 205,620 before), which is the honest number for a shot to quote.
 
 #### 6.72 On a panel, every tab goes on one edge — **defect · open** — *found in the workshop, 2026-10-11; for sprint 6*
 

@@ -3787,7 +3787,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         BoardSummary = string.Create(
             CultureInfo.InvariantCulture,
             $"{scene.SourceSegmentCount:N0} synthetic segments · generated in {generated.TotalMilliseconds:F0} ms · " +
-            $"4 LOD tiers built in {sw.Elapsed.TotalMilliseconds:F0} ms");
+            $"{MillBurn.Viewer.ToolpathScene.TierCount} LOD tiers built in {sw.Elapsed.TotalMilliseconds:F0} ms");
         BoardTitle = "Viewport benchmark";
     }
 }

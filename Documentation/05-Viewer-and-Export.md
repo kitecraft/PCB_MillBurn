@@ -92,9 +92,11 @@ hundreds of thousands of segments). **Built and measured in Phase 0** — `MillB
 - Batch segments into a small number of `SKPath` objects **grouped by style** (rapid / cut /
   plunge / per-tool / per-power-bucket), so we issue tens of draw calls, not hundreds of
   thousands.
-- **Level of detail**: four Douglas–Peucker tiers, tolerance doubling each step. Pick the coarsest
-  tier whose simplification error stays under half a screen pixel, so LOD is never visible. On the
-  test scene this takes a fit-zoom frame from 500k segments to 94k.
+- **Level of detail**: five Douglas–Peucker tiers, tolerance doubling each step. Pick the coarsest
+  tier whose simplification error stays under half a screen pixel, so LOD is never visible. With
+  the original four tiers a fit-zoom frame of the test scene went from 500k segments to 94k; the
+  fifth tier — added for 6.71, where the 66-up panel's fit zoom sat just past the fourth's reach
+  — takes the same sweep's far frame to 60,415 segments (`--fpstest`, 2026-10-17).
 - **Spatial culling**: bucket each tier into a coarse grid with one prebuilt path per (tile,
   style), and draw only tiles intersecting the viewport. Essential, because zooming *in* is the
   worst case — the finest tier gets selected while almost nothing is on screen.
@@ -119,6 +121,17 @@ Three findings from actually measuring, all of which contradict a reasonable gue
 
 `--probe` (a render-configuration sweep), `--bench` (offscreen CPU raster) and `--fpstest` (the
 real GPU render loop) are all in the app so these numbers stay checkable rather than remembered.
+
+**The board view borrows this machinery for its big stroked layers** (6.71, sprint 6). A board's
+fills never needed it — the whole corpus fills in a few milliseconds — but a panelised board's
+*previewed program* and outline are stroked paths of 108k and 42k vertices, and anti-aliased
+stroking is a per-vertex cost that made them 93 % of the frame. A stroked layer at or past
+`BoardScene.TiledStrokeBudget` (20k vertices) builds a `ToolpathScene` beside its monolithic path
+and `BoardRenderer` draws through it under the same tier, culling and detail-budget rules — with
+one refinement: a frame whose half-pixel tier busts the budget relaxes to at most one pixel of
+simplification error before falling back to hairline, so the degradation ladder runs invisible →
+nearly invisible → visible instead of jumping straight to the end. Fills and ordinary boards keep
+the untiled path exactly as it was.
 
 If real 3D is ever needed, the escape hatches are Silk.NET into a WinUI `SwapChainPanel`, or the
 MIT-licensed `gcode-preview` (three.js) in a WebView2. Neither is needed.
