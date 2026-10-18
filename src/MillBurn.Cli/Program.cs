@@ -1804,9 +1804,10 @@ internal static class Program
 
             // The board-wide width decides how many tabs an edge can hold, so it re-plans the
             // positions: the hand-set ones clear, exactly as a width typed into the window does —
-            // and like the window, only when the width actually changes. The sizes stay either
-            // way: the window's own rule for a width change is to mark them stale rather than
-            // delete them, and a flag should not be harsher than the dialog.
+            // and like the window, only when the width actually changes. The per-tab sizes stay in
+            // the project — they are refused while the width differs, because they name tabs of
+            // the old layout (6.74), and they apply again if the width goes back. A flag should not
+            // be harsher than the window, which keeps them the same way.
             Apply(
                 s => s.TabWidthNm == Nm.FromMillimetres(tabWidthMm)
                     ? s

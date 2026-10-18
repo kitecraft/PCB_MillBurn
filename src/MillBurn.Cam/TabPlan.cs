@@ -1,4 +1,7 @@
 using System.Collections.Immutable;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Serialization;
 using Clipper2Lib;
 using MillBurn.Core;
 
@@ -105,6 +108,25 @@ public sealed record TabMove
 
     /// <summary>An added tab's own height, or null for the board's. Only an add reads it.</summary>
     public long? HeightNm { get; init; }
+
+    /// <summary>
+    /// An added tab's own number among the adds — what its ordinal and its letter come from.
+    ///
+    /// **Given once and never re-derived.** Counted by position instead, removing an earlier add
+    /// moved every later add up a letter, so "tab F" became E under the operator's eyes — sprint
+    /// 6's own debt list. A new add takes one more than the highest in use
+    /// (<see cref="TabPlan.WithAdd"/>). Null, on an entry from before the field, reads as its place
+    /// among the adds, which is what it was then.
+    /// </summary>
+    public int? Number { get; init; }
+
+    /// <summary>True for an entry that adds a tab: no planned tab named, and a place to put it.</summary>
+    [JsonIgnore]
+    public bool IsAdd => Index < 0 && AlongNm is not null;
+
+    /// <summary>True for an entry that removes a planned tab: one named, and no place given.</summary>
+    [JsonIgnore]
+    public bool IsRemoval => Index >= 0 && AlongNm is null;
 }
 
 /// <summary>
@@ -119,11 +141,35 @@ public sealed record TabMove
 /// <param name="DerivedHeightNm">The material this thickness would leave under one.</param>
 /// <param name="Profile">The offset contour the tabs sit on — the cut path, which is what the
 /// viewport hit-tests and a drag slides along (6.4). Null when no profile took tabs.</param>
+/// <param name="PristineKey">The fingerprint of the plan the hand-set changes belong to, before
+/// any of them — what a caller stamps beside a change it writes (<see cref="TabPlan.KeyOf"/>).</param>
+/// <param name="OverridesStale">True when the stored hand-set changes were made against a
+/// different plan and so were not applied: <see cref="Tabs"/> is the planner's own answer.</param>
 public sealed record TabPlanning(
     IReadOnlyList<PlacedTab> Tabs,
     long DerivedWidthNm,
     long DerivedHeightNm,
-    Path64? Profile = null);
+    Path64? Profile = null,
+    string? PristineKey = null,
+    bool OverridesStale = false);
+
+/// <summary>
+/// One gap the cut leaves: where it starts and ends along the loop, and the tabs it holds — more
+/// than one when tabs overlap, and then the gap is their union, which is what is cut.
+/// </summary>
+/// <param name="StartNm">The near end, as a distance along the loop; may be negative for a gap
+/// that straddles the start vertex.</param>
+/// <param name="EndNm">The far end, past <paramref name="StartNm"/>.</param>
+/// <param name="Tabs">The tabs in it, in order along the loop.</param>
+public sealed record TabGap(double StartNm, double EndNm, IReadOnlyList<PlacedTab> Tabs)
+{
+    /// <summary>
+    /// How long the gap is: a lone tab's own width, exactly, or the union's length rounded to the
+    /// nanometre. The lone case is said exactly because it reaches the program as a hop window, and
+    /// a width recomputed from its ends could differ from the one the tab was given by a rounding.
+    /// </summary>
+    public long LengthNm => Tabs.Count == 1 ? Tabs[0].WidthNm : (long)Math.Round(EndNm - StartNm);
+}
 
 /// <summary>One tab's width or height, set by hand rather than derived.</summary>
 public sealed record TabEdit
@@ -263,7 +309,8 @@ public static class TabPlan
             return [];
         }
 
-        var segments = IsolationOperation.ToSegments(contour);
+        var path = new ProfilePath(contour);
+        var segments = path.Segments;
         // A size of nothing is not a tab, and the last line against one: an outline cut with tabs
         // of no width releases the board on the final lap while the program's own header promises
         // it is held. The settings file refuses a non-positive number and so does the CLI, and the
@@ -275,16 +322,9 @@ public static class TabPlan
             ? left
             : DefaultHeightFor(options.BoardThicknessNm);
 
-        var starts = new double[segments.Count];
-        var lengths = new double[segments.Count];
-        var perimeter = 0.0;
-
-        for (var i = 0; i < segments.Count; i++)
-        {
-            starts[i] = perimeter;
-            lengths[i] = segments[i].From.DistanceTo(segments[i].To);
-            perimeter += lengths[i];
-        }
+        var starts = path.Starts;
+        var lengths = path.Lengths;
+        var perimeter = path.PerimeterNm;
 
         if (perimeter <= 0 || width * (double)options.TabCount >= perimeter)
         {
@@ -292,7 +332,7 @@ public static class TabPlan
         }
 
         var edges = StraightEdges(segments, starts, lengths);
-        var quarters = Quarters(segments, starts, lengths, edges, perimeter);
+        var quarters = Quarters(path, edges, perimeter);
         var placed = Allocate(edges, quarters, options.TabCount, width);
 
         var tabs = new List<PlacedTab>();
@@ -308,7 +348,7 @@ public static class TabPlan
                     AlongNm = at % perimeter,
                     WidthNm = width,
                     HeightNm = height,
-                    At = PointAt(segments, starts, lengths, at % perimeter),
+                    At = path.At(at % perimeter),
                     Edge = e,
                     EdgeLengthNm = edges[e].Length,
                 });
@@ -331,7 +371,7 @@ public static class TabPlan
                     AlongNm = at,
                     WidthNm = width,
                     HeightNm = height,
-                    At = PointAt(segments, starts, lengths, at),
+                    At = path.At(at),
                     Edge = -1,
                     EdgeLengthNm = 0,
                 });
@@ -350,9 +390,164 @@ public static class TabPlan
             tabs[i] = tabs[i] with { Ordinal = i, Letter = LetterOf(i) };
         }
 
-        return Moved(
-            Edited(tabs, options.TabEdits),
-            options.TabMoves, segments, starts, lengths, perimeter, width, height);
+        return Moved(Edited(tabs, options.TabEdits), options.TabMoves, path, width, height);
+    }
+
+    /// <summary>
+    /// A plan's fingerprint: how many tabs, and where and how wide each is, before any hand-set
+    /// change.
+    ///
+    /// **What a hand-set change is stamped with, so it can tell when the plan under it moved**
+    /// (sprint 6's `xhigh` review). Sizes, moves and removals name a tab by its number in the plan,
+    /// and the plan can be renumbered underneath them: by this release's own placement rule on a
+    /// project from an older one, by a revised outline refreshed from its folder, by a cutter's
+    /// diameter edited in the library. The change then lands on whichever tab now has the number —
+    /// a thin web somewhere nobody chose. With the stamp, a change made against another plan is not
+    /// applied, and says so; refusing beats guessing which tab was meant.
+    ///
+    /// Positions to the micrometre and widths exactly, hashed so a project file carries twelve
+    /// characters rather than the plan. Heights are left out: they move no tab, and a thickness
+    /// change must not throw away a hand's positions.
+    /// </summary>
+    public static string KeyOf(IReadOnlyList<PlacedTab> pristine)
+    {
+        ArgumentNullException.ThrowIfNull(pristine);
+
+        var text = new StringBuilder();
+        text.Append(pristine.Count);
+
+        foreach (var tab in pristine)
+        {
+            text.Append(';').Append((long)Math.Round(tab.AlongNm / 1000.0)).Append(':').Append(tab.WidthNm);
+        }
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString()));
+        return Convert.ToHexString(hash, 0, 6).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// The gaps the cut leaves round a loop, overlapping tabs merged into one.
+    ///
+    /// **The union, because that is the only honest gap.** Found by sprint 6's `xhigh` review: the
+    /// splitter used to drop the run between two overlapping tabs and start the next run at the
+    /// inner tab's far side — so a 2 mm tab dropped inside a 10 mm one cut 2 mm off the wide tab
+    /// while the header and the picture still said 10. Merged first, the cut, the header and the
+    /// window all describe the same gap. Lone tabs come back exactly as they were, so no program
+    /// without an overlap moves.
+    /// </summary>
+    /// <param name="tabs">The tabs on one loop, in any order.</param>
+    /// <param name="perimeterNm">The loop's length.</param>
+    public static IReadOnlyList<TabGap> Gaps(IReadOnlyList<PlacedTab> tabs, double perimeterNm)
+    {
+        ArgumentNullException.ThrowIfNull(tabs);
+
+        var gaps = new List<(double Start, double End, List<PlacedTab> Tabs)>();
+
+        foreach (var tab in tabs.OrderBy(t => t.AlongNm - (t.WidthNm / 2.0)))
+        {
+            var start = tab.AlongNm - (tab.WidthNm / 2.0);
+            var end = tab.AlongNm + (tab.WidthNm / 2.0);
+
+            if (gaps.Count > 0 && start < gaps[^1].End)
+            {
+                var last = gaps[^1];
+                last.Tabs.Add(tab);
+                gaps[^1] = (last.Start, Math.Max(last.End, end), last.Tabs);
+            }
+            else
+            {
+                gaps.Add((start, end, [tab]));
+            }
+        }
+
+        // Round the seam: the last gap can run on past the loop's end into the first one.
+        if (gaps.Count > 1 && perimeterNm > 0 && gaps[^1].End > gaps[0].Start + perimeterNm)
+        {
+            var last = gaps[^1];
+            var first = gaps[0];
+            gaps.RemoveAt(gaps.Count - 1);
+            gaps[0] = (last.Start - perimeterNm, Math.Max(first.End, last.End - perimeterNm), [.. last.Tabs, .. first.Tabs]);
+        }
+
+        return [.. gaps.Select(g => new TabGap(g.Start, g.End, g.Tabs))];
+    }
+
+    /// <summary>
+    /// The add entries in a list, each with its number — its own <see cref="TabMove.Number"/>, or
+    /// its place among the adds when it has none. The one place "which entry is that added tab" is
+    /// worked out; everything that moves, sizes or removes an add goes through it.
+    /// </summary>
+    private static IEnumerable<(int Index, int Number)> Adds(IReadOnlyList<TabMove> moves)
+    {
+        var position = 0;
+
+        for (var i = 0; i < moves.Count; i++)
+        {
+            if (moves[i].IsAdd)
+            {
+                yield return (i, moves[i].Number ?? position);
+                position++;
+            }
+        }
+    }
+
+    /// <summary>The list index of the add with this number, or -1.</summary>
+    private static int AddIndex(IReadOnlyList<TabMove> moves, int number) =>
+        Adds(moves).Where(a => a.Number == number).Select(a => a.Index).DefaultIfEmpty(-1).First();
+
+    /// <summary>A tab added at a distance along the loop, numbered one past the highest in use.</summary>
+    public static ImmutableArray<TabMove> WithAdd(IReadOnlyList<TabMove> moves, double alongNm)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+
+        var next = Adds(moves).Select(a => a.Number + 1).DefaultIfEmpty(0).Max();
+
+        return [.. moves, new TabMove { Index = -1, AlongNm = alongNm, Number = next }];
+    }
+
+    /// <summary>The added tab with this number, moved; its size and number go with it.</summary>
+    public static ImmutableArray<TabMove> WithAddMoved(IReadOnlyList<TabMove> moves, int number, double alongNm)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+
+        var index = AddIndex(moves, number);
+        return [.. moves.Select((m, i) => i == index ? m with { AlongNm = alongNm, Number = number } : m)];
+    }
+
+    /// <summary>
+    /// The added tab with this number, gone — and the size it carried with it. The adds after it
+    /// keep their numbers, so keep their letters; the survivors are pinned to their numbers on the
+    /// way through, in case they were counted by position.
+    /// </summary>
+    public static ImmutableArray<TabMove> WithoutAdd(IReadOnlyList<TabMove> moves, int number)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+
+        var numbers = Adds(moves).ToDictionary(a => a.Index, a => a.Number);
+
+        return
+        [
+            .. moves
+                .Select((m, i) => (Move: m, Index: i))
+                .Where(e => !(numbers.TryGetValue(e.Index, out var n) && n == number))
+                .Select(e => numbers.TryGetValue(e.Index, out var n) ? e.Move with { Number = n } : e.Move),
+        ];
+    }
+
+    /// <summary>A planned tab moved by hand: one entry for it, replacing any earlier move or removal.</summary>
+    public static ImmutableArray<TabMove> WithPlannedMoved(IReadOnlyList<TabMove> moves, int ordinal, double alongNm)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+
+        return [.. moves.Where(m => m.Index != ordinal), new TabMove { Index = ordinal, AlongNm = alongNm }];
+    }
+
+    /// <summary>A planned tab removed by hand: one entry for it, replacing any earlier move.</summary>
+    public static ImmutableArray<TabMove> WithPlannedRemoved(IReadOnlyList<TabMove> moves, int ordinal)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+
+        return [.. moves.Where(m => m.Index != ordinal), new TabMove { Index = ordinal }];
     }
 
     /// <summary>
@@ -418,29 +613,26 @@ public static class TabPlan
     }
 
     /// <summary>
-    /// The positions with the <paramref name="add"/>-th added tab given these sizes — null for
-    /// "the board's". The count is of the entries that add a tab, the same count
-    /// <see cref="PlacedTab.Ordinal"/> is for an added tab.
+    /// The positions with the added tab numbered <paramref name="add"/> given these sizes — null
+    /// for "the board's". The number is the one <see cref="PlacedTab.Ordinal"/> carries for an
+    /// added tab.
     /// </summary>
     public static ImmutableArray<TabMove> WithAddSize(
         IReadOnlyList<TabMove> moves, int add, long? widthNm, long? heightNm)
     {
         ArgumentNullException.ThrowIfNull(moves);
 
-        var seen = -1;
+        var index = AddIndex(moves, add);
 
         return
         [
-            .. moves.Select(m =>
-                m.Index < 0 && m.AlongNm is not null && ++seen == add
-                    ? m with { WidthNm = widthNm, HeightNm = heightNm }
-                    : m),
+            .. moves.Select((m, i) => i == index ? m with { WidthNm = widthNm, HeightNm = heightNm, Number = add } : m),
         ];
     }
 
-    /// <summary>The <paramref name="add"/>-th entry that adds a tab, or null.</summary>
+    /// <summary>The add entry numbered <paramref name="add"/>, or null.</summary>
     private static TabMove? AddEntry(IReadOnlyList<TabMove> moves, int add) =>
-        moves.Where(m => m.Index < 0 && m.AlongNm is not null).ElementAtOrDefault(add);
+        AddIndex(moves, add) is var i and >= 0 ? moves[i] : null;
 
     /// <summary>
     /// Hand-set positions, applied after the sizes and addressed the same way (6.4).
@@ -453,15 +645,12 @@ public static class TabPlan
     ///
     /// An added tab takes the profile's own derived sizes — the board-wide pair every planned tab
     /// starts from — unless its entry carries its own. Its letter follows the planned tabs': the
-    /// pristine plan's count, plus its place among the adds.
+    /// pristine plan's count, plus its own number (<see cref="TabMove.Number"/>).
     /// </summary>
     private static List<PlacedTab> Moved(
         List<PlacedTab> tabs,
         IReadOnlyList<TabMove> moves,
-        IReadOnlyList<ArtSegment> segments,
-        double[] starts,
-        double[] lengths,
-        double perimeter,
+        ProfilePath path,
         long width,
         long height)
     {
@@ -472,20 +661,22 @@ public static class TabPlan
 
         var result = new List<PlacedTab>(tabs);
         var removed = new HashSet<int>();
-        var added = 0;
+        var numbers = Adds(moves).ToDictionary(a => a.Index, a => a.Number);
 
-        foreach (var move in moves)
+        for (var i = 0; i < moves.Count; i++)
         {
+            var move = moves[i];
+
             if (move.Index >= 0 && move.Index < tabs.Count)
             {
                 if (move.AlongNm is { } along)
                 {
-                    var at = Wrap(along, perimeter);
+                    var at = path.Wrap(along);
 
                     result[move.Index] = result[move.Index] with
                     {
                         AlongNm = at,
-                        At = PointAt(segments, starts, lengths, at),
+                        At = path.At(at),
                         Edge = -1,
                         EdgeLengthNm = 0,
                         Moved = true,
@@ -496,9 +687,10 @@ public static class TabPlan
                     removed.Add(move.Index);
                 }
             }
-            else if (move.Index < 0 && move.AlongNm is { } alongAdded)
+            else if (move.IsAdd)
             {
-                var at = Wrap(alongAdded, perimeter);
+                var at = path.Wrap(move.AlongNm!.Value);
+                var number = numbers[i];
 
                 // Its own sizes when it carries them, guarded as an edit's are: a non-positive
                 // number in a hand-edited file is no size at all.
@@ -507,15 +699,13 @@ public static class TabPlan
                     AlongNm = at,
                     WidthNm = move.WidthNm is { } ownWidth and > 0 ? ownWidth : width,
                     HeightNm = move.HeightNm is { } ownHeight and > 0 ? ownHeight : height,
-                    At = PointAt(segments, starts, lengths, at),
+                    At = path.At(at),
                     Edge = -1,
                     EdgeLengthNm = 0,
-                    Ordinal = added,
-                    Letter = LetterOf(tabs.Count + added),
+                    Ordinal = number,
+                    Letter = LetterOf(tabs.Count + number),
                     Added = true,
                 });
-
-                added++;
             }
 
             // An entry that names no planned tab and adds nothing is ignored — a project file is
@@ -526,10 +716,6 @@ public static class TabPlan
             ? result
             : [.. result.Where(t => t.Added || !removed.Contains(t.Ordinal))];
     }
-
-    /// <summary>A distance along the loop brought back onto it, negatives included.</summary>
-    private static double Wrap(double along, double perimeter) =>
-        perimeter <= 0 ? 0 : ((along % perimeter) + perimeter) % perimeter;
 
     /// <summary>
     /// Per-tab sizes, applied after the positions are settled.
@@ -706,12 +892,12 @@ public static class TabPlan
     /// top-or-bottom edge whatever its x; only which of the two it is comes from its position.
     /// </summary>
     private static int[] Quarters(
-        IReadOnlyList<ArtSegment> segments,
-        double[] starts,
-        double[] lengths,
+        ProfilePath path,
         List<(double Start, double Length)> edges,
         double perimeter)
     {
+        var segments = path.Segments;
+
         var minX = long.MaxValue;
         var minY = long.MaxValue;
         var maxX = long.MinValue;
@@ -735,12 +921,9 @@ public static class TabPlan
             // The edge merged across the seam starts before the perimeter's end and finishes past
             // it, so its ends and midpoint are taken modulo the loop, exactly as its tab centres
             // are.
-            var from = PointAt(segments, starts, lengths, edges[e].Start % perimeter);
-            var to = PointAt(
-                segments, starts, lengths, (edges[e].Start + edges[e].Length) % perimeter);
-            var mid = PointAt(
-                segments, starts, lengths,
-                (edges[e].Start + (edges[e].Length / 2)) % perimeter);
+            var from = path.At(edges[e].Start % perimeter);
+            var to = path.At((edges[e].Start + edges[e].Length) % perimeter);
+            var mid = path.At((edges[e].Start + (edges[e].Length / 2)) % perimeter);
 
             // The chord across the whole run: an edge is straight to within two degrees, so this is
             // its direction.
@@ -833,32 +1016,5 @@ public static class TabPlan
         var clearance = (double)Math.Max(width, Nm.FromMillimetres(2.0));
 
         return length >= (tabs * (double)width) + ((tabs + 1) * clearance);
-    }
-
-    /// <summary>The point this far round the profile.</summary>
-    private static Point2 PointAt(
-        IReadOnlyList<ArtSegment> segments,
-        double[] starts,
-        double[] lengths,
-        double at)
-    {
-        for (var i = 0; i < segments.Count; i++)
-        {
-            if (lengths[i] <= 0)
-            {
-                continue;
-            }
-
-            if (at <= starts[i] + lengths[i] || i == segments.Count - 1)
-            {
-                var t = Math.Clamp((at - starts[i]) / lengths[i], 0, 1);
-
-                return new Point2(
-                    segments[i].From.X + (long)Math.Round((segments[i].To.X - segments[i].From.X) * t),
-                    segments[i].From.Y + (long)Math.Round((segments[i].To.Y - segments[i].From.Y) * t));
-            }
-        }
-
-        return segments[0].From;
     }
 }

@@ -397,12 +397,25 @@ public static class CliScript
             (o.TabEdits.IsDefaultOrEmpty ? 0 : o.TabEdits.Length)
             + (o.TabMoves.IsDefaultOrEmpty
                 ? 0
-                : o.TabMoves.Count(m => m.Index < 0 && m.AlongNm is not null && (m.WidthNm is not null || m.HeightNm is not null))));
+                : o.TabMoves.Count(m => m.IsAdd && (m.WidthNm is not null || m.HeightNm is not null))));
 
         if (edited > 0)
         {
             notes.Add(Invariant(
                 $"{edited} tab(s) were sized one at a time, in Tabs. The command line has one width and one height for all of them, so this export's tabs are not all the same as the ones above."));
+        }
+
+        // **And where they are**, which the command line cannot say at all. Found by sprint 6's
+        // `xhigh` review: a tab moved, added or removed in the viewport is a hand's choice the
+        // flags have no words for, so these commands put every tab back where the planner places
+        // it — the removed one returns and the moved one goes home — and the page claimed to
+        // rebuild the folder without a word about it.
+        var placedByHand = outlines.Sum(o => o.TabMoves.IsDefaultOrEmpty ? 0 : o.TabMoves.Length);
+
+        if (placedByHand > 0)
+        {
+            notes.Add(
+                "Some tabs were moved, added or removed by hand in the viewport. The command line has no way to say where a tab goes, so these commands put every tab back where the planner places it.");
         }
 
         // One flag when every outline layer gives the same answer — including when every one of

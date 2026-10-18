@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using MillBurn.Core;
 using SkiaSharp;
 
@@ -56,6 +57,9 @@ public sealed class BoardSceneLayer : IDisposable
     /// </summary>
     public ToolpathScene? Tiles { get; init; }
 
+    /// <summary>The shared holder of <see cref="Tiles"/>, released rather than disposed with this layer.</summary>
+    internal SharedTiles? Shared { get; init; }
+
     /// <summary>
     /// The prebuilt stroke paths of one tier that intersect the view. Empty — not an error —
     /// for a layer with no tiles, so a caller walking every layer's geometry does not have to
@@ -64,10 +68,83 @@ public sealed class BoardSceneLayer : IDisposable
     public IEnumerable<SKPath> TilePaths(int tier, SKRect visibleWorld) =>
         Tiles?.VisiblePaths(tier, BoardScene.TileStyle, visibleWorld) ?? [];
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        // Once: a layer let go twice would release a hold that belongs to another scene, and free
+        // tiles that scene is still drawing.
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         Path.Dispose();
-        Tiles?.Dispose();
+
+        if (Shared is { } shared)
+        {
+            shared.Release();
+        }
+        else
+        {
+            Tiles?.Dispose();
+        }
+    }
+}
+
+/// <summary>
+/// One layer's tiles, shared by every scene drawn from the same geometry and freed with the last.
+///
+/// **Why shared.** Tiling a big stroked layer simplifies it five times over and buckets it, and
+/// that ran inside every scene build on the UI thread — every preview landing, every colour change
+/// — though a colour changes nothing the tiles hold (sprint 6's `xhigh` review). Cached against the
+/// geometry list, a rebuild over the same geometry takes the tiles it already has. Counted rather
+/// than owned, because the scene being replaced is disposed after its successor is built, and both
+/// hold the same tiles in between.
+/// </summary>
+internal sealed class SharedTiles(ToolpathScene scene, bool closeRings, int minimum)
+{
+    private readonly Lock _gate = new();
+    private int _holders = 1;
+
+    public ToolpathScene Scene { get; } = scene;
+
+    public bool CloseRings { get; } = closeRings;
+
+    public int Minimum { get; } = minimum;
+
+    /// <summary>Takes another hold, or says the tiles are already gone.</summary>
+    public bool TryRetain()
+    {
+        lock (_gate)
+        {
+            if (_holders == 0)
+            {
+                return false;
+            }
+
+            _holders++;
+            return true;
+        }
+    }
+
+    /// <summary>Lets go of one hold, and frees the tiles with the last.</summary>
+    public void Release()
+    {
+        lock (_gate)
+        {
+            // Never below zero: freed once, and a stray release after that changes nothing.
+            if (_holders == 0)
+            {
+                return;
+            }
+
+            if (--_holders == 0)
+            {
+                Scene.Dispose();
+            }
+        }
     }
 }
 
@@ -167,6 +244,10 @@ public sealed class BoardScene : IDisposable
                 continue;
             }
 
+            var shared = style.Outlined && vertices >= TiledStrokeBudget
+                ? TilesFor(rings, closeRings, minimum)
+                : null;
+
             scene._layers.Add(new BoardSceneLayer
             {
                 Id = id,
@@ -175,9 +256,8 @@ public sealed class BoardScene : IDisposable
                 Path = path,
                 RingCount = ringCount,
                 VertexCount = vertices,
-                Tiles = style.Outlined && vertices >= TiledStrokeBudget
-                    ? BuildTiles(rings, closeRings, minimum)
-                    : null,
+                Tiles = shared?.Scene,
+                Shared = shared,
             });
 
             scene.TotalVertices += vertices;
@@ -239,6 +319,29 @@ public sealed class BoardScene : IDisposable
             return total;
         }
     }
+
+    /// <summary>The tiles already built for this geometry, or new ones — held either way.</summary>
+    private static SharedTiles TilesFor(
+        IReadOnlyList<IReadOnlyList<Point2>> rings, bool closeRings, int minimum)
+    {
+        if (TileCache.TryGetValue(rings, out var cached)
+            && cached.CloseRings == closeRings
+            && cached.Minimum == minimum
+            && cached.TryRetain())
+        {
+            return cached;
+        }
+
+        var built = new SharedTiles(BuildTiles(rings, closeRings, minimum), closeRings, minimum);
+        TileCache.AddOrUpdate(rings, built);
+        return built;
+    }
+
+    /// <summary>
+    /// Tiles by the geometry list they were built from. Weak, so the cache never keeps geometry
+    /// alive; an entry whose tiles were freed is rebuilt on the next ask.
+    /// </summary>
+    private static readonly ConditionalWeakTable<IReadOnlyList<IReadOnlyList<Point2>>, SharedTiles> TileCache = new();
 
     /// <summary>
     /// The layer's rings again, as the polylines <see cref="ToolpathScene"/> tiles. Same

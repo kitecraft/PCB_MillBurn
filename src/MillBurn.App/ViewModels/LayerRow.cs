@@ -106,6 +106,7 @@ public sealed partial class LayerRow : ObservableObject
         TabHeightNm = settings.TabHeightNm;
         TabEdits = settings.TabEdits;
         TabMoves = settings.TabMoves;
+        TabPlanKey = settings.TabPlanKey;
         DrillGuide = settings.WriteDrillGuide;
         Passes = settings.Passes;
         IsolationWidthMm = Nm.ToMillimetres(settings.IsolationWidthNm);
@@ -349,6 +350,12 @@ public sealed partial class LayerRow : ObservableObject
     public ImmutableArray<TabMove> TabMoves { get; private set; } = [];
 
     /// <summary>
+    /// Outline only: the fingerprint of the plan <see cref="TabEdits"/> and <see cref="TabMoves"/>
+    /// were made against. Stamped by whoever writes a change, from the plan they were looking at.
+    /// </summary>
+    public string? TabPlanKey { get; private set; }
+
+    /// <summary>
     /// Takes what the tabs window chose.
     ///
     /// All three at once, and one notification: the preview is rebuilt from this, and rebuilding it
@@ -359,7 +366,13 @@ public sealed partial class LayerRow : ObservableObject
     /// <param name="edits">The planned tabs' own sizes.</param>
     /// <param name="moves">The hand-set positions to keep, when the caller changed them too — an
     /// added tab's own size lives on its entry. Null keeps the ones there are.</param>
-    public void SetTabs(long? widthNm, long? heightNm, ImmutableArray<TabEdit> edits, ImmutableArray<TabMove>? moves = null)
+    /// <param name="planKey">The fingerprint of the plan these were chosen against.</param>
+    public void SetTabs(
+        long? widthNm,
+        long? heightNm,
+        ImmutableArray<TabEdit> edits,
+        ImmutableArray<TabMove>? moves,
+        string? planKey)
     {
         // A changed board-wide width re-places every tab — width decides how many an edge can
         // hold — so hand-set positions go with the plan they belonged to, the same door the sizes
@@ -376,6 +389,7 @@ public sealed partial class LayerRow : ObservableObject
         TabWidthNm = widthNm;
         TabHeightNm = heightNm;
         TabEdits = edits;
+        TabPlanKey = planKey;
 
         OnPropertyChanged(nameof(Detail));
         _outputChanged?.Invoke();
@@ -387,9 +401,12 @@ public sealed partial class LayerRow : ObservableObject
     /// One notification, like <see cref="SetTabs"/> and for the same reason — the preview is
     /// rebuilt from this.
     /// </summary>
-    public void SetTabMoves(ImmutableArray<TabMove> moves)
+    /// <param name="moves">The positions, whole.</param>
+    /// <param name="planKey">The fingerprint of the plan the gesture was made on.</param>
+    public void SetTabMoves(ImmutableArray<TabMove> moves, string? planKey)
     {
         TabMoves = moves;
+        TabPlanKey = planKey;
 
         OnPropertyChanged(nameof(Detail));
         _outputChanged?.Invoke();
@@ -796,6 +813,7 @@ public sealed partial class LayerRow : ObservableObject
         TabHeightNm = TabHeightNm,
         TabEdits = TabEdits,
         TabMoves = TabMoves,
+        TabPlanKey = TabPlanKey,
         WriteDrillGuide = DrillGuide,
         Passes = Passes,
         IsolationWidthNm = Nm.FromMillimetres(IsolationWidthMm),

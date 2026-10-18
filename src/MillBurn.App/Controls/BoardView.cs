@@ -572,6 +572,9 @@ public sealed class BoardView : Control
         // and pan is the thing the hand does without thinking.
         if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && BoardPointAt(position) is { } start)
         {
+            // A measure is not a pan, so whatever press a pan left behind is not this one's: its
+            // release must not read as a click on the cut path.
+            _pressedScreen = null;
             _measureFrom = start;
             PointerAt = start;
             e.Pointer.Capture(this);
@@ -745,6 +748,12 @@ public sealed class BoardView : Control
         _dragTab = -1;
         _dragAt = null;
         _tabPressedScreen = null;
+
+        // **And a pan's press point.** Left set, a pan interrupted here — Alt-Tab, a dialog — kept
+        // its origin, and a later stationary Shift-measure from near the same spot released onto
+        // it as a click on the cut path: a tab nobody asked for, added by hand (sprint 6's `xhigh`
+        // review).
+        _pressedScreen = null;
         End();
         base.OnPointerCaptureLost(e);
     }

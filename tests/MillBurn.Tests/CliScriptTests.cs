@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using MillBurn.Cam;
 using MillBurn.Core;
 using MillBurn.Pipeline;
 using Xunit.Abstractions;
@@ -451,6 +452,38 @@ public sealed class CliScriptTests(ITestOutputHelper output)
 
         // And the caveat that is true of every block, because no flag names Settings › Machine.
         Assert.Contains(notes, n => n.Contains("Machine", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// **Tabs placed by hand are said to be lost by the rebuild**, because they are. Found by
+    /// sprint 6's `xhigh` review: a tab moved, added or removed in the viewport is a choice the
+    /// command line has no flag for, so the block puts every tab back where the planner places it —
+    /// and the page claimed it rebuilt the folder without a word. With no hand changes, nothing is
+    /// said.
+    /// </summary>
+    [Fact]
+    public void HandPlacedTabsAreSaidToBeLostByTheRebuild()
+    {
+        var board = TestBoard();
+        const string Said = "The command line has no way to say where a tab goes";
+
+        var plain = SettingsFor(board);
+        var plainPlan = ExportPlanner.Plan(board, plain, ToolLibrary.Default, Nm.FromMillimetres(0.8));
+        Assert.DoesNotContain(CliScript.For(plainPlan, Context(board, plain))[0].Notes, n => n.Contains(Said, StringComparison.Ordinal));
+
+        var moved = SettingsFor(board, (layer, setting) => layer.Role == LayerRole.Outline
+            ? setting with { TabMoves = [new TabMove { Index = 0 }] }
+            : setting);
+
+        var plan = ExportPlanner.Plan(board, moved, ToolLibrary.Default, Nm.FromMillimetres(0.8));
+        var notes = CliScript.For(plan, Context(board, moved))[0].Notes;
+
+        foreach (var note in notes)
+        {
+            output.WriteLine(note);
+        }
+
+        Assert.Contains(notes, n => n.Contains(Said, StringComparison.Ordinal));
     }
 
     /// <summary>

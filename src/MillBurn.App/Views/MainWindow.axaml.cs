@@ -1665,7 +1665,6 @@ public partial class MainWindow : Window
         return vm.SetTabWidthForShot(parts[0], widthMm);
     }
 
-    /// <summary>For <c>--set-role</c>: the one line saying what was set, or why nothing was.</summary>
     /// <summary>
     /// The <c>--move-tab</c> flag: one tab slid along the cut path, the way a drop does it — 6.4.
     ///
@@ -1686,6 +1685,7 @@ public partial class MainWindow : Window
         return vm.MoveTabForShot(tab, alongMm);
     }
 
+    /// <summary>For <c>--set-role</c>: the one line saying what was set, or why nothing was.</summary>
     private static string SetRoleForShot(MainViewModel vm, string assignment)
     {
         var parts = assignment.Split('=', 2, StringSplitOptions.TrimEntries);
@@ -1763,7 +1763,7 @@ public partial class MainWindow : Window
             case "sizes":
                 if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
                 {
-                    sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), []);
+                    sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), [], null, null);
                 }
 
                 break;
@@ -2326,7 +2326,7 @@ public partial class MainWindow : Window
             this,
             row.Label,
             planning.Tabs,
-            row.TabMoves,
+            planning.OverridesStale ? [] : row.TabMoves,
             row.TabWidthNm,
             row.TabHeightNm,
             planning.DerivedWidthNm,
@@ -2335,7 +2335,7 @@ public partial class MainWindow : Window
 
         if (chosen is not null)
         {
-            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits, chosen.Moves);
+            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits, chosen.Moves, planning.PristineKey);
         }
     }
 

@@ -133,6 +133,14 @@ public sealed record LayerOutputSettings
     public ImmutableArray<TabMove> TabMoves { get; init; } = [];
 
     /// <summary>
+    /// Outline only: the fingerprint of the tab plan <see cref="TabEdits"/> and
+    /// <see cref="TabMoves"/> were made against (<c>TabPlan.KeyOf</c>). The program applies them
+    /// only while the plan still matches, and an older project, which has none, has its hand-set
+    /// changes refused rather than guessed at — the plan they numbered may not be today's.
+    /// </summary>
+    public string? TabPlanKey { get; init; }
+
+    /// <summary>
     /// Drilling only: write a page beside the program explaining how to run it.
     ///
     /// On by default. A drilling program is the one operation with tool changes in it, so it is the

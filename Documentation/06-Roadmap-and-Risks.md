@@ -7348,3 +7348,39 @@ assembly gets its own room.
 same standing the owner gave 6.18 the same day: an idea worth this much groundwork, behind its own
 *"big IF"*, and not a thing the bench is waiting on. No machine is on the bench and no story
 starts until that changes; the entry exists so the thinking is not re-done when one is.
+
+#### 6.74 Hand-set tab changes could outlive the plan they numbered — **defect · fixed** — *found by sprint 6's `xhigh` review, 2026-10-18; fixed in sprint 6 story 6*
+
+A size, a move or a removal set by hand names its tab by its number in the planner's pristine plan
+(6.4), and three things can renumber that plan underneath it without touching the stored change:
+this release's own placement rule (6.72) on a project from an older one; a revised outline brought
+in by *Refresh source*; and a cutter's diameter edited in the tool library, which offsets the
+profile differently. The change then landed on whichever tab had the number now — a 0.30 mm web,
+or a removal, somewhere nobody chose — and the picture, the header and the cut all agreed with
+each other about it, so nothing gave it away.
+
+**Found by reading, at the end of the sprint**, with the review's own example: a 0.6.0 project for
+the 66-up panel holding `{Index 2, HeightNm 0.30 mm}`, made when all four tabs sat on the bottom.
+
+**Fixed by stamping, not by guessing.** Every hand-set change is now written with the fingerprint
+of the plan it was made against (`TabPlan.KeyOf`: the pristine tabs' positions to the micrometre
+and their widths, hashed; heights left out because they move no tab). The program applies the
+changes only while the plan still has that fingerprint, and otherwise cuts the planner's own tabs
+and says so in its header; the app says so in the check panel, for as long as it is true. **The
+changes are kept, not deleted**: they apply again the moment the layout matches — a role toggled
+back, a cutter's diameter put back — and the first new gesture on the changed layout starts the
+changes afresh rather than reviving the old numbers on whichever tabs they now name. (The first
+version cleared them with a status line; the story's own review found the line overwritten after a
+preview, so they vanished without a word, and the clearing permanent where the cause was not.)
+**A project from before the stamp has none**, so its hand-set changes are refused rather than
+trusted — the one tab-related thing a 0.6.0 project gives up in 0.7.0, kept in the file and named
+in the panel, and the only safe reading of a number whose plan is unknown. Tested on a real file
+saved by v0.6.0 (`ProjectFromOlderBuildTests`), and seen in the app by running it: the project
+opens unchanged, tab B at the board's width, the panel saying why.
+
+**The review found its neighbours in the same place, all fixed with it** — see sprint 6 story 6:
+tabs dropped over each other were cut as something neither the header nor the picture described
+(now cut as their union, named in the header, and refused at the gesture); the program and the
+window chose differently which board in a shared outline the changes belonged to (now one rule,
+`AssignTabs`); the header blamed the hand for the edges' own shortfall; and the project page's
+rebuild commands dropped hand positions without a word.

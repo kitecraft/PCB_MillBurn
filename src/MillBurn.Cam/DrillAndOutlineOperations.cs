@@ -34,6 +34,27 @@ public sealed record DrillOptions
     public IReadOnlyCollection<long> MilledNm { get; init; } = [];
 }
 
+/// <summary>
+/// An outline's profiles as the cutter will follow them, from <see cref="OutlineOperation.Shaped"/>:
+/// the offset contours, how deep each is nested, and which are closed. Opaque to callers, who hold
+/// it only to plan tabs again without paying for the shaping twice.
+/// </summary>
+public sealed class ShapedOutline
+{
+    internal ShapedOutline(Paths64 contours, List<int> depths, List<bool> closed)
+    {
+        Contours = contours;
+        Depths = depths;
+        Closed = closed;
+    }
+
+    internal Paths64 Contours { get; }
+
+    internal List<int> Depths { get; }
+
+    internal List<bool> Closed { get; }
+}
+
 /// <summary>How to cut the board out.</summary>
 public sealed record OutlineOptions
 {
@@ -80,6 +101,13 @@ public sealed record OutlineOptions
     /// after them. Empty is the ordinary case: the planner's positions stand.
     /// </summary>
     public IReadOnlyList<TabMove> TabMoves { get; init; } = [];
+
+    /// <summary>
+    /// The fingerprint of the plan <see cref="TabEdits"/> and <see cref="TabMoves"/> were made
+    /// against (<see cref="TabPlan.KeyOf"/>). Changes stamped with another, or with none, are not
+    /// applied — the plan under them moved, and the tab a number names is not the one it meant.
+    /// </summary>
+    public string? TabPlanKey { get; init; }
 
     /// <summary>Cut outside the profile line, so the finished board is nominal size.</summary>
     public bool CutOutside { get; init; } = true;
@@ -298,15 +326,11 @@ public static class OutlineOperation
         var addedTops = new List<long>();
         var tabsSwallowProfile = false;
 
-        // Per-tab edits belong to one profile: the first that places any, which is the one the tabs
-        // window lists and numbers. Found by `/code-review`: the edits were handed to every
-        // outermost profile and applied by index inside each, so "tab 3, 0.30 mm" set a thin web on
-        // tab 3 of a second board in the same Edge_Cuts that nobody had looked at. Hand-set
-        // positions (6.4) are keyed the same way and spend with the same profile, for the same
-        // reason.
-        var edits = options.TabEdits;
-        var moves = options.TabMoves;
-        var editsSpent = false;
+        // Which profile the hand-set changes belong to, and whether they still fit it — decided
+        // once, by the rule the tabs window is planned with, so the window and the cut cannot
+        // differ about it. See `AssignTabs`.
+        var assigned = AssignTabs(contours, depths, closed, options);
+        var overlaps = new List<string>();
 
         for (var c = 0; c < contours.Count; c++)
         {
@@ -335,38 +359,29 @@ public static class OutlineOperation
             // fact about the shape in front of it. On a panel only the frame is tabbed anyway, and a
             // board whose outline is a rounded rectangle gets a different answer from one that is a
             // plain rectangle of the same size.
-            var tabs = outermost && closed[c]
-                ? TabPlan.For(
-                    contour,
-                    editsSpent ? options with { TabEdits = [], TabMoves = [] } : options)
-                : [];
+            var tabs = assigned.Tabs[c];
 
             if (outermost && closed[c] && contour.Count >= 3)
             {
                 profilesEligible++;
             }
+            var walk = closed[c] ? new ProfilePath(contour) : null;
 
-            if (tabs.Count > 0)
+            // Tabs a hand set over each other are cut as one gap — their union — and the header
+            // says so by name, because the picture draws each handle and its own gap ends.
+            if (walk is not null && tabs.Count > 1)
             {
-                editsSpent = editsSpent || edits.Count > 0 || moves.Count > 0;
+                foreach (var gap in TabPlan.Gaps(tabs, walk.PerimeterNm).Where(g => g.Tabs.Count > 1))
+                {
+                    var letters = gap.Tabs.Select(t => t.Letter).ToList();
+                    var named = letters.Count == 2
+                        ? $"{letters[0]} and {letters[1]}"
+                        : $"{string.Join(", ", letters[..^1])} and {letters[^1]}";
+
+                    overlaps.Add(Invariant(
+                        $"Tabs {named} overlap, so they are cut as one gap {Nm.ToMillimetreString(gap.LengthNm, 1)} mm long."));
+                }
             }
-            else if (!editsSpent
-                && outermost && closed[c]
-                && moves.Any(m => m.Index >= 0 && m.AlongNm is null)
-                && TabPlan.For(contour, options with { TabEdits = [], TabMoves = [] }).Count > 0)
-            {
-                // The overrides belong to the first profile whose *pristine* plan placed tabs —
-                // and hand removals can empty that profile's list, which the latch above cannot
-                // see. Found by `/code-review`: a file holding removals for every one of profile
-                // one's ordinals left `editsSpent` false, and the same removals then deleted the
-                // tabs of the next board in the same Edge_Cuts, by the same numbers. The pristine
-                // re-plan runs only in this corner — a removal-bearing file whose first tabbed
-                // profile came back empty — so the ordinary export never pays for it. The window
-                // refuses to remove the last tab; this is the route that does not go through the
-                // window.
-                editsSpent = true;
-            }
-            var walk = closed[c] ? new ProfileWalk(contour) : null;
 
             // **The full laps begin at the near side of the first tab, not at the profile's own start
             // vertex.**
@@ -402,7 +417,7 @@ public static class OutlineOperation
 
             if (start < 0)
             {
-                start += walk!.Perimeter;
+                start += walk!.PerimeterNm;
             }
 
             // An open run is cut in alternate directions as it goes deeper.
@@ -415,7 +430,7 @@ public static class OutlineOperation
             var forward = walk is null
                 ? Along(contour)
                 : start > 0
-                    ? walk.Sub(start, start + walk.Perimeter)
+                    ? walk.Sub(start, start + walk.PerimeterNm)
                     : IsolationOperation.ToSegments(contour);
 
             var backward = closed[c] ? forward : Along(Reversed(contour));
@@ -581,6 +596,11 @@ public static class OutlineOperation
                 $"Cut on the outside: {pieces.Count(p => p)}. Cut from the inside: {voids}, because they enclose nothing — so the pieces either side of them keep their size."));
         }
 
+        if (assigned.Stale)
+        {
+            notes.Add("The hand-set tab changes saved with this project were made against a different layout of these tabs — a different width, count, cutter or outline, or an older version — so none of them is applied: every tab is where the planner puts it.");
+        }
+
         if (options.TabCount > 0 && planned.Count == 0)
         {
             // Asked for and not placed, which is three different sentences at the machine: every
@@ -588,7 +608,7 @@ public static class OutlineOperation
             // was no profile to put them on. All three end with a piece that comes free on the last
             // pass, and that is the part the operator has to know — blaming the profile for a
             // removal somebody chose would be the header lying about who decided.
-            notes.Add(options.TabMoves.Any(m => m.Index >= 0 && m.AlongNm is null)
+            notes.Add(assigned.Applied && assigned.Owner >= 0 && assigned.Tabs[assigned.Owner].Count == 0
                 ? "Every tab was removed by hand, so nothing holds the piece on the last pass. Hold it down."
                 : tabsSwallowProfile
                     ? Invariant($"The {options.TabCount} tabs asked for are wider than the profile they would hold, so it is cut right through and the piece comes free on the last pass. Hold it down.")
@@ -654,15 +674,23 @@ public static class OutlineOperation
             // board of two profiles where one held three and the other none reported "4 were asked
             // for" — and the guard could suppress the note altogether.
             var asked = options.TabCount * Math.Max(profilesEligible, 1);
+            var plannedByEdges = assigned.Pristine.Sum(p => p.Count);
 
-            if (planned.Count < asked)
+            // Two causes, said apart. The edges' own shortfall is clearance, and a hand's changes
+            // are a choice; the review that rewrote this found the old line blaming the hand
+            // whenever any change existed, a plain move included, for a shortfall the edges made.
+            if (plannedByEdges < asked)
             {
-                // With hand changes in play the shortfall is not the edges' doing: a removed tab
-                // is a choice, and blaming clearance for it would be the header lying.
-                notes.Add(options.TabMoves.Count > 0
-                    ? Invariant($"{asked} were asked for: {planned.Count} after the hand-set changes.")
-                    : Invariant($"{asked} were asked for: the straight edges hold {planned.Count} with clearance either side of each."));
+                notes.Add(planned.Count == plannedByEdges
+                    ? Invariant($"{asked} were asked for: the straight edges hold {plannedByEdges} with clearance either side of each.")
+                    : Invariant($"{asked} were asked for: the straight edges hold {plannedByEdges} with clearance either side of each, and {planned.Count} after the hand-set changes."));
             }
+            else if (planned.Count < asked)
+            {
+                notes.Add(Invariant($"{asked} were asked for: {planned.Count} after the hand-set changes."));
+            }
+
+            notes.AddRange(overlaps);
 
             if (addedTops.Count == 1)
             {
@@ -910,51 +938,142 @@ public static class OutlineOperation
     /// The outermost closed profile's tabs, which is the one that gets them — the board, or a panel's
     /// frame.
     /// </summary>
-    public static TabPlanning PlanTabs(Paths64 outline, OutlineOptions options)
+    public static TabPlanning PlanTabs(Paths64 outline, OutlineOptions options) =>
+        PlanTabs(Shaped(outline, options), options);
+
+    /// <summary>
+    /// The outline's profiles as the cutter will follow them — offset to the waste side, nested —
+    /// kept so the tabs can be planned again without shaping them again.
+    ///
+    /// **The shaping is nearly all of the cost, and a tab gesture does not change it.** Measured on
+    /// the 66-up panel: about 0.4 s to shape its 102 profiles, against milliseconds to place the
+    /// tabs on the one that gets them. A drag, a click or a width moves no profile, so a caller
+    /// holding this re-plans at the speed of the placement. What it depends on is the outline's
+    /// geometry, the artwork that tells a piece from a void, and the cutter's diameter; the tab
+    /// settings and the thickness are not part of it.
+    /// </summary>
+    public static ShapedOutline Shaped(Paths64 outline, OutlineOptions options)
     {
         ArgumentNullException.ThrowIfNull(outline);
         ArgumentNullException.ThrowIfNull(options);
 
-        var height = TabPlan.DefaultHeightFor(options.BoardThicknessNm);
         var (contours, depths, closed, _, _, _) = Shape(outline, options);
+        return new ShapedOutline(contours, depths, closed);
+    }
 
-        var width = TabPlan.DefaultWidthFor([]);
-        var found = false;
+    /// <summary>
+    /// <see cref="PlanTabs(Paths64, OutlineOptions)"/> on an outline already shaped — which must
+    /// have been shaped with the same cutter and artwork as <paramref name="options"/> carries.
+    /// </summary>
+    public static TabPlanning PlanTabs(ShapedOutline shaped, OutlineOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(shaped);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var height = TabPlan.DefaultHeightFor(options.BoardThicknessNm);
+        var (contours, depths, closed) = (shaped.Contours, shaped.Depths, shaped.Closed);
+        var assigned = AssignTabs(contours, depths, closed, options);
+
+        // The profile the hand-set changes belong to — the one the program applies them to — even
+        // when they removed every tab on it. **The width comes from that profile too**: the dialog
+        // seeds its board-wide box from this number and each row from its own tab's width, so a
+        // width from another profile read every row as hand-set.
+        if (assigned.Owner is var owner and >= 0)
+        {
+            return new TabPlanning(
+                assigned.Tabs[owner],
+                TabPlan.DefaultWidthFor(contours[owner]),
+                height,
+                contours[owner],
+                assigned.Key,
+                assigned.Stale);
+        }
+
+        // The first profile that could take tabs decides the derived sizes when none are placed
+        // anywhere: a board that cannot hold the tabs asked for still has a width its own narrow
+        // side would give, and that is the number the dialog shows beside the boxes.
+        for (var c = 0; c < contours.Count; c++)
+        {
+            if (depths[c] == 0 && closed[c] && contours[c].Count >= 3)
+            {
+                return new TabPlanning([], TabPlan.DefaultWidthFor(contours[c]), height);
+            }
+        }
+
+        return new TabPlanning([], TabPlan.DefaultWidthFor([]), height);
+    }
+
+    /// <summary>
+    /// The tabs on every profile, and where the hand-set changes went — one rule, for the program
+    /// and for the window (sprint 6's `xhigh` review).
+    ///
+    /// **The changes belong to the first profile whose own plan places tabs**, the one the window
+    /// lists. The two used to decide it each their own way: the program latched on the first
+    /// profile that came out with tabs *after* the changes, with a pristine re-plan for the corner
+    /// where removals emptied it, and the window took the first profile with any tabs at all. A
+    /// file whose removals emptied profile one had the window show them applied to profile two
+    /// while the program cut profile two untouched. Decided once on the pristine plan, there is no
+    /// corner left for them to differ in.
+    ///
+    /// **And the changes apply only to the plan they were made against.** The owner's pristine plan
+    /// is fingerprinted (<see cref="TabPlan.KeyOf"/>), and changes stamped with another
+    /// fingerprint, or with none, are not applied — <c>Stale</c> says so for the header and the
+    /// window to repeat. A tab number from another plan names a different tab, and a thin web
+    /// moved somewhere nobody chose is the failure this exists to refuse.
+    /// </summary>
+    private static TabAssignment AssignTabs(
+        Paths64 contours, List<int> depths, List<bool> closed, OutlineOptions options)
+    {
+        var bare = options with { TabEdits = [], TabMoves = [] };
+        var hasChanges = options.TabEdits.Count > 0 || options.TabMoves.Count > 0;
+        var tabs = new IReadOnlyList<PlacedTab>[contours.Count];
+        var pristine = new IReadOnlyList<PlacedTab>[contours.Count];
+        var owner = -1;
+        string? key = null;
+        var stale = false;
 
         for (var c = 0; c < contours.Count; c++)
         {
             if (depths[c] != 0 || !closed[c] || contours[c].Count < 3)
             {
+                tabs[c] = [];
+                pristine[c] = [];
                 continue;
             }
 
-            var candidate = TabPlan.DefaultWidthFor(contours[c]);
+            pristine[c] = TabPlan.For(contours[c], bare);
+            tabs[c] = pristine[c];
 
-            // The first profile that could take tabs decides the derived sizes when none are
-            // placed anywhere: a board that cannot hold the tabs asked for still has a width its
-            // own narrow side would give, and that is the number the dialog shows beside the boxes.
-            if (!found)
+            if (owner < 0 && pristine[c].Count > 0)
             {
-                width = candidate;
-                found = true;
-            }
+                owner = c;
+                key = TabPlan.KeyOf(pristine[c]);
+                stale = hasChanges && !string.Equals(options.TabPlanKey, key, StringComparison.Ordinal);
 
-            var tabs = TabPlan.For(contours[c], options);
-
-            // **The width comes from the profile the tabs came from.** Found by `/code-review`: it
-            // used to be the first *eligible* profile's, so a board whose first profile held no
-            // tabs reported one profile's derived width beside another profile's tabs. The dialog
-            // seeds its board-wide box from this number and each row from its own tab's width, so
-            // every row read as hand-set and pressing Save with no changes wrote an explicit edit
-            // for every tab.
-            if (tabs.Count > 0)
-            {
-                return new TabPlanning(tabs, candidate, height, contours[c]);
+                if (hasChanges && !stale)
+                {
+                    tabs[c] = TabPlan.For(contours[c], options);
+                }
             }
         }
 
-        return new TabPlanning([], width, height);
+        return new TabAssignment(tabs, pristine, owner, key, stale, hasChanges && !stale && owner >= 0);
     }
+
+    /// <summary>What <see cref="AssignTabs"/> decided.</summary>
+    /// <param name="Tabs">Each contour's tabs as cut.</param>
+    /// <param name="Pristine">Each contour's tabs as the planner alone places them.</param>
+    /// <param name="Owner">The contour the hand-set changes belong to, or -1.</param>
+    /// <param name="Key">The owner's pristine fingerprint.</param>
+    /// <param name="Stale">True when there were changes and they were made against another plan.</param>
+    /// <param name="Applied">True when there were changes and they were applied.</param>
+    private sealed record TabAssignment(
+        IReadOnlyList<PlacedTab>[] Tabs,
+        IReadOnlyList<PlacedTab>[] Pristine,
+        int Owner,
+        string? Key,
+        bool Stale,
+        bool Applied);
 
     /// <summary>
     /// The profiles as the cutter will follow them: offset to the waste side, nested, and with a
@@ -1030,83 +1149,6 @@ public static class OutlineOperation
 
         return (contours, depths, closed, pieces, voids, centrelines);
     }
-    /// <summary>
-    /// One closed profile, measured along itself.
-    ///
-    /// The tabs, the runs between them and the full laps are all expressed as distances round the
-    /// profile, so the segment lengths and their running totals are worth computing once: the planner
-    /// and the splitter would otherwise walk the same contour twice for every depth on a board.
-    /// </summary>
-    private sealed class ProfileWalk
-    {
-        public ProfileWalk(Path64 contour)
-        {
-            Segments = IsolationOperation.ToSegments(contour);
-            Starts = new double[Segments.Count];
-            Lengths = new double[Segments.Count];
-
-            for (var i = 0; i < Segments.Count; i++)
-            {
-                Starts[i] = Perimeter;
-                Lengths[i] = Segments[i].From.DistanceTo(Segments[i].To);
-                Perimeter += Lengths[i];
-            }
-        }
-
-        public IReadOnlyList<ArtSegment> Segments { get; }
-
-        public double[] Starts { get; }
-
-        public double[] Lengths { get; }
-
-        public double Perimeter { get; }
-
-        /// <summary>
-        /// The stretch between two distances along the profile, wrapping past the start vertex if it
-        /// has to.
-        ///
-        /// A segment wholly inside the stretch is kept exactly as it was rather than rebuilt from its
-        /// endpoints, so a run crossing a tessellated corner keeps that corner's own vertices to the
-        /// nanometre.
-        /// </summary>
-        public List<ArtSegment> Sub(double from, double to)
-        {
-            var run = new List<ArtSegment>();
-
-            // Two laps at most: a stretch can begin part-way round and end part-way round again, and
-            // nothing longer than one whole profile is ever asked for.
-            for (var lap = 0; lap < 2; lap++)
-            {
-                for (var i = 0; i < Segments.Count; i++)
-                {
-                    if (Lengths[i] <= 0)
-                    {
-                        continue;
-                    }
-
-                    var s0 = Starts[i] + (lap * Perimeter);
-                    var s1 = s0 + Lengths[i];
-
-                    var a = Math.Max(from, s0);
-                    var b = Math.Min(to, s1);
-
-                    if (b - a <= 1e-9)
-                    {
-                        continue;
-                    }
-
-                    run.Add(a <= s0 + 1e-9 && b >= s1 - 1e-9
-                        ? Segments[i]
-                        : ArtSegment.Line(
-                            Along(Segments[i], (a - s0) / Lengths[i]),
-                            Along(Segments[i], (b - s0) / Lengths[i])));
-                }
-            }
-
-            return run;
-        }
-    }
-
     /// <summary>The depth a tab's top sits at: below this, a pass has to jump it.</summary>
     private static long TabTop(PlacedTab tab, OutlineOptions options) =>
         options.TotalDepthNm - tab.HeightNm - options.BreakThroughNm;
@@ -1130,47 +1172,44 @@ public static class OutlineOperation
     /// crossing may be and still be a tab rather than a reordered move.
     /// </summary>
     private static List<(IReadOnlyList<ArtSegment> Run, long GapAfterNm)> SplitAt(
-        ProfileWalk walk,
+        ProfilePath walk,
         List<PlacedTab> tabs)
     {
         var runs = new List<(IReadOnlyList<ArtSegment> Run, long GapAfterNm)>();
 
-        if (walk.Perimeter <= 0 || tabs.Count == 0)
+        if (walk.PerimeterNm <= 0 || tabs.Count == 0)
         {
             return runs;
         }
 
-        var ordered = tabs.OrderBy(t => t.AlongNm).ToList();
+        // Between gaps rather than between tabs: overlapping tabs are one gap, their union, so a
+        // narrow tab inside a wide one no longer starts the next run inside the wide one's gap.
+        var gaps = TabPlan.Gaps(tabs, walk.PerimeterNm);
 
-        for (var t = 0; t < ordered.Count; t++)
+        for (var g = 0; g < gaps.Count; g++)
         {
-            var next = ordered[(t + 1) % ordered.Count];
+            var next = gaps[(g + 1) % gaps.Count];
 
-            // From the far side of this tab to the near side of the next one.
-            var from = ordered[t].AlongNm + (ordered[t].WidthNm / 2.0);
-            var to = next.AlongNm - (next.WidthNm / 2.0);
+            // From the far side of this gap to the near side of the next one.
+            var from = gaps[g].EndNm;
+            var to = next.StartNm;
 
-            // **Only the last run spans the start vertex**, and a `/code-review` pass is why this is
-            // said by position rather than by comparing the two distances. Wrapping whenever the
-            // next tab came out earlier could not tell "this run crosses the seam" from "these two
-            // tabs overlap" — and two tabs widened by hand until they met produced a run of nearly
-            // the whole profile, cut at every tabbed depth, straight through every other tab on the
-            // board. That is a piece cut fully free and thrown on the last pass, which is the one
-            // thing tabs exist to prevent.
-            if (t == ordered.Count - 1)
+            // **Only the last run spans the start vertex**, said by position rather than by
+            // comparing the two distances: wrapping whenever the next gap came out earlier could not
+            // tell "this run crosses the seam" from "these overlap", and once produced a run of
+            // nearly the whole profile, cut straight through every other tab on the board.
+            if (g == gaps.Count - 1)
             {
-                to += walk.Perimeter;
+                to += walk.PerimeterNm;
             }
 
-            // Two tabs close enough to overlap leave no run between them, which can only happen when
-            // one has been widened by hand past the room its edge has. Nothing is emitted for it and
-            // the two become one wider gap; the notes carry the widths as they were set.
+            // One gap round the whole loop leaves nothing to cut at this depth.
             if (to - from <= 0)
             {
                 continue;
             }
 
-            runs.Add((walk.Sub(from, to), next.WidthNm));
+            runs.Add((walk.Sub(from, to), next.LengthNm));
         }
 
         return runs;

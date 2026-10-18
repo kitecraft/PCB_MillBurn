@@ -59,11 +59,21 @@ public sealed record BoardLayer
     /// <summary>
     /// The area as plain point rings, so a renderer can consume it without taking a dependency on
     /// the geometry stack. The copy is trivial next to keeping that boundary clean.
+    ///
+    /// **Made once per area, and handed back as the same object after that.** The geometry is
+    /// already served from `RealisedLayers` across rebuilds; converting it afresh each time gave
+    /// the scene a new list on every colour change, and the scene's tiles are cached against the
+    /// list — so the panel re-simplified its biggest layers five times over for a change of colour
+    /// (sprint 6's `xhigh` review).
     /// </summary>
-    public IReadOnlyList<IReadOnlyList<Point2>> Rings()
+    public IReadOnlyList<IReadOnlyList<Point2>> Rings() => RingsOf.GetValue(Area, Convert);
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Paths64, IReadOnlyList<IReadOnlyList<Point2>>> RingsOf = new();
+
+    private static IReadOnlyList<IReadOnlyList<Point2>> Convert(Paths64 area)
     {
-        var rings = new List<IReadOnlyList<Point2>>(Area.Count);
-        foreach (var path in Area)
+        var rings = new List<IReadOnlyList<Point2>>(area.Count);
+        foreach (var path in area)
         {
             var ring = new Point2[path.Count];
             for (var i = 0; i < path.Count; i++)

@@ -38,6 +38,16 @@ public sealed class TabMoveTests(ITestOutputHelper output)
     };
 
     /// <summary>
+    /// The options stamped with the fingerprint of the plan their hand-set changes were made
+    /// against, as the app stamps them when it writes one. Unstamped, the program now refuses the
+    /// changes — a number from another plan names a different tab.
+    /// </summary>
+    private static OutlineOptions Keyed(Paths64 outline, OutlineOptions options) => options with
+    {
+        TabPlanKey = OutlineOperation.PlanTabs(outline, options with { TabEdits = [], TabMoves = [] }).PristineKey,
+    };
+
+    /// <summary>
     /// A moved tab goes where the hand put it, and nothing else moves.
     ///
     /// The same contract the size edits were given, for the same reason: an operator who slides the
@@ -275,7 +285,7 @@ public sealed class TabMoveTests(ITestOutputHelper output)
         };
 
         var planned = TabPlan.For(cut[0], options);
-        var toolpath = OutlineOperation.Build([profile], options);
+        var toolpath = OutlineOperation.Build([profile], Keyed([profile], options));
 
         var runs = toolpath.Passes
             .Where(p => !p.Closed)
@@ -285,7 +295,8 @@ public sealed class TabMoveTests(ITestOutputHelper output)
             .ToList();
 
         Assert.Equal(4, planned.Count);
-        Assert.Single(planned, t => t.Moved);
+        var moved = Assert.Single(planned, t => t.Moved);
+        Assert.Equal(target, moved.AlongNm, Mm(0.001));
         Assert.Equal(planned.Count, runs.Count);
 
         var gaps = new List<Point2>();
@@ -332,7 +343,7 @@ public sealed class TabMoveTests(ITestOutputHelper output)
             ],
         };
 
-        var toolpath = OutlineOperation.Build(two, options);
+        var toolpath = OutlineOperation.Build(two, Keyed(two, options));
 
         // The second profile's four tabs are the only ones left, so the shallowest tabbed depth
         // holds exactly four open runs — and every gap between them lies on the shifted profile,
@@ -374,10 +385,10 @@ public sealed class TabMoveTests(ITestOutputHelper output)
     [Fact]
     public void TheHeaderSaysWhatAHandChose()
     {
-        var withMove = OutlineOperation.Build([Rect(21, 37)], Options() with
+        var withMove = OutlineOperation.Build([Rect(21, 37)], Keyed([Rect(21, 37)], Options() with
         {
             TabMoves = [new TabMove { Index = 0, AlongNm = Mm(50) }],
-        });
+        }));
 
         output.WriteLine(string.Join(Environment.NewLine, withMove.Notes));
 
@@ -386,10 +397,10 @@ public sealed class TabMoveTests(ITestOutputHelper output)
             n => n.Contains("1 placed by hand", StringComparison.Ordinal)
                 && n.Contains("3 centred on", StringComparison.Ordinal));
 
-        var withRemoval = OutlineOperation.Build([Rect(21, 37)], Options() with
+        var withRemoval = OutlineOperation.Build([Rect(21, 37)], Keyed([Rect(21, 37)], Options() with
         {
             TabMoves = [new TabMove { Index = 0 }],
-        });
+        }));
 
         output.WriteLine(string.Join(Environment.NewLine, withRemoval.Notes));
 

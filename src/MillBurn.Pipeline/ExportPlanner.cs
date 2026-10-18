@@ -2146,6 +2146,7 @@ public static class ExportPlanner
             // nothing, but no longer claiming to have a reproduction behind it.
             TabEdits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits,
             TabMoves = setting.TabMoves.IsDefaultOrEmpty ? [] : setting.TabMoves,
+            TabPlanKey = setting.TabPlanKey,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             Keep = keep,
         };
@@ -2203,8 +2204,18 @@ public static class ExportPlanner
         var adds = setting.TabMoves.IsDefaultOrEmpty ? [] : setting.TabMoves;
 
         var sizes = edits.Select(e => (e.WidthNm, e.HeightNm))
-            .Concat(adds.Where(m => m.Index < 0 && m.AlongNm is not null).Select(m => (m.WidthNm, m.HeightNm)))
+            .Concat(adds.Where(m => m.IsAdd).Select(m => (m.WidthNm, m.HeightNm)))
             .ToList();
+
+        // **Only sizes that will be cut.** Hand-set sizes made against another layout are refused
+        // by the planner (6.74), and advice about a 0.05 mm web nobody is going to cut contradicts
+        // the program's own header. Asked only when there are hand-set sizes at all, so an
+        // ordinary export pays nothing for the question.
+        if (sizes.Count > 0
+            && OutlineOperation.PlanTabs(OutlineProfiles(layer), options).OverridesStale)
+        {
+            sizes = [];
+        }
 
         var thin = sizes
             .Where(e => e.HeightNm is { } h && h < TabPlan.MinHeightNm)

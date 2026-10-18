@@ -57,6 +57,16 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         Keep = [],
     };
 
+    /// <summary>
+    /// The options stamped with the fingerprint of the plan their hand-set changes were made
+    /// against, as the app stamps them when it writes one. Unstamped, the program now refuses the
+    /// changes — a number from another plan names a different tab.
+    /// </summary>
+    private static OutlineOptions Keyed(Paths64 outline, OutlineOptions options) => options with
+    {
+        TabPlanKey = OutlineOperation.PlanTabs(outline, options with { TabEdits = [], TabMoves = [] }).PristineKey,
+    };
+
     /// <summary>The distance from a point to the nearest corner of a rectangle that size.</summary>
     private static double ToNearestCorner(Point2 at, double widthMm, double heightMm)
     {
@@ -398,7 +408,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             arcTolerance: options.SagittaNm);
 
         var planned = TabPlan.For(cut[0], options);
-        var toolpath = OutlineOperation.Build([profile], options);
+        var toolpath = OutlineOperation.Build([profile], Keyed([profile], options));
 
         var runs = toolpath.Passes
             .Where(p => !p.Closed)
@@ -487,7 +497,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             ],
         };
 
-        var toolpath = OutlineOperation.Build([profile], options);
+        var toolpath = OutlineOperation.Build([profile], Keyed([profile], options));
 
         var cut = Polygons.Inflate(
             [profile],
@@ -526,7 +536,12 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         // What holds the board is that every millimetre of the profile is either cut or under a tab.
         // The tabs' own spans are unioned here — two that overlap are one span, which is what the
         // splitter does by leaving no run between them — and the rest must be cut.
-        var held = Covered(TabPlan.For(cut[0], options), perimeter);
+        var planned = TabPlan.For(cut[0], options);
+        var held = Covered(planned, perimeter);
+
+        // The case this test is for: the two widened tabs really do run into each other — one gap
+        // holding both — or the accounting above would pass without the overlap ever happening.
+        Assert.Contains(TabPlan.Gaps(planned, perimeter), g => g.Tabs.Count > 1);
 
         output.WriteLine($"{Nm.ToMillimetreString((long)held, 1)} mm of profile is under a tab");
 
@@ -602,7 +617,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             TabEdits = [new TabEdit { Index = 0, HeightNm = Mm(0.3) }],
         };
 
-        var toolpath = OutlineOperation.Build([Rect(21, 37)], options);
+        var toolpath = OutlineOperation.Build([Rect(21, 37)], Keyed([Rect(21, 37)], options));
 
         // 0.8 mm board and 0.3 mm of break-through is 1.1 mm of cut. The derived tabs leave 0.25 mm,
         // so their tops are at 0.55 mm; the edited one leaves 0.30 mm, so its top is at 0.50 mm.
@@ -645,7 +660,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             ],
         };
 
-        var toolpath = OutlineOperation.Build([Rect(21, 37)], options);
+        var toolpath = OutlineOperation.Build([Rect(21, 37)], Keyed([Rect(21, 37)], options));
 
         output.WriteLine(string.Join(Environment.NewLine, toolpath.Notes));
 
@@ -854,7 +869,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             TabEdits = [new TabEdit { Index = 1, WidthNm = Mm(4.25) }],
         };
 
-        var toolpath = OutlineOperation.Build(two, options);
+        var toolpath = OutlineOperation.Build(two, Keyed(two, options));
 
         output.WriteLine(string.Join(" | ", toolpath.Notes));
 

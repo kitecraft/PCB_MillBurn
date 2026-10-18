@@ -89,18 +89,35 @@ public enum Persistence
 ///
 /// No Avalonia in it, so every one of those is a unit test. The view model is left the assignments
 /// and the status line its write delegate sets when the disk says no.
+///
+/// **One method per setting, so the label cannot be wrong** (sprint 6 story 6). The first version
+/// took a <see cref="SettingChange"/> and an edit from the caller, and nothing tied the two
+/// together: a slider that called itself <c>Theme</c> would have written on every tick again and
+/// passed every test. Each setter now names its own setting inside the keeper, where the test that
+/// calls it sees exactly what the view model sees.
+///
+/// **And a change that changes nothing writes nothing** — unless a held value is waiting, which
+/// then rides on it as it would on any other write.
 /// </summary>
 /// <param name="stored">What the settings file holds now.</param>
-/// <param name="write">Writes the whole record. Its own failures are its own to report.</param>
-public sealed class SettingsKeeper(AppSettings stored, Action<AppSettings> write)
+/// <param name="write">Writes the whole record and says whether it reached the disk. Its own
+/// failures are its own to report; a false is what makes the next write try again.</param>
+public sealed class SettingsKeeper(AppSettings stored, Func<AppSettings, bool> write)
 {
-    private readonly Action<AppSettings> _write = write ?? throw new ArgumentNullException(nameof(write));
+    private readonly Func<AppSettings, bool> _write = write ?? throw new ArgumentNullException(nameof(write));
 
     /// <summary>
     /// The <c>--no-ruler</c> override, held apart from <see cref="Stored"/> on purpose: a field the
     /// settings record never sees cannot be written out by anything.
     /// </summary>
     private bool? _rulerForThisSession;
+
+    /// <summary>
+    /// True while something stored has not reached the disk: a
+    /// <see cref="Persistence.WrittenWithTheNextWrite"/> change held back, or a write that failed —
+    /// which is what makes "nothing changed" a reason to skip a write only when nothing is waiting.
+    /// </summary>
+    private bool _unwritten;
 
     /// <summary>
     /// The settings as the file holds them, or will once the next write happens.
@@ -141,34 +158,117 @@ public sealed class SettingsKeeper(AppSettings stored, Action<AppSettings> write
         _ => throw new ArgumentOutOfRangeException(nameof(what), what, "No rule for this setting."),
     };
 
+    /// <summary>Where the window was left, saved as it closes.</summary>
+    public void SetWindowPlacement(WindowPlacement placement) =>
+        Change(SettingChange.WindowPlacement, s => s with { Window = placement });
+
+    /// <summary>How wide the board pane was left, saved as the window closes.</summary>
+    public void SetPanelWidth(double width) =>
+        Change(SettingChange.PanelWidth, s => s with { PanelWidth = width });
+
+    /// <summary>Light, dark, or null to follow the system.</summary>
+    public void SetTheme(string? theme) =>
+        Change(SettingChange.Theme, s => s with { Theme = theme });
+
+    /// <summary>The Settings window's numbers, all at once.</summary>
+    public void SetMachine(
+        MachineSettings machine, DryRunSettings dryRun, ProbeSettings probe, LevelSettings level,
+        ImportDefaults import, MillingDefaults milling) =>
+        Change(SettingChange.Machine, s => s with
+        {
+            Machine = machine,
+            DryRun = dryRun,
+            Probe = probe,
+            Level = level,
+            Import = import,
+            Milling = milling,
+        });
+
+    /// <summary>The start and end lines that top and tail every program.</summary>
+    public void SetFraming(ProgramFraming framing) =>
+        Change(SettingChange.Framing, s => s with { Framing = framing });
+
+    /// <summary>A project opened or saved, put at the top of File ▸ Open recent.</summary>
+    public void RememberRecent(string path) =>
+        Change(SettingChange.RecentProjects, s => s.WithRecent(path));
+
+    /// <summary>A project taken off the recent list.</summary>
+    public void ForgetRecent(string path) =>
+        Change(SettingChange.RecentProjects, s => s.WithoutRecent(path));
+
+    /// <summary>The alignment test's hover height.</summary>
+    public void SetAlignHover(double hoverMm) =>
+        Change(SettingChange.AlignHover, s => s with { Align = s.Align with { HoverMm = hoverMm } });
+
+    /// <summary>Where the alignment files were last written.</summary>
+    public void SetAlignFolder(string folder) =>
+        Change(SettingChange.AlignFolder, s => s with { Align = s.Align with { LastFolder = folder } });
+
+    /// <summary>Where the last export went, and whether it wrote dry runs.</summary>
+    public void SetExport(string folder, bool dryRun) =>
+        Change(SettingChange.Export, s => s with { LastExportFolder = folder, WriteDryRun = dryRun });
+
+    /// <summary>A board layer's colour, by its role, as <c>#RRGGBB</c>.</summary>
+    public void SetLayerColour(LayerRole role, string hex) =>
+        Change(SettingChange.Colours, s => s.WithColour(role, hex));
+
+    /// <summary>A board layer back to the built-in colour.</summary>
+    public void ResetLayerColour(LayerRole role) =>
+        Change(SettingChange.Colours, s => s.WithoutColour(role));
+
+    /// <summary>A scene layer's colour — one no file produces — by its id.</summary>
+    public void SetSceneColour(string id, string hex) =>
+        Change(SettingChange.Colours, s => s.WithSceneColour(id, hex));
+
+    /// <summary>A scene layer back to the built-in colour.</summary>
+    public void ResetSceneColour(string id) =>
+        Change(SettingChange.Colours, s => s.WithoutSceneColour(id));
+
+    /// <summary>Every layer back to the built-in palette.</summary>
+    public void ResetColours() =>
+        Change(SettingChange.Colours, s => s with
+        {
+            LayerColours = System.Collections.Immutable.ImmutableDictionary<LayerRole, string>.Empty,
+            SceneColours = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
+        });
+
+    /// <summary>Where the next new board's thickness starts — the slider's, so held, not written.</summary>
+    public void SetBoardThickness(double thicknessMm) =>
+        Change(SettingChange.BoardThickness, s => s with { BoardThicknessMm = thicknessMm });
+
     /// <summary>
     /// Applies an edit to the stored settings, and writes them when <paramref name="what"/> says to.
     ///
     /// The edit is given the stored record rather than handed a finished one, so nothing can build
-    /// the next record from a copy that a session-only override has been folded into.
+    /// the next record from a copy that a session-only override has been folded into. Private: the
+    /// setters above are the only way in, each naming its own setting.
     /// </summary>
-    public void Change(SettingChange what, Func<AppSettings, AppSettings> edit)
+    private void Change(SettingChange what, Func<AppSettings, AppSettings> edit)
     {
-        ArgumentNullException.ThrowIfNull(edit);
-
-        // Decided before the edit runs, so a setting with no rule changes nothing.
         var persistence = PersistenceOf(what);
+        var next = edit(Stored);
 
-        Stored = edit(Stored);
+        // Record equality, which compares the immutable collections inside by reference: an edit
+        // that builds a new list with the same contents counts as a change and is written. That
+        // errs on the side of writing, which is the safe side.
+        var changed = !Equals(next, Stored);
+        Stored = next;
 
-        // **Any stored ruler choice ends the session override**, not only one made through
-        // `ChooseRuler`: a later handler changing the ruler by this route would otherwise write
-        // the file while the viewport went on showing the override — the stored value unreachable
-        // for the rest of the session, which is 6.62 again through the seam built against it.
-        if (what == SettingChange.Ruler)
+        if (persistence == Persistence.WrittenWithTheNextWrite)
         {
-            _rulerForThisSession = null;
+            _unwritten |= changed;
+            return;
         }
 
-        if (persistence == Persistence.WrittenNow)
+        if (!changed && !_unwritten)
         {
-            _write(Stored);
+            return;
         }
+
+        // A write the disk refused leaves the record unwritten, so the next write — even of the
+        // same values, a second press of Save once the file is free — tries again rather than
+        // being skipped as no change (the review of sprint 6 story 6).
+        _unwritten = !_write(Stored);
     }
 
     /// <summary>Whether the viewport carries its scale strips: the session's override, else the stored choice.</summary>
@@ -190,8 +290,9 @@ public sealed class SettingsKeeper(AppSettings stored, Action<AppSettings> write
     /// 6.62. Compared with the setting alone, a session started with <c>--no-ruler</c> could never
     /// turn them back on: the override says off, the file says on, so the menu renders unticked and
     /// ticking it asks for <c>true</c>, which equals the stored value and changes nothing. And the
-    /// override is dropped the moment the menu is used — by <see cref="Change"/>, for any stored
-    /// ruler choice — or the stored value would stay unreachable for the rest of the session.
+    /// override is dropped the moment the menu is used, or the stored value would stay unreachable
+    /// for the rest of the session. The write follows the keeper's rule: a choice the file already
+    /// holds — the rulers back on, when the file said on all along — writes nothing.
     /// </remarks>
     /// <returns>True if what the viewport shows changed, so the caller knows to say so.</returns>
     public bool ChooseRuler(bool shown)
@@ -201,7 +302,7 @@ public sealed class SettingsKeeper(AppSettings stored, Action<AppSettings> write
             return false;
         }
 
-        // `Change` drops the override along with the write.
+        _rulerForThisSession = null;
         Change(SettingChange.Ruler, s => s with { ShowRuler = shown });
         return true;
     }

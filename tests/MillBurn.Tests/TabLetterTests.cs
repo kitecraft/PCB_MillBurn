@@ -35,6 +35,16 @@ public sealed class TabLetterTests
         Keep = [],
     };
 
+    /// <summary>
+    /// The options stamped with the fingerprint of the plan their hand-set changes were made
+    /// against, as the app stamps them when it writes one. Unstamped, the program now refuses the
+    /// changes — a number from another plan names a different tab.
+    /// </summary>
+    private static OutlineOptions Keyed(Paths64 outline, OutlineOptions options) => options with
+    {
+        TabPlanKey = OutlineOperation.PlanTabs(outline, options with { TabEdits = [], TabMoves = [] }).PristineKey,
+    };
+
     /// <summary>A spreadsheet's column names: after Z comes AA, after AZ comes BA, after ZZ comes AAA.</summary>
     [Theory]
     [InlineData(0, "A")]
@@ -172,24 +182,28 @@ public sealed class TabLetterTests
     }
 
     /// <summary>
-    /// What is left after the first of two sized adds is removed — the view model takes the
-    /// removed add's entry out, size and all — plans as the survivor alone: its own 3 mm, and the
-    /// letter E, moved up from F as its place among the adds did. Stored apart and keyed by place,
-    /// as the first build stored it, the removed add's 4 mm would have stayed behind and landed on
-    /// this tab; an entry cannot hold a size for any tab but its own.
+    /// Removing an add takes its size with it and leaves the next add's alone — done with the
+    /// planner's own removal, on two sized adds. Stored apart and keyed by place, as the first
+    /// build stored them, the removed add's 4 mm landed on the survivor. And the survivor keeps
+    /// its letter, F, because adds are numbered as they are made.
     /// </summary>
     [Fact]
-    public void TheSurvivingAddKeepsItsOwnSizeAndTakesTheFreedLetter()
+    public void RemovingAnAddTakesItsSizeAndLeavesTheOthers()
     {
-        var tabs = TabPlan.For(Rect(21, 37), Options() with
-        {
-            // What is left after the first of two sized adds — 4 mm at 3, 3 mm at 17 — is removed.
-            TabMoves = [new TabMove { Index = -1, AlongNm = Mm(17), WidthNm = Mm(3) }],
-        });
+        var moves = TabPlan.WithAdd([], Mm(3));
+        moves = TabPlan.WithAdd(moves, Mm(17));
+        moves = TabPlan.WithAddSize(moves, 0, Mm(4), null);
+        moves = TabPlan.WithAddSize(moves, 1, Mm(3), null);
+
+        var before = TabPlan.For(Rect(21, 37), Options() with { TabMoves = moves });
+        Assert.Equal([Mm(4), Mm(3)], before.Where(t => t.Added).Select(t => t.WidthNm));
+
+        var tabs = TabPlan.For(Rect(21, 37), Options() with { TabMoves = TabPlan.WithoutAdd(moves, 0) });
 
         var survivor = Assert.Single(tabs, t => t.Added);
-        Assert.Equal("E", survivor.Letter);
+        Assert.Equal("F", survivor.Letter);
         Assert.Equal(Mm(3), survivor.WidthNm);
+        Assert.Equal(0, survivor.At.DistanceTo(new Point2(Mm(17), 0)), Mm(0.001));
     }
 
     /// <summary>
@@ -229,7 +243,7 @@ public sealed class TabLetterTests
         Assert.DoesNotContain(planned, t => !t.Added && t.Ordinal == 0);
         Assert.Equal(4, planned.Count);
 
-        var toolpath = OutlineOperation.Build([profile], options);
+        var toolpath = OutlineOperation.Build([profile], Keyed([profile], options));
 
         var runs = toolpath.Passes
             .Where(p => !p.Closed)
@@ -326,12 +340,21 @@ public sealed class TabLetterTests
                 new TabMove { Index = 2 },
                 new TabMove { Index = -1 },
                 new TabMove { Index = -1, AlongNm = Mm(3) },
-                new TabMove { Index = -1, AlongNm = Mm(17), WidthNm = Mm(4), HeightNm = Mm(0.3) },
+                new TabMove { Index = -1, AlongNm = Mm(17), WidthNm = Mm(4), HeightNm = Mm(0.3), Number = 1 },
             ],
             widened);
 
+        // Back to the board's width: the width goes, the height stays, and the entry keeps the
+        // number it was given on the way through.
         var (_, reset) = TabPlan.WithWidth(edits, widened, f, Mm(2), boardWidthNm: Mm(2));
-        Assert.Equal<TabMove>(moves, reset);
+        Assert.Equal<TabMove>(
+            [
+                new TabMove { Index = 2 },
+                new TabMove { Index = -1 },
+                new TabMove { Index = -1, AlongNm = Mm(3) },
+                new TabMove { Index = -1, AlongNm = Mm(17), HeightNm = Mm(0.3), Number = 1 },
+            ],
+            reset);
     }
 
     /// <summary>

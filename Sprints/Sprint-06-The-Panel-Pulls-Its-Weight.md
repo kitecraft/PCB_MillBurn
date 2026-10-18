@@ -67,6 +67,7 @@ careful one.
 | [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--fixed--found-by-code-review-2026-09-29-fixed-in-sprint-6) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
 | [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--fixed--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
 | [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs by letter, and one tab's width at a click | **Added mid-sprint** by the product owner, 2026-10-18, after story 2 reached the bench |
+| [6.74](../Documentation/06-Roadmap-and-Risks.md#674-hand-set-tab-changes-could-outlive-the-plan-they-numbered--defect--fixed--found-by-sprint-6s-xhigh-review-2026-10-18-fixed-in-sprint-6-story-6) + the debt | The sprint closes clean | **Added at the close** by the product owner, 2026-10-18: the sprint-wide `xhigh` review's findings, with the stories' own left-overs folded in — *"I really don't like tech debt"* |
 
 **The order is the owner's first, then by risk.** 6.71 was named before the picking opened. Story
 2 is second because it holds the sprint's only defect, and the defect is its first half. 6.54 is
@@ -738,6 +739,164 @@ rather than patched.
 9. **Two paints allocated per letter per frame.** Hoisted to statics. *Fixed.*
 10. **The letter lookup written three times.** One `TabHandleOf`, used by the shot flag, the popup
     flag and the apply path. *Fixed.*
+
+---
+
+## Story 6 — The sprint closes clean (the `xhigh` review, and the debt)
+
+**Problem.** The owner asked for a sprint-wide `/code-review` at `xhigh` before the release —
+*"These changes are deep and could have bad consequences"* — and it confirmed the headline: no
+unedited board's programs move, the 21 x 37 mm board's included. What it found was in projects
+that carry hand-set tabs, and on the UI thread: thirteen findings. Beside them, six things the
+stories had left open on purpose. The owner, on those: *"I really don't like tech debt. I prefer
+to complete the solution upon delivery with exceptions being weighed heavily."* And: *"fold the
+debt into the review findings."*
+
+**What.** All of it, as one story — the eighteen items below, except the README hero, which is a
+release task.
+
+**Done when** every finding is fixed or its exception argued; every program from every committed
+board is byte-identical to `main` apart from the panel outline's intended spread; and every new
+behaviour has a test that fails without it.
+
+### Closed — 2026-10-18
+
+**Hand-set tabs and the plan they numbered (6.74).** `TabPlan.KeyOf` fingerprints the pristine plan;
+`OutlineOptions`/`LayerOutputSettings.TabPlanKey` carry it beside the changes; every write stamps
+it. `OutlineOperation.AssignTabs` is now the one rule for *which board owns the changes* and *do
+they still fit it*, used by the program and the window alike — so the window can no longer show
+removals on one board while the program cuts another. Stale changes are refused in the program
+(header says so) and named in the check panel while they are; they are **kept**, apply again if the
+layout comes back, and the first gesture on the new layout starts afresh (`TabChangesToBuildOn`). A
+0.6.0 project's per-tab sizes are refused this way: tested on a real file the v0.6.0 command line
+saved, `Tests/Fixtures/MadeBy060*.millburn`.
+
+**Overlapping tabs.** `TabPlan.Gaps` merges overlapping tabs into one gap, their union; `SplitAt`
+cuts between gaps, so a narrow tab inside a wide one no longer starts a run inside the wide one's
+gap. The header names overlaps (*"Tabs B and E overlap, so they are cut as one gap 8.0 mm long"*),
+and the gestures refuse to make one (*"Tab A there would run into tab B … It stays where it was"*,
+seen by running `--move-tab`). Lone tabs come out exactly as before.
+
+**The header's account.** Clearance and the hand are said apart: *"… the straight edges hold N
+with clearance either side of each, and M after the hand-set changes."* "Every tab was removed by
+hand" only when removals were applied. **The project page** says the rebuild commands put hand-set
+tabs back.
+
+**The UI thread.** The tab overlay's cache keys on the geometry the realised-layer cache already
+shares, and on only the settings that move a tab — a preview landing no longer drops a drag, and
+the thickness slider no longer re-plans the panel per tick. **And the planner itself was the
+cost:** `ProfilePath.At` scanned every segment, three times per edge — 0.3 s per plan on the
+panel's frame. A binary search answering exactly what the scan answered (tested against the scan
+as a reference) took placement to 8 ms; the outline's shaping (0.13 s) is now cached and a
+gesture re-plans in under 10 ms. **Tiles** are shared by every scene drawn from the same geometry,
+reference-counted so the scene being replaced cannot free its successor's; board layers hand back
+the same ring list each time so a rebuild finds them. A planner exception is now a status line,
+not a crash in a property setter. Handles go with the board on Close project. A pan's press point
+no longer survives a lost capture into a phantom click-to-add.
+
+**One copy each.** `ProfilePath` is the one walk along the loop (the outline's private walk is
+gone, the planner's own copy too, with arithmetic kept identical). Add entries are found in one
+place (`TabPlan.Adds`) and changed through `WithAdd`/`WithAddMoved`/`WithoutAdd`, with
+`TabMove.IsAdd`/`IsRemoval` naming the two kinds; the view model's copies are gone.
+
+**The debt.**
+1. *Two stop lines racing* — `StopAnnouncement` gathers one Escape's two sentences into one line,
+   check first, however they finish.
+2. *A mislabelled setting* — `SettingsKeeper` has one method per setting (`SetBoardThickness`,
+   `SetTheme`, …), so a handler cannot name the wrong one; `Change` is private.
+3. *Writes that change nothing* — skipped, unless a held value is waiting, which then rides.
+4. *An added tab re-lettered by a removal* — `TabMove.Number`, given once; F stays F.
+5. *The persistence tests* — a real v0.6.0 file now stands in for "a project from before"; the
+   null-versus-absent weakness is recorded below as left.
+6. *The README hero* — a release task, by the owner's word.
+
+**Two doc comments** misplaced by earlier stories are back on their members.
+
+**By running.** All ten committed boards exported with `main`'s CLI and this branch's: every
+`.nc` and `.svg` byte-identical except `GridStripConnector_Panelized-Edge_Cuts.nc` (6.72's spread);
+the logs identical but for paths — run again after the review's fixes, the same. The v0.6.0
+per-tab-size file opens unchanged (*"unsaved changes: no"*), tab B at the board's width, and the
+check panel saying *"Tab changes on Board outline were made for a different tab layout … so they
+are not applied … They apply again if the layout comes back; moving or sizing a tab starts them
+afresh."* An overlapping `--move-tab` is refused by name. The settings
+file was restored after the runs that open a project (opening one adds it to the recent list —
+the existing behaviour, not this branch's). 1,476 unit + 28 golden tests, zero warnings.
+
+**Faults reintroduced deliberately**, each caught by name: stale changes applied anyway, overlaps
+not merged, heights in the fingerprint, the shortfall blamed on any change, survivors' numbers not
+pinned on removal, unchanged settings written, a held value forgotten by the skip, the joint stop
+line in arrival order, shared tiles freed by their first holder. One more was not: `>` for `>=` in
+the binary search changes nothing observable — at an exact segment end the next segment starts at
+the same point — so there is nothing for a test to catch.
+
+### What `/describe-test` found — 2026-10-18, nine runs
+
+Every file this story created or edited, one cold read each.
+
+- **`StopAnnouncementTests`, `CliScriptTests`**: clean.
+- **`SharedTilesTests`**: the second scene is now disposed even when an assertion fails, and the
+  rebuilt-tiles test checks it drew anything at all.
+- **`ProjectFromOlderBuildTests`**: the folder comparison only ever compared boards — both sides
+  used the old file's layer settings — and is renamed for that; the refusal is now required once and
+  in the outline's own program; the round-trip test pins index 0 and is renamed for what it shows
+  (the stamp and the change come back), since planning with a stamp is the planner's test.
+- **`SettingsKeeperTests`**: the undoing setters' writes were never counted — now they are, from a
+  record with something to undo; the machine case checks a second of its six values.
+- **`TabLetterTests`**: the removal test still built the post-removal state by hand; it now removes
+  through the planner's own `WithoutAdd`, two sized adds in, and checks the survivor keeps its size
+  and its letter F.
+- **`TabMoveTests`**: the program-gap test never checked where the moved tab went; it does now. Its
+  always-true `Spaced` assertion on an added tab predates the sprint and is left.
+- **`TabPlacementTests`**: the widened-tabs test now asserts the tabs really overlap, or its
+  accounting could pass without the case it is named for. The seam-curve test can pass with both
+  tabs on straight edges — older than the sprint, left.
+- **`TabSafetyTests`**: the two-boards test could not tell whose "N tabs" line it read — the boards
+  are now different sizes and it checks the cut itself; the fingerprint test varies a tab height
+  directly too; and the move test's comment no longer claims a letter it does not check.
+
+**Left, and why:** `LayerOutputPersistenceTests`' null checks cannot tell a null written from a
+field left out (story 5's read) — it is a property of the serialiser's defaults the project relies
+on deliberately, and a test of the JSON text would pin formatting rather than meaning.
+
+### What the code review found — 2026-10-18, medium
+
+Ten findings, nine fixed and one argued.
+
+1. **–2. Clearing stale tab changes was the wrong design.** After a preview, the clearing status
+   line was overwritten at once by *"Output changed…"*, so the changes vanished with no word; and
+   clearing was permanent where the cause often was not — a role toggled and toggled back, a
+   cutter's diameter undone. *Redesigned:* the changes are kept and refused, named in the check
+   panel while they are, and apply again when the layout comes back; the first gesture on the new
+   layout builds on nothing rather than reviving them (`ShowTabStaleness`, `TabChangesToBuildOn`).
+   The tabs window gets the same empty base.
+3. **`--tab-width` keeps the per-tab sizes and they are refused.** True, and now the intended
+   behaviour: they name tabs of the old layout and come back if the width does, as in the window.
+   The CLI's comment said otherwise and is corrected, and the header no longer reads as blaming an
+   old file — it names width, count, cutter or outline as the reasons a layout changes.
+4. **The thin- and narrow-tab advice counted refused sizes.** It now asks the plan whether they
+   apply — only when there are hand-set sizes, so an ordinary export pays nothing. *Fixed.*
+5. **A board whose tabs came to nothing, or whose planning threw, was shaped again on every output
+   change.** The answer is now remembered against its key, and the shape kept. *Fixed.*
+6. **The no-change skip lost a failed write.** The file locked, Save refused, the file freed, Save
+   pressed again with the same values — skipped, and the numbers lost at exit. The write now says
+   whether it reached the disk, and a refused one leaves the record unwritten so the next write
+   goes (`ARefusedWriteIsTriedAgain`). *Fixed.*
+7. **A 0.6.0 project's per-tab sizes are refused even where today's plan is the same.** *Argued,
+   and kept:* nothing in a 0.6.0 file says which plan its numbers meant, and on a non-rectangular
+   board they will have moved. Refusing is the only reading that cannot cut a thin web somewhere
+   nobody chose — and with finding 1's redesign it costs nothing permanent: the sizes stay in the
+   file, the panel says why they are not applied, and they are set again in a click each.
+8. **A double dispose could free shared tiles another scene was drawing.** A layer now releases
+   once, and a release past zero changes nothing. *Fixed.*
+9. **The tabs window shaped the outline from scratch** while the overlay held it shaped. It takes
+   the cached shape when the geometry and cutter match. *Fixed.*
+10. **Two doc comments stranded by this story's own edits** — `OutlineOptions`' and `BuildTiles'`.
+    *Fixed.*
+
+One more `/describe-test` run followed, on `SettingsKeeperTests`, which gained a test. It read
+sound; two preconditions were added — the undo cases now assert their starting record holds what
+each takes away, and the colour test that a setter really added its entry — or a "lacks" check
+proves nothing.
 
 ---
 
