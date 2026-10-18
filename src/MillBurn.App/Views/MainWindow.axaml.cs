@@ -174,10 +174,10 @@ public partial class MainWindow : Window
         }
 
         // **And this is where the settings a slider changed get written** — the placement save
-        // above writes the whole file, so anything held in memory during the session lands with
-        // it. Said here because 6.49 moved the board thickness off its property setter, and the
-        // question "then when is it written?" should be answerable from the code rather than by
-        // working out which other setting happens to save first.
+        // above writes the whole file, so anything `SettingsKeeper` holds as
+        // `WrittenWithTheNextWrite` lands with it. Said here because 6.49 moved the board
+        // thickness off its property setter, and the question "then when is it written?" should be
+        // answerable from the code rather than by working out which other setting saves first.
     }
 
     /// <summary>
@@ -762,7 +762,7 @@ public partial class MainWindow : Window
         // did not. Set on the view model, so it travels the path the menu item travels.
         if (args.Contains("--no-ruler", StringComparer.OrdinalIgnoreCase))
         {
-            vm.RememberRuler(false);
+            vm.OverrideRulerForThisSession(false);
         }
 
         // Pixels per millimetre and the board point to centre, so a shot can be taken at the zoom

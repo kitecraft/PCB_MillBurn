@@ -210,8 +210,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The saved library, reloaded when the tool editor changes it.</summary>
     public ToolLibrary Library { get; private set; } = ToolLibrary.LoadOrDefault();
 
-    /// <summary>Preferences that belong to the person, not to the board.</summary>
-    public AppSettings Settings { get; private set; } = AppSettings.LoadOrDefault();
+    /// <summary>
+    /// Preferences that belong to the person, not to the board — as the file holds them, or will
+    /// at the next write. Changed only through <see cref="_settings"/>, which decides when.
+    /// </summary>
+    public AppSettings Settings => _settings.Stored;
+
+    /// <summary>The settings, and the one place that says when a change to them is written (6.50).</summary>
+    private readonly SettingsKeeper _settings;
 
     public MillBurnProject Project => _project;
 
@@ -571,6 +577,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel()
     {
+        _settings = new SettingsKeeper(AppSettings.LoadOrDefault(), WriteSettings);
+
         // Restoring a saved preference is not the user changing anything, so it must not mark the
         // document dirty. Without this the app opens with unsaved changes it invented itself, and
         // the very first click asks whether to save an empty project.
@@ -596,38 +604,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Remembers where the window was, so it opens where it was left.</summary>
     public void SaveWindowPlacement(WindowPlacement placement) =>
-        SaveSettings(Settings with { Window = placement });
+        _settings.Change(SettingChange.WindowPlacement, s => s with { Window = placement });
 
     /// <summary>Remembers light or dark, so the app opens the way it was closed.</summary>
-    public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
+    public void SaveTheme(string? theme) =>
+        _settings.Change(SettingChange.Theme, s => s with { Theme = theme });
 
     /// <summary>
     /// Whether the viewport carries its scale strips.
     ///
     /// Written through to the settings file on every change rather than on close, so a crash does
-    /// not lose it and the View menu's tick is the stored value rather than a copy of it.
+    /// not lose it. The tick shows the stored choice, except in a session started with
+    /// <c>--no-ruler</c>, where it shows that override until the menu is first used — and which of
+    /// the two a choice is compared against is 6.62, and <see cref="SettingsKeeper.ChooseRuler"/>'s.
     /// </summary>
     public bool ShowRuler
     {
-        get => _rulerForThisSession ?? Settings.ShowRuler;
+        get => _settings.ShowRuler;
         set
         {
-            // **Against what the getter returns, not against the stored value.** Compared with the
-            // setting alone, a session started with `--no-ruler` could never turn them back on:
-            // the override says off, the file says on, so the menu renders unticked and ticking it
-            // asks for `true`, which equals the stored value, returns early, raises nothing — and
-            // the two-way binding snaps the tick straight back.
-            if (ShowRuler == value)
+            // Raised only on a change: with nothing raised, the two-way binding snaps the tick back
+            // to the value the getter still returns, which is what an unchanged choice should do.
+            if (_settings.ChooseRuler(value))
             {
-                return;
+                OnPropertyChanged();
             }
-
-            // The override has served its purpose the moment somebody uses the menu; leaving it
-            // would make the stored value unreachable for the rest of the session.
-            _rulerForThisSession = null;
-
-            SaveSettings(Settings with { ShowRuler = value });
-            OnPropertyChanged();
         }
     }
 
@@ -657,7 +658,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        SaveSettings(Settings with { PanelWidth = width });
+        _settings.Change(SettingChange.PanelWidth, s => s with { PanelWidth = width });
     }
 
     /// <summary>
@@ -681,7 +682,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(import);
         ArgumentNullException.ThrowIfNull(milling);
 
-        SaveSettings(Settings with
+        _settings.Change(SettingChange.Machine, s => s with
         {
             Machine = machine,
             DryRun = dryRun,
@@ -747,7 +748,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(framing);
 
-        SaveSettings(Settings with { Framing = framing });
+        _settings.Change(SettingChange.Framing, s => s with { Framing = framing });
         OnPropertyChanged(nameof(Framing));
 
         // Framing is read when a request is built, so a preview in flight is writing the old
@@ -793,7 +794,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             var sw = Stopwatch.StartNew();
             Adopt(ProjectFile.Open(path), sw.Elapsed);
-            SaveSettings(Settings.WithRecent(path));
+            _settings.Change(SettingChange.RecentProjects, s => s.WithRecent(path));
 
             // Opening is exactly when someone wants to know their board moved on without them.
             // Passive: it offers, it never applies.
@@ -816,7 +817,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
 
-        SaveSettings(Settings.WithoutRecent(path));
+        _settings.Change(SettingChange.RecentProjects, s => s.WithoutRecent(path));
         StatusMessage = $"{Path.GetFileName(path)} is not there any more, so it has been taken off the recent list.";
     }
 
@@ -831,7 +832,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             _project.ViewState = CaptureViewState();
             RecordOutputs();
             ProjectFile.Save(_project, path);
-            SaveSettings(Settings.WithRecent(path));
+            _settings.Change(SettingChange.RecentProjects, s => s.WithRecent(path));
             RefreshTitles();
             StatusMessage = $"Saved {Path.GetFileName(path)}.";
             return true;
@@ -1329,7 +1330,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Remembers the alignment test's hover height, which is a setting rather than a per-job number.</summary>
     public void SaveAlignHover(double hoverMm) =>
-        SaveSettings(Settings with { Align = Settings.Align with { HoverMm = hoverMm } });
+        _settings.Change(SettingChange.AlignHover, s => s with { Align = s.Align with { HoverMm = hoverMm } });
 
     /// <summary>
     /// Remembers where the alignment files go, so the next visit starts there.
@@ -1344,7 +1345,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         if (!string.Equals(Settings.Align.LastFolder, folder, StringComparison.Ordinal))
         {
-            SaveSettings(Settings with { Align = Settings.Align with { LastFolder = folder } });
+            _settings.Change(
+                SettingChange.AlignFolder, s => s with { Align = s.Align with { LastFolder = folder } });
         }
     }
 
@@ -1799,7 +1801,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 }
             }
 
-            SaveSettings(Settings with { LastExportFolder = folder, WriteDryRun = dryRun });
+            _settings.Change(
+                SettingChange.Export, s => s with { LastExportFolder = folder, WriteDryRun = dryRun });
 
             ReplaceExportWarnings(refusals);
 
@@ -2504,9 +2507,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         // A board layer is identified by its role, so the choice follows that role across every
         // project. A layer the scene invented has no role, so it is identified by its own id.
-        SaveSettings(row.Role is { } role
-            ? Settings.WithColour(role, hex)
-            : Settings.WithSceneColour(row.Id, hex));
+        _settings.Change(SettingChange.Colours, s => row.Role is { } role
+            ? s.WithColour(role, hex)
+            : s.WithSceneColour(row.Id, hex));
 
         Rebuild(TimeSpan.Zero);
     }
@@ -2516,9 +2519,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(row);
 
-        SaveSettings(row.Role is { } role
-            ? Settings.WithoutColour(role)
-            : Settings.WithoutSceneColour(row.Id));
+        _settings.Change(SettingChange.Colours, s => row.Role is { } role
+            ? s.WithoutColour(role)
+            : s.WithoutSceneColour(row.Id));
 
         Rebuild(TimeSpan.Zero);
     }
@@ -2526,7 +2529,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Puts every layer back to the built-in palette.</summary>
     public void ResetColours()
     {
-        SaveSettings(Settings with
+        _settings.Change(SettingChange.Colours, s => s with
         {
             LayerColours = System.Collections.Immutable.ImmutableDictionary<LayerRole, string>.Empty,
             SceneColours = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
@@ -2544,7 +2547,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(kind);
 
-        SaveSettings(Settings.WithSceneColour(kind.Id, $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}"));
+        _settings.Change(
+            SettingChange.Colours, s => s.WithSceneColour(kind.Id, $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}"));
         Rebuild(TimeSpan.Zero);
     }
 
@@ -2552,7 +2556,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(kind);
 
-        SaveSettings(Settings.WithoutSceneColour(kind.Id));
+        _settings.Change(SettingChange.Colours, s => s.WithoutSceneColour(kind.Id));
         Rebuild(TimeSpan.Zero);
     }
 
@@ -2622,10 +2626,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Rebuild(TimeSpan.Zero);
     }
 
-    private void SaveSettings(AppSettings settings)
+    /// <summary>
+    /// The keeper's write: the whole record to disk, and a status line when the disk says no.
+    /// *When* to call it is not decided here — that is <see cref="SettingsKeeper.PersistenceOf"/>.
+    /// </summary>
+    private void WriteSettings(AppSettings settings)
     {
-        Settings = settings;
-
         try
         {
             settings.Save();
@@ -2637,47 +2643,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Keeps a setting for this session without writing the file — 6.49.
-    ///
-    /// **For the settings a continuous control changes.** Every other caller of
-    /// <see cref="SaveSettings"/> is a discrete event: a theme picked, a file opened, a folder
-    /// chosen. The board thickness is a slider, snapping to 0.1 mm across 0.4–3.2 mm, so a
-    /// full-range drag called that twenty-eight times and wrote the JSON twenty-eight times — disk
-    /// I/O on the UI thread, in a loop, for a value nobody reads until the next board is imported,
-    /// with twenty-seven of the writes immediately superseded.
-    ///
-    /// **It still survives a restart**, because closing the window saves the placement, and that
-    /// goes through `SaveSettings` and writes the whole object — this value with it. So does any
-    /// other settings change made afterwards. What is lost is the value from a session that ended
-    /// in a crash, and for a default meaning *"where the next new board starts"* that is the right
-    /// trade against writing to disk twenty-eight times a drag.
+    /// Turns the rulers off for this session only, for the <c>--no-ruler</c> screenshot — never
+    /// written, unlike anything given to <see cref="SettingsKeeper.Change"/>. See
+    /// <see cref="SettingsKeeper.OverrideRulerForThisSession"/>.
     /// </summary>
-    private void RememberSettings(AppSettings settings) => Settings = settings;
-
-    /// <summary>
-    /// Turns the rulers off for this session only, for the <c>--no-ruler</c> screenshot.
-    ///
-    /// Session-only on purpose: a shot is taken against whatever settings file is on the machine,
-    /// and taking one must not leave the operator's rulers turned off afterwards.
-    /// </summary>
-    public void RememberRuler(bool shown)
+    public void OverrideRulerForThisSession(bool shown)
     {
-        _rulerForThisSession = shown;
+        _settings.OverrideRulerForThisSession(shown);
         OnPropertyChanged(nameof(ShowRuler));
     }
-
-    /// <summary>
-    /// The <c>--no-ruler</c> override, held apart from <see cref="Settings"/> on purpose.
-    ///
-    /// **It went through `RememberSettings` first, and that was wrong.** That method's own doc says
-    /// what the fault is: *"It still survives a restart, because closing the window saves the
-    /// placement, and that goes through `SaveSettings` and writes the whole object — this value with
-    /// it."* So a screenshot run would have turned the operator's rulers off for good. It did not,
-    /// only because `SavePlacement` returns early when the window was given a `--shot` or a
-    /// `--size` — a guard in a different file, for a different reason, that this was relying on
-    /// without saying so. A field the settings record never sees cannot be written out by anything.
-    /// </summary>
-    private bool? _rulerForThisSession;
 
     // ------------------------------------------------------------------ presenting
 
@@ -3402,10 +3376,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // Still remembered app-wide, but only as where the next new board starts — and held in
-        // memory rather than written, because this is a slider and the write was happening once
-        // per tick. See `RememberSettings`, and 6.49.
-        RememberSettings(Settings with { BoardThicknessMm = value });
+        // Still remembered app-wide, but only as where the next new board starts — and written with
+        // the next write rather than now, because this is a slider and the write was happening once
+        // per tick. The decision is `SettingsKeeper.PersistenceOf`'s; see 6.49.
+        _settings.Change(SettingChange.BoardThickness, s => s with { BoardThicknessMm = value });
         OnOutputChanged();
     }
 

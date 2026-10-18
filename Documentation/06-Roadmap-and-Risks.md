@@ -6132,7 +6132,7 @@ first.
 **Confirmed at the bench, 2026-09-26**: *"verified."* There is no test — the change is four lines
 in a view model `MillBurn.Tests` cannot reach, which is the third time this sprint.
 
-#### 6.50 Nothing can test the view model — **enhancement · open** — *three times in one sprint*
+#### 6.50 Nothing can test the view model — **enhancement · fixed** — *three times in one sprint*
 
 `MillBurn.Tests` does not reference `MillBurn.App`, so nothing in `MainViewModel` is reachable from
 a test. That is a deliberate boundary — the pipeline is testable precisely because it knows nothing
@@ -6184,6 +6184,35 @@ what the getter returns ([6.62](#662-the-rulers-could-not-be-turned-back-on-afte
 the five things a reason decides. The remaining row is the smaller of the two and the same shape,
 which is the argument for doing it next rather than for doing it now.
 
+**The last row is done, 2026-10-18 — sprint 6 story 4.** *When a setting is persisted* is
+`SettingsKeeper`, in `MillBurn.Core` beside `AppSettings`, shaped like 6.51: a `SettingChange` per
+handler that writes one, and `SettingsKeeper.PersistenceOf` as the table that says when each is
+written. The view model's nineteen `SaveSettings(Settings with { … })` calls became
+`_settings.Change(SettingChange.X, s => s with { … })` — the edit is handed the stored record, so
+nothing can build the next one from a copy with a session override folded into it — and what is
+left in the view model is the write itself and the status line when the disk says no.
+
+**`RememberSettings`' two meanings now have two names.** *Written with the next write* is
+`Persistence.WrittenWithTheNextWrite`, the board thickness's and nothing else's; *never written* is
+`OverrideRulerForThisSession`, held in a field the record never sees. The ruler's 6.62 rule —
+compare against what the getter returns, and drop the override once the menu is used — is
+`SettingsKeeper.ChooseRuler`.
+
+**Reintroduced deliberately, each failed by name** (`SettingsKeeperTests`): 6.49, the thickness
+written now — `AThicknessSliderDragWritesNothing`, `TheThicknessIsWrittenWithTheNextWrite`,
+`EveryOtherSettingIsWrittenAsItHappens`; 6.62, compared against the stored value —
+`AfterNoRulerTheMenuCanTurnThemBackOn`, `UsingTheMenuDropsTheOverride`,
+`ChoosingWhatIsShowingWritesNothing`; 6.62's second half, the override left in place — the first two
+of those; and the override sent through the old `RememberSettings` route — `ASessionOverrideIsNeverWritten`.
+
+**What a test still cannot see** is a handler passing the wrong `SettingChange` — the thickness
+slider calling itself `Theme` would write per tick again and pass every test here. That is the same
+residue 6.51 left (a caller naming the wrong `StaleBecause`), and the same answer: the name is in
+the call, where a reviewer reads it, instead of in which of two near-identical methods was chosen.
+
+**Closed as fixed.** All three rows of the table are behind seams, which was the whole of *done
+when*. `MillBurn.Tests` still does not reference the app, and nothing here argues it should.
+
 #### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · fixed** — *six paths and counting*
 
 Six methods in `MainViewModel` have to notice that an edit has made the drawn programs wrong, and
@@ -6213,7 +6242,7 @@ every one of the six calls it, and what it does is stated once. It is a small re
 value is that the seventh path cannot be written wrong — which matters more than the six, because
 the six are now correct and the seventh is the one nobody has thought of yet.
 
-**Depends on nothing**, but is worth far more with [6.50](#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint): behind a seam, this method is the
+**Depends on nothing**, but is worth far more with [6.50](#650-nothing-can-test-the-view-model--enhancement--fixed--three-times-in-one-sprint): behind a seam, this method is the
 single most testable thing in the view model, and the six faults above would each have been a
 failing test rather than a bench report or a review.
 

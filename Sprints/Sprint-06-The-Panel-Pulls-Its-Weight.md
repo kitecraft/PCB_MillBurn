@@ -52,7 +52,7 @@ V34 are each missing a part nobody has asked for since the row was written.
 gantry's squareness, which is a frame to be shimmed and not a line of code.
 
 **And the fourth story comes from its own entry's standard.**
-[6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint)
+[6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--fixed--three-times-in-one-sprint)
 was dropped from sprint 5 with one row left — *when a setting is persisted* — and the closing
 argument *"the same shape, which is the argument for doing it next rather than for doing it now"*.
 Next is now, and the sprint carrying a renderer story and an interaction story has room for the
@@ -65,7 +65,7 @@ careful one.
 | [6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--fixed--found-retaking-the-readmes-screenshots-2026-10-11-fixed-in-sprint-6) | The panel previews at a rate the README can stand beside | Retaking the hero, 2026-10-11; measured 2026-10-15; named first by the product owner |
 | [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6) + [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs spread round the panel, and a hand can move one | The workshop, 2026-10-11, on the same panel; folded at the picking, 2026-10-16 |
 | [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--fixed--found-by-code-review-2026-09-29-fixed-in-sprint-6) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
-| [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
+| [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--fixed--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
 
 **The order is the owner's first, then by risk.** 6.71 was named before the picking opened. Story
 2 is second because it holds the sprint's only defect, and the defect is its first half. 6.54 is
@@ -568,6 +568,74 @@ than the gap.
 **Done when** the decision of when a setting is written is reachable from a unit test with no
 window in it, 6.49 and 6.62 re-introduced deliberately each fail a test by name — the standard
 6.51 set — and `RememberSettings`' two meanings are two names no reviewer can conflate.
+
+### Closed — 2026-10-18
+
+**`SettingsKeeper`, in `MillBurn.Core`, shaped like 6.51.** `SettingChange` has one member per
+handler that writes a setting (twelve), and `SettingsKeeper.PersistenceOf` is the table that says
+when each is written — eleven `WrittenNow`, and the board thickness `WrittenWithTheNextWrite`. The
+view model's nineteen `SaveSettings(Settings with { … })` calls are now
+`_settings.Change(SettingChange.X, s => s with { … })`: the edit is handed the *stored* record, so no
+handler can build the next one from a copy a session override has been folded into. `Settings` is a
+read-only view of `Stored`; what is left in the view model is `WriteSettings`, the disk write and its
+status line.
+
+**The two names.** *Written with the next write* is `Persistence.WrittenWithTheNextWrite`; *never
+written* is `OverrideRulerForThisSession` (renamed from `RememberRuler` in the window too), held in a
+field the record never sees. 6.62's rule is `ChooseRuler`, which returns whether the view changed,
+so the `ShowRuler` setter is four lines.
+
+**Done-when, line by line.** Reachable without a window: `SettingsKeeperTests`, ten tests, no
+Avalonia. Reintroduced deliberately with the keeper restored after, each failing by name — 6.49
+(thickness `WrittenNow`): `AThicknessSliderDragWritesNothing`, `TheThicknessIsWrittenWithTheNextWrite`,
+`EveryOtherSettingIsWrittenAsItHappens`; 6.62 (compared against the stored value):
+`AfterNoRulerTheMenuCanTurnThemBackOn`, `UsingTheMenuDropsTheOverride`,
+`ChoosingWhatIsShowingWritesNothing`; 6.62's second half (override not dropped): the first two of
+those; the override sent the old `RememberSettings` way: `ASessionOverrideIsNeverWritten`.
+
+**What no test sees**, and is said in 6.50's entry: a handler naming the wrong `SettingChange`. It is
+6.51's residue in the same shape, and the answer is the same — the name is in the call, where a
+reviewer reads it.
+
+**By running.** A `--no-ruler` shot and a plain one of the test board: the first draws no strips,
+and the settings file's MD5 is `a84a53ec…` before and after both. 6.50 is closed as fixed — all
+three rows of its table are behind seams. 1,419 unit + 28 golden tests, zero warnings.
+
+### What `/describe-test` found — 2026-10-18, one run
+
+- **`SettingsKeeperTests`**: two tightened, nothing wrong. The cold read noticed that
+  `ASettingWithNoRuleChangesNothing` could not tell "refused before the edit runs" from "ran and
+  discarded" — the edit now records that it ran, and the test asserts it did not; and that
+  `ChoosingWhatIsShowingWritesNothing` never looked at `Stored`, so a choice that changed the record
+  without writing it would pass — it now asserts the stored ruler is untouched. Its other two notes
+  were read and left: `EverySettingSaysWhenItIsWritten` would pass a catch-all arm returning a valid
+  value, but the table's default arm throws and the next test pins that; and in the 6.62 test the
+  written `ShowRuler` being true is also the default, but the fault it guards writes nothing at all,
+  which the single-write assertion catches.
+
+### What the code review found — 2026-10-18, medium
+
+No correctness fault: every handler kept its timing, `Stored` is still assigned before the write,
+and the override is dropped by the menu exactly as before. Seven findings; three acted on.
+
+1. **`SettingChange.Ruler` passed straight to `Change` skipped the override drop** — a later handler
+   writing the ruler that way would store a value the viewport never showed: 6.62 through the seam
+   built against it. `Change` now ends the override for any stored ruler choice, and
+   `AnyStoredRulerChoiceEndsTheOverride` says so (1,420 unit tests). *Fixed.*
+2. **Nothing ties a handler to the label it passes.** True, and the residue the Closed block and
+   6.50's entry already name. *Left.*
+3. **The close-handler comment was left unwrapped at 133 columns.** *Fixed.*
+4. **`ShowRuler`'s doc still said the tick is the stored value**, untrue under `--no-ruler`.
+   *Fixed.*
+5. **Skip the write when the edit changed nothing.** *Left, and it is a trap as offered:* the
+   thickness rides on the close-time placement write, so comparing the placement edit against a
+   `Stored` that already holds the new thickness would find "no change" and skip the one write the
+   thickness was waiting for — 6.49's survive-a-restart half, broken. Doing it right needs a
+   pending flag; the saving is a rare second write of a few hundred bytes. Not this story.
+6. **Put persistence on the enum member instead of a switch.** The throwing default is the forcing
+   function, the same one `Staleness.Of` uses and its sweep test catches before any handler can.
+   *Left.*
+7. **`/describe-test` not shown as run.** It had run; recorded above. *No change.*
 
 ---
 
