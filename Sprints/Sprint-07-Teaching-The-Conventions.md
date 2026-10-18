@@ -113,10 +113,13 @@ a board.
      file deliberately not written.
    - **D. The status bar's right-hand side**: the board's layers, objects and vertices, how long it
      took to load, and the frame time.
-   - **E. Where zero is**: the rulers and the pointer readout, which say what the machine will call
-     zero — the board's lower-left corner, or the stock's on a job built on stock. A wrong work zero
-     is the costliest mistake a new user makes. The step closes by naming **Help ▸ Keyboard and
-     mouse**.
+   - **E. Where zero is, and how to measure**: the rulers and the pointer readout, which say what
+     the machine will call zero — the board's lower-left corner, or the stock's on a job built on
+     stock; a wrong work zero is the costliest mistake a new user makes. Then the gestures nobody
+     finds alone, on the same rulers: scroll to zoom, drag to pan, and **Shift-drag to measure** —
+     the owner, 2026-10-18: *"no-one will know unless we tell them."* The step invites a try: the
+     callout stays until a Shift-drag has been made or the step is skipped. It closes by naming
+     **Help ▸ Keyboard and mouse** for the rest.
 2. **The first save** → the status bar's message area: *this is where the app tells you things* —
    the sentence that started 6.7, kept as the entry wrote it.
 3. **The first time Findings is opened**: each finding is clickable and takes the viewport to the
