@@ -2028,7 +2028,8 @@ than discovered after.
 - **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction — built, then parked. See 6.16.
 - **The stock's alignment holes marked in the SVGs**, on a layer of their own, so a burn can be registered on the holes the mill made. See 6.17.
 - Material-removal simulation as a first-class view and test oracle.
-- Rest machining / multi-tool bulk clearing.
+- **Copper clearing**: mill away the copper the design does not use, rather than only isolating round it. See 6.75.
+- **Multi-tool rest machining**: a big bit clears what it can reach and a small one follows only where the big one could not. See 6.76.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
@@ -7384,3 +7385,78 @@ tabs dropped over each other were cut as something neither the header nor the pi
 window chose differently which board in a shared outline the changes belonged to (now one rule,
 `AssignTabs`); the header blamed the hand for the edges' own shortfall; and the project page's
 rebuild commands dropped hand positions without a word.
+
+#### 6.75 Copper clearing — **enhancement · open** — *asked for by the product owner, 2026-10-18*
+
+From the product owner, opening sprint 7: *"Copper clearing."* Named by the competitor survey of the
+same day as the gap most of them share — FlatCAM's non-copper clearing, CopperCAM's copper-removal
+hatching, Gerbex's and PCB-GCode's rubout all do it, and MillBurn does not.
+
+**What it is.** Isolation cuts a channel round every net and leaves the rest of the sheet as
+copper — floating islands and all. Clearing removes the copper the design does not ask for: the
+region inside the board outline that is neither copper artwork nor already cut. On a mill-only
+board — no etch — that is the difference between a board that looks and behaves like the design
+and one carrying a sheet of unconnected copper between its traces.
+
+**What already exists, and what it is built for.**
+- `PocketOperation` clears an area ring by ring, inward from its boundary (G10). It was written
+  for **soldermask relief**, tens of microns deep, and is the right engine: the region to clear
+  is the board's area minus the copper, minus a clearance — a polygon this pipeline already
+  computes the pieces of.
+- Isolation is already **width-driven** (G9, `IsolationWidthNm`): a wide enough isolation width
+  is a crude clearing today, lap after lap round each net. Clearing proper is cheaper and
+  complete: it reaches the middle of a large open area that laps would never meet.
+- 02 §5 item 5 sketched it as *"copper pour removal (mill everything)"*, with rest machining
+  (6.76) as what makes it affordable: *"on a ground-plane board this is the difference between
+  12 minutes and 90 minutes"*.
+
+**Decided by the owner, 2026-10-18** — the recommendations taken as they stood; added to the list
+of requests, not yet to a sprint:
+1. **Which copper:** everything inside the outline that is not artwork, keeping a clearance round
+   every net. An unconnected area someone drew deliberately is artwork, so it stays.
+2. **When:** per copper layer, **off by default**. On the paint-resist laser workflow the etch
+   already clears, so this serves the mill-only board.
+3. **Which bits:** MillBurn proposes them from the library — the widest flat bit that fits for the
+   bulk, the finest needed for what is left — and either can be overridden; the same idea as the
+   single-bit `ToolChooser` today.
+
+**Done when** a copper layer can be set to clear its unused copper, the program cuts the region
+the picture shows and no copper the design uses (checked against the electrical check: no net
+split, no net joined), and the header says how much area was cleared with which bit.
+
+#### 6.76 Multi-tool rest machining — **enhancement · open** — *asked for by the product owner, 2026-10-18*
+
+From the product owner, opening sprint 7: *"Multi-tool rest machining."* Also on the competitor
+survey's gap list: pcb2gcode milling with several diameters, FlatCAM's and CopperCAM's
+roughing-then-finishing.
+
+**What it is.** A large bit clears everything it can reach, quickly; a small bit then cuts only
+the places the large one could not get into — the tight gaps between pads, the inside corners —
+instead of going round the whole job a second time. The small bit's program is the *rest*: the
+region the big one was asked to remove, minus the region its swept path actually did.
+
+**Where it pays.**
+- **Clearing (6.75)** is the main customer: a 2 mm end mill for the open areas and a 0.2 mm V-bit
+  for the detail, where the V-bit alone would take hours on a ground-plane board.
+- **Isolation** is the second: 02 §5 item 3 sketched *"use a narrower tool here"* — a wide bit
+  for the board, and a fine one confined to the places where the gap between nets is narrower than
+  the wide bit, instead of refusing or cutting the whole board with the fine one.
+
+**What already exists.** One tool per operation, chosen by `ToolChooser` (widest that fits and
+reaches); per-bit programs and bit-change companion pages (6.11, G11), which a second tool's
+program slots into; and the electrical check, which can verify that the two programs together
+neither split nor join a net.
+
+**Decided by the owner, 2026-10-18** — the recommendations taken as they stood; added to the list
+of requests, not yet to a sprint:
+1. **Clearing first**, with rest machining built for clearing in the same story as 6.75. Rest
+   machining for isolation — the fine bit confined to where nets are closer than the wide one can
+   cut — follows as a story of its own.
+2. **MillBurn proposes the pair** from the library (widest flat bit that fits for the bulk, finest
+   needed for the rest); the operator can override either.
+3. **One program per bit**, the per-bit split 6.11 already makes, so a machine without a tool
+   changer is told where to change.
+
+**Done when** an operation can be cut with two bits, the second program visits only the
+material the first could not reach (measured: its cutting length against cutting the whole job
+with the small bit), and the two together pass the electrical check.
