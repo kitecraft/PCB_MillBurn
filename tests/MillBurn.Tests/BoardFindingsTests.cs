@@ -373,6 +373,34 @@ public sealed class BoardFindingsTests(ITestOutputHelper output)
         Assert.True(result.Cancelled, "a run that stopped part way reported itself complete");
         Assert.NotEmpty(result.Layers);
         Assert.True(result.Layers.Count < whole.Layers.Count, "the run was not actually stopped");
+
+        // And it carries the banner the window will show over its partial list — asserted on the
+        // genuinely stopped run, not on a record built for the purpose, so this is the line that
+        // fails if a stopped run ever stops announcing itself (6.54).
+        Assert.NotNull(result.StoppedBanner);
+    }
+
+    /// <summary>
+    /// A stopped run carries its own banner, and a finished one carries none (6.54).
+    ///
+    /// The sentence lives on the result rather than in the window, which is the whole fix's test
+    /// story: the banner was written, correct and unreachable for three releases, and nothing
+    /// could say so because the words sat in Avalonia where no test reaches. The window now shows
+    /// exactly this string, so a banner that stops appearing is this test failing — or a one-line
+    /// window change that a screenshot catches.
+    /// </summary>
+    [Fact]
+    public void AStoppedRunCarriesItsOwnBannerAndAFinishedOneDoesNot()
+    {
+        var stopped = new BoardFindings.Result([], TimeSpan.FromSeconds(1), Cancelled: true);
+        var finished = new BoardFindings.Result([], TimeSpan.FromSeconds(1), Cancelled: false);
+
+        output.WriteLine(stopped.StoppedBanner ?? "(none)");
+
+        Assert.NotNull(stopped.StoppedBanner);
+        Assert.Contains("stopped before it finished", stopped.StoppedBanner, StringComparison.Ordinal);
+        Assert.Contains("part of the answer", stopped.StoppedBanner, StringComparison.Ordinal);
+        Assert.Null(finished.StoppedBanner);
     }
 
     /// <summary>

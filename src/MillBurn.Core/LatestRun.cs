@@ -19,7 +19,16 @@ public sealed class LatestRun : IDisposable
     private CancellationTokenSource? _current;
     private bool _disposed;
 
-    /// <summary>True while a run has been begun and neither finished nor been superseded.</summary>
+    /// <summary>
+    /// True while a run is still working: begun, and not yet finished, superseded, cancelled or
+    /// stopped.
+    ///
+    /// A *stopped* run reads false here while it is still the latest and about to publish — the
+    /// work is over, the announcement is not. Callers gating busy indicators on this get the
+    /// right answer (nothing is computing any more); a caller that needs "has the stopped run
+    /// said its piece yet" is asking about <see cref="Finish"/>, which no property can answer
+    /// without the answer going stale in the caller's hand.
+    /// </summary>
     public bool IsRunning
     {
         get
@@ -85,6 +94,36 @@ public sealed class LatestRun : IDisposable
         {
             Cancel(_current);
             _current = null;
+        }
+    }
+
+    /// <summary>
+    /// Asks the current run to stop, without disowning it.
+    ///
+    /// The difference from <see cref="Cancel()"/> is the whole feature (6.54). A run that was
+    /// *superseded or abandoned* must publish nothing — the newer run owns the status line, and
+    /// an invalidated preview describes a board that no longer exists — so <see cref="Cancel()"/>
+    /// clears the current run and <see cref="Finish"/> then refuses it. A run the operator
+    /// *stopped* is a different thing: it is still the latest, nobody is replacing its answer,
+    /// and what it has so far is worth showing as the partial answer it is, named as one. So a
+    /// stop cancels the token and leaves the run installed: its own <see cref="Finish"/> still
+    /// returns true, and the "stopped" status line and banner — written the day the flags were,
+    /// reachable for the first time today — are its to publish. A successor still wins: a stop
+    /// followed by <see cref="Begin"/> is supersession, exactly as if nothing had stopped.
+    /// </summary>
+    /// <returns>True if there was a run to stop; false when nothing was running, so a caller can
+    /// leave a keystroke unswallowed.</returns>
+    public bool Stop()
+    {
+        lock (_gate)
+        {
+            if (_current is not { IsCancellationRequested: false })
+            {
+                return false;
+            }
+
+            Cancel(_current);
+            return true;
         }
     }
 

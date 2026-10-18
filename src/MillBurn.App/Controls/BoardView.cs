@@ -93,6 +93,58 @@ public sealed class BoardView : Control
         set => SetValue(MarkerProperty, value);
     }
 
+    /// <summary>
+    /// The tabs and the cut path they slide along, or null when the board has none to offer.
+    ///
+    /// The control owns the gesture and nothing else: which tab is hot, which is being dragged and
+    /// where the pointer has slid it live on screen. What a drop *means* — the projection onto the
+    /// planner's own arc length, the settings write, the re-plan — belongs to whoever set this
+    /// property and arrives back through the events below.
+    /// </summary>
+    public static readonly StyledProperty<TabOverlay?> TabsProperty =
+        AvaloniaProperty.Register<BoardView, TabOverlay?>(nameof(Tabs));
+
+    public TabOverlay? Tabs
+    {
+        get => GetValue(TabsProperty);
+        set => SetValue(TabsProperty, value);
+    }
+
+    /// <summary>A tab was dropped: which one, and where the hand left it, in board millimetres.</summary>
+    public event EventHandler<TabGestureEventArgs>? TabMoved;
+
+    /// <summary>An empty stretch of the cut path was clicked: a tab belongs there.</summary>
+    public event EventHandler<TabGestureEventArgs>? TabAddRequested;
+
+    /// <summary>A handle was right-clicked: that tab should go.</summary>
+    public event EventHandler<TabGestureEventArgs>? TabRemoveRequested;
+
+    /// <summary>
+    /// A handle was clicked without being dragged: that tab's own width is wanted. Where is the
+    /// tab's centre, in board millimetres; the pointer is where a popup belongs.
+    /// </summary>
+    public event EventHandler<TabGestureEventArgs>? TabClicked;
+
+    /// <summary>The handle under the pointer, the one being dragged, and where it has slid to.</summary>
+    private int _hotTab = -1;
+    private int _dragTab = -1;
+    private Point? _dragAt;
+
+    /// <summary>
+    /// Where a press on a handle landed on screen, until the pointer has moved far enough from it
+    /// to be a drag. Null once it has: from then on, letting go drops the tab rather than clicking it.
+    /// </summary>
+    private Point? _tabPressedScreen;
+
+    /// <summary>
+    /// How far a press on a handle may wander before it is a drag, in pixels — the same slop a
+    /// click on the empty path is allowed, because a hand on a mouse never moves zero.
+    /// </summary>
+    private const double ClickSlop = 3;
+
+    /// <summary>Where the last pan began on screen, for telling a click from a drag on release.</summary>
+    private Point? _pressedScreen;
+
     /// <summary>Where a measuring drag started, in board millimetres, or null when none is running.</summary>
     private Point? _measureFrom;
 
@@ -130,7 +182,7 @@ public sealed class BoardView : Control
         // `OriginName` is in, because the line under the readout is drawn from it: on a job built on
         // stock it changes without the scene's own reference changing.
         AffectsRender<BoardView>(
-            SceneProperty, ShowRulerProperty, OriginNameProperty, MarkerProperty);
+            SceneProperty, ShowRulerProperty, OriginNameProperty, MarkerProperty, TabsProperty);
         FocusableProperty.OverrideDefaultValue<BoardView>(true);
     }
 
@@ -153,17 +205,119 @@ public sealed class BoardView : Control
     /// </summary>
     public Point? BoardPointAt(Point screen)
     {
+        return CurrentFrame() is { } frame
+            ? new Point(frame.BoardX((float)screen.X), frame.BoardY((float)screen.Y))
+            : null;
+    }
+
+    /// <summary>
+    /// The mapping between the board's millimetres and the screen as things stand — the same frame
+    /// the ruler, the marker and the tab handles all draw with, so a pick cannot disagree with the
+    /// picture it is picking from.
+    /// </summary>
+    private RulerFrame? CurrentFrame()
+    {
         if (Scene is not { } scene || scene.Bounds.IsEmpty || _scale <= 0)
         {
             return null;
         }
 
-        var frame = new RulerFrame(
+        return new RulerFrame(
             _scale,
             (scene.Bounds.Left * _scale) + _offsetX,
             (scene.Bounds.Bottom * _scale) + _offsetY);
+    }
 
-        return new Point(frame.BoardX((float)screen.X), frame.BoardY((float)screen.Y));
+    /// <summary>
+    /// The tab handle under a screen point, or -1. The nearest within reach, not the first: two
+    /// handles can crowd at a corner, and picking by list order would grab the one underneath.
+    /// </summary>
+    private int HandleAt(Point screen)
+    {
+        if (Tabs is not { } tabs || CurrentFrame() is not { } frame)
+        {
+            return -1;
+        }
+
+        var best = -1;
+        var bestDistance = (double)TabHandles.HitRadius;
+
+        for (var i = 0; i < tabs.Tabs.Count; i++)
+        {
+            var dx = frame.ScreenX(tabs.Tabs[i].At.X) - screen.X;
+            var dy = frame.ScreenY(tabs.Tabs[i].At.Y) - screen.Y;
+            var distance = Math.Sqrt((dx * dx) + (dy * dy));
+
+            if (distance <= bestDistance)
+            {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// The nearest place on the cut path to a screen point: where it is in board millimetres, and
+    /// how many pixels away the pointer was.
+    ///
+    /// Screen pixels and not millimetres, because the slop a finger needs is a fact about the
+    /// pointer rather than about the board: 10 px is 10 px at any zoom. The geometry's own
+    /// arc-length answer is the view model's business, through the planner's walk; this is only
+    /// "near enough to mean the path, and roughly where".
+    ///
+    /// **A second projection on purpose, which `/code-review` rightly questioned.** The planner's
+    /// `ProfilePath` is the one copy of the *arc-length* arithmetic, and every committed position
+    /// goes through it — the drop event hands the view model a point, and the view model projects.
+    /// This loop answers a different question in a different space — pixels from the picture, for
+    /// the live slide and the hit slop — over the overlay's own polyline, which is all this
+    /// control is allowed to know: the Viewer's overlay type cannot carry a Cam type, and handing
+    /// the control a projection callback would couple it to the planner for a picture-only answer
+    /// the commit re-derives anyway.
+    /// </summary>
+    private (Point At, double DistancePx)? NearestOnProfile(Point screen)
+    {
+        if (Tabs is not { } tabs || tabs.Profile.Count < 2 || CurrentFrame() is not { } frame)
+        {
+            return null;
+        }
+
+        var bestDistance = double.MaxValue;
+        var bestX = 0.0;
+        var bestY = 0.0;
+
+        for (var i = 0; i < tabs.Profile.Count; i++)
+        {
+            var a = tabs.Profile[i];
+            var b = tabs.Profile[(i + 1) % tabs.Profile.Count];
+
+            double ax = frame.ScreenX(a.X);
+            double ay = frame.ScreenY(a.Y);
+            double bx = frame.ScreenX(b.X);
+            double by = frame.ScreenY(b.Y);
+
+            double dx = bx - ax;
+            double dy = by - ay;
+            var lengthSquared = (dx * dx) + (dy * dy);
+
+            var t = lengthSquared <= 0
+                ? 0
+                : Math.Clamp((((screen.X - ax) * dx) + ((screen.Y - ay) * dy)) / lengthSquared, 0, 1);
+
+            var nx = ax + (t * dx);
+            var ny = ay + (t * dy);
+            var distance = Math.Sqrt(((screen.X - nx) * (screen.X - nx)) + ((screen.Y - ny) * (screen.Y - ny)));
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestX = frame.BoardX((float)nx);
+                bestY = frame.BoardY((float)ny);
+            }
+        }
+
+        return (new Point(bestX, bestY), bestDistance);
     }
 
     public event EventHandler? StatsUpdated;
@@ -306,6 +460,17 @@ public sealed class BoardView : Control
         {
             ClearMarker();
         }
+
+        // A new overlay is a new set of tabs: whatever was hot or in hand named an index into the
+        // old list, and an index into the wrong list is the planner's own review fault — a gesture
+        // landing on whichever tab now sits in that slot.
+        if (change.Property == TabsProperty)
+        {
+            _hotTab = -1;
+            _dragTab = -1;
+            _dragAt = null;
+            _tabPressedScreen = null;
+        }
     }
 
     /// <summary>
@@ -317,6 +482,18 @@ public sealed class BoardView : Control
     /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        // Escape drops a grabbed tab back where it was — before it dismisses anything else,
+        // because the thing in hand is the thing being escaped from.
+        if (e.Key == Key.Escape && _dragTab >= 0)
+        {
+            _dragTab = -1;
+            _dragAt = null;
+            _tabPressedScreen = null;
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && Marker is not null)
         {
             ClearMarker();
@@ -369,6 +546,22 @@ public sealed class BoardView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         var props = e.GetCurrentPoint(this).Properties;
+        var position = e.GetPosition(this);
+
+        // Right-click on a handle removes that tab. On a handle only: everywhere else the right
+        // button keeps meaning nothing, so a slip of the finger over bare copper cannot unhold a
+        // board.
+        if (props.IsRightButtonPressed)
+        {
+            if (HandleAt(position) is var removed && removed >= 0)
+            {
+                TabRemoveRequested?.Invoke(this, new TabGestureEventArgs(removed, default));
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (!props.IsLeftButtonPressed && !props.IsMiddleButtonPressed)
         {
             return;
@@ -377,8 +570,11 @@ public sealed class BoardView : Control
         // **Shift-drag measures instead of panning.** A tape measure, not a drawing tool: it is not
         // saved, nothing else reads it, and letting go ends it. Shift because the plain drag is pan
         // and pan is the thing the hand does without thinking.
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && BoardPointAt(e.GetPosition(this)) is { } start)
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && BoardPointAt(position) is { } start)
         {
+            // A measure is not a pan, so whatever press a pan left behind is not this one's: its
+            // release must not read as a click on the cut path.
+            _pressedScreen = null;
             _measureFrom = start;
             PointerAt = start;
             e.Pointer.Capture(this);
@@ -387,7 +583,22 @@ public sealed class BoardView : Control
             return;
         }
 
-        _dragOrigin = e.GetPosition(this);
+        // A left press on a handle takes hold of the tab instead of the view. Left only: the
+        // middle button stays a pan everywhere, so there is always a way to move the view with a
+        // handle under the pointer.
+        if (props.IsLeftButtonPressed && HandleAt(position) is var grabbed && grabbed >= 0)
+        {
+            _dragTab = grabbed;
+            _dragAt = Tabs is { } tabs ? new Point(tabs.Tabs[grabbed].At.X, tabs.Tabs[grabbed].At.Y) : null;
+            _tabPressedScreen = position;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+            InvalidateVisual();
+            return;
+        }
+
+        _dragOrigin = position;
+        _pressedScreen = position;
         _dragOffsetX = _offsetX;
         _dragOffsetY = _offsetY;
         e.Pointer.Capture(this);
@@ -402,8 +613,50 @@ public sealed class BoardView : Control
         // makes it a thing you glance at rather than a thing you operate.
         PointerAt = BoardPointAt(p);
 
+        // A grabbed tab slides along the cut path, not under the pointer: the pointer can be
+        // anywhere, the handle goes to the nearest place on the loop. That is what carries it round
+        // a corner, and what makes "off the outline" not possible rather than merely refused.
+        if (_dragTab >= 0)
+        {
+            // Inside the slop the press is still a click, and the handle stays where it was: a
+            // click that nudged its tab a tenth of a millimetre would write a hand-set position
+            // nobody chose.
+            if (_tabPressedScreen is { } pressed)
+            {
+                if (Math.Abs(p.X - pressed.X) + Math.Abs(p.Y - pressed.Y) < ClickSlop)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                _tabPressedScreen = null;
+            }
+
+            if (NearestOnProfile(p) is { } nearest)
+            {
+                _dragAt = nearest.At;
+            }
+
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         if (_dragOrigin is not { } origin)
         {
+            // The handle under the pointer lights up, and the cursor says "take hold". Only
+            // redrawn when the answer changes: hovering is the common case and must stay free.
+            var hot = HandleAt(p);
+
+            if (hot != _hotTab)
+            {
+                _hotTab = hot;
+                Cursor = hot >= 0
+                    ? new Cursor(StandardCursorType.Hand)
+                    : new Cursor(StandardCursorType.Cross);
+                InvalidateVisual();
+            }
+
             // Only when the move changes something drawn. A measuring drag always does; a bare
             // hover does when the rulers are on, because the readout is part of the frame; with
             // them off nothing moves and a sweep across a dense board should cost nothing, which is
@@ -425,6 +678,57 @@ public sealed class BoardView : Control
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
+        // Dropping a grabbed tab commits it: the view model projects the point onto the planner's
+        // own arc length and writes the override. The control's own projected point is only the
+        // live picture; the authoritative one comes back through the Tabs property re-planned.
+        if (_dragTab >= 0)
+        {
+            // A press that never became a drag is a click: it asks about the tab rather than
+            // moving it. Before this, a click on a handle "dropped" the tab where it already was,
+            // which wrote it as hand-placed and turned its circle solid for nothing.
+            if (_tabPressedScreen is not null)
+            {
+                if (_dragAt is { } here)
+                {
+                    TabClicked?.Invoke(this, new TabGestureEventArgs(_dragTab, here));
+                }
+            }
+            else if (_dragAt is { } at)
+            {
+                TabMoved?.Invoke(this, new TabGestureEventArgs(_dragTab, at));
+            }
+
+            _dragTab = -1;
+            _dragAt = null;
+            _tabPressedScreen = null;
+            End();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
+
+        // A press that went nowhere is a click, and a click on an empty stretch of the cut path
+        // asks for a tab there. Three pixels of slop, because a hand on a mouse never moves zero;
+        // a real pan is hundreds. Left only, said explicitly — `/code-review` found a stationary
+        // middle-click adding a tab, because the pan path that set `_pressedScreen` takes either
+        // button and this check never asked which. The middle button pans, everywhere, full stop.
+        if (_pressedScreen is { } pressed
+            && Tabs is not null
+            && e.InitialPressMouseButton == MouseButton.Left)
+        {
+            var p = e.GetPosition(this);
+            var moved = Math.Abs(p.X - pressed.X) + Math.Abs(p.Y - pressed.Y);
+
+            if (moved < 3
+                && HandleAt(p) < 0
+                && NearestOnProfile(p) is { } nearest
+                && nearest.DistancePx <= TabHandles.HitRadius)
+            {
+                TabAddRequested?.Invoke(this, new TabGestureEventArgs(-1, nearest.At));
+            }
+        }
+
+        _pressedScreen = null;
         End();
         e.Pointer.Capture(null);
     }
@@ -439,6 +743,17 @@ public sealed class BoardView : Control
     /// </summary>
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
+        // A drag the window lost is a drag nobody finished: the tab goes back where it was, because
+        // committing a position the hand never let go of would write a place nobody chose.
+        _dragTab = -1;
+        _dragAt = null;
+        _tabPressedScreen = null;
+
+        // **And a pan's press point.** Left set, a pan interrupted here — Alt-Tab, a dialog — kept
+        // its origin, and a later stationary Shift-measure from near the same spot released onto
+        // it as a click on the cut path: a tab nobody asked for, added by hand (sprint 6's `xhigh`
+        // review).
+        _pressedScreen = null;
         End();
         base.OnPointerCaptureLost(e);
     }
@@ -459,6 +774,17 @@ public sealed class BoardView : Control
     protected override void OnPointerExited(PointerEventArgs e)
     {
         PointerAt = null;
+
+        // The hot handle goes out and the cursor goes back when the pointer leaves — a handle
+        // drawn lit under a pointer that is over the settings panel claims a grip nobody is
+        // offering. Found by `/code-review`; the hover path only ever ran while moves arrived
+        // inside the control.
+        if (_hotTab >= 0)
+        {
+            _hotTab = -1;
+            Cursor = new Cursor(StandardCursorType.Cross);
+            InvalidateVisual();
+        }
 
         // **Clearing it is not enough on its own.** `PointerAt` was in `AffectsRender` when this
         // was written, so setting it repainted for free; taking it out — to stop a bare hover
@@ -507,7 +833,33 @@ public sealed class BoardView : Control
                     new SKPoint((float)now.X, (float)now.Y))
                 : null,
             Marker,
+            DisplayTabs(),
             OnFrameRendered));
+    }
+
+    /// <summary>
+    /// The overlay as this frame shows it: the bound tabs, with the gesture state painted on — the
+    /// hot handle, and a dragged tab drawn at the point it has slid to rather than where the plan
+    /// still has it.
+    /// </summary>
+    private TabOverlay? DisplayTabs()
+    {
+        if (Tabs is not { } tabs)
+        {
+            return null;
+        }
+
+        if (_dragTab >= 0 && _dragTab < tabs.Tabs.Count && _dragAt is { } at)
+        {
+            var sliding = tabs.Tabs.ToArray();
+            sliding[_dragTab] = sliding[_dragTab] with { At = new SKPoint((float)at.X, (float)at.Y) };
+
+            return tabs with { Tabs = sliding, Hot = _hotTab, Dragging = _dragTab };
+        }
+
+        return _hotTab >= 0 || tabs.Hot >= 0 || tabs.Dragging >= 0
+            ? tabs with { Hot = _hotTab, Dragging = -1 }
+            : tabs;
     }
 
     private void OnFrameRendered(double elapsedMs, BoardRenderer.DrawResult result)
@@ -522,4 +874,19 @@ public sealed class BoardView : Control
             DispatcherPriority.Background);
     }
 
+}
+
+/// <summary>
+/// One tab gesture, as the viewport reports it: which handle, and where on the board — in the
+/// frame's millimetres, the space <see cref="BoardView.BoardPointAt"/> answers in.
+/// </summary>
+/// <param name="index">The tab's place in the overlay's list, or -1 for a gesture that names no
+/// existing tab (an add).</param>
+/// <param name="at">Where, in board millimetres. Default for a removal, which is about a tab and
+/// not a place.</param>
+public sealed class TabGestureEventArgs(int index, Point at) : EventArgs
+{
+    public int Index { get; } = index;
+
+    public Point At { get; } = at;
 }

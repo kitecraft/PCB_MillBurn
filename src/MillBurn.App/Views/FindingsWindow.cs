@@ -92,6 +92,20 @@ public sealed class FindingsWindow : Window
             FontWeight = FontWeight.SemiBold,
         }, "TextHeadline"));
 
+        // **A run that stopped early must never read as a clean board.** The same distinction
+        // sprint 2's story 3 was about, and it matters more here than anywhere else in the
+        // application: this is the window somebody opens to satisfy themselves a board is sound.
+        // The words are the result's own (6.54), so the test that guards them needs no window.
+        //
+        // **Above the summary line, not under it** — `/code-review` caught the order: the summary
+        // reads as a verdict ("1 layer · nothing shorted · 0.79 s"), and a verdict first with the
+        // caveat second is exactly the partial-answer-read-as-complete this banner exists to
+        // prevent. The caveat goes where the eye lands first.
+        if (findings.StoppedBanner is { } stopped)
+        {
+            body.Children.Add(Banner(stopped));
+        }
+
         body.Children.Add(Token(new TextBlock
         {
             Text = Summary(findings),
@@ -100,17 +114,12 @@ public sealed class FindingsWindow : Window
             TextWrapping = TextWrapping.Wrap,
         }, "TextSecondary"));
 
-        // **A run that stopped early must never read as a clean board.** The same distinction
-        // sprint 2's story 3 was about, and it matters more here than anywhere else in the
-        // application: this is the window somebody opens to satisfy themselves a board is sound.
-        if (findings.Cancelled)
-        {
-            body.Children.Add(Banner(
-                "This run was stopped before it finished. What is below is part of the answer, not "
-                + "all of it — nothing here says the rest of the board is clean."));
-        }
-
-        if (findings.Layers.Count == 0)
+        // Only a run that *finished* with nothing to report may say the settings are the reason —
+        // a stopped run with no layers has an empty list because it was stopped, and this sentence
+        // would be a lie about the board's settings. The view model keeps that case out of the
+        // window entirely (it has nothing to show but an apology), so the guard is for any other
+        // caller of this constructor.
+        if (findings.Layers.Count == 0 && !findings.Cancelled)
         {
             body.Children.Add(Token(new TextBlock
             {

@@ -82,11 +82,11 @@ cut with — found by asking what the pre-cut correction does to them, which is 
 | Section | Rows | Done | Done — used on metal | Not started | Parked | Partial | Superseded |
 |---|---|---|---|---|---|---|---|
 | 01 Architecture | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
-| 02 Gerber & geometry pipeline | 24 | 18 | 0 | 3 | 1 | 1 | 1 |
+| 02 Gerber & geometry pipeline | 24 | 19 | 0 | 3 | 1 | 0 | 1 |
 | 03 Toolpath optimization | 10 | 8 | 0 | 0 | 1 | 0 | 1 |
 | 04 Machines, laser & mixed workflows | 32 | 12 | 1 | 15 | 0 | 3 | 1 |
 | 05 Viewer & export | 43 | 26 | 0 | 11 | 0 | 3 | 3 |
-| **Requirements** | **124** | **77** | **1** | **31** | **2** | **7** | **6** |
+| **Requirements** | **124** | **78** | **1** | **31** | **2** | **6** | **6** |
 
 **06 §2 Cross-cutting acceptance criteria** — 9 rows: 4 met, 1 met so far, 2 not measured, 2 superseded.
 
@@ -158,7 +158,7 @@ pieces of new capability, none of which the workshop has asked for.
 | G21 | Tool library: filter by kind, sort, copy a tool | 06 §6.6 | **Done** | `ToolView.Arrange`, `ToolSort`, `ToolView.Copy`; a kind mark, name and size per row, with a confirm on delete and a name prompt on copy. `ToolViewTests`. Sprint 4 story 7 — and the scannable row did turn out to be worth more than the three, which the closure records |
 | G22 | Coachmarks and a first-run walkthrough | 06 §6.7 | **Not started** | needs research; the walkthrough wants the test board to point at |
 | G23 | The project page lists the CLI commands that would rebuild the export | 06 §6.15 | **Done** | `CliScript.For(plan, context)`, derived from the emitted plan rather than the settings, so it cannot name a flag the export ignored; `--commands` prints it alone. `CliScriptTests`. Sprint 4 story 4 |
-| G24 | Tabs: placed where a hand would put them, sized from the board, and movable one at a time | 06 §6.4 | **Partial** | `TabPlan` centres one on each straight edge the profile has room for and sizes both numbers from the board; the tabs window lists every position and lets each be overridden. `TabPlacementTests`, `OutlineTabTests`. Sprint 4 story 1. **Dragging a tab on the board is not built** |
+| G24 | Tabs: placed where a hand would put them, sized from the board, and movable one at a time | 06 §6.4 | **Done** | `TabPlan` fills the emptiest side of the profile first (6.72), centres one on each straight edge it has room for and sizes both numbers from the board; the tabs window lists every position and lets each be overridden; a tab in the viewport can be grabbed and slid along the cut path, added with a click and removed with a right-click, stored as `TabMove` beside the size edits and clearing through the same doors. `TabPlacementTests`, `TabMoveTests`, `ProfilePathTests`, `OutlineTabTests`. Each tab carries a letter (A, B … AA) beside its handle and in the window, a click on a handle sets that tab alone its width, an added tab carries its own sizes, overlapping tabs are cut as one gap and refused at the gesture, and hand-set changes are stamped with the plan they were made against and refused when it moves (6.74). `TabLetterTests`, `TabSafetyTests`, `TabHandleLetterTests`. Sprint 4 story 1; sprint 6 stories 2, 5 and 6 |
 
 ## 03 — Toolpath optimization
 

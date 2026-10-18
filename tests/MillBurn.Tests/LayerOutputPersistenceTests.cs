@@ -72,6 +72,16 @@ public sealed class LayerOutputPersistenceTests : IDisposable
                 // One tab set by hand, sparsely: the shape the tabs window writes, and the one that
                 // exercises a record with a required member through the serialiser.
                 TabEdits = [new TabEdit { Index = 2, WidthNm = Nm.FromMillimetres(4.0) }],
+
+                // All three shapes a hand position takes (6.4): a move, a removal — whose null
+                // along is the removal, so a serialiser that dropped the null would turn it into
+                // nonsense — and an added tab.
+                TabMoves =
+                [
+                    new TabMove { Index = 1, AlongNm = 52_500_000 },
+                    new TabMove { Index = 3 },
+                    new TabMove { Index = -1, AlongNm = 12_000_000, WidthNm = 3_500_000, HeightNm = 400_000 },
+                ],
                 BreakThroughNm = Nm.FromMillimetres(0.45),
 
                 // Off, and off is the interesting direction: a bool that failed to round-trip would
@@ -111,6 +121,18 @@ public sealed class LayerOutputPersistenceTests : IDisposable
         Assert.Equal(2, edit.Index);
         Assert.Equal(Nm.FromMillimetres(4.0), edit.WidthNm);
         Assert.Null(edit.HeightNm);
+
+        // The hand positions, whole, each shape intact: the move with its distance, the removal
+        // with its null — the null *is* the removal — and the add with its -1.
+        Assert.Equal(3, outline.TabMoves.Length);
+        Assert.Equal(1, outline.TabMoves[0].Index);
+        Assert.Equal(52_500_000, outline.TabMoves[0].AlongNm);
+        Assert.Equal(3, outline.TabMoves[1].Index);
+        Assert.Null(outline.TabMoves[1].AlongNm);
+        Assert.Equal(-1, outline.TabMoves[2].Index);
+        Assert.Equal(12_000_000, outline.TabMoves[2].AlongNm);
+        Assert.Equal(3_500_000, outline.TabMoves[2].WidthNm);
+        Assert.Equal(400_000, outline.TabMoves[2].HeightNm);
     }
 
     /// <summary>

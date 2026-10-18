@@ -29,7 +29,8 @@ public static class BoardRenderer
         bool ruler = false,
         RulerReadout? readout = null,
         RulerMeasure? measure = null,
-        BoardMarker? marker = null)
+        BoardMarker? marker = null,
+        TabOverlay? tabs = null)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(scene);
@@ -65,11 +66,46 @@ public static class BoardRenderer
         var layersDrawn = 0;
         var verticesDrawn = 0;
 
+        // The tiled layers' frame, worked out once: which level of detail this zoom draws, what
+        // part of the world is on screen, and whether what is left after culling fits the detail
+        // budget. The budget is ToolpathRenderer's own, because these layers are drawn by its
+        // rules (6.71): anti-aliasing, geometric stroking and dashes are per-vertex costs, spent
+        // while the frame can afford them and dropped for the hairline rasteriser when it
+        // cannot.
+        //
+        // Each tiled layer's in-view count is kept as it is found: the budget needs the sum
+        // before the first tiled layer draws, and the per-layer number is also what that layer
+        // reports as drawn — walking the tiles twice for it would spend bookkeeping on the path
+        // this exists to cheapen. Null on an ordinary board, which has no tiled layer to count.
+        var visibleWorld = VisibleWorldRect(viewport, view);
+        int[]? tiledInView = null;
+        var tiledTotal = 0;
+
+        var tier = TiledTier(view.Scale, candidate =>
+        {
+            tiledTotal = 0;
+            for (var i = 0; i < scene.Layers.Count; i++)
+            {
+                var layer = scene.Layers[i];
+                if (layer.Visible && layer.Tiles is { } t)
+                {
+                    tiledInView ??= new int[scene.Layers.Count];
+                    tiledInView[i] = t.SegmentsInView(candidate, visibleWorld);
+                    tiledTotal += tiledInView[i];
+                }
+            }
+
+            return tiledTotal;
+        });
+
+        var detailAffordable = tiledTotal <= ToolpathRenderer.DetailBudgetSegments;
+
         using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
         using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke };
 
-        foreach (var layer in scene.Layers)
+        for (var i = 0; i < scene.Layers.Count; i++)
         {
+            var layer = scene.Layers[i];
             if (!layer.Visible)
             {
                 continue;
@@ -84,6 +120,41 @@ public static class BoardRenderer
                 // the tool went; filling either would paint a slab over what it is meant to
                 // annotate.
                 stroke.Color = style.Fill.WithAlpha(alpha);
+
+                if (layer.Tiles is not null)
+                {
+                    stroke.IsAntialias = detailAffordable;
+
+                    // Width 0 is Skia's dedicated fast line rasteriser, as in ToolpathRenderer.
+                    stroke.StrokeWidth = detailAffordable ? style.StrokePixels / view.Scale : 0f;
+
+                    // A dash restarts its phase at every contour, and a tile boundary starts a
+                    // contour — the same behaviour the toolpath view has always had for its
+                    // dashed travel styles. No stroked board layer in the corpus is both dashed
+                    // and over the budget; if one arrives, its dashes will shift at the seams
+                    // before anyone decides dashing a path that size is worth the cost.
+                    stroke.PathEffect?.Dispose();
+                    stroke.PathEffect = detailAffordable && style.DashPixels > 0
+                        ? SKPathEffect.CreateDash(
+                            [style.DashPixels / view.Scale, style.DashPixels / view.Scale], 0)
+                        : null;
+
+                    foreach (var path in layer.TilePaths(tier, visibleWorld))
+                    {
+                        canvas.DrawPath(path, stroke);
+                    }
+
+                    layersDrawn++;
+
+                    // What was actually submitted, not what the layer holds: the whole point of
+                    // the tiles is that those differ, and the status bar should say so. (An
+                    // untiled layer's whole path is submitted whatever the zoom, so its full
+                    // count below remains the honest number for it.)
+                    verticesDrawn += tiledInView![i];
+                    continue;
+                }
+
+                stroke.IsAntialias = true;
 
                 // Constant on screen regardless of zoom: the canvas is scaled, so undo it.
                 stroke.StrokeWidth = style.StrokePixels / view.Scale;
@@ -125,6 +196,14 @@ public static class BoardRenderer
             Ruler.Draw(canvas, viewport, frame, step, background, readout, measure);
         }
 
+        // After the ruler for the same reason it is, and before the marker: a handle is something
+        // to take hold of, a mark is something to look at, and when the two coincide the answer to
+        // "where is the fault" goes on top.
+        if (tabs is not null)
+        {
+            TabHandles.Draw(canvas, viewport, frame, tabs, background);
+        }
+
         // After the ruler, so the crosshairs and the two strip pointers land on top of the strips
         // they are pointing at rather than under them.
         if (marker is { } place)
@@ -134,6 +213,36 @@ public static class BoardRenderer
 
         canvas.Restore();
         return new DrawResult(layersDrawn, verticesDrawn);
+    }
+
+    /// <summary>
+    /// The tier a frame draws its tiled stroked layers at: the half-pixel tier, relaxed to at
+    /// most one pixel of simplification error when that tier busts the detail budget.
+    ///
+    /// **The order of the trade matters, and it is the reverse of doing nothing.** Half a pixel
+    /// of simplification is invisible and one pixel is nearly so; the hairline fallback — thin,
+    /// unsoftened strokes — is neither. Without this, the 66-up panel's fit zoom sat exactly on
+    /// the half-pixel boundary of the coarsest tier, and a few pixels of window width decided
+    /// whether the hero drew anti-aliased or degraded (6.71). The budget still has the last
+    /// word: a scene too big for the one-pixel tier goes hairline, at that coarser tier.
+    /// </summary>
+    /// <param name="scale">Pixels per millimetre, as <see cref="ViewTransform.Scale"/>.</param>
+    /// <param name="tiledSegmentsInView">The culled segment count of every visible tiled layer
+    /// at a candidate tier. Called once per tier tried; the last call made is for the tier
+    /// returned, so a caller caching per-layer counts inside it holds the right ones.</param>
+    public static int TiledTier(float scale, Func<int, int> tiledSegmentsInView)
+    {
+        ArgumentNullException.ThrowIfNull(tiledSegmentsInView);
+
+        var tier = ToolpathScene.TierForScale(scale);
+        while (tiledSegmentsInView(tier) > ToolpathRenderer.DetailBudgetSegments
+            && tier + 1 < ToolpathScene.TierCount
+            && ToolpathScene.SimplificationErrorPx(tier + 1, scale) <= 1f)
+        {
+            tier++;
+        }
+
+        return tier;
     }
 
     /// <summary>

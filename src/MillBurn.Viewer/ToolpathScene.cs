@@ -54,7 +54,13 @@ public sealed class ToolpathScene : IDisposable
     /// <summary>Simplification tolerance of tier 0, in world mm. Tier n doubles it.</summary>
     private const float BaseToleranceMm = 0.005f;
 
-    private const int TierCount = 4;
+    /// <summary>
+    /// How many levels of detail a scene holds. Public because the benchmark prints a line per
+    /// tier and the tests loop over all of them — a fifth tier was added (6.71) and every one of
+    /// those sites had a literal 4 in it, so the next tier would have gone unprinted and
+    /// untested.
+    /// </summary>
+    public const int TierCount = 5;
 
     /// <summary>
     /// Grid resolution per tier. Coarse tiers are used when zoomed out, where everything is
@@ -64,7 +70,7 @@ public sealed class ToolpathScene : IDisposable
     /// Coarse on purpose. Skia rejects off-screen contours by bounds very cheaply on its own, so
     /// the grid only has to discard most of the board; splitting further just multiplies draw
     /// calls without saving rasterisation. Measured with --probe.
-    private static readonly int[] GridSize = [8, 4, 2, 1];
+    private static readonly int[] GridSize = [8, 4, 2, 1, 1];
 
     private static readonly int StyleCount = Enum.GetValues<SegmentStyle>().Length;
 
@@ -130,7 +136,7 @@ public sealed class ToolpathScene : IDisposable
     {
         for (var tier = TierCount - 1; tier >= 0; tier--)
         {
-            if (BaseToleranceMm * (1 << tier) * pixelsPerMm <= 0.5f)
+            if (SimplificationErrorPx(tier, pixelsPerMm) <= 0.5f)
             {
                 return tier;
             }
@@ -138,6 +144,14 @@ public sealed class ToolpathScene : IDisposable
 
         return 0;
     }
+
+    /// <summary>
+    /// The worst simplification error of one tier at one zoom, in screen pixels — the number
+    /// <see cref="TierForScale"/> holds under half, and a caller trading error for frame time
+    /// (6.71) holds under a bound of its own.
+    /// </summary>
+    public static float SimplificationErrorPx(int tier, float pixelsPerMm) =>
+        BaseToleranceMm * (1 << tier) * pixelsPerMm;
 
     /// <summary>
     /// Enumerates the prebuilt paths of one style that intersect <paramref name="visibleWorld"/>.

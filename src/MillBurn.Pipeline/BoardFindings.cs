@@ -96,11 +96,27 @@ public static class BoardFindings
     /// <param name="Layers">One entry per layer that would be isolated, in board order.</param>
     /// <param name="Elapsed">How long it took, for the view to say out loud.</param>
     /// <param name="Cancelled">
-    /// True when the run was superseded or abandoned. A partial answer shown as a complete one is
-    /// the distinction sprint 2 spent a story on, and it matters more here than anywhere: this
-    /// view is where somebody goes to satisfy themselves a board is sound.
+    /// True when the run was stopped, superseded or abandoned. A partial answer shown as a
+    /// complete one is the distinction sprint 2 spent a story on, and it matters more here than
+    /// anywhere: this view is where somebody goes to satisfy themselves a board is sound.
     /// </param>
-    public sealed record Result(IReadOnlyList<Layer> Layers, TimeSpan Elapsed, bool Cancelled);
+    public sealed record Result(IReadOnlyList<Layer> Layers, TimeSpan Elapsed, bool Cancelled)
+    {
+        /// <summary>
+        /// The sentence the findings window puts over a stopped run's partial list, or null when
+        /// the run finished.
+        ///
+        /// On the result rather than in the window (6.54): the window shows what the result says
+        /// of itself, the way a program carries its own notes — and the one test that guards the
+        /// banner can then reach both the condition and the words with no Avalonia in sight,
+        /// which is what let the banner sit unreachable for three releases without any test able
+        /// to say so.
+        /// </summary>
+        public string? StoppedBanner => Cancelled
+            ? "This run was stopped before it finished. What is below is part of the answer, not "
+                + "all of it — nothing here says the rest of the board is clean."
+            : null;
+    }
 
     /// <summary>
     /// Collect every isolated layer's findings, locating the gaps as it goes.

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -209,8 +210,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The saved library, reloaded when the tool editor changes it.</summary>
     public ToolLibrary Library { get; private set; } = ToolLibrary.LoadOrDefault();
 
-    /// <summary>Preferences that belong to the person, not to the board.</summary>
-    public AppSettings Settings { get; private set; } = AppSettings.LoadOrDefault();
+    /// <summary>
+    /// Preferences that belong to the person, not to the board — as the file holds them, or will
+    /// at the next write. Changed only through <see cref="_settings"/>, which decides when.
+    /// </summary>
+    public AppSettings Settings => _settings.Stored;
+
+    /// <summary>The settings, and the one place that says when a change to them is written (6.50).</summary>
+    private readonly SettingsKeeper _settings;
 
     public MillBurnProject Project => _project;
 
@@ -276,7 +283,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // in the file. Shaped once here and used for both questions.
         var profiles = ExportPlanner.OutlineProfiles(layer);
 
-        var planned = OutlineOperation.PlanTabs(profiles, options);
+        // The shaping is the cost, and the overlay usually holds this very outline shaped already.
+        var shapeKey = new TabHandleKey(
+            layer.Area,
+            [.. _board.Layers
+                .Where(l => l.Role != LayerRole.Outline && LayerRoleInfo.IsFabricated(l.Role))
+                .Select(l => l.Area)],
+            row.Tool.DiameterNm,
+            0,
+            null,
+            [],
+            [],
+            null,
+            default);
+
+        var shaped = _tabShape is { } kept && kept.Key.SameShape(shapeKey)
+            ? kept.Shaped
+            : OutlineOperation.Shaped(profiles, options);
+
+        var planned = OutlineOperation.PlanTabs(shaped, options);
         var tabs = planned.Tabs;
 
         // **Into the frame the machine works in.** The planner answers in the artwork's own
@@ -304,8 +329,601 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         return planned with { Tabs = tabs };
     }
 
+    /// <summary>
+    /// The tabs as the viewport shows and grabs them, or null when the board offers none (6.4).
+    ///
+    /// Built from the same planner call the tabs window and the export use, so the handle an
+    /// operator drags is the tab the program cuts — but in the frame's own millimetres, unmirrored,
+    /// because that is what the viewport draws. The mirror belongs to the file, not the picture.
+    /// </summary>
+    [ObservableProperty]
+    public partial TabOverlay? TabHandles { get; private set; }
+
+    /// <summary>The plan behind the handles, in artwork coordinates, and the loop they slide on.</summary>
+    private TabPlanning? _tabPlanning;
+    private ProfilePath? _tabProfile;
+    private LayerRow? _tabRow;
+
+    /// <summary>
+    /// What the overlay was last built from, so the next refresh can answer "nothing moved"
+    /// without re-shaping the board. `OnOutputChanged` fires for every settings change on every
+    /// layer, and `/code-review` priced the alternative: a drill-guide checkbox re-offsetting the
+    /// 66-up panel's 102 profiles on the UI thread.
+    /// </summary>
+    private TabHandleKey? _tabHandlesFrom;
+
+    /// <summary>
+    /// The outline as the cutter follows it, kept between plans: the shaping is most of the cost
+    /// and nothing a tab gesture does changes it — about 0.13 s on the panel against under 10 ms to
+    /// place the tabs again. Held with the key it was shaped for; see <see cref="TabHandleKey.SameShape"/>.
+    /// </summary>
+    private (TabHandleKey Key, ShapedOutline Shaped)? _tabShape;
+
+    /// <summary>
+    /// What a tab's position can depend on, and nothing else — the overlay's cache key.
+    ///
+    /// **The geometry, not the board.** This used to hold the `Board`, and every rebuild makes a
+    /// new one — so every preview landing, colour change or role change re-planned the tabs on the
+    /// UI thread, dropped a drag in progress when the preview landed, and made the width popup
+    /// refuse a re-plan that had changed nothing (sprint 6's `xhigh` review). The layers inside a
+    /// board come from `RealisedLayers` and keep their geometry objects across rebuilds, so those
+    /// are compared, by reference.
+    ///
+    /// **And only the settings that move a tab.** Thickness, depth and break-through decide how
+    /// deep the cut goes, never where a tab sits; keyed on them, every tick of the thickness slider
+    /// re-planned the panel — 6.49's per-tick cost back by another road. The immutable arrays
+    /// compare by instance, which is right: an untouched row hands back the same ones and a gesture
+    /// builds new ones.
+    /// </summary>
+    private sealed record TabHandleKey(
+        Clipper2Lib.Paths64 Outline,
+        IReadOnlyList<Clipper2Lib.Paths64> Keep,
+        long ToolDiameterNm,
+        int TabCount,
+        long? TabWidthNm,
+        ImmutableArray<TabEdit> Edits,
+        ImmutableArray<TabMove> Moves,
+        string? PlanKey,
+        Bounds Frame)
+    {
+        public bool Equals(TabHandleKey? other) =>
+            other is not null
+            && ReferenceEquals(Outline, other.Outline)
+            && Keep.SequenceEqual(other.Keep, ReferenceEqualityComparer.Instance)
+            && ToolDiameterNm == other.ToolDiameterNm
+            && TabCount == other.TabCount
+            && TabWidthNm == other.TabWidthNm
+            && Edits == other.Edits
+            && Moves == other.Moves
+            && string.Equals(PlanKey, other.PlanKey, StringComparison.Ordinal)
+            && Frame == other.Frame;
+
+        public override int GetHashCode() => HashCode.Combine(ToolDiameterNm, TabCount, TabWidthNm, Frame);
+
+        /// <summary>Whether the outline would shape the same: the same geometry, artwork and cutter.</summary>
+        public bool SameShape(TabHandleKey other) =>
+            ReferenceEquals(Outline, other.Outline)
+            && Keep.SequenceEqual(other.Keep, ReferenceEqualityComparer.Instance)
+            && ToolDiameterNm == other.ToolDiameterNm;
+    }
+
+    /// <summary>
+    /// The panel's line about hand-set tab changes the planner refused (6.74), while it is up — kept
+    /// so it can be taken down again when the layout comes back.
+    /// </summary>
+    private CheckRow? _tabStaleRow;
+
+    /// <summary>
+    /// Says in the check panel, for as long as it is true, that the stored tab changes are not
+    /// being applied.
+    ///
+    /// **In the panel, not the status line, and the changes are kept rather than cleared.** The
+    /// first version cleared them with a status line, and the story's review found both halves
+    /// wrong: the status line is overwritten by whatever an output change says next — so after a
+    /// preview the changes vanished with no word at all — and clearing is permanent while the cause
+    /// often is not: a layer's role toggled and toggled back, a cutter's diameter edited and undone.
+    /// Kept, refused changes come back the moment the layout matches again; and the first new
+    /// gesture on the changed layout starts afresh rather than reviving them (see
+    /// <see cref="TabChangesToBuildOn"/>).
+    /// </summary>
+    private void ShowTabStaleness(bool stale, LayerRow? row)
+    {
+        var shown = _tabStaleRow is { } up && Warnings.Contains(up);
+
+        if (stale && !shown && row is not null)
+        {
+            _tabStaleRow = Warn(Check.Advice(CheckSource.Project, CheckKind.Project,
+                $"Tab changes on {row.Label} were made for a different tab layout — another width, count, cutter or outline, or an older version — so they are not applied: the tabs are where the planner puts them. They apply again if the layout comes back; moving or sizing a tab starts them afresh."));
+        }
+        else if (!stale && shown)
+        {
+            Warnings.Remove(_tabStaleRow!);
+            _tabStaleRow = null;
+        }
+    }
+
+    /// <summary>
+    /// The sizes and positions a gesture builds on: the stored ones, or none when the plan has
+    /// refused them as made for another layout. Building on refused changes and stamping the result
+    /// with today's fingerprint would revive every one of them at once, on whichever tabs their
+    /// numbers now name.
+    /// </summary>
+    private static (ImmutableArray<TabEdit> Edits, ImmutableArray<TabMove> Moves) TabChangesToBuildOn(
+        TabPlanning planning, LayerRow row) =>
+        planning.OverridesStale ? ([], []) : (row.TabEdits, row.TabMoves);
+
+    /// <summary>
+    /// Forgets the overlay and everything behind it: no handles, nothing a gesture can reach. The
+    /// shaped outline goes too only when the board does — a board whose tabs failed or came to
+    /// nothing keeps it, or every output change would shape it again.
+    /// </summary>
+    private void ClearTabHandles(bool boardGone = true)
+    {
+        if (boardGone)
+        {
+            _tabShape = null;
+        }
+
+        _tabPlanning = null;
+        _tabProfile = null;
+        _tabRow = null;
+        _tabHandlesFrom = null;
+        TabHandles = null;
+    }
+
+    /// <summary>
+    /// Re-asks the planner what the tabs are and where the loop is.
+    ///
+    /// Called wherever the answer can have changed: a rebuilt board, and any output change — the
+    /// gestures themselves arrive back here through <see cref="OnOutputChanged"/>, which is what
+    /// makes a drop show its re-planned truth rather than the control's own projection.
+    /// </summary>
+    private void RefreshTabHandles()
+    {
+        var row = _board is null
+            ? null
+            : Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline && r.Layer is not null);
+
+        var layer = row is null || row.TabCount <= 0
+            ? null
+            : _board!.Layers.FirstOrDefault(
+                l => string.Equals(l.FileName, row.FileName, StringComparison.Ordinal));
+
+        if (layer is null)
+        {
+            ClearTabHandles();
+            return;
+        }
+
+        var settings = row!.ToSettings();
+        var frame = Frame.IsEmpty ? _board!.Bounds : Frame;
+
+        var key = new TabHandleKey(
+            layer.Area,
+            [.. _board!.Layers
+                .Where(l => l.Role != LayerRole.Outline && LayerRoleInfo.IsFabricated(l.Role))
+                .Select(l => l.Area)],
+            row.Tool.DiameterNm,
+            settings.TabCount,
+            settings.TabWidthNm,
+            settings.TabEdits,
+            settings.TabMoves,
+            settings.TabPlanKey,
+            frame);
+
+        // Nothing a tab's position depends on has moved. The rows are rebuilt on every preview, so
+        // the row object itself is not part of the key — but a fresh row still has to be the one a
+        // gesture writes to, which is why `_tabRow` is updated even on a hit. The panel's line about
+        // refused changes is put back too: a rebuild clears the panel without changing the plan.
+        if (key.Equals(_tabHandlesFrom))
+        {
+            _tabRow = _tabPlanning is null ? null : row;
+            ShowTabStaleness(_tabPlanning?.OverridesStale ?? false, row);
+            return;
+        }
+
+        TabPlanning planned;
+
+        // **Guarded, because this now runs where a failure has nowhere to go.** The planner used
+        // to run only inside a preview, whose broad catch turned anything it threw into "Preview
+        // failed". Run from a rebuild or a property setter, an exception here would escape onto
+        // the UI thread for a board that loads fine — so it is said on the status line instead,
+        // and the board is shown without handles.
+        try
+        {
+            var options = ExportPlanner.OutlineOptionsFor(
+                _board!, settings, row.Tool, Nm.FromMillimetres(BoardThicknessMm));
+
+            var shaped = _tabShape is { } kept && kept.Key.SameShape(key)
+                ? kept.Shaped
+                : OutlineOperation.Shaped(ExportPlanner.OutlineProfiles(layer), options);
+
+            _tabShape = (key, shaped);
+            planned = OutlineOperation.PlanTabs(shaped, options);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Remembered as tried, so the next output change does not shape the board again only
+            // to fail again and rewrite this line.
+            ClearTabHandles(boardGone: false);
+            _tabHandlesFrom = key;
+            StatusMessage = $"The tabs could not be placed on {row.Label}: {ex.Message}";
+            return;
+        }
+
+        ShowTabStaleness(planned.OverridesStale, row);
+
+        if (planned.Profile is not { } profile || planned.Tabs.Count == 0)
+        {
+            // Remembered as the answer for this key, so a board whose tabs come to nothing is not
+            // shaped again on every tick of a slider.
+            ClearTabHandles(boardGone: false);
+            _tabHandlesFrom = key;
+            return;
+        }
+
+        _tabPlanning = planned;
+        var path = new ProfilePath(profile);
+        _tabProfile = path;
+        _tabRow = row;
+        _tabHandlesFrom = key;
+
+        SKPoint OnBoard(long x, long y) => new(
+            (float)((x - frame.MinX) / 1_000_000.0),
+            (float)((y - frame.MinY) / 1_000_000.0));
+
+        // Which side of the loop the board is on. The cut path runs half a cutter outside the board
+        // all the way round, so the board is its inside — and which hand "inside" is on depends on
+        // which way round Clipper wound it, which the sign of the area says.
+        var outwardSign = Clipper2Lib.Clipper.IsPositive(profile) ? 1.0 : -1.0;
+
+        // Each tab's gap ends are walked along the loop, not offset from the centre: half a width
+        // either way round the path is where the cut really stops and resumes, corners included,
+        // and the splitter does the same arithmetic when it cuts there.
+        TabHandle Handle(PlacedTab t)
+        {
+            var half = t.WidthNm / 2.0;
+            var gapFrom = path.PointAt(t.AlongNm - half);
+            var gapTo = path.PointAt(t.AlongNm + half);
+
+            // The letter's side: the path's direction across the gap, turned a right angle away
+            // from the board. A loop wound anticlockwise has the board on its left, so away is the
+            // right-hand normal; a clockwise one the other way.
+            var tx = (double)(gapTo.X - gapFrom.X);
+            var ty = (double)(gapTo.Y - gapFrom.Y);
+            var length = Math.Sqrt((tx * tx) + (ty * ty));
+            var outward = length > 0
+                ? new SKPoint((float)(outwardSign * ty / length), (float)(-outwardSign * tx / length))
+                : default;
+
+            return new TabHandle(
+                OnBoard(t.At.X, t.At.Y),
+                (float)Nm.ToMillimetres(t.WidthNm),
+                t.Moved || t.Added,
+                OnBoard(gapFrom.X, gapFrom.Y),
+                OnBoard(gapTo.X, gapTo.Y),
+                t.Letter,
+                outward);
+        }
+
+        TabHandles = new TabOverlay
+        {
+            Profile = [.. profile.Select(p => OnBoard(p.X, p.Y))],
+            Tabs = [.. planned.Tabs.Select(Handle)],
+        };
+    }
+
+    /// <summary>
+    /// What the width popup shows for one handle, and the plan it was read from. Null when the
+    /// handle names nothing.
+    /// </summary>
+    public TabWidthAsk? TabWidthFor(int handle)
+    {
+        if (_tabPlanning is not { } planning || _tabRow is not { } row
+            || handle < 0 || handle >= planning.Tabs.Count)
+        {
+            return null;
+        }
+
+        var tab = planning.Tabs[handle];
+
+        return new TabWidthAsk(
+            tab.Letter,
+            Nm.ToMillimetres(tab.WidthNm),
+            Nm.ToMillimetres(row.TabWidthNm ?? planning.DerivedWidthNm),
+            planning,
+            handle);
+    }
+
+    /// <summary>The handle carrying this letter, or -1 — the one place a letter is looked up.</summary>
+    public int TabHandleOf(string letter) =>
+        _tabPlanning?.Tabs
+            .Select((t, i) => string.Equals(t.Letter, letter, StringComparison.OrdinalIgnoreCase) ? i : -1)
+            .FirstOrDefault(i => i >= 0, -1) ?? -1;
+
+    /// <summary>
+    /// One tab's own width, from a click on its handle — every other tab left as it was.
+    ///
+    /// The same edit the tabs window writes for the same choice: <see cref="TabPlan.WithWidth"/>
+    /// decides what is an edit and what is "as every tab is", so the two doors cannot disagree
+    /// about what a project file holds. Null puts the tab back to the board's width.
+    ///
+    /// **Refused when the tabs were re-planned while the popup was open.** It is light-dismissed,
+    /// so this takes something arriving from elsewhere — but a re-plan can give the same letter
+    /// and the same handle to a different tab, and a width the operator chose for the tab they
+    /// clicked must not land on another one. A preview finishing does not re-plan; only a change
+    /// to what the tabs are planned from does.
+    /// </summary>
+    /// <returns>False when nothing was written.</returns>
+    public bool SetTabWidth(TabWidthAsk ask, double? widthMm)
+    {
+        ArgumentNullException.ThrowIfNull(ask);
+
+        if (_tabPlanning is not { } planning || _tabRow is not { } row)
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(planning, ask.Plan))
+        {
+            StatusMessage = $"The tabs were re-planned while tab {ask.Letter}'s width was open, so nothing was changed. Click it again.";
+            return false;
+        }
+
+        var tab = planning.Tabs[ask.Handle];
+
+        var boardWidthNm = row.TabWidthNm ?? planning.DerivedWidthNm;
+        long? chosen = widthMm is { } mm ? Nm.FromMillimetres(mm) : null;
+
+        // A width the planner would refuse is said rather than written: `For` ignores a
+        // non-positive edit, so writing one would store a choice that silently does nothing.
+        if (chosen is <= 0)
+        {
+            StatusMessage = $"Tab {tab.Letter} needs a width above zero. To take it away, right-click it.";
+            return false;
+        }
+
+        if (OverlapWith(tab, tab with { WidthNm = chosen ?? boardWidthNm }) is { } other)
+        {
+            StatusMessage = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab {tab.Letter} at {Nm.ToMillimetres(chosen ?? boardWidthNm):F2} mm would run into tab {other}, and the two would be cut as one gap. Nothing was changed.");
+            return false;
+        }
+
+        var (baseEdits, baseMoves) = TabChangesToBuildOn(planning, row);
+        var (edits, moves) = TabPlan.WithWidth(baseEdits, baseMoves, tab, chosen, boardWidthNm);
+        row.SetTabs(row.TabWidthNm, row.TabHeightNm, edits, moves, planning.PristineKey);
+
+        StatusMessage = chosen is null || chosen == boardWidthNm
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab {tab.Letter} is back to the board's width, {Nm.ToMillimetres(boardWidthNm):F2} mm.")
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab {tab.Letter} is {Nm.ToMillimetres(chosen.Value):F2} mm wide now. The other tabs are unchanged.");
+
+        return true;
+    }
+
+    /// <summary>
+    /// The headless flag's route to a tab's own width: by letter, as the operator names it, through
+    /// the same <see cref="SetTabWidth"/> a click uses. One line back for the capture log.
+    /// </summary>
+    internal string SetTabWidthForShot(string letter, double widthMm)
+    {
+        if (_tabPlanning is not { } planning)
+        {
+            return "tab width: there are no tabs — load a board whose outline is cut with tabs";
+        }
+
+        if (TabWidthFor(TabHandleOf(letter)) is not { } ask)
+        {
+            return $"tab width: there is no tab {letter} — the tabs are {string.Join(", ", planning.Tabs.Select(t => t.Letter))}";
+        }
+
+        SetTabWidth(ask, widthMm);
+        return $"tab width: {StatusMessage}";
+    }
+
+    /// <summary>
+    /// The letter of a tab the candidate would overlap, or null — so a gesture that would merge two
+    /// gaps is refused before it is written, rather than cut as one gap the picture shows as two.
+    /// </summary>
+    /// <param name="replacing">The tab the candidate stands in for, left out of the check; null
+    /// for a tab being added.</param>
+    /// <param name="candidate">The tab as it would be.</param>
+    private string? OverlapWith(PlacedTab? replacing, PlacedTab candidate)
+    {
+        if (_tabPlanning is not { } planning || _tabProfile is not { } path)
+        {
+            return null;
+        }
+
+        var others = planning.Tabs.Where(t => !ReferenceEquals(t, replacing)).ToList();
+        var gaps = TabPlan.Gaps([.. others, candidate], path.PerimeterNm);
+
+        return gaps
+            .Where(g => g.Tabs.Count > 1 && g.Tabs.Contains(candidate))
+            .SelectMany(g => g.Tabs)
+            .Where(t => !ReferenceEquals(t, candidate))
+            .Select(t => t.Letter)
+            .FirstOrDefault();
+    }
+
+    /// <summary>A place the viewport reported, taken back into the artwork's own nanometres.</summary>
+    private Point2 ArtworkPoint(double xMm, double yMm)
+    {
+        var frame = Frame.IsEmpty ? _board!.Bounds : Frame;
+
+        return new Point2(
+            frame.MinX + (long)Math.Round(xMm * 1_000_000.0),
+            frame.MinY + (long)Math.Round(yMm * 1_000_000.0));
+    }
+
+    /// <summary>
+    /// A tab was dropped: the planner's walk decides what the point means, and the override goes
+    /// into the settings beside the hand-set sizes.
+    /// </summary>
+    public void MoveTab(int handle, double xMm, double yMm)
+    {
+        if (_tabProfile is not { } path)
+        {
+            return;
+        }
+
+        var (along, _) = path.Project(ArtworkPoint(xMm, yMm));
+
+        if (ApplyTabMove(handle, along))
+        {
+            StatusMessage = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab moved to {path.Wrap(along) / 1_000_000.0:F1} mm along the cut path — by hand now, until the tabs re-plan.");
+        }
+    }
+
+    /// <summary>A click on an empty stretch of the loop: a tab belongs there.</summary>
+    public void AddTab(double xMm, double yMm)
+    {
+        if (_tabProfile is not { } path || _tabRow is not { } row)
+        {
+            return;
+        }
+
+        var (along, _) = path.Project(ArtworkPoint(xMm, yMm));
+        var boardWidthNm = row.TabWidthNm ?? _tabPlanning!.DerivedWidthNm;
+
+        var candidate = new PlacedTab
+        {
+            AlongNm = path.Wrap(along),
+            WidthNm = boardWidthNm,
+            HeightNm = 0,
+            At = default,
+            Edge = -1,
+            EdgeLengthNm = 0,
+            Letter = "new",
+        };
+
+        if (OverlapWith(null, candidate) is { } other)
+        {
+            StatusMessage = $"A tab there would run into tab {other}, and the two would be cut as one gap. Nothing was added.";
+            return;
+        }
+
+        var (_, addBase) = TabChangesToBuildOn(_tabPlanning!, row);
+        WriteTabMoves(row, _tabPlanning!, TabPlan.WithAdd(addBase, along));
+
+        StatusMessage = string.Create(
+            CultureInfo.InvariantCulture,
+            $"Tab added at {path.Wrap(along) / 1_000_000.0:F1} mm along the cut path, at the board's own sizes.");
+    }
+
+    /// <summary>
+    /// A handle was right-clicked. The last tab refuses: a board held by nothing comes free with
+    /// the cutter still turning, and that choice belongs to the tab count, not to a slip of a
+    /// click.
+    /// </summary>
+    public void RemoveTab(int handle)
+    {
+        if (_tabPlanning is not { } planning || _tabRow is not { } row
+            || handle < 0 || handle >= planning.Tabs.Count)
+        {
+            return;
+        }
+
+        if (planning.Tabs.Count == 1)
+        {
+            StatusMessage = "The last tab is what holds the board. To cut it free, set the tab count to zero.";
+            return;
+        }
+
+        var tab = planning.Tabs[handle];
+
+        var (_, removeBase) = TabChangesToBuildOn(planning, row);
+        WriteTabMoves(row, planning, tab.Added
+            ? TabPlan.WithoutAdd(removeBase, tab.Ordinal)
+            : TabPlan.WithPlannedRemoved(removeBase, tab.Ordinal));
+
+        StatusMessage = "Tab removed. The gap it left is cut through.";
+    }
+
+    /// <summary>
+    /// The headless flag's route in: a tab by its place in the plan, moved by arc rather than by
+    /// pointer (6.4). One line back for the capture log, refusals included.
+    /// </summary>
+    internal string MoveTabForShot(int tab, double alongMm)
+    {
+        if (_tabPlanning is not { } planning || _tabProfile is not { } path)
+        {
+            return "move tab: there are no tabs to move — load a board whose outline is cut with tabs";
+        }
+
+        if (tab < 0 || tab >= planning.Tabs.Count)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"move tab: there is no tab {tab} — the plan holds {planning.Tabs.Count}, numbered from 0");
+        }
+
+        if (!ApplyTabMove(tab, alongMm * 1_000_000.0))
+        {
+            return $"move tab: {StatusMessage}";
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"move tab: tab {tab} is now at {path.Wrap(alongMm * 1_000_000.0) / 1_000_000.0:F1} mm along the cut path, by hand");
+    }
+
+    /// <summary>
+    /// Writes one hand-set position: a planner's tab by its ordinal, an added tab by its place
+    /// among the adds. False when there was nothing to move.
+    /// </summary>
+    private bool ApplyTabMove(int handle, double alongNm)
+    {
+        if (_tabPlanning is not { } planning || _tabRow is not { } row
+            || handle < 0 || handle >= planning.Tabs.Count)
+        {
+            return false;
+        }
+
+        var tab = planning.Tabs[handle];
+
+        if (_tabProfile is { } path
+            && OverlapWith(tab, tab with { AlongNm = path.Wrap(alongNm) }) is { } other)
+        {
+            StatusMessage = $"Tab {tab.Letter} there would run into tab {other}, and the two would be cut as one gap. It stays where it was.";
+            return false;
+        }
+
+        var (_, moveBase) = TabChangesToBuildOn(planning, row);
+        WriteTabMoves(row, planning, tab.Added
+            ? TabPlan.WithAddMoved(moveBase, tab.Ordinal, alongNm)
+            : TabPlan.WithPlannedMoved(moveBase, tab.Ordinal, alongNm));
+
+        return true;
+    }
+
+    /// <summary>
+    /// Writes a gesture's positions — and, on a plan that refused the stored changes, drops the
+    /// refused sizes with them, so the fresh start is a fresh start for both.
+    /// </summary>
+    private static void WriteTabMoves(LayerRow row, TabPlanning planning, ImmutableArray<TabMove> moves)
+    {
+        if (planning.OverridesStale)
+        {
+            row.SetTabs(row.TabWidthNm, row.TabHeightNm, [], moves, planning.PristineKey);
+        }
+        else
+        {
+            row.SetTabMoves(moves, planning.PristineKey);
+        }
+    }
+
     public MainViewModel()
     {
+        _settings = new SettingsKeeper(AppSettings.LoadOrDefault(), WriteSettings);
+
         // Restoring a saved preference is not the user changing anything, so it must not mark the
         // document dirty. Without this the app opens with unsaved changes it invented itself, and
         // the very first click asks whether to save an empty project.
@@ -331,38 +949,31 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Remembers where the window was, so it opens where it was left.</summary>
     public void SaveWindowPlacement(WindowPlacement placement) =>
-        SaveSettings(Settings with { Window = placement });
+        _settings.SetWindowPlacement(placement);
 
     /// <summary>Remembers light or dark, so the app opens the way it was closed.</summary>
-    public void SaveTheme(string? theme) => SaveSettings(Settings with { Theme = theme });
+    public void SaveTheme(string? theme) =>
+        _settings.SetTheme(theme);
 
     /// <summary>
     /// Whether the viewport carries its scale strips.
     ///
     /// Written through to the settings file on every change rather than on close, so a crash does
-    /// not lose it and the View menu's tick is the stored value rather than a copy of it.
+    /// not lose it. The tick shows the stored choice, except in a session started with
+    /// <c>--no-ruler</c>, where it shows that override until the menu is first used — and which of
+    /// the two a choice is compared against is 6.62, and <see cref="SettingsKeeper.ChooseRuler"/>'s.
     /// </summary>
     public bool ShowRuler
     {
-        get => _rulerForThisSession ?? Settings.ShowRuler;
+        get => _settings.ShowRuler;
         set
         {
-            // **Against what the getter returns, not against the stored value.** Compared with the
-            // setting alone, a session started with `--no-ruler` could never turn them back on:
-            // the override says off, the file says on, so the menu renders unticked and ticking it
-            // asks for `true`, which equals the stored value, returns early, raises nothing — and
-            // the two-way binding snaps the tick straight back.
-            if (ShowRuler == value)
+            // Raised only on a change: with nothing raised, the two-way binding snaps the tick back
+            // to the value the getter still returns, which is what an unchanged choice should do.
+            if (_settings.ChooseRuler(value))
             {
-                return;
+                OnPropertyChanged();
             }
-
-            // The override has served its purpose the moment somebody uses the menu; leaving it
-            // would make the stored value unreachable for the rest of the session.
-            _rulerForThisSession = null;
-
-            SaveSettings(Settings with { ShowRuler = value });
-            OnPropertyChanged();
         }
     }
 
@@ -392,7 +1003,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        SaveSettings(Settings with { PanelWidth = width });
+        _settings.SetPanelWidth(width);
     }
 
     /// <summary>
@@ -416,15 +1027,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(import);
         ArgumentNullException.ThrowIfNull(milling);
 
-        SaveSettings(Settings with
-        {
-            Machine = machine,
-            DryRun = dryRun,
-            Probe = probe,
-            Level = level,
-            Import = import,
-            Milling = milling,
-        });
+        _settings.SetMachine(machine, dryRun, probe, level, import, milling);
 
         // **A preview still building captured the old numbers and has to go.** It read the machine
         // profile when its request was built, so left alone it finishes and publishes programs cut
@@ -482,7 +1085,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(framing);
 
-        SaveSettings(Settings with { Framing = framing });
+        _settings.SetFraming(framing);
         OnPropertyChanged(nameof(Framing));
 
         // Framing is read when a request is built, so a preview in flight is writing the old
@@ -528,7 +1131,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             var sw = Stopwatch.StartNew();
             Adopt(ProjectFile.Open(path), sw.Elapsed);
-            SaveSettings(Settings.WithRecent(path));
+            _settings.RememberRecent(path);
 
             // Opening is exactly when someone wants to know their board moved on without them.
             // Passive: it offers, it never applies.
@@ -551,7 +1154,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
 
-        SaveSettings(Settings.WithoutRecent(path));
+        _settings.ForgetRecent(path);
         StatusMessage = $"{Path.GetFileName(path)} is not there any more, so it has been taken off the recent list.";
     }
 
@@ -566,7 +1169,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             _project.ViewState = CaptureViewState();
             RecordOutputs();
             ProjectFile.Save(_project, path);
-            SaveSettings(Settings.WithRecent(path));
+            _settings.RememberRecent(path);
             RefreshTitles();
             StatusMessage = $"Saved {Path.GetFileName(path)}.";
             return true;
@@ -1064,7 +1667,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Remembers the alignment test's hover height, which is a setting rather than a per-job number.</summary>
     public void SaveAlignHover(double hoverMm) =>
-        SaveSettings(Settings with { Align = Settings.Align with { HoverMm = hoverMm } });
+        _settings.SetAlignHover(hoverMm);
 
     /// <summary>
     /// Remembers where the alignment files go, so the next visit starts there.
@@ -1079,7 +1682,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         if (!string.Equals(Settings.Align.LastFolder, folder, StringComparison.Ordinal))
         {
-            SaveSettings(Settings with { Align = Settings.Align with { LastFolder = folder } });
+            _settings.SetAlignFolder(folder);
         }
     }
 
@@ -1534,7 +2137,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 }
             }
 
-            SaveSettings(Settings with { LastExportFolder = folder, WriteDryRun = dryRun });
+            _settings.SetExport(folder, dryRun);
 
             ReplaceExportWarnings(refusals);
 
@@ -1567,6 +2170,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// One sentence per stopped run, written once (6.54): each is reachable from two routes — the
+    /// polite partial result and the cancellation that surfaced as an exception — and two copies
+    /// of an operator-facing sentence drift apart the first time one is reworded.
+    /// </summary>
+    private const string CheckStopped = "Check stopped; the board was not fully checked.";
+
+    /// <summary>The findings search's sentence for a stop that came before anything was found.</summary>
+    private const string FindingsStoppedEmpty = "Stopped before the search found anything to show.";
+
+    /// <summary>
     /// Check the board as its own job, without exporting or previewing anything.
     ///
     /// **Why the button exists.** The board-level checks run on load; the electrical ones — the
@@ -1586,6 +2199,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         var token = _checkRun.Begin();
+        _stops.RunStarted();
 
         if (token.IsCancellationRequested)
         {
@@ -1604,14 +2218,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Superseded by a later press, or the window is closing. The older answer is not worth
-            // showing and its status line is not worth writing over the newer one's.
+            // Stopped by the operator before any partial answer existed, or superseded by a later
+            // press, or the window is closing — and `Finish` is what tells them apart (6.54): a
+            // stopped run is still the current one and owes the operator a word, a superseded
+            // run's status line is not worth writing over the newer one's.
             //
             // **Filtered on this run's own token**, for the reason `PreviewAsync` spells out: not
             // every cancellation means the operator moved on. An inner token, or a later stage
             // using one of its own, would otherwise land here with nothing cleared and nothing
             // said — `Finish` never called, so the run stays installed and the status line reads
             // "Checking the board…" for the rest of the session.
+            if (_checkRun.Finish(token))
+            {
+                AnnounceStop(CheckStopped);
+            }
+
             return;
         }
         catch (Exception ex)
@@ -1620,9 +2241,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             // void` click handler, so anything that escapes is an unhandled exception on the UI
             // thread and the window closes with the operator's board unsaved. `PreviewAsync`
             // already catches broadly for exactly that reason; these two were narrower.
+            //
+            // A stopped run can land here too (6.54, found by `/code-review`): a stage that
+            // reacts to the cancelled token by throwing something other than an
+            // `OperationCanceledException` is still the operator's own stop, and telling them
+            // their deliberate Escape was "Check failed" would be the status line lying about
+            // who decided.
             if (_checkRun.Finish(token))
             {
-                StatusMessage = $"Check failed: {ex.Message}";
+                if (token.IsCancellationRequested)
+                {
+                    AnnounceStop(CheckStopped);
+                }
+                else
+                {
+                    StatusMessage = $"Check failed: {ex.Message}";
+                }
             }
 
             return;
@@ -1639,7 +2273,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // story 3 was about, arriving in a new place.
         if (result.Cancelled)
         {
-            StatusMessage = "Check stopped; the board was not fully checked.";
+            AnnounceStop(CheckStopped);
             return;
         }
 
@@ -1723,6 +2357,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         var frame = Frame;
 
         var token = _findingsRun.Begin();
+        _stops.RunStarted();
 
         if (token.IsCancellationRequested)
         {
@@ -1744,16 +2379,32 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             // This run's own token only. See `CheckBoardAsync` and `PreviewAsync`: an unfiltered
             // catch here leaves the run installed and the window saying it is still looking.
+            // `Finish` tells a stop from a supersession (6.54); a stop that landed before the
+            // search produced anything has no window to show and says so where the operator is.
+            if (_findingsRun.Finish(token))
+            {
+                AnnounceStop(FindingsStoppedEmpty);
+            }
+
             return null;
         }
         catch (Exception ex)
         {
             // Broad on purpose — this is awaited from an `async void` handler, so anything that
             // escapes closes the window. The gap search is the newest and least travelled geometry
-            // in the application, which is the worst place to be narrow about it.
+            // in the application, which is the worst place to be narrow about it. A stop whose
+            // cancellation surfaced as some other exception is still a stop, as in
+            // `CheckBoardAsync` — the operator's Escape must not read as a failure.
             if (_findingsRun.Finish(token))
             {
-                StatusMessage = $"Could not work out the findings: {ex.Message}";
+                if (token.IsCancellationRequested)
+                {
+                    AnnounceStop(FindingsStoppedEmpty);
+                }
+                else
+                {
+                    StatusMessage = $"Could not work out the findings: {ex.Message}";
+                }
             }
 
             return null;
@@ -1761,6 +2412,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         if (!_findingsRun.Finish(token))
         {
+            return null;
+        }
+
+        // A stop that landed before any layer finished came back politely rather than as an
+        // exception, but it is the same outcome: nothing to put under the banner. A window
+        // holding only an apology helps nobody, and its empty-state line would claim no layer is
+        // set to be isolated — a lie about the settings (6.54, found by `/code-review`). Same
+        // sentence as the exceptional route, because it is the same event.
+        if (result.Cancelled && result.Layers.Count == 0)
+        {
+            AnnounceStop(FindingsStoppedEmpty);
             return null;
         }
 
@@ -1776,6 +2438,40 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         return result;
     }
+
+    /// <summary>
+    /// Stops whichever check the operator is waiting on: the board check, the findings search, or
+    /// both — Escape's meaning while either runs (6.54).
+    ///
+    /// Both rather than whichever seems active, because stopping is idempotent and the operator
+    /// pressing Escape means "that is enough", not "that is enough of one of them". No status is
+    /// written here: a stopped run is still the latest and announces itself on its own way out,
+    /// which is what <see cref="LatestRun.Stop"/> exists to allow — and what keeps a stop that
+    /// raced a natural finish from claiming a complete answer was cut short. When one Escape
+    /// stops both, their two announcements are gathered into one line (<see cref="AnnounceStop"/>).
+    /// </summary>
+    /// <returns>True when something was running to stop, so a keystroke wired to this can fall
+    /// through untouched when nothing was.</returns>
+    public bool StopChecks()
+    {
+        // Both asked, neither short-circuited: `||` alone would leave the findings running
+        // whenever the board check was the one that stopped.
+        var check = _checkRun.Stop();
+        var findings = _findingsRun.Stop();
+
+        if (check && findings)
+        {
+            _stops.StoppedBoth();
+        }
+
+        return check || findings;
+    }
+
+    /// <summary>What the status line says for stopped checks; see <see cref="StopAnnouncement"/>.</summary>
+    private readonly StopAnnouncement _stops = new([CheckStopped, FindingsStoppedEmpty]);
+
+    /// <summary>A run says it was stopped — joined with the other's sentence when one Escape stopped both.</summary>
+    private void AnnounceStop(string sentence) => StatusMessage = _stops.Say(sentence);
 
     /// <summary>
     /// Stops every check claiming to be the one a status message is about.
@@ -2171,9 +2867,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         // A board layer is identified by its role, so the choice follows that role across every
         // project. A layer the scene invented has no role, so it is identified by its own id.
-        SaveSettings(row.Role is { } role
-            ? Settings.WithColour(role, hex)
-            : Settings.WithSceneColour(row.Id, hex));
+        if (row.Role is { } role)
+        {
+            _settings.SetLayerColour(role, hex);
+        }
+        else
+        {
+            _settings.SetSceneColour(row.Id, hex);
+        }
 
         Rebuild(TimeSpan.Zero);
     }
@@ -2183,9 +2884,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(row);
 
-        SaveSettings(row.Role is { } role
-            ? Settings.WithoutColour(role)
-            : Settings.WithoutSceneColour(row.Id));
+        if (row.Role is { } role)
+        {
+            _settings.ResetLayerColour(role);
+        }
+        else
+        {
+            _settings.ResetSceneColour(row.Id);
+        }
 
         Rebuild(TimeSpan.Zero);
     }
@@ -2193,11 +2899,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Puts every layer back to the built-in palette.</summary>
     public void ResetColours()
     {
-        SaveSettings(Settings with
-        {
-            LayerColours = System.Collections.Immutable.ImmutableDictionary<LayerRole, string>.Empty,
-            SceneColours = System.Collections.Immutable.ImmutableDictionary<string, string>.Empty,
-        });
+        _settings.ResetColours();
 
         Rebuild(TimeSpan.Zero);
         StatusMessage = "Layer colours reset.";
@@ -2211,7 +2913,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(kind);
 
-        SaveSettings(Settings.WithSceneColour(kind.Id, $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}"));
+        _settings.SetSceneColour(kind.Id, $"#{colour.R:X2}{colour.G:X2}{colour.B:X2}");
         Rebuild(TimeSpan.Zero);
     }
 
@@ -2219,7 +2921,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         ArgumentNullException.ThrowIfNull(kind);
 
-        SaveSettings(Settings.WithoutSceneColour(kind.Id));
+        _settings.ResetSceneColour(kind.Id);
         Rebuild(TimeSpan.Zero);
     }
 
@@ -2289,62 +2991,34 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         Rebuild(TimeSpan.Zero);
     }
 
-    private void SaveSettings(AppSettings settings)
+    /// <summary>
+    /// The keeper's write: the whole record to disk, and a status line when the disk says no.
+    /// *When* to call it is not decided here — that is <see cref="SettingsKeeper.PersistenceOf"/>.
+    /// </summary>
+    private bool WriteSettings(AppSettings settings)
     {
-        Settings = settings;
-
         try
         {
             settings.Save();
+            return true;
         }
         catch (Exception ex) when (IsExpected(ex))
         {
             StatusMessage = $"Could not save settings: {ex.Message}";
+            return false;
         }
     }
 
     /// <summary>
-    /// Keeps a setting for this session without writing the file — 6.49.
-    ///
-    /// **For the settings a continuous control changes.** Every other caller of
-    /// <see cref="SaveSettings"/> is a discrete event: a theme picked, a file opened, a folder
-    /// chosen. The board thickness is a slider, snapping to 0.1 mm across 0.4–3.2 mm, so a
-    /// full-range drag called that twenty-eight times and wrote the JSON twenty-eight times — disk
-    /// I/O on the UI thread, in a loop, for a value nobody reads until the next board is imported,
-    /// with twenty-seven of the writes immediately superseded.
-    ///
-    /// **It still survives a restart**, because closing the window saves the placement, and that
-    /// goes through `SaveSettings` and writes the whole object — this value with it. So does any
-    /// other settings change made afterwards. What is lost is the value from a session that ended
-    /// in a crash, and for a default meaning *"where the next new board starts"* that is the right
-    /// trade against writing to disk twenty-eight times a drag.
+    /// Turns the rulers off for this session only, for the <c>--no-ruler</c> screenshot — never
+    /// written, unlike anything given to the keeper's setters. See
+    /// <see cref="SettingsKeeper.OverrideRulerForThisSession"/>.
     /// </summary>
-    private void RememberSettings(AppSettings settings) => Settings = settings;
-
-    /// <summary>
-    /// Turns the rulers off for this session only, for the <c>--no-ruler</c> screenshot.
-    ///
-    /// Session-only on purpose: a shot is taken against whatever settings file is on the machine,
-    /// and taking one must not leave the operator's rulers turned off afterwards.
-    /// </summary>
-    public void RememberRuler(bool shown)
+    public void OverrideRulerForThisSession(bool shown)
     {
-        _rulerForThisSession = shown;
+        _settings.OverrideRulerForThisSession(shown);
         OnPropertyChanged(nameof(ShowRuler));
     }
-
-    /// <summary>
-    /// The <c>--no-ruler</c> override, held apart from <see cref="Settings"/> on purpose.
-    ///
-    /// **It went through `RememberSettings` first, and that was wrong.** That method's own doc says
-    /// what the fault is: *"It still survives a restart, because closing the window saves the
-    /// placement, and that goes through `SaveSettings` and writes the whole object — this value with
-    /// it."* So a screenshot run would have turned the operator's rulers off for good. It did not,
-    /// only because `SavePlacement` returns early when the window was given a `--shot` or a
-    /// `--size` — a guard in a different file, for a different reason, that this was relying on
-    /// without saying so. A field the settings record never sees cannot be written out by anything.
-    /// </summary>
-    private bool? _rulerForThisSession;
 
     // ------------------------------------------------------------------ presenting
 
@@ -2387,6 +3061,13 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             _board = null;
             HasBoard = false;
             CanRefresh = false;
+
+            // **The tabs go with the board.** Both branches below return before the refresh that
+            // would clear them, so after Close project the old board's handles were still drawn
+            // over a program opened on its own, in the wrong frame — and still grabbable: a drag
+            // wrote to a row nothing showed and marked an empty project as changed (sprint 6's
+            // `xhigh` review).
+            ClearTabHandles();
 
             // With no board, a program opened on its own is the whole picture, and its own extents
             // are the only frame there is to draw it in.
@@ -2491,6 +3172,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         RefreshFacts(board);
         RefreshWarnings(board);
         RefreshTitles();
+        RefreshTabHandles();
 
         if (elapsed > TimeSpan.Zero)
         {
@@ -2918,6 +3600,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         var drawn = _backplot.Count > 0 || Gcode is not null;
         var stopped = Invalidate(StaleBecause.OutputChanged);
 
+        // Whatever else the change did, it may have re-planned the tabs: a moved frame moves the
+        // millimetres the handles sit at, and every door that clears a hand-set position arrives
+        // here. After the reframe, so the handles are built against the frame they will be drawn
+        // in.
         if (!drawn && !stopped)
         {
             if (moved)
@@ -2925,9 +3611,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 Reframe();
             }
 
+            RefreshTabHandles();
             return;
         }
 
+        RefreshTabHandles();
         StatusMessage = "Output changed. Preview again to see the new programs.";
     }
 
@@ -3062,10 +3750,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        // Still remembered app-wide, but only as where the next new board starts — and held in
-        // memory rather than written, because this is a slider and the write was happening once
-        // per tick. See `RememberSettings`, and 6.49.
-        RememberSettings(Settings with { BoardThicknessMm = value });
+        // Still remembered app-wide, but only as where the next new board starts — and written with
+        // the next write rather than now, because this is a slider and the write was happening once
+        // per tick. The decision is the keeper's (`SetBoardThickness`, `PersistenceOf`); see 6.49.
+        _settings.SetBoardThickness(value);
         OnOutputChanged();
     }
 
@@ -3787,7 +4475,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         BoardSummary = string.Create(
             CultureInfo.InvariantCulture,
             $"{scene.SourceSegmentCount:N0} synthetic segments · generated in {generated.TotalMilliseconds:F0} ms · " +
-            $"4 LOD tiers built in {sw.Elapsed.TotalMilliseconds:F0} ms");
+            $"{MillBurn.Viewer.ToolpathScene.TierCount} LOD tiers built in {sw.Elapsed.TotalMilliseconds:F0} ms");
         BoardTitle = "Viewport benchmark";
     }
 }

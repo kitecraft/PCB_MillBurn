@@ -106,6 +106,73 @@ public sealed class CancellableWorkTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A stopped run is still the latest, and may publish what it has — named as partial.
+    ///
+    /// **The deliberate opposite of <see cref="ARunCancelledWithoutASuccessorCannotPublish"/>**,
+    /// and the half 6.54 was missing: `Cancel` is for runs whose answer nobody wants any more,
+    /// `Stop` is for an operator saying "that is enough" — and what makes the difference real is
+    /// `Finish` returning true, because that is the gate every caller's "stopped" status line and
+    /// the findings window's banner sit behind. For as long as `Stop` did not exist, those were
+    /// written, correct, and unreachable.
+    /// </summary>
+    [Fact]
+    public void AStoppedRunIsStillTheLatestAndMayPublish()
+    {
+        using var runs = new LatestRun();
+
+        var token = runs.Begin();
+
+        Assert.True(runs.Stop());
+        Assert.True(token.IsCancellationRequested);
+        Assert.False(runs.IsRunning);
+
+        // The one answer that distinguishes a stop from a supersession.
+        Assert.True(runs.Finish(token));
+    }
+
+    /// <summary>
+    /// Stopping is only meaningful while something runs: before a run, after one finishes, and
+    /// twice in a row it says there was nothing to stop — which is what lets a keystroke wired to
+    /// it fall through to whatever else the key means.
+    /// </summary>
+    [Fact]
+    public void StoppingNothingSaysSo()
+    {
+        using var runs = new LatestRun();
+
+        Assert.False(runs.Stop());
+
+        var token = runs.Begin();
+        Assert.True(runs.Finish(token));
+        Assert.False(runs.Stop());
+
+        var again = runs.Begin();
+        Assert.True(runs.Stop());
+        Assert.False(runs.Stop());
+        Assert.True(runs.Finish(again));
+    }
+
+    /// <summary>
+    /// A successor still beats a stopped run: stop, then begin, and the stopped run's finish is
+    /// refused — supersession exactly as if nothing had stopped. The newer run owns the status
+    /// line; a stopped run announcing itself over it would be the fault the refusal has always
+    /// guarded.
+    /// </summary>
+    [Fact]
+    public void AStoppedRunStillLosesToASuccessor()
+    {
+        using var runs = new LatestRun();
+
+        var stopped = runs.Begin();
+        Assert.True(runs.Stop());
+
+        var successor = runs.Begin();
+
+        Assert.False(runs.Finish(stopped));
+        Assert.True(runs.Finish(successor));
+    }
+
+    /// <summary>
     /// A run stopped by something that is not a successor cannot publish either — and that is why
     /// whatever stopped it has to clear up after it.
     ///

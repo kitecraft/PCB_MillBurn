@@ -53,7 +53,7 @@ public sealed class DeterminismTests
         Assert.Equal(first.SourceSegmentCount, second.SourceSegmentCount);
         Assert.Equal(first.Bounds, second.Bounds);
 
-        for (var tier = 0; tier < 4; tier++)
+        for (var tier = 0; tier < ToolpathScene.TierCount; tier++)
         {
             Assert.Equal(first.SegmentsAtTier(tier), second.SegmentsAtTier(tier));
         }

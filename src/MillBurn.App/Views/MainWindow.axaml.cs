@@ -69,6 +69,13 @@ public partial class MainWindow : Window
                     Viewport.RefitWhenDrawn();
                 };
 
+                // The tab gestures (6.4). The control reports where in board millimetres; the view
+                // model owns what the place means, through the planner's own walk.
+                Viewport.TabMoved += (_, e) => vm.MoveTab(e.Index, e.At.X, e.At.Y);
+                Viewport.TabAddRequested += (_, e) => vm.AddTab(e.At.X, e.At.Y);
+                Viewport.TabRemoveRequested += (_, e) => vm.RemoveTab(e.Index);
+                Viewport.TabClicked += (_, e) => ShowTabWidth(vm, e.Index);
+
                 // Refilled each time the empty panel comes back, because opening or saving a
                 // project in between changes the list.
                 vm.PropertyChanged += (_, e) =>
@@ -168,10 +175,10 @@ public partial class MainWindow : Window
         }
 
         // **And this is where the settings a slider changed get written** — the placement save
-        // above writes the whole file, so anything held in memory during the session lands with
-        // it. Said here because 6.49 moved the board thickness off its property setter, and the
-        // question "then when is it written?" should be answerable from the code rather than by
-        // working out which other setting happens to save first.
+        // above writes the whole file, so anything `SettingsKeeper` holds as
+        // `WrittenWithTheNextWrite` lands with it. Said here because 6.49 moved the board
+        // thickness off its property setter, and the question "then when is it written?" should be
+        // answerable from the code rather than by working out which other setting saves first.
     }
 
     /// <summary>
@@ -222,6 +229,18 @@ public partial class MainWindow : Window
         {
             var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
             var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+            // Escape stops a running board check or findings search — 6.54, the operator's way
+            // out of a wait they started. Handled only when something actually stopped: this
+            // handler bubbles, so a control that gave Escape a meaning (dropping a dragged tab,
+            // clearing the marker) has already had it, and an Escape with nothing to stop is
+            // left for whoever asks next rather than swallowed on principle.
+            if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None
+                && DataContext is MainViewModel stoppable && stoppable.StopChecks())
+            {
+                e.Handled = true;
+                return;
+            }
 
             Action? act = (e.Key, control, shift) switch
             {
@@ -285,8 +304,11 @@ public partial class MainWindow : Window
 
     private bool _closeConfirmed;
 
-    /// <summary>A dialog to capture instead of the main window, for checking one headlessly.</summary>
-    private Window? _captureInstead;
+    /// <summary>
+    /// A dialog to capture instead of the main window, for checking one headlessly — or a popup's
+    /// own top level, which a capture of the window does not reach.
+    /// </summary>
+    private TopLevel? _captureInstead;
 
     private async Task OnOpened(string[] args)
     {
@@ -441,6 +463,23 @@ public partial class MainWindow : Window
         if (Argument(args, "--set-role") is { } assignment)
         {
             Console.WriteLine(SetRoleForShot(vm, assignment));
+        }
+
+        // Moves one tab by name and arc, the way a drag in the viewport does — 6.4. `<n>=<mm>`,
+        // the tab by its place in the plan and the destination as a distance along the cut path,
+        // so a shot can photograph a hand-set tab and the *unsaved changes* line it causes. The
+        // drag itself needs a button held and a pointer moved; this is the same write the drop
+        // makes.
+        if (Argument(args, "--move-tab") is { } slide)
+        {
+            Console.WriteLine(MoveTabForShot(vm, slide));
+        }
+
+        // Sets one tab's own width by its letter, the write the width popup makes — `<letter>=<mm>`,
+        // so a shot can show one tab's gap wider than the rest and the letters beside them all.
+        if (Argument(args, "--tab-width") is { } sizing)
+        {
+            Console.WriteLine(TabWidthForShot(vm, sizing));
         }
 
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
@@ -644,6 +683,7 @@ public partial class MainWindow : Window
             var tabs = new TabsWindow(
                 outline.Label,
                 planning.Tabs,
+                outline.TabMoves,
                 outline.TabWidthNm,
                 outline.TabHeightNm,
                 planning.DerivedWidthNm,
@@ -655,6 +695,23 @@ public partial class MainWindow : Window
 
             tabs.Show(this);
             _captureInstead = tabs;
+        }
+
+        // A tab's width popup, by letter, for a picture of what a click on its handle opens. The
+        // popup is its own top level, out of reach of a capture of the window, so it is what is
+        // captured; shown at the viewport rather than at a pointer a headless run does not have.
+        if (Argument(args, "--tab-popup") is { } popupLetter)
+        {
+            if (ShowTabWidth(vm, vm.TabHandleOf(popupLetter), atPointer: false) is { Content: Visual content }
+                && TopLevel.GetTopLevel(content) is { } popup)
+            {
+                _captureInstead = popup;
+                Console.WriteLine($"tab popup: tab {popupLetter}");
+            }
+            else
+            {
+                Console.WriteLine($"tab popup: no tab {popupLetter} to open, or it did not open");
+            }
         }
 
         // The test-cut dialog, for a picture of whichever of the three tests is asked for.
@@ -734,7 +791,7 @@ public partial class MainWindow : Window
         // did not. Set on the view model, so it travels the path the menu item travels.
         if (args.Contains("--no-ruler", StringComparer.OrdinalIgnoreCase))
         {
-            vm.RememberRuler(false);
+            vm.OverrideRulerForThisSession(false);
         }
 
         // Pixels per millimetre and the board point to centre, so a shot can be taken at the zoom
@@ -852,22 +909,42 @@ public partial class MainWindow : Window
         // **Awaited rather than routed through the click handler**, which is `async void`: that
         // returns at its first await and the capture would then race the window into existence.
         // The same reason `--check` awaits the view model instead of pressing the menu item.
+        // Stops the findings search a moment after it starts, the way Escape does mid-run — 6.54.
+        // The stopped window and its banner cannot be reached any other way headlessly: a stop
+        // needs a hand on the key while the search is still looking. A moment rather than at
+        // once, because a token cancelled before the work begins never produces the partial
+        // answer the banner sits over; 150 ms into a board this size is reliably mid-search.
+        //
+        // **The window opens only for a genuinely stopped result** (`/code-review`): on a machine
+        // fast enough to finish inside the delay, photographing the complete window under this
+        // flag's name would be a shot asserting a banner while showing its absence. The flag says
+        // which case happened, in words that are true when no board was loaded too.
+        if (args.Contains("--stop-findings", StringComparer.OrdinalIgnoreCase))
+        {
+            var searching = vm.FindingsAsync();
+
+            await Task.Delay(150).ConfigureAwait(true);
+            vm.StopChecks();
+
+            var partial = await searching.ConfigureAwait(true);
+
+            if (partial is { Cancelled: true })
+            {
+                Console.WriteLine("stop findings: stopped mid-search");
+                ShowFindings(partial, vm);
+            }
+            else
+            {
+                Console.WriteLine(partial is null
+                    ? "stop findings: nothing was mid-search to stop — no board, or the stop landed before anything was found"
+                    : "stop findings: the search finished before the stop landed, so there is no stopped window to show");
+            }
+        }
+
         if (args.Contains("--findings", StringComparer.OrdinalIgnoreCase)
             && await vm.FindingsAsync().ConfigureAwait(true) is { } findings)
         {
-            var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
-            {
-                RequestedThemeVariant = ActualThemeVariant,
-            };
-
-            window.PlacePicked += GoToPlace;
-            Watch(window);
-
-            // Presses the nth place in the list, because clicking one is the whole of this story
-            // and a screenshot cannot click. Counted over the window's own order, so what it picks
-            // is what an operator reading top to bottom would pick.
-            window.Show(this);
-            _captureInstead = window;
+            var window = ShowFindings(findings, vm);
 
             // Presses the nth place in the list, because clicking one is the whole of this story
             // and a screenshot cannot click. Counted from one, over the window's own order, so what
@@ -1490,16 +1567,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
-        {
-            RequestedThemeVariant = ActualThemeVariant,
-        };
-
-        window.PlacePicked += GoToPlace;
-        Watch(window);
-
-        window.Show(this);
-        _captureInstead = window;
+        ShowFindings(findings, vm);
     }
 
     /// <summary>
@@ -1522,6 +1590,27 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Opens one findings window over a result, wired the one way every route wires it: the pick
+    /// handler, the board-change watch, and the capture target. Three call sites had grown three
+    /// copies of this sequence (`/code-review`), and the headless one was the copy a future
+    /// change — a new constructor argument, a forgotten <see cref="Watch"/> — would have missed.
+    /// </summary>
+    private FindingsWindow ShowFindings(BoardFindings.Result findings, MainViewModel vm)
+    {
+        var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
+        {
+            RequestedThemeVariant = ActualThemeVariant,
+        };
+
+        window.PlacePicked += GoToPlace;
+        Watch(window);
+        window.Show(this);
+        _captureInstead = window;
+
+        return window;
+    }
+
+    /// <summary>
     /// Shuts every open findings window.
     ///
     /// **From the bench, 2026-10-07:** *"The findings dialog is not closed when opening a recent
@@ -1538,6 +1627,62 @@ public partial class MainWindow : Window
         {
             window.Close();
         }
+    }
+
+    /// <summary>
+    /// A click on a tab's handle: its own width, asked for beside it. Nothing opens for a handle
+    /// that names no tab — the overlay changed between the press and the release.
+    /// </summary>
+    private Flyout? ShowTabWidth(MainViewModel vm, int handle, bool atPointer = true)
+    {
+        if (vm.TabWidthFor(handle) is not { } tab)
+        {
+            return null;
+        }
+
+        var flyout = TabWidthFlyout.For(
+            tab.Letter, tab.WidthMm, tab.BoardWidthMm, chosen => vm.SetTabWidth(tab, chosen));
+
+        flyout.ShowAt(Viewport, showAtPointer: atPointer);
+        return flyout;
+    }
+
+    /// <summary>
+    /// The <c>--tab-width</c> flag: one tab's own width by its letter, the way the popup sets it.
+    /// Says what it did, and says so when it could not (06 §6.66).
+    /// </summary>
+    private static string TabWidthForShot(MainViewModel vm, string sizing)
+    {
+        var parts = sizing.Split('=', 2, StringSplitOptions.TrimEntries);
+
+        if (parts.Length != 2
+            || parts[0].Length == 0
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var widthMm))
+        {
+            return $"tab width: '{sizing}' is not <letter>=<mm> — the tab's letter, and its width in millimetres";
+        }
+
+        return vm.SetTabWidthForShot(parts[0], widthMm);
+    }
+
+    /// <summary>
+    /// The <c>--move-tab</c> flag: one tab slid along the cut path, the way a drop does it — 6.4.
+    ///
+    /// Says what it did, and says so when it could not (06 §6.66): a flag that quietly moved
+    /// nothing photographs the unmoved tabs under a caption claiming a hand-set one.
+    /// </summary>
+    private static string MoveTabForShot(MainViewModel vm, string slide)
+    {
+        var parts = slide.Split('=', 2, StringSplitOptions.TrimEntries);
+
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var tab)
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var alongMm))
+        {
+            return $"move tab: '{slide}' is not <n>=<mm> — the tab's place in the plan, and millimetres along the cut path";
+        }
+
+        return vm.MoveTabForShot(tab, alongMm);
     }
 
     /// <summary>For <c>--set-role</c>: the one line saying what was set, or why nothing was.</summary>
@@ -1618,7 +1763,7 @@ public partial class MainWindow : Window
             case "sizes":
                 if (vm.Layers.FirstOrDefault(r => r.Operation == OperationKind.Outline) is { } sized)
                 {
-                    sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), []);
+                    sized.SetTabs(Nm.FromMillimetres(2.5), Nm.FromMillimetres(0.35), [], null, null);
                 }
 
                 break;
@@ -2181,6 +2326,7 @@ public partial class MainWindow : Window
             this,
             row.Label,
             planning.Tabs,
+            planning.OverridesStale ? [] : row.TabMoves,
             row.TabWidthNm,
             row.TabHeightNm,
             planning.DerivedWidthNm,
@@ -2189,7 +2335,7 @@ public partial class MainWindow : Window
 
         if (chosen is not null)
         {
-            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits);
+            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits, chosen.Moves, planning.PristineKey);
         }
     }
 

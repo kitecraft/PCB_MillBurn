@@ -57,6 +57,16 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         Keep = [],
     };
 
+    /// <summary>
+    /// The options stamped with the fingerprint of the plan their hand-set changes were made
+    /// against, as the app stamps them when it writes one. Unstamped, the program now refuses the
+    /// changes — a number from another plan names a different tab.
+    /// </summary>
+    private static OutlineOptions Keyed(Paths64 outline, OutlineOptions options) => options with
+    {
+        TabPlanKey = OutlineOperation.PlanTabs(outline, options with { TabEdits = [], TabMoves = [] }).PristineKey,
+    };
+
     /// <summary>The distance from a point to the nearest corner of a rectangle that size.</summary>
     private static double ToNearestCorner(Point2 at, double widthMm, double heightMm)
     {
@@ -398,7 +408,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             arcTolerance: options.SagittaNm);
 
         var planned = TabPlan.For(cut[0], options);
-        var toolpath = OutlineOperation.Build([profile], options);
+        var toolpath = OutlineOperation.Build([profile], Keyed([profile], options));
 
         var runs = toolpath.Passes
             .Where(p => !p.Closed)
@@ -487,7 +497,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             ],
         };
 
-        var toolpath = OutlineOperation.Build([profile], options);
+        var toolpath = OutlineOperation.Build([profile], Keyed([profile], options));
 
         var cut = Polygons.Inflate(
             [profile],
@@ -526,7 +536,12 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         // What holds the board is that every millimetre of the profile is either cut or under a tab.
         // The tabs' own spans are unioned here — two that overlap are one span, which is what the
         // splitter does by leaving no run between them — and the rest must be cut.
-        var held = Covered(TabPlan.For(cut[0], options), perimeter);
+        var planned = TabPlan.For(cut[0], options);
+        var held = Covered(planned, perimeter);
+
+        // The case this test is for: the two widened tabs really do run into each other — one gap
+        // holding both — or the accounting above would pass without the overlap ever happening.
+        Assert.Contains(TabPlan.Gaps(planned, perimeter), g => g.Tabs.Count > 1);
 
         output.WriteLine($"{Nm.ToMillimetreString((long)held, 1)} mm of profile is under a tab");
 
@@ -602,7 +617,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             TabEdits = [new TabEdit { Index = 0, HeightNm = Mm(0.3) }],
         };
 
-        var toolpath = OutlineOperation.Build([Rect(21, 37)], options);
+        var toolpath = OutlineOperation.Build([Rect(21, 37)], Keyed([Rect(21, 37)], options));
 
         // 0.8 mm board and 0.3 mm of break-through is 1.1 mm of cut. The derived tabs leave 0.25 mm,
         // so their tops are at 0.55 mm; the edited one leaves 0.30 mm, so its top is at 0.50 mm.
@@ -645,7 +660,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             ],
         };
 
-        var toolpath = OutlineOperation.Build([Rect(21, 37)], options);
+        var toolpath = OutlineOperation.Build([Rect(21, 37)], Keyed([Rect(21, 37)], options));
 
         output.WriteLine(string.Join(Environment.NewLine, toolpath.Notes));
 
@@ -721,13 +736,6 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>
-    /// The two points on the profile half a tab either side of its centre.
-    ///
-    /// Walked from the contour itself, in the same arc-length terms the planner used, so the caller
-    /// can ask whether the copper between them is straight without trusting anything the planner
-    /// said about it.
-    /// </summary>
     /// <summary>Where a given distance along the contour lands, wrapping at the seam.</summary>
     private static Point2 PointAlong(Path64 contour, double along)
     {
@@ -760,6 +768,13 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
         return segments[^1].To;
     }
 
+    /// <summary>
+    /// The two points on the profile half a tab either side of its centre.
+    ///
+    /// Walked from the contour itself, in the same arc-length terms the planner used, so the caller
+    /// can ask whether the copper between them is straight without trusting anything the planner
+    /// said about it.
+    /// </summary>
     private static (Point2 From, Point2 To) EitherSide(Path64 contour, PlacedTab tab)
     {
         var segments = IsolationOperation.ToSegments(contour);
@@ -854,7 +869,7 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
             TabEdits = [new TabEdit { Index = 1, WidthNm = Mm(4.25) }],
         };
 
-        var toolpath = OutlineOperation.Build(two, options);
+        var toolpath = OutlineOperation.Build(two, Keyed(two, options));
 
         output.WriteLine(string.Join(" | ", toolpath.Notes));
 
@@ -1053,4 +1068,84 @@ public sealed class TabPlacementTests(ITestOutputHelper output)
     /// <summary>A path moved, for building a job out of two separate profiles.</summary>
     private static Path64 Shifted(Path64 path, double xMm, double yMm) =>
         [.. path.Select(p => new Point64(p.X + Mm(xMm), p.Y + Mm(yMm)))];
+
+    /// <summary>
+    /// On the panel, the default tabs hold both long sides of the frame — not all one edge.
+    ///
+    /// **The test that would have caught 6.72.** From the workshop, on the 66-up panel: *"all the
+    /// tabs end up along the bottom edge of the 'board'. Up to 6 tabs. Then, 7 - 12 along the
+    /// top."* Reproduced exactly: four tabs by default, every one on a 24.6 mm edge at
+    /// y = −0.40 mm. The placement rule was *longest edge first*, and a panel's outline is many
+    /// short straight stretches between the boards — the longest of which all lie along one side,
+    /// so length alone sent every tab there. A frame held on one edge pivots on it.
+    ///
+    /// Two on the bottom and two on the top is this frame's right answer, not a compromise: its
+    /// left and right sides are 6.8 mm stretches between the boards' routed slots, and a 5 mm tab —
+    /// the width a 107 mm board derives — needs 15 mm of edge to hold its clearance either side. A
+    /// side that cannot carry a tab without the cut running into it gets none, and the four go to
+    /// the two sides that can, in opposite pairs on distinct edges.
+    ///
+    /// Asserted in the terms the bench would check — which of the frame's four sides each tab is
+    /// nearest — so all four on the bottom, which is the defect, fails whatever the planner says
+    /// about its own rule.
+    /// </summary>
+    [Fact]
+    public void OnThePanelTheDefaultTabsHoldOppositeSidesOfTheFrame()
+    {
+        var board = BoardLoader.LoadFolder(RealBoards.Directory(RealBoards.Panel));
+        var outline = board.Layers.Single(l => l.Role == LayerRole.Outline);
+
+        var options = Options() with { BoardThicknessNm = Mm(0.8) };
+
+        var cut = Polygons.Inflate(
+            outline.Area,
+            options.Tool.DiameterNm / 2,
+            JoinType.Round,
+            EndType.Polygon,
+            arcTolerance: options.SagittaNm);
+
+        // The frame's outer boundary — the outermost profile, which is the only one the outline
+        // operation tabs on a panel. Everything else the lattice realises to is nested inside it.
+        var frame = cut.MaxBy(c => Clipper.Area(c))!;
+
+        var tabs = TabPlan.For(frame, options);
+
+        var minX = frame.Min(p => p.X);
+        var maxX = frame.Max(p => p.X);
+        var minY = frame.Min(p => p.Y);
+        var maxY = frame.Max(p => p.Y);
+
+        // Which of the frame's four sides each tab is nearest.
+        string NearestSide(Point2 at)
+        {
+            var distances = new (string Side, long Distance)[]
+            {
+                ("bottom", at.Y - minY),
+                ("top", maxY - at.Y),
+                ("left", at.X - minX),
+                ("right", maxX - at.X),
+            };
+
+            return distances.MinBy(d => d.Distance).Side;
+        }
+
+        foreach (var tab in tabs)
+        {
+            output.WriteLine(
+                $"{NearestSide(tab.At)}: {tab.At} on a "
+                + $"{Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge");
+        }
+
+        Assert.Equal(4, tabs.Count);
+        Assert.All(tabs, t => Assert.False(t.Spaced, "a tab on the panel was spaced, not placed"));
+
+        // Opposite pairs: the frame is held from both sides, which is what the defect made
+        // impossible — all four on the bottom reads here as four of one side and none of the other.
+        Assert.Equal(
+            ["bottom", "bottom", "top", "top"],
+            tabs.Select(t => NearestSide(t.At)).Order().ToList());
+
+        // And each pair on two different stretches of its side, not two tabs crowded onto one.
+        Assert.Equal(4, tabs.Select(t => t.Edge).Distinct().Count());
+    }
 }

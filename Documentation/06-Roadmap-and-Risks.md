@@ -2028,7 +2028,8 @@ than discovered after.
 - **A re-measured stock keeps the alignment holes it was cut with**, instead of losing them to the correction — built, then parked. See 6.16.
 - **The stock's alignment holes marked in the SVGs**, on a layer of their own, so a burn can be registered on the holes the mill made. See 6.17.
 - Material-removal simulation as a first-class view and test oracle.
-- Rest machining / multi-tool bulk clearing.
+- **Copper clearing**: mill away the copper the design does not use, rather than only isolating round it. See 6.75.
+- **Multi-tool rest machining**: a big bit clears what it can reach and a small one follows only where the big one could not. See 6.76.
 - Trochoidal pocketing.
 - Additional mill posts: grblHAL, FluidNC, LinuxCNC, Mach3.
 - **A paste stencil to 3D-print**: an STL from a paste layer, each aperture shrunk to deliver the right volume and thinned only where it must be, with an optional lip that locates it on the board. See 6.18.
@@ -2296,7 +2297,7 @@ depth rather than the two neighbouring passes. It would pick up links across gro
 in the program, and it matters more for mask-relief pocketing than for isolation. The local test is
 a strict subset of it, so nothing has to be undone to get there.
 
-#### 6.4 Tabs: where, how many, how big — **enhancement · partial** — *placed and sized from the board in sprint 4; moving one by hand is not built*
+#### 6.4 Tabs: where, how many, how big — **enhancement · partial** — *placed and sized in sprint 4, moved by hand in sprint 6; keep-outs are not built*
 
 Requested from the workshop, after [every tab asked for is a tab that gets cut](#every-tab-asked-for)
 put four tabs on a board that had been getting two: *"They are large tabs and may not be in the best
@@ -2438,15 +2439,131 @@ were for the count and for the board-wide width. A per-tab edit of zero or less 
 board-wide pair was guarded and the per-tab ones were not, so a hand-edited project file could put
 two cut runs end to end and cut the profile clean through while the header still counted that tab.
 
-**Still open, and why this entry is `partial`:**
+**Item 3 went into sprint 6, 2026-10-16, folded with
+[6.72](#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6)
+at the product owner's suggestion** — *"It may fold the bug into it."* One story
+([Sprint 6 story 2](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md)), the fix first: the
+planner spreads tabs round the outline's sides instead of piling them on the longest edges, and
+the drag is the escape hatch for the board the improved rule still guesses wrong on. The
+hit-testing the drag needs is the viewport's first pick of any kind, and the owner flagged where
+that leads — *"Adding this interaction with the user and the viewew opens up other possibilites I
+think."* A pick built general opens doors this entry does not own: a trace clicked to ask what it
+is, a finding picked on the copper instead of navigated to from the list, item 4's keep-outs drawn
+by hand, a component picked in
+[6.73](#673-placement-data-for-a-pick-and-place--enhancement--open--asked-for-by-the-product-owner-2026-10-16)'s
+assembly tab. Those queue here, not in the story.
 
-- **Moving a tab by hand** — item 3 of the list above, and the one that answers *"may not be in the
-  best locations"* completely. It needs the viewport to hit-test the profile, which nothing does;
-  [6.56](#656-a-finding-takes-you-to-the-copper-it-is-about--enhancement--open--asked-for-by-the-product-owner-2026-09-30)
-  gives the viewport a marker, which is not the same as a pick.
-- **Keep-out from features** — item 4. No tab within *n* mm of a hole or a pad.
-- **The blank still places its own**, two to an edge on the top and right only. That rule is right and
-  was kept; what it does not yet share is the sizing.
+##### Built in sprint 6 story 2 — the hand (2026-10-17)
+
+**The viewport's first pick.** The cut path — the offset profile, not the board's edge — is drawn
+as a faint dashed loop with a handle on every tab: hollow for one the planner placed, solid for one
+a hand did. The gap's true ends are ticked across the path in cyan once the zoom makes the gap
+wider than the handle — ticks, not a bar, and a contrasting colour, both from the bench on first
+sight: the first cut drew the width as a horizontal bar through the handle, and *"on a horizontal
+edge, it'd difficult to notice, and because the bar takes up the full gap width, it's also
+difficult to tell the gap"* — a bar lying along a horizontal edge disappears into the cut line and
+paints over the very gap it names, where two ticks where the cut stops and resumes read at any
+orientation and leave the gap itself as the board's own picture. The cyan is the second half of
+the same report: *"A contrasting colour might be nice."*
+Take hold of a handle and it slides *along the loop*: the pointer is projected onto the nearest
+point of the profile, which is what carries a tab round a corner and makes "off the outline" not
+possible rather than merely refused. Escape, or the window losing the drag, puts the tab back —
+committing a position the hand never let go of would write a place nobody chose. Click an empty
+stretch of the loop and a tab is added there at the board's own sizes; right-click a handle and
+that tab goes — except the last one, which refuses with the reason: the last tab is what holds the
+board, and cutting it free belongs to the count, not to a slip of a click.
+
+**The stored form is a `TabMove`**, living in the settings beside the hand-set sizes and built the
+same way: it names a planned tab by its place in the pristine plan and says where the hand put it,
+as a distance along the profile — the planner's own coordinate, which `ProfilePath` (the planner's
+walk made public) measures and projects. One record, three shapes: an index with a distance moves
+that tab, an index alone removes it, `-1` with a distance adds one. The ordinal is assigned on the
+pristine plan and never re-derived from the list, so a tab moved across its neighbour, or the tabs
+around a removed one, keep their names — the size-edit review's "an override landing on whichever
+tab then sorts into that slot" cannot happen. Positions clear through every door the sizes clear
+through: a changed count, a changed board-wide width, a changed outline cutter — and the CLI's
+`--tabs` and `--tab-width` flags now clear what they re-plan too, which they never did for the
+sizes either. The project file carries them with no format bump; an older project simply has none.
+
+**The header, the window and the planner say the same thing.** The program's placement line counts
+what each rule chose — *"3 centred on 4 straight edge(s) of the profile, never across a corner; 1
+placed by hand"* — a shortfall against the count says *"after the hand-set changes"* instead of
+blaming edge clearance for a removal somebody chose, and a profile whose every tab was removed says
+so rather than claiming no profile takes tabs. The tabs window's rows read *"placed by hand"* where
+they used to quote an edge length the hand never consulted, and they name tabs by ordinal now, so a
+size edit made with a tab removed does not land one over. `--move-tab <n>=<mm>` is the headless
+route in, `--set-role`'s shape: it moves a tab by name and arc, prints what it did or why it could
+not, and the capture's *unsaved changes* line shows the project noticing.
+
+**The blank's datum rule turned out to be a property, not a refusal.** A board tab exists only on
+the board's cut loop, and `Blanks.Resolve` refuses any border under cutter + 2 mm — so no point of
+that loop can lie on the blank's bottom or left edge, and there is nothing for a drop to refuse:
+the projection cannot produce the place the rule forbids. The blank's own tabs stay
+`BlankOperation`'s, planner-placed on the top and right only; if they ever become draggable, the
+refusal becomes real and gets built then.
+
+**And a defect nobody had seen, found when a moved tab vanished across a preview.** `LayerRow`'s
+restoring constructor assigns the cutter *after* the stored tab overrides, and the cutter's
+clearing door — added by `/code-review` as the third door on the re-planning hazard — fires during
+construction too. Every rebuild of the rows, which is every preview and every reopened project,
+wiped the operator's per-tab sizes while the file still showed them: the first preview after an
+edit was right, the second was quietly derived again. The hand-set positions made it visible
+within the hour of existing; the sizes had been going that way since the door was added. The doors
+are guarded with a built flag now — construction restores, only a change clears.
+
+**Still open, and why this entry stays `partial`:**
+
+- **Keep-out from features** — item 4. No tab within *n* mm of a hole or a pad; the picking
+  machinery and the hand-set positions are the two halves it needed, so it is nearer than it was.
+- **The blank still places its own**, two to an edge on the top and right only. That rule is right
+  and was kept; what it does not yet share is the sizing or the hand.
+
+##### Built in sprint 6 story 5 — letters, and a click (2026-10-18)
+
+**Asked for at the bench the morning after the drag landed**, by the product owner: *"I'd also
+like to be able to single click on a tab (just the circle) and have it pop up a hover dialog for
+'width'. The width would be applied to only that specified tab. And, would it be possible to have
+a label near the tab handle (the circle)? A - Z (then AA - ZZ, ...). And in the tab dialog, use
+those letters instead of the numbered list. Displaying the label would always have to try to be on
+the outside of the board."*
+
+> **A story to remove the tabs window was proposed the same morning and withdrawn by the owner
+> before it was cut**: the drag had made its list of places look redundant, but *"the dialog is
+> actually kind of handy still so let's keep it for now."* The letters are what make the two
+> agree — the row and the handle carry the same name.
+
+**A letter is a tab's own name.** `PlacedTab.Letter` is given out with the ordinal, so it has the
+ordinal's stability: the planned tabs letter A, B, C … in the pristine plan's order, the
+hand-added ones after them, spreadsheet-style past Z (`TabPlan.LetterOf`: Z, AA, AB … ZZ, AAA).
+Drag B past D and it is still B; remove A and nobody is re-lettered. An added tab moves up a
+letter when an add before it is removed, as its place among the adds does.
+
+**An added tab can be sized, and its sizes live on its own add entry.** It could not be sized
+before: a `TabEdit` named a tab by its place in the pristine plan, an add had none, and the tabs
+window disabled its boxes. `TabMove` gains `WidthNm` and `HeightNm`, read only by an add. The
+first build put them in a `TabEdit` with an `Added` flag instead, and kept a removed add as an
+empty entry so later adds held their places; `/code-review` took that apart — the empty entries
+made the program header blame a hand for a shortfall, a removed add's size outlived it in the
+export advice and the CLI's count, and a build from before the flag would have read an added
+tab's size as the planned tab's with the same number and cut it there. On the entry, the size is
+removed with its tab, and an older build reads the add at the board's size: a missing choice
+rather than a misplaced one. The window sizes added rows like any other, and the export advice
+holds an add's own size to the same limits as an edit's.
+
+**The click.** A press on a handle that never moves three pixels is a click, not a drop — before
+this, a stationary click "moved" the tab to where it already was and marked it hand-placed. A
+click opens a small popup at the pointer: *Tab B*, its width, *Board's width* and *Apply*; Escape
+or a click away changes nothing. What it writes is `TabPlan.WithWidth` — the window's own rule, so
+a width equal to the board's is no edit, and a tab's own height survives a width change. An answer
+that arrives after the tabs were re-planned under the popup is refused with a line saying so,
+because a re-plan can put the same letter on a different tab.
+
+**The letters sit outside the board.** Each is pushed off the handle along the cut path's normal
+on the side away from the board — which side that is comes from the loop's winding (its shoelace
+sign), and the direction is carried through the screen frame rather than assumed. Shot on the test
+board and the 66-up panel: every letter clear of the copper.
+
+**The owner, on seeing it, 2026-10-18:** *"That is awesome! Tabs are so easy now."*
 
 #### 6.5 A picture on the companion pages — **enhancement · fixed**
 
@@ -3502,6 +3619,12 @@ takes the same options, as every export does.
 **Done when** the test board's `F_Paste` gives a watertight STL (every edge shared by exactly two
 triangles, checked in a test) whose apertures measure the paste layer's own sizes, a step stencil
 prints and slices without repair, and paste printed through it on a real board lands on the pads.
+
+**Set back at the sprint 6 picking, 2026-10-16.** Offered for the slate on the strength of the
+workshop ranking above, and declined by the product owner: *"6.18 is for later. It's still more
+'wish list' than actual enhancement request."* The ranking against the paste extruder stands; what
+changed is the reading of the original ask — an idea the workshop liked, not yet a thing the bench
+is waiting on. It goes back in when the ask comes back harder.
 
 #### 6.19 A dry run that is the real run, raised — **enhancement · built**
 
@@ -6057,7 +6180,7 @@ first.
 **Confirmed at the bench, 2026-09-26**: *"verified."* There is no test — the change is four lines
 in a view model `MillBurn.Tests` cannot reach, which is the third time this sprint.
 
-#### 6.50 Nothing can test the view model — **enhancement · open** — *three times in one sprint*
+#### 6.50 Nothing can test the view model — **enhancement · fixed** — *three times in one sprint*
 
 `MillBurn.Tests` does not reference `MillBurn.App`, so nothing in `MainViewModel` is reachable from
 a test. That is a deliberate boundary — the pipeline is testable precisely because it knows nothing
@@ -6109,6 +6232,35 @@ what the getter returns ([6.62](#662-the-rulers-could-not-be-turned-back-on-afte
 the five things a reason decides. The remaining row is the smaller of the two and the same shape,
 which is the argument for doing it next rather than for doing it now.
 
+**The last row is done, 2026-10-18 — sprint 6 story 4.** *When a setting is persisted* is
+`SettingsKeeper`, in `MillBurn.Core` beside `AppSettings`, shaped like 6.51: a `SettingChange` per
+handler that writes one, and `SettingsKeeper.PersistenceOf` as the table that says when each is
+written. The view model's nineteen `SaveSettings(Settings with { … })` calls became
+`_settings.Change(SettingChange.X, s => s with { … })` — the edit is handed the stored record, so
+nothing can build the next one from a copy with a session override folded into it — and what is
+left in the view model is the write itself and the status line when the disk says no.
+
+**`RememberSettings`' two meanings now have two names.** *Written with the next write* is
+`Persistence.WrittenWithTheNextWrite`, the board thickness's and nothing else's; *never written* is
+`OverrideRulerForThisSession`, held in a field the record never sees. The ruler's 6.62 rule —
+compare against what the getter returns, and drop the override once the menu is used — is
+`SettingsKeeper.ChooseRuler`.
+
+**Reintroduced deliberately, each failed by name** (`SettingsKeeperTests`): 6.49, the thickness
+written now — `AThicknessSliderDragWritesNothing`, `TheThicknessIsWrittenWithTheNextWrite`,
+`EveryOtherSettingIsWrittenAsItHappens`; 6.62, compared against the stored value —
+`AfterNoRulerTheMenuCanTurnThemBackOn`, `UsingTheMenuDropsTheOverride`,
+`ChoosingWhatIsShowingWritesNothing`; 6.62's second half, the override left in place — the first two
+of those; and the override sent through the old `RememberSettings` route — `ASessionOverrideIsNeverWritten`.
+
+**What a test still cannot see** is a handler passing the wrong `SettingChange` — the thickness
+slider calling itself `Theme` would write per tick again and pass every test here. That is the same
+residue 6.51 left (a caller naming the wrong `StaleBecause`), and the same answer: the name is in
+the call, where a reviewer reads it, instead of in which of two near-identical methods was chosen.
+
+**Closed as fixed.** All three rows of the table are behind seams, which was the whole of *done
+when*. `MillBurn.Tests` still does not reference the app, and nothing here argues it should.
+
 #### 6.51 There is no single place that says "this picture is no longer true" — **enhancement · fixed** — *six paths and counting*
 
 Six methods in `MainViewModel` have to notice that an edit has made the drawn programs wrong, and
@@ -6138,7 +6290,7 @@ every one of the six calls it, and what it does is stated once. It is a small re
 value is that the seventh path cannot be written wrong — which matters more than the six, because
 the six are now correct and the seventh is the one nobody has thought of yet.
 
-**Depends on nothing**, but is worth far more with [6.50](#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint): behind a seam, this method is the
+**Depends on nothing**, but is worth far more with [6.50](#650-nothing-can-test-the-view-model--enhancement--fixed--three-times-in-one-sprint): behind a seam, this method is the
 single most testable thing in the view model, and the six faults above would each have been a
 failing test rather than a bench report or a review.
 
@@ -6426,7 +6578,7 @@ synthetic tests instead — three squares, two of them named — and the first o
 old code with `Nameless` at 0 where it should be 1.
 
 
-#### 6.54 The checks panel cannot show a cancelled run — **enhancement · open** — *found by `/code-review`, 2026-09-29*
+#### 6.54 The checks panel cannot show a cancelled run — **enhancement · fixed** — *found by `/code-review`, 2026-09-29; fixed in sprint 6*
 
 `BoardCheck.Result` and `BoardFindings.Result` both carry a `Cancelled` flag, `MainViewModel` has a
 status line for it — *"Check stopped; the board was not fully checked."* — and `FindingsWindow` has a
@@ -6448,7 +6600,24 @@ proved by a test on that day rather than assumed to have worked all along.
 **Done when** a run an operator stops is shown as stopped rather than as clean, with a test that
 fails if the banner stops appearing.
 
-#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · fixed** — *found by `/code-review` at xhigh, 2026-09-30*
+**Fixed in sprint 6, 2026-10-17** (story 3). The missing piece was one verb on `LatestRun`:
+`Stop()` cancels the current run **without disowning it**, which is the whole difference from
+`Cancel` — a superseded or abandoned run must publish nothing, but a run the operator stopped is
+still the latest, so its own `Finish` returns true and the "stopped" status lines and the
+window's banner, written on 2026-09-29 and unreachable since, are its to publish. A successor
+still wins: stop-then-begin is supersession exactly as before. **Escape is the control** — while
+a board check or findings search runs, Escape in the main window stops it; wired bubbling and
+handled only when something actually stopped, so the key keeps its other meanings (the marker,
+a dragged tab) and is never swallowed idle. A stop that lands mid-search opens the findings
+window over the partial list with the banner; one that lands before anything was found says so
+in the status line instead. The banner's words moved onto `BoardFindings.Result` itself
+(`StoppedBanner` — the 6.51 shape: the condition and the sentence reachable with no Avalonia in
+sight), the window shows what the result says of itself, and the test the entry asked for exists
+twice over: on a genuinely stopped run of the Mega and on the record's own two branches.
+`LatestRun.Stop`'s contract sits in `CancellableWorkTests` beside `Cancel`'s, including the
+successor case. `--stop-findings` photographs the stopped window headlessly:
+`WorkingFolder/V0.7.0/Screenshots/story-3-stopped-findings-banner.png`, one layer of the Mega's
+two, 0.79 s in, banner over the partial answer.
 
 *Job ▸ Findings* takes about 1.5 s on a two-sided Arduino Mega. Roughly half of that is work already
 done, and almost none of it can be cancelled.
@@ -6948,7 +7117,7 @@ a dark one — for every mark the ruler draws. `RulerTests.TheMarksStandOutFromE
 draws the ruler onto each theme's background and requires its marks to differ from it by most of
 the range; on the old code the light theme's differed by **4 in 255**.
 
-#### 6.71 The 66-up panel draws at about 14 fps where the README's hero showed 37 — **enhancement · open** — *found retaking the README's screenshots, 2026-10-11; for sprint 6*
+#### 6.71 The 66-up panel draws at about 14 fps where the README's hero showed 37 — **enhancement · fixed** — *found retaking the README's screenshots, 2026-10-11; fixed in sprint 6*
 
 Retaking the hero for 0.6.0 — the GridStripConnector panel previewed, 1600 × 1000, the same shot the
 README has used since 0.2.0 — the status bar read **about 69 ms a frame, 14 fps**, where the
@@ -6993,7 +7162,40 @@ culling and the stroke configuration the Phase 0 probe chose. The fix is to draw
 layers the way the toolpath view already draws toolpaths, not to chase the driver stack.
 Turning stroke anti-aliasing off was measured too — 43 ms, a 1.6× help and not a fix.
 
-#### 6.72 On a panel, every tab goes on one edge — **defect · open** — *found in the workshop, 2026-10-11; for sprint 6*
+**Fixed in sprint 6, 2026-10-17 —
+[story 1](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md).** Exactly the fix the measurement
+named: a stroked layer at or past 20k vertices (`BoardScene.TiledStrokeBudget`) builds a
+`ToolpathScene` beside its monolithic path, and `BoardRenderer` draws it under the toolpath view's
+own rules — tier for the zoom, tiles culled to the view, anti-aliasing, real stroke widths and
+dashes while the view holds under the shared 25k-segment budget, the hairline rasteriser past it.
+A fifth LOD tier was added (0.08 mm tolerance, still under half a pixel at fit zoom), because the
+panel's fit view sat just past the fourth tier's reach and would otherwise have crossed the budget
+at the hero's own zoom. And the tier choice is budget-aware (`BoardRenderer.TiledTier`): the fit
+zoom sat *exactly* on a tier boundary, so a few pixels of window width decided which of two very
+different-looking frames the hero got — now a frame whose half-pixel tier busts the budget
+relaxes to at most one pixel of simplification error, which is nearly invisible, before giving up
+anti-aliasing and stroke widths, which is not. Fills and ordinary boards keep the exact untiled
+path.
+
+Measured on 2026-10-17, baseline and fix built from adjacent commits and shot alternately — on a
+machine whose slow state that day drew the *old* code at 122–154 ms, which is why the ratios are
+the claim rather than the absolutes:
+
+- **Panel previewed, fit zoom: 122.3 / 154.0 ms → 38.1 / 42.1 ms** — 3–4×, 6–8 fps to 24–26.
+- **Panel previewed, 40×: 58.7 / 61.7 ms → 19.4 / 20.5 ms** — 3×, and panning zoomed-in is where
+  culling does the work.
+- **Panel without preview: 23.3 → 10.3 ms** — the outline layer is over the budget too.
+- **The single board: 2.79 → 2.80 ms**, untouched, as is every board under the budget.
+- **`--bench` 5.19 ms mean / 19.45 p95** (documented: 5.5 / 20) and **`--fpstest` 94.0 fps PASS**,
+  so the toolpath view spent nothing — it gained the fifth tier.
+- **The picture is the same picture**: native-resolution crops at fit and at 40×, before against
+  after, are indistinguishable — anti-aliased, full stroke widths
+  (`WorkingFolder/V0.7.0/Screenshots/story-1-*.png`).
+
+The status bar's vertex count now reports what a frame actually drew (77,633 at the hero's fit
+zoom, against 205,620 before), which is the honest number for a shot to quote.
+
+#### 6.72 On a panel, every tab goes on one edge — **defect · fixed** — *found in the workshop, 2026-10-11; fixed in sprint 6*
 
 From the product owner, looking at the 66-up GridStripConnector panel in the README's hero: *"On
 the panalized connector … all the tabs end up along the bottom edge of the 'board'. Up to 6 tabs.
@@ -7015,6 +7217,30 @@ it chooses are.
 edges — the quarter of the perimeter a tab falls in, or its bearing round the board's centre, as the
 first key and length as the second. To be checked against the 21 × 37 mm board 6.4 was tuned on,
 which must not move.
+
+**Into sprint 6, 2026-10-16, folded with 6.4's manual placement at the product owner's
+suggestion** — *"It may fold the bug into it."* Both halves answer the same sentence from the
+bench: the fixed planner puts tabs where a hand usually would, and the drag moves the one it still
+gets wrong. The fix ships first and stands alone
+([Sprint 6 story 2](../Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md)); this defect closes with
+the test that would have caught it, whatever happens to the drag.
+
+**Fixed in sprint 6, 2026-10-17** (story 2, first half). `TabPlan` now asks *where* before *how
+long*: every straight edge is classified by the side of the profile it faces — the edge's own
+direction decides top-and-bottom against left-and-right, its position against the centre decides
+which of the two — and each tab goes to the emptiest side first, a bare edge within it second,
+length per tab last. On the panel the default four land two on the bottom and two on the top,
+opposite pairs on distinct 24.6 mm stretches; that is this frame's right answer rather than a
+compromise, because its left and right sides are 6.8 mm stretches between the boards' channels and
+a 5 mm tab needs 15 mm of edge to hold its clearance either side — a side that cannot carry a tab
+without the cut running into it gets none. The 21 × 37 mm board 6.4 was tuned on is unchanged, as
+is every other golden; the panel's own outline program kept its cutting to the millimetre and its
+rapid travel *fell* from 521 to 382 mm, because the lap entry points move with the first tab on
+each profile. The test that would have caught it runs against the real panel's frame:
+`TabPlacementTests.OnThePanelTheDefaultTabsGoRoundTheFrame`, red on the old rule with all four
+tabs on one side, and the first cut at the fix — a bearing round the centre, quantised at the
+box's diagonals — failed it too, by calling a top stretch near a corner "right" and putting three
+tabs back on one side.
 
 #### 6.73 Placement data for a pick-and-place — **enhancement · open** — *asked for by the product owner, 2026-10-16*
 
@@ -7118,3 +7344,136 @@ assembly gets its own room.
   own 3D viewer already serves — MillBurn's 3D earns its place only where it shows what only
   MillBurn knows: the cuts, the tabs, the levelled Z, and components overlaid on the milled
   result.
+
+**Wish list, not yet a request — the product owner, at the sprint 6 picking, 2026-10-16.** The
+same standing the owner gave 6.18 the same day: an idea worth this much groundwork, behind its own
+*"big IF"*, and not a thing the bench is waiting on. No machine is on the bench and no story
+starts until that changes; the entry exists so the thinking is not re-done when one is.
+
+#### 6.74 Hand-set tab changes could outlive the plan they numbered — **defect · fixed** — *found by sprint 6's `xhigh` review, 2026-10-18; fixed in sprint 6 story 6*
+
+A size, a move or a removal set by hand names its tab by its number in the planner's pristine plan
+(6.4), and three things can renumber that plan underneath it without touching the stored change:
+this release's own placement rule (6.72) on a project from an older one; a revised outline brought
+in by *Refresh source*; and a cutter's diameter edited in the tool library, which offsets the
+profile differently. The change then landed on whichever tab had the number now — a 0.30 mm web,
+or a removal, somewhere nobody chose — and the picture, the header and the cut all agreed with
+each other about it, so nothing gave it away.
+
+**Found by reading, at the end of the sprint**, with the review's own example: a 0.6.0 project for
+the 66-up panel holding `{Index 2, HeightNm 0.30 mm}`, made when all four tabs sat on the bottom.
+
+**Fixed by stamping, not by guessing.** Every hand-set change is now written with the fingerprint
+of the plan it was made against (`TabPlan.KeyOf`: the pristine tabs' positions to the micrometre
+and their widths, hashed; heights left out because they move no tab). The program applies the
+changes only while the plan still has that fingerprint, and otherwise cuts the planner's own tabs
+and says so in its header; the app says so in the check panel, for as long as it is true. **The
+changes are kept, not deleted**: they apply again the moment the layout matches — a role toggled
+back, a cutter's diameter put back — and the first new gesture on the changed layout starts the
+changes afresh rather than reviving the old numbers on whichever tabs they now name. (The first
+version cleared them with a status line; the story's own review found the line overwritten after a
+preview, so they vanished without a word, and the clearing permanent where the cause was not.)
+**A project from before the stamp has none**, so its hand-set changes are refused rather than
+trusted — the one tab-related thing a 0.6.0 project gives up in 0.7.0, kept in the file and named
+in the panel, and the only safe reading of a number whose plan is unknown. Tested on a real file
+saved by v0.6.0 (`ProjectFromOlderBuildTests`), and seen in the app by running it: the project
+opens unchanged, tab B at the board's width, the panel saying why.
+
+**The review found its neighbours in the same place, all fixed with it** — see sprint 6 story 6:
+tabs dropped over each other were cut as something neither the header nor the picture described
+(now cut as their union, named in the header, and refused at the gesture); the program and the
+window chose differently which board in a shared outline the changes belonged to (now one rule,
+`AssignTabs`); the header blamed the hand for the edges' own shortfall; and the project page's
+rebuild commands dropped hand positions without a word.
+
+#### 6.75 Copper clearing — **enhancement · open** — *asked for by the product owner, 2026-10-18*
+
+From the product owner, opening sprint 7: *"Copper clearing."* Named by the competitor survey of the
+same day as the gap most of them share — FlatCAM's non-copper clearing, CopperCAM's copper-removal
+hatching, Gerbex's and PCB-GCode's rubout all do it, and MillBurn does not.
+
+**What it is.** Isolation cuts a channel round every net and leaves the rest of the sheet as
+copper — floating islands and all. Clearing removes the copper the design does not ask for: the
+region inside the board outline that is neither copper artwork nor already cut. On a mill-only
+board — no etch — that is the difference between a board that looks and behaves like the design
+and one carrying a sheet of unconnected copper between its traces.
+
+**What already exists, and what it is built for.**
+- `PocketOperation` clears an area ring by ring, inward from its boundary (G10). It was written
+  for **soldermask relief**, tens of microns deep, and is the right engine: the region to clear
+  is the board's area minus the copper, minus a clearance — a polygon this pipeline already
+  computes the pieces of.
+- Isolation is already **width-driven** (G9, `IsolationWidthNm`): a wide enough isolation width
+  is a crude clearing today, lap after lap round each net. Clearing proper is cheaper and
+  complete: it reaches the middle of a large open area that laps would never meet.
+- 02 §5 item 5 sketched it as *"copper pour removal (mill everything)"*, with rest machining
+  (6.76) as what makes it affordable: *"on a ground-plane board this is the difference between
+  12 minutes and 90 minutes"*.
+
+**Decided by the owner, 2026-10-18** — the recommendations taken as they stood; added to the list
+of requests, not yet to a sprint:
+1. **Which copper:** everything inside the outline that is not artwork, keeping a clearance round
+   every net. An unconnected area someone drew deliberately is artwork, so it stays.
+2. **When:** per copper layer, **off by default**. On the paint-resist laser workflow the etch
+   already clears, so this serves the mill-only board.
+3. **Which bits:** MillBurn proposes them from the library — the widest flat bit that fits for the
+   bulk, the finest needed for what is left — and either can be overridden; the same idea as the
+   single-bit `ToolChooser` today.
+
+**Done when** a copper layer can be set to clear its unused copper, the program cuts the region
+the picture shows and no copper the design uses (checked against the electrical check: no net
+split, no net joined), and the header says how much area was cleared with which bit.
+
+#### 6.76 Multi-tool rest machining — **enhancement · open** — *asked for by the product owner, 2026-10-18*
+
+From the product owner, opening sprint 7: *"Multi-tool rest machining."* Also on the competitor
+survey's gap list: pcb2gcode milling with several diameters, FlatCAM's and CopperCAM's
+roughing-then-finishing.
+
+**What it is.** A large bit clears everything it can reach, quickly; a small bit then cuts only
+the places the large one could not get into — the tight gaps between pads, the inside corners —
+instead of going round the whole job a second time. The small bit's program is the *rest*: the
+region the big one was asked to remove, minus the region its swept path actually did.
+
+**Where it pays.**
+- **Clearing (6.75)** is the main customer: a 2 mm end mill for the open areas and a 0.2 mm V-bit
+  for the detail, where the V-bit alone would take hours on a ground-plane board.
+- **Isolation** is the second: 02 §5 item 3 sketched *"use a narrower tool here"* — a wide bit
+  for the board, and a fine one confined to the places where the gap between nets is narrower than
+  the wide bit, instead of refusing or cutting the whole board with the fine one.
+
+**What already exists.** One tool per operation, chosen by `ToolChooser` (widest that fits and
+reaches); per-bit programs and bit-change companion pages (6.11, G11), which a second tool's
+program slots into; and the electrical check, which can verify that the two programs together
+neither split nor join a net.
+
+**Decided by the owner, 2026-10-18** — the recommendations taken as they stood; added to the list
+of requests, not yet to a sprint:
+1. **Clearing first**, with rest machining built for clearing in the same story as 6.75. Rest
+   machining for isolation — the fine bit confined to where nets are closer than the wide one can
+   cut — follows as a story of its own.
+2. **MillBurn proposes the pair** from the library (widest flat bit that fits for the bulk, finest
+   needed for the rest); the operator can override either.
+3. **One program per bit**, the per-bit split 6.11 already makes, so a machine without a tool
+   changer is told where to change.
+
+**Done when** an operation can be cut with two bits, the second program visits only the
+material the first could not reach (measured: its cutting length against cutting the whole job
+with the small bit), and the two together pass the electrical check.
+
+#### 6.77 The tab overlay is hard to see on the light theme — **defect · open** — *found by the v0.7.0 release review, 2026-10-18*
+
+Retaking the README's light-theme screenshot for 0.7.0 showed the tab letters as pale amber in a
+grey smudge on the viewport's #FAFAFB. The letters were fixed for the release — inked by the
+viewport's own colour, as the rulers were for 0.6.0 (`TabHandles.LetterColours`). The release
+review then pointed out that the rest of the overlay has the same fault on the same screenshot:
+the **cyan gap ticks**, which the bench asked for precisely so the gap could be told apart, the
+**amber dashed loop**, and the amber handle rings are all low-contrast on near-white.
+
+**Not fixed in the release on purpose.** It is a colour decision for the whole overlay — which
+colours the grips and the gap marks take on a light viewport — and it wants the owner's eye at the
+bench rather than a choice made on release day. The letters, which must be read, were the part
+that could not wait.
+
+**Done when** the loop, the handles and the gap ticks are each as easy to pick out on the light
+theme as on the dark one, checked on the README's light-theme shot.

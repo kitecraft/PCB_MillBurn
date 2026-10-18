@@ -91,6 +91,12 @@ you fit the next bit and set Z again on the same spot; X and Y never move.
 Per layer you set the tool, cut depth, **isolation width**, break-through past the underside, and tab
 count, picking tools from your saved library (`Edit ▸ Tool library…`).
 
+**Tabs go where you want them.** The planner spreads them round the board, one centred on each
+straight edge it has room for, the emptiest side first. Each is drawn on the dashed cut path with a
+letter — A, B, C — the same letter the Tabs window lists it under. Drag one along the path to move
+it, click it to set its own width, right-click to take it away, click the path to add one. Tabs
+dropped over each other are refused rather than cut as one gap you did not draw.
+
 **Isolation width is a width, not a lap count.** You say how wide a moat you want around every trace
 — 0.4 mm by default — and the app works out how many passes that takes with your bit at your depth,
 and shows the sum: *4 passes of 0.127 mm clears 0.450 mm*. One lap of a 30° V-bit separates the nets

@@ -10,6 +10,62 @@ in the first line of the release notes. See [CONTRIBUTING](CONTRIBUTING.md#versi
 
 ---
 
+## [0.7.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.7.0) — 2026-10-18
+
+**The panel pulls its weight.** The 66-up panel on this page is the first board big enough to break
+rules tuned on single boards, and the sprint was about it: it previews three to four times faster,
+its tabs hold the frame from opposite sides instead of all landing on one edge, and any tab on any
+board can now be moved, removed, added and given its own width by hand in the viewport. Six stories,
+the last of them the fixes from a review of the whole sprint before release.
+
+[Sprint 6 — The panel pulls its weight](Sprints/Sprint-06-The-Panel-Pulls-Its-Weight.md).
+
+**Not breaking, with changes to hand-set tabs you should know about.** Every saved artefact still
+reads and writes format 1. Every program from every board in the repository is byte-for-byte what
+0.6.0 wrote, except the panel's outline, whose tabs moved on purpose.
+
+- **Tab sizes set one at a time in 0.6.0 are not applied in 0.7.0.** A size names its tab by
+  number, this release spreads tabs differently, and nothing in a 0.6.0 file says which layout its
+  numbers meant — so tab 2 might now be a different tab. Rather than guess, the program cuts the
+  planner's own tabs and says so in its header, and the checks panel says so on screen. Nothing is
+  deleted: set the sizes again and they are kept with the new layout.
+- **Going back to 0.6.0 with a 0.7.0 project is not guarded.** 0.6.0 does not know the layout
+  fingerprint, so it applies a per-tab size from 0.7.0 to its own tab of that number — which may
+  be a different tab — and it drops hand-placed and added tabs. Set tab sizes again if you open a
+  0.7.0 project in 0.6.0.
+- **On the command line,** `--tabs` with a different count now clears a project's hand-set tab
+  sizes and positions, and `--tab-width` with a different width clears the hand-set positions and
+  sets the sizes aside (they apply again if the width comes back) — because a new count or width is
+  a new layout, and the old numbers would name the wrong tabs.
+
+**The panel previews three to four times faster.** Measured on the panel at fit zoom, alternating
+the two builds on one machine: 122–154 ms a frame before, 38–42 ms after. A preview's big stroked
+layers are drawn the way a toolpath is — in tiles, simplified to the zoom — and the picture is
+unchanged to the eye at working zooms. This page's hero, retaken for this release, reads 28 ms.
+
+**Tabs go where you would put them, and where you put them.** One centred on each straight edge
+the board has room for, the emptiest side first, so the panel's four default tabs sit two on the
+top and two on the bottom; its outline's rapids fell from 521 to 382 mm. In the viewport each tab is
+a handle on the dashed cut path with a letter beside it — A, B, C, the same letters the Tabs window
+now lists them by:
+
+- **Drag** a handle along the path to move the tab; **Escape** drops it back where it was.
+- **Click** a handle to give that tab alone its own width. Its height is still set in the Tabs
+  window.
+- **Right-click** a handle to take the tab away — except the last one, which is what holds the
+  board; set the count to zero for that. **Click the path** to add one.
+- Tabs dropped or widened over each other are refused, and a file that already has them cuts them
+  as one gap and names them in its header.
+
+**A stopped check says so.** Escape stops *Check this board* and *Job ▸ Findings* while they run,
+and what they found so far is shown as exactly that — a banner over a partial list, not a clean
+board.
+
+**The project page's commands say what they cannot carry.** The block that rebuilds an export from
+the command line now says when tabs were placed by hand, which no flag can express.
+
+---
+
 ## [0.6.0](https://github.com/kitecraft/PCB_MillBurn/releases/tag/v0.6.0) — 2026-10-11
 
 **Put it where it belongs.** The sprint set out to get a design onto the machine in the right

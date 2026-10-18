@@ -2145,6 +2145,8 @@ public static class ExportPlanner
             // currently produces — kept, because that is what `IsDefaultOrEmpty` is for and it costs
             // nothing, but no longer claiming to have a reproduction behind it.
             TabEdits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits,
+            TabMoves = setting.TabMoves.IsDefaultOrEmpty ? [] : setting.TabMoves,
+            TabPlanKey = setting.TabPlanKey,
             DepthPerPassNm = tool.StepdownNm > 0 ? tool.StepdownNm : Nm.FromMillimetres(0.4),
             Keep = keep,
         };
@@ -2195,9 +2197,27 @@ public static class ExportPlanner
         // The same guard the options above apply, hoisted, and for the same reason: a default
         // `ImmutableArray` throws on every member. See there for why the JSON story an earlier
         // comment told about it is not true.
+        //
+        // An added tab's own sizes live on its add entry rather than in an edit, and are held to
+        // the same limits, so both go into one list of hand-set sizes.
         var edits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits;
+        var adds = setting.TabMoves.IsDefaultOrEmpty ? [] : setting.TabMoves;
 
-        var thin = edits
+        var sizes = edits.Select(e => (e.WidthNm, e.HeightNm))
+            .Concat(adds.Where(m => m.IsAdd).Select(m => (m.WidthNm, m.HeightNm)))
+            .ToList();
+
+        // **Only sizes that will be cut.** Hand-set sizes made against another layout are refused
+        // by the planner (6.74), and advice about a 0.05 mm web nobody is going to cut contradicts
+        // the program's own header. Asked only when there are hand-set sizes at all, so an
+        // ordinary export pays nothing for the question.
+        if (sizes.Count > 0
+            && OutlineOperation.PlanTabs(OutlineProfiles(layer), options).OverridesStale)
+        {
+            sizes = [];
+        }
+
+        var thin = sizes
             .Where(e => e.HeightNm is { } h && h < TabPlan.MinHeightNm)
             .Select(e => e.HeightNm!.Value)
             .Append(tabHeightNm < TabPlan.MinHeightNm ? tabHeightNm : long.MaxValue)
@@ -2209,7 +2229,7 @@ public static class ExportPlanner
                 $"A tab here leaves {Nm.ToMillimetreString(thin, 2)} mm of material, under the {Nm.ToMillimetreString(TabPlan.MinHeightNm, 2)} mm a tab needs to survive the rest of the cut.")));
         }
 
-        var narrow = edits
+        var narrow = sizes
             .Where(e => e.WidthNm is { } w && w < TabPlan.MinWidthNm)
             .Select(e => e.WidthNm!.Value)
             .Append(setting.TabWidthNm is { } set && set < TabPlan.MinWidthNm ? set : long.MaxValue)
@@ -2225,7 +2245,7 @@ public static class ExportPlanner
         // planner would ever derive is the input that can run two tabs into each other, and the
         // splitter answers that by leaving no run between them — a wider gap than anybody asked
         // for, in a place the picture shows and the header did not mention.
-        var wide = edits
+        var wide = sizes
             .Where(e => e.WidthNm is { } w && w > TabPlan.MaxWidthNm)
             .Select(e => e.WidthNm!.Value)
             .Append(setting.TabWidthNm is { } asked && asked > TabPlan.MaxWidthNm ? asked : 0)

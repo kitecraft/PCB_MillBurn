@@ -48,6 +48,8 @@ Skills live in `.claude/skills/`.
 
 - **Ask before committing, merging, pushing or publishing.** The author's own mill and laser run
   what this produces.
+- **Do not add a `Co-Authored-By:` line for Claude to commit messages.** The repo owner takes full
+  responsibility for all code, regardless of AI involvement.
 - **Verify by running**, not by a green suite: `--shot` renders the real window headlessly, and the
   CLI prints the travel and line-count numbers to quote for any performance claim. AGENTS.md lists
   the flags.
