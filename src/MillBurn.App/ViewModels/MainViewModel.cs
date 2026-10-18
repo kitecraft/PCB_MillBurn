@@ -1843,6 +1843,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// being asked, and a button only protects somebody who thinks to press it. This adds a way to
     /// ask and takes nothing away.
     /// </summary>
+    /// <summary>
+    /// One sentence per stopped run, written once (6.54): each is reachable from two routes — the
+    /// polite partial result and the cancellation that surfaced as an exception — and two copies
+    /// of an operator-facing sentence drift apart the first time one is reworded.
+    /// </summary>
+    private const string CheckStopped = "Check stopped; the board was not fully checked.";
+
+    private const string FindingsStoppedEmpty = "Stopped before the search found anything to show.";
+
     public async Task CheckBoardAsync()
     {
         if (ExportRequestFor(OutputKind.Gcode, onlyLayer: null, alignment: null) is not { } request)
@@ -1869,14 +1878,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Superseded by a later press, or the window is closing. The older answer is not worth
-            // showing and its status line is not worth writing over the newer one's.
+            // Stopped by the operator before any partial answer existed, or superseded by a later
+            // press, or the window is closing — and `Finish` is what tells them apart (6.54): a
+            // stopped run is still the current one and owes the operator a word, a superseded
+            // run's status line is not worth writing over the newer one's.
             //
             // **Filtered on this run's own token**, for the reason `PreviewAsync` spells out: not
             // every cancellation means the operator moved on. An inner token, or a later stage
             // using one of its own, would otherwise land here with nothing cleared and nothing
             // said — `Finish` never called, so the run stays installed and the status line reads
             // "Checking the board…" for the rest of the session.
+            if (_checkRun.Finish(token))
+            {
+                StatusMessage = CheckStopped;
+            }
+
             return;
         }
         catch (Exception ex)
@@ -1885,9 +1901,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             // void` click handler, so anything that escapes is an unhandled exception on the UI
             // thread and the window closes with the operator's board unsaved. `PreviewAsync`
             // already catches broadly for exactly that reason; these two were narrower.
+            //
+            // A stopped run can land here too (6.54, found by `/code-review`): a stage that
+            // reacts to the cancelled token by throwing something other than an
+            // `OperationCanceledException` is still the operator's own stop, and telling them
+            // their deliberate Escape was "Check failed" would be the status line lying about
+            // who decided.
             if (_checkRun.Finish(token))
             {
-                StatusMessage = $"Check failed: {ex.Message}";
+                StatusMessage = token.IsCancellationRequested
+                    ? CheckStopped
+                    : $"Check failed: {ex.Message}";
             }
 
             return;
@@ -1904,7 +1928,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // story 3 was about, arriving in a new place.
         if (result.Cancelled)
         {
-            StatusMessage = "Check stopped; the board was not fully checked.";
+            StatusMessage = CheckStopped;
             return;
         }
 
@@ -2009,16 +2033,27 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             // This run's own token only. See `CheckBoardAsync` and `PreviewAsync`: an unfiltered
             // catch here leaves the run installed and the window saying it is still looking.
+            // `Finish` tells a stop from a supersession (6.54); a stop that landed before the
+            // search produced anything has no window to show and says so where the operator is.
+            if (_findingsRun.Finish(token))
+            {
+                StatusMessage = FindingsStoppedEmpty;
+            }
+
             return null;
         }
         catch (Exception ex)
         {
             // Broad on purpose — this is awaited from an `async void` handler, so anything that
             // escapes closes the window. The gap search is the newest and least travelled geometry
-            // in the application, which is the worst place to be narrow about it.
+            // in the application, which is the worst place to be narrow about it. A stop whose
+            // cancellation surfaced as some other exception is still a stop, as in
+            // `CheckBoardAsync` — the operator's Escape must not read as a failure.
             if (_findingsRun.Finish(token))
             {
-                StatusMessage = $"Could not work out the findings: {ex.Message}";
+                StatusMessage = token.IsCancellationRequested
+                    ? FindingsStoppedEmpty
+                    : $"Could not work out the findings: {ex.Message}";
             }
 
             return null;
@@ -2026,6 +2061,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         if (!_findingsRun.Finish(token))
         {
+            return null;
+        }
+
+        // A stop that landed before any layer finished came back politely rather than as an
+        // exception, but it is the same outcome: nothing to put under the banner. A window
+        // holding only an apology helps nobody, and its empty-state line would claim no layer is
+        // set to be isolated — a lie about the settings (6.54, found by `/code-review`). Same
+        // sentence as the exceptional route, because it is the same event.
+        if (result.Cancelled && result.Layers.Count == 0)
+        {
+            StatusMessage = FindingsStoppedEmpty;
             return null;
         }
 
@@ -2040,6 +2086,28 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             : $"Examined {layers} in {took}.";
 
         return result;
+    }
+
+    /// <summary>
+    /// Stops whichever check the operator is waiting on: the board check, the findings search, or
+    /// both — Escape's meaning while either runs (6.54).
+    ///
+    /// Both rather than whichever seems active, because stopping is idempotent and the operator
+    /// pressing Escape means "that is enough", not "that is enough of one of them". No status is
+    /// written here: a stopped run is still the latest and announces itself on its own way out,
+    /// which is what <see cref="LatestRun.Stop"/> exists to allow — and what keeps a stop that
+    /// raced a natural finish from claiming a complete answer was cut short.
+    /// </summary>
+    /// <returns>True when something was running to stop, so a keystroke wired to this can fall
+    /// through untouched when nothing was.</returns>
+    public bool StopChecks()
+    {
+        // Both asked, neither short-circuited: `||` alone would leave the findings running
+        // whenever the board check was the one that stopped.
+        var check = _checkRun.Stop();
+        var findings = _findingsRun.Stop();
+
+        return check || findings;
     }
 
     /// <summary>

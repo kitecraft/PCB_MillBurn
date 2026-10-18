@@ -75,7 +75,12 @@ sufficient.
   (the ruler's readout and its measuring drag, which need a pointer and a drag and so cannot be
   reached headlessly any other way), `--no-ruler` (the View menu's toggle, for this run only — it is
   what tells a working binding from the control's own default, since both are on),
-  `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
+  `--move-tab <n>=<mm>` (slides a holding tab along the cut path the way a drop in the viewport
+  does — the tab by its place in the plan, the destination in millimetres along the loop — so a
+  hand-set tab and the *unsaved changes* line it causes can be photographed; the drag itself needs
+  a button held), `--stop-findings` (starts the findings search and stops it a moment in, the way
+  Escape does — the stopped window's banner over a partial list is unreachable any other way
+  headlessly), `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
   `--probe` are handled before the UI starts. `--check` runs *Job ▸ Check this board* and nothing
   else, so the checks panel can be photographed with **no export planned** — which `--preview`
   cannot show, since it plans one. `--findings` opens *Job ▸ Findings* (F7), which locates where each

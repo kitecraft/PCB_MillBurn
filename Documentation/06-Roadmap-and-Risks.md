@@ -6501,7 +6501,7 @@ synthetic tests instead — three squares, two of them named — and the first o
 old code with `Nameless` at 0 where it should be 1.
 
 
-#### 6.54 The checks panel cannot show a cancelled run — **enhancement · open** — *found by `/code-review`, 2026-09-29*
+#### 6.54 The checks panel cannot show a cancelled run — **enhancement · fixed** — *found by `/code-review`, 2026-09-29; fixed in sprint 6*
 
 `BoardCheck.Result` and `BoardFindings.Result` both carry a `Cancelled` flag, `MainViewModel` has a
 status line for it — *"Check stopped; the board was not fully checked."* — and `FindingsWindow` has a
@@ -6523,7 +6523,24 @@ proved by a test on that day rather than assumed to have worked all along.
 **Done when** a run an operator stops is shown as stopped rather than as clean, with a test that
 fails if the banner stops appearing.
 
-#### 6.55 The findings view costs about twice what it needs to, and cannot be interrupted — **enhancement · fixed** — *found by `/code-review` at xhigh, 2026-09-30*
+**Fixed in sprint 6, 2026-10-17** (story 3). The missing piece was one verb on `LatestRun`:
+`Stop()` cancels the current run **without disowning it**, which is the whole difference from
+`Cancel` — a superseded or abandoned run must publish nothing, but a run the operator stopped is
+still the latest, so its own `Finish` returns true and the "stopped" status lines and the
+window's banner, written on 2026-09-29 and unreachable since, are its to publish. A successor
+still wins: stop-then-begin is supersession exactly as before. **Escape is the control** — while
+a board check or findings search runs, Escape in the main window stops it; wired bubbling and
+handled only when something actually stopped, so the key keeps its other meanings (the marker,
+a dragged tab) and is never swallowed idle. A stop that lands mid-search opens the findings
+window over the partial list with the banner; one that lands before anything was found says so
+in the status line instead. The banner's words moved onto `BoardFindings.Result` itself
+(`StoppedBanner` — the 6.51 shape: the condition and the sentence reachable with no Avalonia in
+sight), the window shows what the result says of itself, and the test the entry asked for exists
+twice over: on a genuinely stopped run of the Mega and on the record's own two branches.
+`LatestRun.Stop`'s contract sits in `CancellableWorkTests` beside `Cancel`'s, including the
+successor case. `--stop-findings` photographs the stopped window headlessly:
+`WorkingFolder/V0.7.0/Screenshots/story-3-stopped-findings-banner.png`, one layer of the Mega's
+two, 0.79 s in, banner over the partial answer.
 
 *Job ▸ Findings* takes about 1.5 s on a two-sided Arduino Mega. Roughly half of that is work already
 done, and almost none of it can be cancelled.

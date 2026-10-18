@@ -64,7 +64,7 @@ careful one.
 |---|---|---|
 | [6.71](../Documentation/06-Roadmap-and-Risks.md#671-the-66-up-panel-draws-at-about-14-fps-where-the-readmes-hero-showed-37--enhancement--fixed--found-retaking-the-readmes-screenshots-2026-10-11-fixed-in-sprint-6) | The panel previews at a rate the README can stand beside | Retaking the hero, 2026-10-11; measured 2026-10-15; named first by the product owner |
 | [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6) + [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs spread round the panel, and a hand can move one | The workshop, 2026-10-11, on the same panel; folded at the picking, 2026-10-16 |
-| [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--open--found-by-code-review-2026-09-29) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
+| [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--fixed--found-by-code-review-2026-09-29-fixed-in-sprint-6) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
 | [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--open--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
 
 **The order is the owner's first, then by risk.** 6.71 was named before the picking opened. Story
@@ -455,6 +455,95 @@ real the moment it is wired.
 
 **Done when** — the entry's own words — a run an operator stops is shown as stopped rather than as
 clean, with a test that fails if the banner stops appearing.
+
+### Closed — 2026-10-17
+
+- **The verb was the missing piece, not the wiring.** `LatestRun.Stop()` cancels the current run
+  *without disowning it*: a stopped run is still the latest, so its own `Finish` returns true and
+  everything written on 2026-09-29 — the two status lines and the banner — becomes its to
+  publish. `Cancel`'s contract is untouched (a superseded or abandoned run still publishes
+  nothing), and a successor still wins: stop-then-begin refuses the stopped run's finish exactly
+  as before. Three new tests in `CancellableWorkTests` pin the triangle — a stopped run may
+  publish, stopping nothing says so, a successor still beats a stopped run — beside the `Cancel`
+  tests whose deliberate opposite the first one is.
+- **Escape is the control.** The story's sketch — *"the findings window closing mid-check is the
+  natural one"* — turned out impossible: the window is only constructed after the search
+  completes, so there is no window to close mid-run. While a board check or findings search runs,
+  Escape in the main window stops it instead: wired in the bubbling shortcut handler and handled
+  only when `StopChecks()` actually stopped something, so the key keeps its existing meanings (a
+  dragged tab, the marker) and an idle Escape is never swallowed. `StopChecks` stops both runs,
+  not whichever seems active, and writes no status — the stopped run announces itself on its way
+  out, which also keeps a stop that raced a natural finish from mislabelling a complete answer.
+- **Both halves of "stopped", each with its own sentence.** A stop that lands mid-search gets the
+  polite partial: `BoardFindings.For` returns what it has with `Cancelled: true`, `Finish` says
+  the run is still the latest, and the findings window opens over the partial list with the
+  banner. A stop that lands before anything was found surfaces as the `OperationCanceledException`
+  path, where `Finish` now distinguishes stop from supersession: stopped says *"Stopped before
+  the search found anything to show."* / *"Check stopped; the board was not fully checked."*,
+  superseded stays silent as it always has.
+- **The banner's words moved onto the result** — `BoardFindings.Result.StoppedBanner`, the 6.51
+  shape: condition and sentence reachable with no Avalonia in sight, the window showing what the
+  result says of itself. The entry's *"test that fails if the banner stops appearing"* exists
+  twice: asserted on a genuinely stopped run of the Mega (the existing part-way test now checks
+  the banner rides the partial result) and on the record's own two branches. The window-side
+  wiring is one line, photographed.
+- **`--stop-findings`** starts the search and stops it 150 ms in, the way Escape does — the only
+  headless route to the stopped window. `story-3-stopped-findings-banner.png`: the Mega's
+  findings stopped at one layer of two, 0.79 s in, banner over the partial answer, the bottom
+  copper's real findings beneath it. AGENTS.md's flag list gains it, and `--move-tab`, which
+  story 2 owed it.
+
+**Not done, and said:** no stop control was added for the *board check* beyond Escape — the check
+is sub-second on every corpus board (0.50 s for the Mega's two layers, measured today), and a
+button for it would be chrome nobody presses; Escape covers the long board that may yet arrive. The check-side stop line shares every moving part with
+the findings path (same `Stop`, same `Finish` gate) but its literal sentence was not photographed:
+reaching it needs Escape pressed inside a sub-second window, which is exactly the bench test the
+owner can do with a key and cannot be scripted headlessly without a delay hook the code does not
+deserve. 1,410 unit + 28 golden tests, zero warnings.
+
+### What `/describe-test` found — 2026-10-17, two runs
+
+- **`CancellableWorkTests`**: clean. The cold read names the one assertion that is the feature —
+  a stopped run's `Finish` returning true, "the opposite of the cancel-without-successor test" —
+  and confirms the triangle (may publish, nothing-to-stop says so, successor still wins) has no
+  assertion the tests computed for themselves.
+- **`BoardFindingsTests`**: clean. The read confirms the banner is asserted on a *genuinely*
+  stopped run of the Mega as well as on the record's own two branches, and states the honest
+  limit in its own words — that the window showing this exact string is outside any test's reach,
+  which is what the `--stop-findings` shot is for.
+
+### What the code review found — 2026-10-17, medium
+
+Eight findings; seven acted on, one left with its reason.
+
+1. **A stop before the first layer finished opened a window whose empty-state lied** — "no layer
+   is set to be isolated" over a board whose layers are set exactly that way. The cancelled-empty
+   result now stays out of the window entirely (same status line as the exceptional route — the
+   same event, reached politely), and the window's empty-state guards on `!Cancelled` for any
+   other caller. *Fixed.*
+2. **`--stop-findings` could photograph a complete window under a flag promising a stopped one**
+   on a machine fast enough to finish inside the 150 ms, and claimed "already finished" when
+   nothing had run. The window now opens only for a genuinely cancelled result, and each other
+   case prints what actually happened. *Fixed.*
+3. **The summary line sat above the banner**, so a stopped run's first-read line was a verdict —
+   the exact partial-read-as-complete the banner exists to prevent. Banner first now, verdict
+   under the caveat. *Fixed, and the evidence shot retaken.*
+4. **A stop whose cancellation surfaced as a non-`OperationCanceledException` read as "Check
+   failed"** — the broad catches' `Finish` now also succeeds for stopped runs, so both ask the
+   token before wording the line: the operator's own Escape is never reported as a failure.
+   *Fixed, both paths.*
+5. **`IsRunning`'s doc no longer described the implementation** — a stopped run is still the
+   latest but reads false. The doc now says exactly that, and why a property cannot answer "has
+   it said its piece". *Fixed.*
+6. **One Escape over two concurrent runs races their two status lines** — whichever continuation
+   lands last owns the bar, and the operator reads one "stopped" instead of two. *Left*: both
+   sentences mean the same deliberate stop the operator just made, no false cleanliness survives
+   (the check panel and window still tell the truth), and ordering two announcements would buy a
+   rare second sentence at the cost of the one-run-one-voice rule everything else leans on.
+7. **The stopped-window route was a third copy of the window-opening sequence** — now
+   `ShowFindings`, used by the click handler, `--findings` and `--stop-findings` alike. *Fixed.*
+8. **"Check stopped; the board was not fully checked." existed twice** — one const now, like the
+   banner's own move onto the result. *Fixed.*
 
 ---
 

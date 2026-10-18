@@ -229,6 +229,18 @@ public partial class MainWindow : Window
             var control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
             var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
+            // Escape stops a running board check or findings search — 6.54, the operator's way
+            // out of a wait they started. Handled only when something actually stopped: this
+            // handler bubbles, so a control that gave Escape a meaning (dropping a dragged tab,
+            // clearing the marker) has already had it, and an Escape with nothing to stop is
+            // left for whoever asks next rather than swallowed on principle.
+            if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None
+                && DataContext is MainViewModel stoppable && stoppable.StopChecks())
+            {
+                e.Handled = true;
+                return;
+            }
+
             Action? act = (e.Key, control, shift) switch
             {
                 (Key.N, true, false) => () => OnNewClicked(this, new RoutedEventArgs()),
@@ -868,22 +880,42 @@ public partial class MainWindow : Window
         // **Awaited rather than routed through the click handler**, which is `async void`: that
         // returns at its first await and the capture would then race the window into existence.
         // The same reason `--check` awaits the view model instead of pressing the menu item.
+        // Stops the findings search a moment after it starts, the way Escape does mid-run — 6.54.
+        // The stopped window and its banner cannot be reached any other way headlessly: a stop
+        // needs a hand on the key while the search is still looking. A moment rather than at
+        // once, because a token cancelled before the work begins never produces the partial
+        // answer the banner sits over; 150 ms into a board this size is reliably mid-search.
+        //
+        // **The window opens only for a genuinely stopped result** (`/code-review`): on a machine
+        // fast enough to finish inside the delay, photographing the complete window under this
+        // flag's name would be a shot asserting a banner while showing its absence. The flag says
+        // which case happened, in words that are true when no board was loaded too.
+        if (args.Contains("--stop-findings", StringComparer.OrdinalIgnoreCase))
+        {
+            var searching = vm.FindingsAsync();
+
+            await Task.Delay(150).ConfigureAwait(true);
+            vm.StopChecks();
+
+            var partial = await searching.ConfigureAwait(true);
+
+            if (partial is { Cancelled: true })
+            {
+                Console.WriteLine("stop findings: stopped mid-search");
+                ShowFindings(partial, vm);
+            }
+            else
+            {
+                Console.WriteLine(partial is null
+                    ? "stop findings: nothing was mid-search to stop — no board, or the stop landed before anything was found"
+                    : "stop findings: the search finished before the stop landed, so there is no stopped window to show");
+            }
+        }
+
         if (args.Contains("--findings", StringComparer.OrdinalIgnoreCase)
             && await vm.FindingsAsync().ConfigureAwait(true) is { } findings)
         {
-            var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
-            {
-                RequestedThemeVariant = ActualThemeVariant,
-            };
-
-            window.PlacePicked += GoToPlace;
-            Watch(window);
-
-            // Presses the nth place in the list, because clicking one is the whole of this story
-            // and a screenshot cannot click. Counted over the window's own order, so what it picks
-            // is what an operator reading top to bottom would pick.
-            window.Show(this);
-            _captureInstead = window;
+            var window = ShowFindings(findings, vm);
 
             // Presses the nth place in the list, because clicking one is the whole of this story
             // and a screenshot cannot click. Counted from one, over the window's own order, so what
@@ -1506,16 +1538,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
-        {
-            RequestedThemeVariant = ActualThemeVariant,
-        };
-
-        window.PlacePicked += GoToPlace;
-        Watch(window);
-
-        window.Show(this);
-        _captureInstead = window;
+        ShowFindings(findings, vm);
     }
 
     /// <summary>
@@ -1535,6 +1558,27 @@ public partial class MainWindow : Window
         // Dropped when the operator shuts it themselves, so this does not accumulate every window
         // the session has ever opened and try to close them all again later.
         window.Closed += (_, _) => _findings.Remove(window);
+    }
+
+    /// <summary>
+    /// Opens one findings window over a result, wired the one way every route wires it: the pick
+    /// handler, the board-change watch, and the capture target. Three call sites had grown three
+    /// copies of this sequence (`/code-review`), and the headless one was the copy a future
+    /// change — a new constructor argument, a forgotten <see cref="Watch"/> — would have missed.
+    /// </summary>
+    private FindingsWindow ShowFindings(BoardFindings.Result findings, MainViewModel vm)
+    {
+        var window = new FindingsWindow(findings, vm.BoardTitle, vm.LayerLabelBrush)
+        {
+            RequestedThemeVariant = ActualThemeVariant,
+        };
+
+        window.PlacePicked += GoToPlace;
+        Watch(window);
+        window.Show(this);
+        _captureInstead = window;
+
+        return window;
     }
 
     /// <summary>
