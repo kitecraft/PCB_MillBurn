@@ -4,7 +4,7 @@
 rewrites it and fails the build when it drifts. Every row links to the entry that carries the
 measurement and the reasoning; this page carries only what is open.
 
-## Defects (2)
+## Defects (3)
 
 Something is wrong. Nothing here is fixed, parked or accepted — those stay in 06.
 
@@ -12,6 +12,7 @@ Something is wrong. Nothing here is fixed, parked or accepted — those stay in 
 |---|---|---|
 | [6.45](06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet) | Block apertures and the aperture transforms | no fixture exists yet |
 | [6.47](06-Roadmap-and-Risks.md#647-isolation-cuts-inside-a-hole-that-is-about-to-be-drilled--defect--open--found-in-the-workshop-low-priority-a-later-sprint) | Isolation cuts inside a hole that is about to be drilled | found in the workshop, low priority, a later sprint |
+| [6.77](06-Roadmap-and-Risks.md#677-the-tab-overlay-is-hard-to-see-on-the-light-theme--defect--open--found-by-the-v070-release-review-2026-10-18) | The tab overlay is hard to see on the light theme | found by the v0.7.0 release review, 2026-10-18 |
 
 ## Enhancements (9)
 
@@ -57,4 +58,4 @@ Here so that nothing looks forgotten. Each says why in 06.
 
 ---
 
-**15 open**, of 75 entries in the roadmap.
+**16 open**, of 76 entries in the roadmap.

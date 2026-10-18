@@ -91,38 +91,73 @@ public static class TabHandles
     private const float LetterOffset = Radius + 11f;
 
     /// <summary>
-    /// The letters' paints, made once: they never change, and the handles redraw on every hover
-    /// change and every pointer move of a drag — on the panel, that is a paint pair per tab per
-    /// frame for nothing.
+    /// What a tab's letter is drawn in against a viewport washed in <paramref name="background"/>:
+    /// the ink, and the halo that separates it from whatever is behind.
+    ///
+    /// **Amber with a dark halo on the dark theme; a dark amber with a light halo on the light
+    /// one.** The letters were amber with the dark halo whatever the theme, and on the light
+    /// theme's #FAFAFB that is a pale ink in a grey smudge — legible if you look for it, muddy if
+    /// you do not. Found retaking the README's light-theme screenshot for 0.7.0, the same way the
+    /// rulers' white-on-white was found for 0.6.0, and decided the same way: by the background's
+    /// luminance (<see cref="Ruler.InkOn"/>). The handles keep their amber in both: a grip is a
+    /// colour you learn, and the letter beside it is what has to be read.
     /// </summary>
-    private static readonly SKPaint LetterHalo = new()
-    {
-        Color = Halo,
-        StrokeWidth = 4f,
-        IsAntialias = true,
-        Style = SKPaintStyle.Stroke,
-        StrokeJoin = SKStrokeJoin.Round,
-    };
+    public static (SKColor Ink, SKColor Halo) LetterColours(SKColor background) =>
+        OnLight(background)
+            ? (DarkAmber, new SKColor(0xFF, 0xFF, 0xFF, 0xD9))
+            : (Ink, Halo);
 
-    private static readonly SKPaint LetterInk = new()
-    {
-        Color = Ink.WithAlpha(0xE6),
-        IsAntialias = true,
-        Style = SKPaintStyle.Fill,
-    };
+    /// <summary>The one test of which theme the letters are on, used by the colours and the paints alike.</summary>
+    private static bool OnLight(SKColor background) => Ruler.InkOn(background) != SKColors.White;
 
-    private static readonly SKPaint LetterInkLit = new()
+    /// <summary>The letters' ink on a light viewport: the handles' amber, darkened until it reads.</summary>
+    private static readonly SKColor DarkAmber = new(0x7A, 0x43, 0x00);
+
+    /// <summary>
+    /// The letters' paints, made once per theme: they never change, and the handles redraw on
+    /// every hover change and every pointer move of a drag — on the panel, that is a paint pair
+    /// per tab per frame for nothing.
+    /// </summary>
+    private static readonly LetterPaints DarkLetters = new(LetterColours(SKColors.Black));
+
+    private static readonly LetterPaints LightLetters = new(LetterColours(SKColors.White));
+
+    /// <summary>The paints for this viewport, by the same test <see cref="LetterColours"/> uses.</summary>
+    private static LetterPaints LettersOn(SKColor background) => OnLight(background) ? LightLetters : DarkLetters;
+
+    private sealed class LetterPaints((SKColor Ink, SKColor Halo) colours)
     {
-        Color = Ink,
-        IsAntialias = true,
-        Style = SKPaintStyle.Fill,
-    };
+        public SKPaint Halo { get; } = new()
+        {
+            Color = colours.Halo,
+            StrokeWidth = 4f,
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeJoin = SKStrokeJoin.Round,
+        };
+
+        public SKPaint Ink { get; } = new()
+        {
+            Color = colours.Ink.WithAlpha(0xE6),
+            IsAntialias = true,
+            Style = SKPaintStyle.Fill,
+        };
+
+        public SKPaint InkLit { get; } = new()
+        {
+            Color = colours.Ink,
+            IsAntialias = true,
+            Style = SKPaintStyle.Fill,
+        };
+    }
 
     /// <summary>
     /// Draws the loop and the handles over the board. Screen furniture: the canvas carries no
-    /// transform, and <paramref name="frame"/> says where the board's numbers land.
+    /// transform, and <paramref name="frame"/> says where the board's numbers land;
+    /// <paramref name="background"/> is the viewport's own colour, which the letters are inked
+    /// against (<see cref="LetterColours"/>).
     /// </summary>
-    public static void Draw(SKCanvas canvas, SKRect viewport, RulerFrame frame, TabOverlay tabs)
+    public static void Draw(SKCanvas canvas, SKRect viewport, RulerFrame frame, TabOverlay tabs, SKColor background)
     {
         ArgumentNullException.ThrowIfNull(canvas);
         ArgumentNullException.ThrowIfNull(tabs);
@@ -133,6 +168,9 @@ public static class TabHandles
         }
 
         DrawProfile(canvas, frame, tabs.Profile);
+
+        // Chosen once per frame, not once per tab.
+        var letters = LettersOn(background);
 
         for (var i = 0; i < tabs.Tabs.Count; i++)
         {
@@ -194,7 +232,7 @@ public static class TabHandles
             canvas.DrawCircle(x, y, radius, fill);
             canvas.DrawCircle(x, y, radius, ring);
 
-            DrawLetter(canvas, frame, tab, x, y, lit);
+            DrawLetter(canvas, frame, tab, x, y, lit, letters);
         }
     }
 
@@ -206,7 +244,8 @@ public static class TabHandles
     /// direction, so it is carried through the frame rather than assumed: whatever the frame does
     /// to the axes, the letter lands on the side the board is not.
     /// </summary>
-    private static void DrawLetter(SKCanvas canvas, RulerFrame frame, TabHandle tab, float x, float y, bool lit)
+    private static void DrawLetter(
+        SKCanvas canvas, RulerFrame frame, TabHandle tab, float x, float y, bool lit, LetterPaints paints)
     {
         if (string.IsNullOrEmpty(tab.Letter))
         {
@@ -230,8 +269,8 @@ public static class TabHandles
         // Centred on the point, vertically too: the baseline sits half a cap height below it.
         var baseline = cy + (LetterFont.Size * 0.36f);
 
-        canvas.DrawText(tab.Letter, cx, baseline, SKTextAlign.Center, LetterFont, LetterHalo);
-        canvas.DrawText(tab.Letter, cx, baseline, SKTextAlign.Center, LetterFont, lit ? LetterInkLit : LetterInk);
+        canvas.DrawText(tab.Letter, cx, baseline, SKTextAlign.Center, LetterFont, paints.Halo);
+        canvas.DrawText(tab.Letter, cx, baseline, SKTextAlign.Center, LetterFont, lit ? paints.InkLit : paints.Ink);
     }
 
     /// <summary>

@@ -7460,3 +7460,20 @@ of requests, not yet to a sprint:
 **Done when** an operation can be cut with two bits, the second program visits only the
 material the first could not reach (measured: its cutting length against cutting the whole job
 with the small bit), and the two together pass the electrical check.
+
+#### 6.77 The tab overlay is hard to see on the light theme — **defect · open** — *found by the v0.7.0 release review, 2026-10-18*
+
+Retaking the README's light-theme screenshot for 0.7.0 showed the tab letters as pale amber in a
+grey smudge on the viewport's #FAFAFB. The letters were fixed for the release — inked by the
+viewport's own colour, as the rulers were for 0.6.0 (`TabHandles.LetterColours`). The release
+review then pointed out that the rest of the overlay has the same fault on the same screenshot:
+the **cyan gap ticks**, which the bench asked for precisely so the gap could be told apart, the
+**amber dashed loop**, and the amber handle rings are all low-contrast on near-white.
+
+**Not fixed in the release on purpose.** It is a colour decision for the whole overlay — which
+colours the grips and the gap marks take on a light viewport — and it wants the owner's eye at the
+bench rather than a choice made on release day. The letters, which must be read, were the part
+that could not wait.
+
+**Done when** the loop, the handles and the gap ticks are each as easy to pick out on the light
+theme as on the dark one, checked on the README's light-theme shot.

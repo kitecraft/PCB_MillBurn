@@ -201,7 +201,7 @@ public static class BoardRenderer
         // "where is the fault" goes on top.
         if (tabs is not null)
         {
-            TabHandles.Draw(canvas, viewport, frame, tabs);
+            TabHandles.Draw(canvas, viewport, frame, tabs, background);
         }
 
         // After the ruler, so the crosshairs and the two strip pointers land on top of the strips

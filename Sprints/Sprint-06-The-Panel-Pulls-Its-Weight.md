@@ -900,6 +900,28 @@ proves nothing.
 
 ---
 
+## Release — v0.7.0, 2026-10-18
+
+**Found retaking the README's screenshots:** the tab letters were amber in a grey smudge on the light
+theme. Fixed — `TabHandles.LetterColours` inks them by the viewport's colour, the rulers' rule from
+0.6.0 — with `TabHandleLetterTests` (the rule on both themes, and the drawn letter in its theme's
+ink against a control with no letter; reintroducing a theme-blind draw fails it by name). Its
+`/describe-test` run found the dark case could have passed on the handle's own amber; the no-letter
+control closes that.
+
+**The release `/code-review`, medium**, nine findings: six in the changelog, all fixed — it said the
+CLI was unchanged (`--tabs` and `--tab-width` now clear hand-set changes), called a downgrade to
+0.6.0 harmless (it is unguarded), listed fixes for bugs that only ever existed inside the sprint,
+quoted a speed-up from two different shots (now the sprint's measured 122–154 → 38–42 ms),
+called the picture pixel-identical (it is unchanged to the eye), and left out the gestures'
+refusals. Two in the letter fix, both fixed: the theme test lived in two places, and the pixel test
+compared against the pure ink rather than the ink as drawn. And one recorded as
+[6.77](../Documentation/06-Roadmap-and-Risks.md#677-the-tab-overlay-is-hard-to-see-on-the-light-theme--defect--open--found-by-the-v070-release-review-2026-10-18):
+the rest of the overlay is low-contrast on the light theme too — a colour decision for the owner's
+eye, not release day's.
+
+---
+
 ## Deliberately out
 
 **[6.45](../Documentation/06-Roadmap-and-Risks.md#645-block-apertures-and-the-aperture-transforms--defect--open--no-fixture-exists-yet)
