@@ -354,7 +354,12 @@ public sealed partial class LayerRow : ObservableObject
     /// All three at once, and one notification: the preview is rebuilt from this, and rebuilding it
     /// three times to arrive at the same board is the drag-rebuild fault sprint 2 story 6 fixed.
     /// </summary>
-    public void SetTabs(long? widthNm, long? heightNm, ImmutableArray<TabEdit> edits)
+    /// <param name="widthNm">The board-wide width, or null for the board's own.</param>
+    /// <param name="heightNm">The board-wide height, or null for the board's own.</param>
+    /// <param name="edits">The planned tabs' own sizes.</param>
+    /// <param name="moves">The hand-set positions to keep, when the caller changed them too — an
+    /// added tab's own size lives on its entry. Null keeps the ones there are.</param>
+    public void SetTabs(long? widthNm, long? heightNm, ImmutableArray<TabEdit> edits, ImmutableArray<TabMove>? moves = null)
     {
         // A changed board-wide width re-places every tab — width decides how many an edge can
         // hold — so hand-set positions go with the plan they belonged to, the same door the sizes
@@ -362,6 +367,10 @@ public sealed partial class LayerRow : ObservableObject
         if (widthNm != TabWidthNm)
         {
             TabMoves = [];
+        }
+        else if (moves is { } kept)
+        {
+            TabMoves = kept;
         }
 
         TabWidthNm = widthNm;

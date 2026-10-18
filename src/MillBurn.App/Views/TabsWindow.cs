@@ -26,6 +26,7 @@ namespace MillBurn.App.Views;
 public sealed class TabsWindow : Window
 {
     private readonly IReadOnlyList<PlacedTab> _tabs;
+    private readonly ImmutableArray<TabMove> _moves;
     private readonly long _derivedWidthNm;
     private readonly long _derivedHeightNm;
     private readonly NumericUpDown _width;
@@ -69,11 +70,18 @@ public sealed class TabsWindow : Window
     /// today — a board resized after this dialog was used should move with its own rule rather than
     /// keep a figure typed against the old size.
     /// </summary>
-    public sealed record Choice(long? WidthNm, long? HeightNm, ImmutableArray<TabEdit> Edits);
+    /// <param name="WidthNm">The board-wide width, or null for the board's own.</param>
+    /// <param name="HeightNm">The board-wide height, or null for the board's own.</param>
+    /// <param name="Edits">The planned tabs that differ from the board-wide pair.</param>
+    /// <param name="Moves">The hand-set positions with any added tab's own sizes written onto its
+    /// entry, where an added tab keeps them.</param>
+    public sealed record Choice(
+        long? WidthNm, long? HeightNm, ImmutableArray<TabEdit> Edits, ImmutableArray<TabMove> Moves);
 
     public TabsWindow(
         string boardLabel,
         IReadOnlyList<PlacedTab> tabs,
+        ImmutableArray<TabMove> moves,
         long? widthNm,
         long? heightNm,
         long derivedWidthNm,
@@ -83,6 +91,7 @@ public sealed class TabsWindow : Window
         ArgumentNullException.ThrowIfNull(tabs);
 
         _tabs = tabs;
+        _moves = moves.IsDefault ? [] : moves;
         _derivedWidthNm = derivedWidthNm;
         _derivedHeightNm = derivedHeightNm;
 
@@ -234,7 +243,7 @@ public sealed class TabsWindow : Window
 
             for (var i = 0; i < _tabs.Count; i++)
             {
-                body.Children.Add(Row(i, _tabs[i]));
+                body.Children.Add(Row(_tabs[i]));
             }
         }
 
@@ -268,7 +277,7 @@ public sealed class TabsWindow : Window
     }
 
     /// <summary>One tab: which it is, where it is, and its own two numbers.</summary>
-    private Grid Row(int index, PlacedTab tab)
+    private Grid Row(PlacedTab tab)
     {
         var grid = new Grid
         {
@@ -279,17 +288,22 @@ public sealed class TabsWindow : Window
         // Three answers to "what put it there", and the row says which (6.4): an edge the planner
         // chose, the fallback spacing, or a hand — whose tab has no edge length to quote, because
         // the hand did not consult one.
+        //
+        // **Named by the letter beside its handle**, asked for from the bench on 2026-10-18 — "in
+        // the tab dialog, use those letters instead of the numbered list". A row's number was its
+        // place in this list, which nothing in the viewport showed; the letter is the tab's own name
+        // and is the same one under the pointer.
         var where = tab.Moved || tab.Added
             ? string.Create(
                 CultureInfo.InvariantCulture,
-                $"{index + 1}. placed by hand, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
+                $"{tab.Letter}. placed by hand, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
             : tab.Spaced
                 ? string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{index + 1}. spaced round the profile, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
+                    $"{tab.Letter}. spaced round the profile, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{index + 1}. on a {Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm");
+                    $"{tab.Letter}. on a {Nm.ToMillimetreString((long)tab.EdgeLengthNm, 1)} mm edge, at {Nm.ToMillimetreString(tab.At.X, 2)}, {Nm.ToMillimetreString(tab.At.Y, 2)} mm");
 
         var label = new TextBlock
         {
@@ -302,15 +316,6 @@ public sealed class TabsWindow : Window
 
         var width = Box(tab.WidthNm, 0.5, 2, 0.5, 20);
         var height = Box(tab.HeightNm, 0.05, 2, 0.05, 2);
-
-        // An added tab has no place in the pristine plan for a size edit to name, so it takes the
-        // board's own sizes and says so by refusing the boxes — a box that accepted a number and
-        // silently dropped it would be the worse window.
-        if (tab.Added)
-        {
-            width.IsEnabled = false;
-            height.IsEnabled = false;
-        }
 
         _rows.Add((width, height));
 
@@ -433,7 +438,7 @@ public sealed class TabsWindow : Window
             // being the day a tab could be removed or added by hand (6.4): remove tab 1 and row 1
             // shows the tab planned third, so an edit keyed by row would land one tab over. The
             // tab's own ordinal is the name the planner resolves. An added tab has no place in that
-            // plan to name — it takes the derived sizes, and its boxes are disabled in `Row`.
+            // plan; its sizes go onto its own add entry instead, below.
             if (_tabs[i].Added)
             {
                 continue;
@@ -455,7 +460,28 @@ public sealed class TabsWindow : Window
             });
         }
 
-        Result = new Choice(chosenWidth, chosenHeight, edits.ToImmutable());
+        // An added tab's sizes, by the same rule: a number equal to the board-wide one is no size
+        // of its own.
+        var moves = _moves;
+
+        for (var i = 0; i < _rows.Count; i++)
+        {
+            if (!_tabs[i].Added)
+            {
+                continue;
+            }
+
+            var ownWidth = Nanometres(_rows[i].Width);
+            var ownHeight = Nanometres(_rows[i].Height);
+
+            moves = TabPlan.WithAddSize(
+                moves,
+                _tabs[i].Ordinal,
+                ownWidth == widthNm ? null : ownWidth,
+                ownHeight == heightNm ? null : ownHeight);
+        }
+
+        Result = new Choice(chosenWidth, chosenHeight, edits.ToImmutable(), moves);
         Close();
     }
 
@@ -497,6 +523,7 @@ public sealed class TabsWindow : Window
         Window owner,
         string boardLabel,
         IReadOnlyList<PlacedTab> tabs,
+        ImmutableArray<TabMove> moves,
         long? widthNm,
         long? heightNm,
         long derivedWidthNm,
@@ -506,7 +533,7 @@ public sealed class TabsWindow : Window
         ArgumentNullException.ThrowIfNull(owner);
 
         var window = new TabsWindow(
-            boardLabel, tabs, widthNm, heightNm, derivedWidthNm, derivedHeightNm, originName)
+            boardLabel, tabs, moves, widthNm, heightNm, derivedWidthNm, derivedHeightNm, originName)
         {
             RequestedThemeVariant = owner.ActualThemeVariant,
         };

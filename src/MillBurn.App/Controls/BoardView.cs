@@ -119,10 +119,28 @@ public sealed class BoardView : Control
     /// <summary>A handle was right-clicked: that tab should go.</summary>
     public event EventHandler<TabGestureEventArgs>? TabRemoveRequested;
 
+    /// <summary>
+    /// A handle was clicked without being dragged: that tab's own width is wanted. Where is the
+    /// tab's centre, in board millimetres; the pointer is where a popup belongs.
+    /// </summary>
+    public event EventHandler<TabGestureEventArgs>? TabClicked;
+
     /// <summary>The handle under the pointer, the one being dragged, and where it has slid to.</summary>
     private int _hotTab = -1;
     private int _dragTab = -1;
     private Point? _dragAt;
+
+    /// <summary>
+    /// Where a press on a handle landed on screen, until the pointer has moved far enough from it
+    /// to be a drag. Null once it has: from then on, letting go drops the tab rather than clicking it.
+    /// </summary>
+    private Point? _tabPressedScreen;
+
+    /// <summary>
+    /// How far a press on a handle may wander before it is a drag, in pixels — the same slop a
+    /// click on the empty path is allowed, because a hand on a mouse never moves zero.
+    /// </summary>
+    private const double ClickSlop = 3;
 
     /// <summary>Where the last pan began on screen, for telling a click from a drag on release.</summary>
     private Point? _pressedScreen;
@@ -451,6 +469,7 @@ public sealed class BoardView : Control
             _hotTab = -1;
             _dragTab = -1;
             _dragAt = null;
+            _tabPressedScreen = null;
         }
     }
 
@@ -469,6 +488,7 @@ public sealed class BoardView : Control
         {
             _dragTab = -1;
             _dragAt = null;
+            _tabPressedScreen = null;
             InvalidateVisual();
             e.Handled = true;
             return;
@@ -567,6 +587,7 @@ public sealed class BoardView : Control
         {
             _dragTab = grabbed;
             _dragAt = Tabs is { } tabs ? new Point(tabs.Tabs[grabbed].At.X, tabs.Tabs[grabbed].At.Y) : null;
+            _tabPressedScreen = position;
             e.Pointer.Capture(this);
             e.Handled = true;
             InvalidateVisual();
@@ -594,6 +615,20 @@ public sealed class BoardView : Control
         // a corner, and what makes "off the outline" not possible rather than merely refused.
         if (_dragTab >= 0)
         {
+            // Inside the slop the press is still a click, and the handle stays where it was: a
+            // click that nudged its tab a tenth of a millimetre would write a hand-set position
+            // nobody chose.
+            if (_tabPressedScreen is { } pressed)
+            {
+                if (Math.Abs(p.X - pressed.X) + Math.Abs(p.Y - pressed.Y) < ClickSlop)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                _tabPressedScreen = null;
+            }
+
             if (NearestOnProfile(p) is { } nearest)
             {
                 _dragAt = nearest.At;
@@ -645,13 +680,24 @@ public sealed class BoardView : Control
         // live picture; the authoritative one comes back through the Tabs property re-planned.
         if (_dragTab >= 0)
         {
-            if (_dragAt is { } at)
+            // A press that never became a drag is a click: it asks about the tab rather than
+            // moving it. Before this, a click on a handle "dropped" the tab where it already was,
+            // which wrote it as hand-placed and turned its circle solid for nothing.
+            if (_tabPressedScreen is not null)
+            {
+                if (_dragAt is { } here)
+                {
+                    TabClicked?.Invoke(this, new TabGestureEventArgs(_dragTab, here));
+                }
+            }
+            else if (_dragAt is { } at)
             {
                 TabMoved?.Invoke(this, new TabGestureEventArgs(_dragTab, at));
             }
 
             _dragTab = -1;
             _dragAt = null;
+            _tabPressedScreen = null;
             End();
             e.Pointer.Capture(null);
             e.Handled = true;
@@ -698,6 +744,7 @@ public sealed class BoardView : Control
         // committing a position the hand never let go of would write a place nobody chose.
         _dragTab = -1;
         _dragAt = null;
+        _tabPressedScreen = null;
         End();
         base.OnPointerCaptureLost(e);
     }

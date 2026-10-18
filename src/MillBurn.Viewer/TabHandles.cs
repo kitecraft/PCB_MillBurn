@@ -14,8 +14,14 @@ namespace MillBurn.Viewer;
 /// <param name="GapFrom">Where the cut stops: the gap's near end, walked along the loop half a
 /// width back from the centre. Board millimetres, like <paramref name="At"/>.</param>
 /// <param name="GapTo">Where the cut resumes: the gap's far end, half a width on.</param>
+/// <param name="Letter">The tab's name — A, B … AA — drawn beside the handle, and the name the tabs
+/// window and the width popup use for it.</param>
+/// <param name="Outward">A unit direction in board millimetres pointing off the board at this tab:
+/// the side of the cut path the board is not on, which is where the letter goes so it never sits
+/// on the copper. Zero when the loop gave no direction; the letter then sits above the handle.</param>
 public readonly record struct TabHandle(
-    SKPoint At, float WidthMm, bool ByHand, SKPoint GapFrom, SKPoint GapTo);
+    SKPoint At, float WidthMm, bool ByHand, SKPoint GapFrom, SKPoint GapTo,
+    string Letter = "", SKPoint Outward = default);
 
 /// <summary>
 /// The tabs and the cut path they live on, as the viewport draws and picks them (6.4).
@@ -73,6 +79,44 @@ public static class TabHandles
     private static readonly SKColor GapInk = new(0x3B, 0xD9, 0xFF);
 
     private static readonly SKColor Halo = new(0x10, 0x10, 0x12, 0xAA);
+
+    /// <summary>The letters' face: bold and small, a name beside a grip rather than a caption.</summary>
+    private static readonly SKFont LetterFont =
+        new(SKTypeface.FromFamilyName(null, SKFontStyle.Bold) ?? SKTypeface.Default, 11f);
+
+    /// <summary>
+    /// How far the letter's centre sits from the handle's, on screen: clear of the lit handle's
+    /// ring and of the gap ticks across the path, close enough to read as the handle's own.
+    /// </summary>
+    private const float LetterOffset = Radius + 11f;
+
+    /// <summary>
+    /// The letters' paints, made once: they never change, and the handles redraw on every hover
+    /// change and every pointer move of a drag — on the panel, that is a paint pair per tab per
+    /// frame for nothing.
+    /// </summary>
+    private static readonly SKPaint LetterHalo = new()
+    {
+        Color = Halo,
+        StrokeWidth = 4f,
+        IsAntialias = true,
+        Style = SKPaintStyle.Stroke,
+        StrokeJoin = SKStrokeJoin.Round,
+    };
+
+    private static readonly SKPaint LetterInk = new()
+    {
+        Color = Ink.WithAlpha(0xE6),
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill,
+    };
+
+    private static readonly SKPaint LetterInkLit = new()
+    {
+        Color = Ink,
+        IsAntialias = true,
+        Style = SKPaintStyle.Fill,
+    };
 
     /// <summary>
     /// Draws the loop and the handles over the board. Screen furniture: the canvas carries no
@@ -149,7 +193,45 @@ public static class TabHandles
             canvas.DrawCircle(x, y, radius + 1.5f, halo);
             canvas.DrawCircle(x, y, radius, fill);
             canvas.DrawCircle(x, y, radius, ring);
+
+            DrawLetter(canvas, frame, tab, x, y, lit);
         }
+    }
+
+    /// <summary>
+    /// The tab's letter, off the board side of the handle.
+    ///
+    /// **Outside, always** — asked for from the bench: the letter is a name, and a name printed
+    /// over copper is a name in the way of the thing it names. The outward direction is a board
+    /// direction, so it is carried through the frame rather than assumed: whatever the frame does
+    /// to the axes, the letter lands on the side the board is not.
+    /// </summary>
+    private static void DrawLetter(SKCanvas canvas, RulerFrame frame, TabHandle tab, float x, float y, bool lit)
+    {
+        if (string.IsNullOrEmpty(tab.Letter))
+        {
+            return;
+        }
+
+        var dx = frame.ScreenX(tab.At.X + tab.Outward.X) - x;
+        var dy = frame.ScreenY(tab.At.Y + tab.Outward.Y) - y;
+        var length = MathF.Sqrt((dx * dx) + (dy * dy));
+
+        if (length < 1e-3f)
+        {
+            dx = 0;
+            dy = -1;
+            length = 1;
+        }
+
+        var cx = x + (dx / length * LetterOffset);
+        var cy = y + (dy / length * LetterOffset);
+
+        // Centred on the point, vertically too: the baseline sits half a cap height below it.
+        var baseline = cy + (LetterFont.Size * 0.36f);
+
+        canvas.DrawText(tab.Letter, cx, baseline, SKTextAlign.Center, LetterFont, LetterHalo);
+        canvas.DrawText(tab.Letter, cx, baseline, SKTextAlign.Center, LetterFont, lit ? LetterInkLit : LetterInk);
     }
 
     /// <summary>

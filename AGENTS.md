@@ -78,7 +78,9 @@ sufficient.
   `--move-tab <n>=<mm>` (slides a holding tab along the cut path the way a drop in the viewport
   does — the tab by its place in the plan, the destination in millimetres along the loop — so a
   hand-set tab and the *unsaved changes* line it causes can be photographed; the drag itself needs
-  a button held), `--stop-findings` (starts the findings search and stops it a moment in, the way
+  a button held), `--tab-width <letter>=<mm>` (one tab's own width, by the letter beside its
+  handle, the write the click-on-a-handle popup makes), `--tab-popup <letter>` (opens that popup
+  and captures it instead of the window — a popup is its own top level), `--stop-findings` (starts the findings search and stops it a moment in, the way
   Escape does — the stopped window's banner over a partial list is unreachable any other way
   headlessly), `--only-toolpath <layer>`, `--map <log>`, `--recent`, `--framing`, `--colour`. `--bench` and
   `--probe` are handled before the UI starts. `--check` runs *Job ▸ Check this board* and nothing

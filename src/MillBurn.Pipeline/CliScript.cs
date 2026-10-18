@@ -392,7 +392,12 @@ public static class CliScript
         // `IsDefaultOrEmpty` as everywhere else that touches this array: a default
         // `ImmutableArray` throws on `Length`, and this runs on every export rather than only on
         // the outline path. The three sites agree on the guard; `ExportPlanner` has the note on why.
-        var edited = outlines.Sum(o => o.TabEdits.IsDefaultOrEmpty ? 0 : o.TabEdits.Length);
+        // An added tab sized by hand counts too: its sizes are on its add entry, not in an edit.
+        var edited = outlines.Sum(o =>
+            (o.TabEdits.IsDefaultOrEmpty ? 0 : o.TabEdits.Length)
+            + (o.TabMoves.IsDefaultOrEmpty
+                ? 0
+                : o.TabMoves.Count(m => m.Index < 0 && m.AlongNm is not null && (m.WidthNm is not null || m.HeightNm is not null))));
 
         if (edited > 0)
         {

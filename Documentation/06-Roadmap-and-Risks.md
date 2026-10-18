@@ -2517,6 +2517,53 @@ are guarded with a built flag now — construction restores, only a change clear
 - **The blank still places its own**, two to an edge on the top and right only. That rule is right
   and was kept; what it does not yet share is the sizing or the hand.
 
+##### Built in sprint 6 story 5 — letters, and a click (2026-10-18)
+
+**Asked for at the bench the morning after the drag landed**, by the product owner: *"I'd also
+like to be able to single click on a tab (just the circle) and have it pop up a hover dialog for
+'width'. The width would be applied to only that specified tab. And, would it be possible to have
+a label near the tab handle (the circle)? A - Z (then AA - ZZ, ...). And in the tab dialog, use
+those letters instead of the numbered list. Displaying the label would always have to try to be on
+the outside of the board."*
+
+> **A story to remove the tabs window was proposed the same morning and withdrawn by the owner
+> before it was cut**: the drag had made its list of places look redundant, but *"the dialog is
+> actually kind of handy still so let's keep it for now."* The letters are what make the two
+> agree — the row and the handle carry the same name.
+
+**A letter is a tab's own name.** `PlacedTab.Letter` is given out with the ordinal, so it has the
+ordinal's stability: the planned tabs letter A, B, C … in the pristine plan's order, the
+hand-added ones after them, spreadsheet-style past Z (`TabPlan.LetterOf`: Z, AA, AB … ZZ, AAA).
+Drag B past D and it is still B; remove A and nobody is re-lettered. An added tab moves up a
+letter when an add before it is removed, as its place among the adds does.
+
+**An added tab can be sized, and its sizes live on its own add entry.** It could not be sized
+before: a `TabEdit` named a tab by its place in the pristine plan, an add had none, and the tabs
+window disabled its boxes. `TabMove` gains `WidthNm` and `HeightNm`, read only by an add. The
+first build put them in a `TabEdit` with an `Added` flag instead, and kept a removed add as an
+empty entry so later adds held their places; `/code-review` took that apart — the empty entries
+made the program header blame a hand for a shortfall, a removed add's size outlived it in the
+export advice and the CLI's count, and a build from before the flag would have read an added
+tab's size as the planned tab's with the same number and cut it there. On the entry, the size is
+removed with its tab, and an older build reads the add at the board's size: a missing choice
+rather than a misplaced one. The window sizes added rows like any other, and the export advice
+holds an add's own size to the same limits as an edit's.
+
+**The click.** A press on a handle that never moves three pixels is a click, not a drop — before
+this, a stationary click "moved" the tab to where it already was and marked it hand-placed. A
+click opens a small popup at the pointer: *Tab B*, its width, *Board's width* and *Apply*; Escape
+or a click away changes nothing. What it writes is `TabPlan.WithWidth` — the window's own rule, so
+a width equal to the board's is no edit, and a tab's own height survives a width change. An answer
+that arrives after the tabs were re-planned under the popup is refused with a line saying so,
+because a re-plan can put the same letter on a different tab.
+
+**The letters sit outside the board.** Each is pushed off the handle along the cut path's normal
+on the side away from the board — which side that is comes from the loop's winding (its shoelace
+sign), and the direction is carried through the screen frame rather than assumed. Shot on the test
+board and the 66-up panel: every letter clear of the copper.
+
+**The owner, on seeing it, 2026-10-18:** *"That is awesome! Tabs are so easy now."*
+
 #### 6.5 A picture on the companion pages — **enhancement · fixed**
 
 Requested from the workshop: *"in the companion html for drills and routing, include images of the

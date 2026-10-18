@@ -74,6 +74,7 @@ public partial class MainWindow : Window
                 Viewport.TabMoved += (_, e) => vm.MoveTab(e.Index, e.At.X, e.At.Y);
                 Viewport.TabAddRequested += (_, e) => vm.AddTab(e.At.X, e.At.Y);
                 Viewport.TabRemoveRequested += (_, e) => vm.RemoveTab(e.Index);
+                Viewport.TabClicked += (_, e) => ShowTabWidth(vm, e.Index);
 
                 // Refilled each time the empty panel comes back, because opening or saving a
                 // project in between changes the list.
@@ -303,8 +304,11 @@ public partial class MainWindow : Window
 
     private bool _closeConfirmed;
 
-    /// <summary>A dialog to capture instead of the main window, for checking one headlessly.</summary>
-    private Window? _captureInstead;
+    /// <summary>
+    /// A dialog to capture instead of the main window, for checking one headlessly — or a popup's
+    /// own top level, which a capture of the window does not reach.
+    /// </summary>
+    private TopLevel? _captureInstead;
 
     private async Task OnOpened(string[] args)
     {
@@ -469,6 +473,13 @@ public partial class MainWindow : Window
         if (Argument(args, "--move-tab") is { } slide)
         {
             Console.WriteLine(MoveTabForShot(vm, slide));
+        }
+
+        // Sets one tab's own width by its letter, the write the width popup makes — `<letter>=<mm>`,
+        // so a shot can show one tab's gap wider than the rest and the letters beside them all.
+        if (Argument(args, "--tab-width") is { } sizing)
+        {
+            Console.WriteLine(TabWidthForShot(vm, sizing));
         }
 
         // Opens every layer's settings, so a screenshot can show the expanded row rather than only
@@ -672,6 +683,7 @@ public partial class MainWindow : Window
             var tabs = new TabsWindow(
                 outline.Label,
                 planning.Tabs,
+                outline.TabMoves,
                 outline.TabWidthNm,
                 outline.TabHeightNm,
                 planning.DerivedWidthNm,
@@ -683,6 +695,23 @@ public partial class MainWindow : Window
 
             tabs.Show(this);
             _captureInstead = tabs;
+        }
+
+        // A tab's width popup, by letter, for a picture of what a click on its handle opens. The
+        // popup is its own top level, out of reach of a capture of the window, so it is what is
+        // captured; shown at the viewport rather than at a pointer a headless run does not have.
+        if (Argument(args, "--tab-popup") is { } popupLetter)
+        {
+            if (ShowTabWidth(vm, vm.TabHandleOf(popupLetter), atPointer: false) is { Content: Visual content }
+                && TopLevel.GetTopLevel(content) is { } popup)
+            {
+                _captureInstead = popup;
+                Console.WriteLine($"tab popup: tab {popupLetter}");
+            }
+            else
+            {
+                Console.WriteLine($"tab popup: no tab {popupLetter} to open, or it did not open");
+            }
         }
 
         // The test-cut dialog, for a picture of whichever of the three tests is asked for.
@@ -1600,6 +1629,42 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// A click on a tab's handle: its own width, asked for beside it. Nothing opens for a handle
+    /// that names no tab — the overlay changed between the press and the release.
+    /// </summary>
+    private Flyout? ShowTabWidth(MainViewModel vm, int handle, bool atPointer = true)
+    {
+        if (vm.TabWidthFor(handle) is not { } tab)
+        {
+            return null;
+        }
+
+        var flyout = TabWidthFlyout.For(
+            tab.Letter, tab.WidthMm, tab.BoardWidthMm, chosen => vm.SetTabWidth(tab, chosen));
+
+        flyout.ShowAt(Viewport, showAtPointer: atPointer);
+        return flyout;
+    }
+
+    /// <summary>
+    /// The <c>--tab-width</c> flag: one tab's own width by its letter, the way the popup sets it.
+    /// Says what it did, and says so when it could not (06 §6.66).
+    /// </summary>
+    private static string TabWidthForShot(MainViewModel vm, string sizing)
+    {
+        var parts = sizing.Split('=', 2, StringSplitOptions.TrimEntries);
+
+        if (parts.Length != 2
+            || parts[0].Length == 0
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var widthMm))
+        {
+            return $"tab width: '{sizing}' is not <letter>=<mm> — the tab's letter, and its width in millimetres";
+        }
+
+        return vm.SetTabWidthForShot(parts[0], widthMm);
+    }
+
     /// <summary>For <c>--set-role</c>: the one line saying what was set, or why nothing was.</summary>
     /// <summary>
     /// The <c>--move-tab</c> flag: one tab slid along the cut path, the way a drop does it — 6.4.
@@ -2261,6 +2326,7 @@ public partial class MainWindow : Window
             this,
             row.Label,
             planning.Tabs,
+            row.TabMoves,
             row.TabWidthNm,
             row.TabHeightNm,
             planning.DerivedWidthNm,
@@ -2269,7 +2335,7 @@ public partial class MainWindow : Window
 
         if (chosen is not null)
         {
-            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits);
+            row.SetTabs(chosen.WidthNm, chosen.HeightNm, chosen.Edits, chosen.Moves);
         }
     }
 

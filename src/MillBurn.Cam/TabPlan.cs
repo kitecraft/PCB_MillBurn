@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Clipper2Lib;
 using MillBurn.Core;
 
@@ -37,6 +38,15 @@ public sealed record PlacedTab
     /// </summary>
     public int Ordinal { get; init; }
 
+    /// <summary>
+    /// The tab's name as the operator sees it — A, B … Z, AA, AB … — beside its handle in the
+    /// viewport and on its row in the tabs window. Given out with <see cref="Ordinal"/>: the
+    /// planned tabs in the pristine plan's order, then the hand-added ones after them. A planned
+    /// tab's letter stays with it however far it is dragged and whatever is removed around it; an
+    /// added tab's moves up one when an add before it is removed, as its ordinal does.
+    /// </summary>
+    public string Letter { get; init; } = string.Empty;
+
     /// <summary>A planner's tab whose position a hand overrode (6.4).</summary>
     public bool Moved { get; init; }
 
@@ -61,7 +71,8 @@ public sealed record PlacedTab
 /// - <see cref="Index"/> ≥ 0 with <see cref="AlongNm"/> set **moves** that planned tab there.
 /// - <see cref="Index"/> ≥ 0 with no <see cref="AlongNm"/> **removes** that planned tab.
 /// - <see cref="Index"/> &lt; 0 with <see cref="AlongNm"/> set **adds** a tab there, at the
-///   profile's derived sizes.
+///   profile's derived sizes unless it carries its own (<see cref="WidthNm"/>,
+///   <see cref="HeightNm"/>).
 ///
 /// An entry that names no planned tab and adds nothing is ignored, like a size edit out of range: a
 /// hand-edited project file is not taken at its word. A removal of a tab outranks a move of the
@@ -78,6 +89,22 @@ public sealed record TabMove
     /// the loop is closed, so it wraps. Null on a named tab removes it.
     /// </summary>
     public double? AlongNm { get; init; }
+
+    /// <summary>
+    /// An added tab's own width, or null for the board's. Only an add reads it.
+    ///
+    /// **On the add itself, not in a <see cref="TabEdit"/>**, and `/code-review` is why. An edit
+    /// names a tab by an index, and an added tab's index is its place among the adds — so removing
+    /// one shifted every later add's index, and a size stored apart either went with the wrong tab
+    /// or outlived the one it was for; and a build from before this field would have read an edit
+    /// for an add as one for the planned tab with that number. Kept here, the size is removed with
+    /// its tab, and an older build that does not know the field reads an add at the board's size —
+    /// a missing choice rather than a misplaced one.
+    /// </summary>
+    public long? WidthNm { get; init; }
+
+    /// <summary>An added tab's own height, or null for the board's. Only an add reads it.</summary>
+    public long? HeightNm { get; init; }
 }
 
 /// <summary>
@@ -101,7 +128,10 @@ public sealed record TabPlanning(
 /// <summary>One tab's width or height, set by hand rather than derived.</summary>
 public sealed record TabEdit
 {
-    /// <summary>Which tab, counted round the profile from its start vertex, from zero.</summary>
+    /// <summary>
+    /// Which planned tab, by its place in the pristine planned order. An added tab's sizes live on
+    /// its own <see cref="TabMove"/> instead.
+    /// </summary>
     public required int Index { get; init; }
 
     /// <summary>Null leaves the derived width alone.</summary>
@@ -317,13 +347,100 @@ public static class TabPlan
         // later sorts into that slot.
         for (var i = 0; i < tabs.Count; i++)
         {
-            tabs[i] = tabs[i] with { Ordinal = i };
+            tabs[i] = tabs[i] with { Ordinal = i, Letter = LetterOf(i) };
         }
 
         return Moved(
             Edited(tabs, options.TabEdits),
             options.TabMoves, segments, starts, lengths, perimeter, width, height);
     }
+
+    /// <summary>
+    /// A tab's letter from its place: 0 is A, 25 is Z, 26 is AA, 701 is ZZ and 702 is AAA — a
+    /// spreadsheet's column names, which nobody has to be taught.
+    /// </summary>
+    public static string LetterOf(int place)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(place);
+
+        var letters = new System.Text.StringBuilder();
+
+        for (var n = place + 1; n > 0; n = (n - 1) / 26)
+        {
+            letters.Insert(0, (char)('A' + ((n - 1) % 26)));
+        }
+
+        return letters.ToString();
+    }
+
+    /// <summary>
+    /// The hand-set changes with one tab's width set — what a click on a handle chose.
+    ///
+    /// <paramref name="widthNm"/> equal to <paramref name="boardWidthNm"/>, or null, means "as
+    /// every tab is", and is not stored: the same rule the tabs window applies, so the two doors
+    /// write the same project file for the same choice. The tab's own height, if one was set, is
+    /// kept. A planned tab's width is a <see cref="TabEdit"/>, and an edit left with neither number
+    /// goes; an added tab's is on its own add entry.
+    /// </summary>
+    /// <param name="edits">The size edits as they stand.</param>
+    /// <param name="moves">The hand-set positions as they stand.</param>
+    /// <param name="tab">The tab, named by its <see cref="PlacedTab.Ordinal"/> and
+    /// <see cref="PlacedTab.Added"/>.</param>
+    /// <param name="widthNm">The width chosen for it alone.</param>
+    /// <param name="boardWidthNm">The width every tab has unless it says otherwise.</param>
+    public static (ImmutableArray<TabEdit> Edits, ImmutableArray<TabMove> Moves) WithWidth(
+        IReadOnlyList<TabEdit> edits,
+        IReadOnlyList<TabMove> moves,
+        PlacedTab tab,
+        long? widthNm,
+        long boardWidthNm)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        ArgumentNullException.ThrowIfNull(moves);
+        ArgumentNullException.ThrowIfNull(tab);
+
+        var width = widthNm is { } chosen and > 0 && chosen != boardWidthNm ? chosen : (long?)null;
+
+        if (tab.Added)
+        {
+            var height = AddEntry(moves, tab.Ordinal)?.HeightNm;
+            return ([.. edits], WithAddSize(moves, tab.Ordinal, width, height));
+        }
+
+        var kept = edits.Where(e => e.Index != tab.Ordinal);
+        var ownHeight = edits.LastOrDefault(e => e.Index == tab.Ordinal)?.HeightNm;
+
+        return (
+            width is null && ownHeight is null
+                ? [.. kept]
+                : [.. kept, new TabEdit { Index = tab.Ordinal, WidthNm = width, HeightNm = ownHeight }],
+            [.. moves]);
+    }
+
+    /// <summary>
+    /// The positions with the <paramref name="add"/>-th added tab given these sizes — null for
+    /// "the board's". The count is of the entries that add a tab, the same count
+    /// <see cref="PlacedTab.Ordinal"/> is for an added tab.
+    /// </summary>
+    public static ImmutableArray<TabMove> WithAddSize(
+        IReadOnlyList<TabMove> moves, int add, long? widthNm, long? heightNm)
+    {
+        ArgumentNullException.ThrowIfNull(moves);
+
+        var seen = -1;
+
+        return
+        [
+            .. moves.Select(m =>
+                m.Index < 0 && m.AlongNm is not null && ++seen == add
+                    ? m with { WidthNm = widthNm, HeightNm = heightNm }
+                    : m),
+        ];
+    }
+
+    /// <summary>The <paramref name="add"/>-th entry that adds a tab, or null.</summary>
+    private static TabMove? AddEntry(IReadOnlyList<TabMove> moves, int add) =>
+        moves.Where(m => m.Index < 0 && m.AlongNm is not null).ElementAtOrDefault(add);
 
     /// <summary>
     /// Hand-set positions, applied after the sizes and addressed the same way (6.4).
@@ -335,7 +452,8 @@ public static class TabPlan
     /// itself, and a caller drawing handles cares where each tab *is*, not where it ranks.
     ///
     /// An added tab takes the profile's own derived sizes — the board-wide pair every planned tab
-    /// starts from. Sizing one by hand is the tabs window's job, the day it learns to name one.
+    /// starts from — unless its entry carries its own. Its letter follows the planned tabs': the
+    /// pristine plan's count, plus its place among the adds.
     /// </summary>
     private static List<PlacedTab> Moved(
         List<PlacedTab> tabs,
@@ -382,15 +500,18 @@ public static class TabPlan
             {
                 var at = Wrap(alongAdded, perimeter);
 
+                // Its own sizes when it carries them, guarded as an edit's are: a non-positive
+                // number in a hand-edited file is no size at all.
                 result.Add(new PlacedTab
                 {
                     AlongNm = at,
-                    WidthNm = width,
-                    HeightNm = height,
+                    WidthNm = move.WidthNm is { } ownWidth and > 0 ? ownWidth : width,
+                    HeightNm = move.HeightNm is { } ownHeight and > 0 ? ownHeight : height,
                     At = PointAt(segments, starts, lengths, at),
                     Edge = -1,
                     EdgeLengthNm = 0,
                     Ordinal = added,
+                    Letter = LetterOf(tabs.Count + added),
                     Added = true,
                 });
 
@@ -440,15 +561,18 @@ public static class TabPlan
             // cannot produce a zero — an emptied box reads as "no choice" — but a hand-edited
             // `"WidthNm": 0` would put two cut runs end to end at that tab, which is the profile cut
             // clean through while the program's header still counts it as a tab.
-            tabs[edit.Index] = tabs[edit.Index] with
-            {
-                WidthNm = edit.WidthNm is { } width and > 0 ? width : tabs[edit.Index].WidthNm,
-                HeightNm = edit.HeightNm is { } height and > 0 ? height : tabs[edit.Index].HeightNm,
-            };
+            tabs[edit.Index] = Sized(tabs[edit.Index], edit);
         }
 
         return tabs;
     }
+
+    /// <summary>One tab with an edit's sizes, a non-positive number ignored as `For` ignores one.</summary>
+    private static PlacedTab Sized(PlacedTab tab, TabEdit edit) => tab with
+    {
+        WidthNm = edit.WidthNm is { } width and > 0 ? width : tab.WidthNm,
+        HeightNm = edit.HeightNm is { } height and > 0 ? height : tab.HeightNm,
+    };
 
     /// <summary>
     /// The profile's straight edges, as runs of segments going the same way.

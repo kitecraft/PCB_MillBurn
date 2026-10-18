@@ -406,6 +406,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             (float)((x - frame.MinX) / 1_000_000.0),
             (float)((y - frame.MinY) / 1_000_000.0));
 
+        // Which side of the loop the board is on. The cut path runs half a cutter outside the board
+        // all the way round, so the board is its inside — and which hand "inside" is on depends on
+        // which way round Clipper wound it, which the sign of the area says.
+        var outwardSign = Clipper2Lib.Clipper.IsPositive(profile) ? 1.0 : -1.0;
+
         // Each tab's gap ends are walked along the loop, not offset from the centre: half a width
         // either way round the path is where the cut really stops and resumes, corners included,
         // and the splitter does the same arithmetic when it cuts there.
@@ -415,12 +420,24 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             var gapFrom = path.PointAt(t.AlongNm - half);
             var gapTo = path.PointAt(t.AlongNm + half);
 
+            // The letter's side: the path's direction across the gap, turned a right angle away
+            // from the board. A loop wound anticlockwise has the board on its left, so away is the
+            // right-hand normal; a clockwise one the other way.
+            var tx = (double)(gapTo.X - gapFrom.X);
+            var ty = (double)(gapTo.Y - gapFrom.Y);
+            var length = Math.Sqrt((tx * tx) + (ty * ty));
+            var outward = length > 0
+                ? new SKPoint((float)(outwardSign * ty / length), (float)(-outwardSign * tx / length))
+                : default;
+
             return new TabHandle(
                 OnBoard(t.At.X, t.At.Y),
                 (float)Nm.ToMillimetres(t.WidthNm),
                 t.Moved || t.Added,
                 OnBoard(gapFrom.X, gapFrom.Y),
-                OnBoard(gapTo.X, gapTo.Y));
+                OnBoard(gapTo.X, gapTo.Y),
+                t.Letter,
+                outward);
         }
 
         TabHandles = new TabOverlay
@@ -428,6 +445,110 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Profile = [.. profile.Select(p => OnBoard(p.X, p.Y))],
             Tabs = [.. planned.Tabs.Select(Handle)],
         };
+    }
+
+    /// <summary>
+    /// What the width popup shows for one handle, and the plan it was read from. Null when the
+    /// handle names nothing.
+    /// </summary>
+    public TabWidthAsk? TabWidthFor(int handle)
+    {
+        if (_tabPlanning is not { } planning || _tabRow is not { } row
+            || handle < 0 || handle >= planning.Tabs.Count)
+        {
+            return null;
+        }
+
+        var tab = planning.Tabs[handle];
+
+        return new TabWidthAsk(
+            tab.Letter,
+            Nm.ToMillimetres(tab.WidthNm),
+            Nm.ToMillimetres(row.TabWidthNm ?? planning.DerivedWidthNm),
+            planning,
+            handle);
+    }
+
+    /// <summary>The handle carrying this letter, or -1 — the one place a letter is looked up.</summary>
+    public int TabHandleOf(string letter) =>
+        _tabPlanning?.Tabs
+            .Select((t, i) => string.Equals(t.Letter, letter, StringComparison.OrdinalIgnoreCase) ? i : -1)
+            .FirstOrDefault(i => i >= 0, -1) ?? -1;
+
+    /// <summary>
+    /// One tab's own width, from a click on its handle — every other tab left as it was.
+    ///
+    /// The same edit the tabs window writes for the same choice: <see cref="TabPlan.WithWidth"/>
+    /// decides what is an edit and what is "as every tab is", so the two doors cannot disagree
+    /// about what a project file holds. Null puts the tab back to the board's width.
+    ///
+    /// **Refused when the tabs were re-planned while the popup was open.** It is light-dismissed,
+    /// so this takes something arriving from elsewhere — but a re-plan can give the same letter
+    /// and the same handle to a different tab, and a width the operator chose for the tab they
+    /// clicked must not land on another one. A preview finishing does not re-plan; only a change
+    /// to what the tabs are planned from does.
+    /// </summary>
+    /// <returns>False when nothing was written.</returns>
+    public bool SetTabWidth(TabWidthAsk ask, double? widthMm)
+    {
+        ArgumentNullException.ThrowIfNull(ask);
+
+        if (_tabPlanning is not { } planning || _tabRow is not { } row)
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(planning, ask.Plan))
+        {
+            StatusMessage = $"The tabs were re-planned while tab {ask.Letter}'s width was open, so nothing was changed. Click it again.";
+            return false;
+        }
+
+        var tab = planning.Tabs[ask.Handle];
+
+        var boardWidthNm = row.TabWidthNm ?? planning.DerivedWidthNm;
+        long? chosen = widthMm is { } mm ? Nm.FromMillimetres(mm) : null;
+
+        // A width the planner would refuse is said rather than written: `For` ignores a
+        // non-positive edit, so writing one would store a choice that silently does nothing.
+        if (chosen is <= 0)
+        {
+            StatusMessage = $"Tab {tab.Letter} needs a width above zero. To take it away, right-click it.";
+            return false;
+        }
+
+        var (edits, moves) = TabPlan.WithWidth(row.TabEdits, row.TabMoves, tab, chosen, boardWidthNm);
+        row.SetTabs(row.TabWidthNm, row.TabHeightNm, edits, moves);
+
+        StatusMessage = chosen is null || chosen == boardWidthNm
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab {tab.Letter} is back to the board's width, {Nm.ToMillimetres(boardWidthNm):F2} mm.")
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"Tab {tab.Letter} is {Nm.ToMillimetres(chosen.Value):F2} mm wide now. The other tabs are unchanged.");
+
+        return true;
+    }
+
+    /// <summary>
+    /// The headless flag's route to a tab's own width: by letter, as the operator names it, through
+    /// the same <see cref="SetTabWidth"/> a click uses. One line back for the capture log.
+    /// </summary>
+    internal string SetTabWidthForShot(string letter, double widthMm)
+    {
+        if (_tabPlanning is not { } planning)
+        {
+            return "tab width: there are no tabs — load a board whose outline is cut with tabs";
+        }
+
+        if (TabWidthFor(TabHandleOf(letter)) is not { } ask)
+        {
+            return $"tab width: there is no tab {letter} — the tabs are {string.Join(", ", planning.Tabs.Select(t => t.Letter))}";
+        }
+
+        SetTabWidth(ask, widthMm);
+        return $"tab width: {StatusMessage}";
     }
 
     /// <summary>A place the viewport reported, taken back into the artwork's own nanometres.</summary>
@@ -567,7 +688,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ];
     }
 
-    /// <summary>The k-th add entry, gone.</summary>
+    /// <summary>The k-th add entry, gone — and the size it carried with it.</summary>
     private static ImmutableArray<TabMove> RemoveAddEntry(ImmutableArray<TabMove> moves, int add)
     {
         var seen = -1;

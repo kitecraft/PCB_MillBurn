@@ -66,6 +66,7 @@ careful one.
 | [6.72](../Documentation/06-Roadmap-and-Risks.md#672-on-a-panel-every-tab-goes-on-one-edge--defect--fixed--found-in-the-workshop-2026-10-11-fixed-in-sprint-6) + [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs spread round the panel, and a hand can move one | The workshop, 2026-10-11, on the same panel; folded at the picking, 2026-10-16 |
 | [6.54](../Documentation/06-Roadmap-and-Risks.md#654-the-checks-panel-cannot-show-a-cancelled-run--enhancement--fixed--found-by-code-review-2026-09-29-fixed-in-sprint-6) | A stopped check says so | `/code-review`, 2026-09-29; the other half of sprint 5's review debt |
 | [6.50](../Documentation/06-Roadmap-and-Risks.md#650-nothing-can-test-the-view-model--enhancement--fixed--three-times-in-one-sprint) | When a setting is persisted, said once | Three faults in one sprint; the settings row is the one sprint 5 left |
+| [6.4](../Documentation/06-Roadmap-and-Risks.md#64-tabs-where-how-many-how-big--enhancement--partial--placed-and-sized-in-sprint-4-moved-by-hand-in-sprint-6-keep-outs-are-not-built) | Tabs by letter, and one tab's width at a click | **Added mid-sprint** by the product owner, 2026-10-18, after story 2 reached the bench |
 
 **The order is the owner's first, then by risk.** 6.71 was named before the picking opened. Story
 2 is second because it holds the sprint's only defect, and the defect is its first half. 6.54 is
@@ -636,6 +637,107 @@ and the override is dropped by the menu exactly as before. Seven findings; three
    function, the same one `Staleness.Of` uses and its sweep test catches before any handler can.
    *Left.*
 7. **`/describe-test` not shown as run.** It had run; recorded above. *No change.*
+
+---
+
+## Story 5 — Tabs by letter, and one tab's width at a click (6.4, added 2026-10-18)
+
+**Problem.** From the product owner, the morning after the drag landed: *"I'd also like to be able
+to single click on a tab (just the circle) and have it pop up a hover dialog for 'width'. The width
+would be applied to only that specified tab. And, would it be possible to have a label near the tab
+handle (the circle)? A - Z (then AA - ZZ, ...). And in the tab dialog, use those letters instead of
+the numbered list. Displaying the label would always have to try to be on the outside of the
+board."* Spreadsheet-style lettering past Z, confirmed the same morning. A story to remove the tabs
+window was proposed first and withdrawn by the owner — *"the dialog is actually kind of handy still
+so let's keep it for now."*
+
+**What.** A letter per tab, stable as the ordinal is; a click on a handle that is not a drag; a
+popup that writes the same edit the window does; the window's rows named by letter. And the gap
+that made the last part impossible: an added tab had no name a size edit could use.
+
+**Done when** every handle carries its letter off the board side, the window's rows use the same
+letters, a click sets one tab's width — added tabs included — and nothing else, and a letter or a
+size stays on its tab through drags and removals around it.
+
+### Closed — 2026-10-18
+
+**The owner, on seeing it:** *"That is awesome! Tabs are so easy now."*
+
+**Letters.** `PlacedTab.Letter`, given out with the ordinal in `TabPlan.For`: planned tabs in the
+pristine plan's order, adds after them, `TabPlan.LetterOf` running A … Z, AA … ZZ, AAA. Drawn by
+`TabHandles.DrawLetter` 17 px off the handle along the cut path's outward normal — outward from the
+loop's winding, computed in the view model (`TabLoopTurnsLeft`) and carried through the frame.
+
+**Added tabs carry their own sizes**, on their add entry: `TabMove.WidthNm` and `HeightNm`,
+read only by an add, guarded against non-positive numbers as an edit is. Removing an add takes its
+size with it; the window sizes added rows and hands the moves back with the sizes written on
+(`TabPlan.WithAddSize`); the export advice and the CLI's "sized one at a time" count include them.
+The first build did this differently — see the code review below.
+
+**The click.** `BoardView` holds a press on a handle as a click until it wanders 3 px; letting go
+inside that raises `TabClicked` instead of `TabMoved`, which also ends a small fault: a stationary
+click used to write the tab as hand-placed where it already was. `TabWidthFlyout` opens at the
+pointer and calls `SetTabWidth`, which writes `TabPlan.WithWidth` — the window's own "equal to the
+board's is no edit" rule, the tab's own height kept — and refuses, saying so, if the plan it was
+opened on has been replaced.
+
+**By running.** `--tab-width B=4` on the test board: B's ticks visibly wider, the others unmoved,
+status *"Tab B is 4.00 mm wide now. The other tabs are unchanged."*; `--tabs` shows rows A–D with B
+at 4.00; `--tab-popup B` captures the popup itself (its own top level, which a window capture does
+not reach); the 66-up panel's four letters sit outside the frame. Settings file unchanged by every
+shot. Eight faults reintroduced deliberately in the planner after the rework — adds lettered from
+zero, an add's own size ignored, a zero size honoured, a click on an add written as an edit,
+`WithWidth` dropping a planned tab's height, `WithAddSize` counting an entry that adds nothing (and
+the first round's five against the first design) — each failed `TabLetterTests` by name; the last
+needed a test case added to be caught. 1,441 unit + 28 golden tests, zero warnings; no golden
+snapshot moved, so no existing program changed.
+
+### What `/describe-test` found — 2026-10-18, three runs
+
+- **`TabLetterTests`**: two tightened. The cold read noticed that
+  `AnAddedTabsSizeSurvivesAnEarlierAddBeingRemoved` asserted only the board's 2 mm on the
+  survivor — which a planner that never applied an added-tab edit would also produce. It now gives
+  the survivor its own 3 mm and asserts that, and its letter F. And
+  `ALetterStaysWithItsTabThroughMovesAndRemovals` never checked where B went; it now checks B's
+  arc position against the move. The rest read as written: the gap measured off the real toolpath,
+  the lettering table hand-written rather than computed, and both index spaces crossed in both
+  directions.
+- **`TabLetterTests` again, after the review's rework** rewrote half of it: four tightened. The
+  test then called `RemovingAnAddTakesItsSizeWithIt` removed nothing — the removal is the view
+  model's, out of reach — so it is renamed for what it shows, the surviving add's own size and
+  freed letter. The program-gap test would not have noticed planned A failing to go, since A's
+  2 mm gap sits inside the 4 mm one; it now asserts A is gone. `WithWidth`'s "an edit with nothing
+  left goes" was claimed and not exercised; it is now. And the click-to-plan test said nothing
+  moved without checking; it now compares every tab's position before and after.
+- **`LayerOutputPersistenceTests`** (one assertion pair added, for an add's own width and height):
+  the new fields round-trip with non-default values, so a dropped field fails by name. The read
+  also found two weaknesses older than this story — its null checks cannot tell "written as null"
+  from "left out", and "a project from before this existed" opens a file the current build just
+  wrote. Recorded, not this story's to fix.
+
+### What the code review found — 2026-10-18, medium
+
+Ten findings. The first six were one design fault seen from six sides, and the design was changed
+rather than patched.
+
+1. **–6. Added-tab sizes in a `TabEdit` with an `Added` flag, and removed adds kept as empty
+   entries.** The empty entries made `TabMoves` non-empty after an add-and-remove, so the header
+   said *"after the hand-set changes"* for a shortfall the edges made; a removed add's size
+   outlived it, still counted by the CLI and checked by the export advice; the CLI's
+   `--tab-width` and every other door that clears the moves had to remember to clear those edits;
+   and a build from before the flag reads `{Index:0, Added:true}` as planned tab 0 and cuts that
+   gap at the add's width — the author runs old builds. *Fixed by moving the sizes onto the add
+   entry* (`TabMove.WidthNm`/`HeightNm`): removal takes them, nothing else holds an index to an
+   add, the empty entries are gone, and an older build ignores the fields. The cost, said in the
+   entry: a later add's letter moves up when an earlier add is removed.
+7. **A letter looked up after a re-plan can be another tab.** The popup is light-dismissed, so
+   this needs a change arriving from elsewhere, but the answer is cheap: the popup carries the plan
+   it was opened on (`TabWidthAsk`), and an apply against a replaced plan is refused with a status
+   line. *Fixed.*
+8. **A hand-rolled shoelace** where Clipper's `IsPositive` says the same. *Fixed.*
+9. **Two paints allocated per letter per frame.** Hoisted to statics. *Fixed.*
+10. **The letter lookup written three times.** One `TabHandleOf`, used by the shot flag, the popup
+    flag and the apply path. *Fixed.*
 
 ---
 

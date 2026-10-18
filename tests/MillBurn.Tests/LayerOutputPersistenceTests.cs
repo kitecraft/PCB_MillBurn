@@ -80,7 +80,7 @@ public sealed class LayerOutputPersistenceTests : IDisposable
                 [
                     new TabMove { Index = 1, AlongNm = 52_500_000 },
                     new TabMove { Index = 3 },
-                    new TabMove { Index = -1, AlongNm = 12_000_000 },
+                    new TabMove { Index = -1, AlongNm = 12_000_000, WidthNm = 3_500_000, HeightNm = 400_000 },
                 ],
                 BreakThroughNm = Nm.FromMillimetres(0.45),
 
@@ -131,6 +131,8 @@ public sealed class LayerOutputPersistenceTests : IDisposable
         Assert.Null(outline.TabMoves[1].AlongNm);
         Assert.Equal(-1, outline.TabMoves[2].Index);
         Assert.Equal(12_000_000, outline.TabMoves[2].AlongNm);
+        Assert.Equal(3_500_000, outline.TabMoves[2].WidthNm);
+        Assert.Equal(400_000, outline.TabMoves[2].HeightNm);
     }
 
     /// <summary>

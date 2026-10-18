@@ -2196,9 +2196,17 @@ public static class ExportPlanner
         // The same guard the options above apply, hoisted, and for the same reason: a default
         // `ImmutableArray` throws on every member. See there for why the JSON story an earlier
         // comment told about it is not true.
+        //
+        // An added tab's own sizes live on its add entry rather than in an edit, and are held to
+        // the same limits, so both go into one list of hand-set sizes.
         var edits = setting.TabEdits.IsDefaultOrEmpty ? [] : setting.TabEdits;
+        var adds = setting.TabMoves.IsDefaultOrEmpty ? [] : setting.TabMoves;
 
-        var thin = edits
+        var sizes = edits.Select(e => (e.WidthNm, e.HeightNm))
+            .Concat(adds.Where(m => m.Index < 0 && m.AlongNm is not null).Select(m => (m.WidthNm, m.HeightNm)))
+            .ToList();
+
+        var thin = sizes
             .Where(e => e.HeightNm is { } h && h < TabPlan.MinHeightNm)
             .Select(e => e.HeightNm!.Value)
             .Append(tabHeightNm < TabPlan.MinHeightNm ? tabHeightNm : long.MaxValue)
@@ -2210,7 +2218,7 @@ public static class ExportPlanner
                 $"A tab here leaves {Nm.ToMillimetreString(thin, 2)} mm of material, under the {Nm.ToMillimetreString(TabPlan.MinHeightNm, 2)} mm a tab needs to survive the rest of the cut.")));
         }
 
-        var narrow = edits
+        var narrow = sizes
             .Where(e => e.WidthNm is { } w && w < TabPlan.MinWidthNm)
             .Select(e => e.WidthNm!.Value)
             .Append(setting.TabWidthNm is { } set && set < TabPlan.MinWidthNm ? set : long.MaxValue)
@@ -2226,7 +2234,7 @@ public static class ExportPlanner
         // planner would ever derive is the input that can run two tabs into each other, and the
         // splitter answers that by leaving no run between them — a wider gap than anybody asked
         // for, in a place the picture shows and the header did not mention.
-        var wide = edits
+        var wide = sizes
             .Where(e => e.WidthNm is { } w && w > TabPlan.MaxWidthNm)
             .Select(e => e.WidthNm!.Value)
             .Append(setting.TabWidthNm is { } asked && asked > TabPlan.MaxWidthNm ? asked : 0)
